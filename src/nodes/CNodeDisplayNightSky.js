@@ -734,9 +734,9 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
                 satelliteTrackGroup: this.satelliteTrackGroup,
                 satelliteGroundGroup: this.satelliteGroundGroup
             });
-            // Calculate percentage of valid satellites
+            // Calculate percentage of valid satellites, only counting those not filtered out
             if (satResult && this.satellites.TLEData.satData.length > 0) {
-                par.validPct = (satResult.validCount / this.satellites.TLEData.satData.length) * 100;
+                par.validPct = (satResult.validCount / satResult.visibleCount) * 100;
             }
         }
 //        console.log (`out of ${numSats}, ${valid} of them are valid`)
