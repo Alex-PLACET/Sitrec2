@@ -3,6 +3,12 @@
 // /opt/homebrew/etc/php/8.4/php.ini
 // brew services restart php
 
+// CRITICAL: Prevent caching of rehost.php responses
+// Each upload is unique and must never return a cached result from a previous request
+header('Cache-Control: no-cache, no-store, must-revalidate');
+header('Pragma: no-cache');  // HTTP/1.0 compatibility
+header('Expires: 0');        // For older browsers
+
 require('./user.php');
 
 $user_id = getUserID();

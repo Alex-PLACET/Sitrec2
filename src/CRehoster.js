@@ -25,11 +25,12 @@ export class CRehoster {
                 formData.append('version', version);
             }
 
-            const serverURL = SITREC_SERVER +'rehost.php'
+            const serverURL = SITREC_SERVER +'rehost.php?unique=' + Date.now();
 
             let response = await fetch(serverURL, {
                 method: 'POST',
-                body: formData  // Send FormData with file and filename
+                body: formData,  // Send FormData with file and filename
+                cache: 'no-store'  // Ensure we never cache POST responses
             });
 
             if (!response.ok) {
@@ -60,6 +61,10 @@ export class CRehoster {
 
             // make resultUrl more shareable by escaping any space with %20
             resultUrl = resultUrl.replace(/ /g, "%20");
+            
+            // Diagnostic check: log the returned URL vs what was sent to detect caching issues
+            console.log(`  Sent: ${filename} (version: ${version || 'none'})`);
+            console.log(`  Received: ${resultUrl}`);
 
             return resultUrl
         } catch (error) {
@@ -73,11 +78,12 @@ export class CRehoster {
         let formData = new FormData();
         formData.append('filename', filename);
         formData.append('delete', 'true');
-        const serverURL = SITREC_SERVER +'rehost.php'
+        const serverURL = SITREC_SERVER +'rehost.php?unique=' + Date.now();
         console.log("Deleting file: ", filename, " with URL: ", serverURL);
         let response = await fetch(serverURL, {
             method: 'POST',
-            body: formData  // Send FormData with file and filename
+            body: formData,  // Send FormData with file and filename
+            cache: 'no-store'  // Ensure we never cache POST responses
         });
         if (!response.ok) {
             throw new Error('Server responded with ' + response.status);

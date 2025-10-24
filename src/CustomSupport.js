@@ -1899,7 +1899,19 @@ export class CCustomManager {
                     // so just save the original name
                     files[id] = file.filename
                 } else {
-                    files[id] = file.staticURL
+                    // Only include files that have been successfully rehosted
+                    if (file.staticURL) {
+                        files[id] = file.staticURL
+                    } else if (!file.dynamicLink) {
+                        // For non-dynamic links (external static URLs), use filename directly
+                        // Note: External static URLs should have staticURL = filename set at load time,
+                        // so this is primarily a defensive fallback
+                        console.error("No static link, falling back to filename", id, file.filename);
+                        files[id] = file.filename
+                    } else {
+                        console.warn("File not rehosted but should be - skipping:", id, file.filename);
+                    }
+                    // else: skip files without staticURL - they weren't rehosted
                 }
             }
             out.loadedFiles = files;
@@ -2109,7 +2121,25 @@ export class CCustomManager {
             // TODO: then the URL will be the same
 
             return FileManager.rehoster.rehostFile(name, str, version + ".js").then((staticURL) => {
-                console.log("Sitch rehosted as " + staticURL);
+                console.log("✓ Sitch rehosted as " + staticURL);
+                
+                // Defensive check: detect if we got a cached response from a previous upload
+                // This can happen if rehost.php was called multiple times rapidly
+                // and the browser's fetch cache returned a stale response
+                if (staticURL.includes('video') || staticURL.includes('.mp4') || staticURL.includes('.mov') || 
+                    staticURL.includes('.webm') || staticURL.includes('.avi')) {
+                    console.error("ERROR: Sitch URL contains VIDEO indicator - likely a CACHED response!");
+                    console.error("  This happens when rehost.php is called rapidly and browser caches POST responses");
+                    console.error("  Expected: .js file URL (e.g., /sitrec/custom/...Custom.js.1.js)");
+                    console.error("  Got:", staticURL);
+                    // Log current state for debugging
+                    if (NodeMan.exists("video")) {
+                        const videoNode = NodeMan.get("video");
+                        console.error("  VideoNode.staticURL:", videoNode.staticURL);
+                    }
+                    // This should now be prevented by cache: 'no-store' in CRehoster.js
+                    console.error("  If this persists, check browser DevTools Network tab for 304 responses");
+                }
 
                 this.staticURL = staticURL;
 
@@ -2120,10 +2150,17 @@ export class CCustomManager {
                     paramName = "mod"
                 }
                 this.customLink = SITREC_APP + "?"+paramName+"=" + staticURL;
+                console.log("  Custom link created:", this.customLink);
 
                 //
                 window.history.pushState({}, null, this.customLink);
 
+            }).finally(() => {
+                // Clean up accumulated promises in CRehoster to prevent cross-talk between saves
+                if (FileManager.rehoster.rehostPromises && FileManager.rehoster.rehostPromises.length > 0) {
+                    console.log("Clearing " + FileManager.rehoster.rehostPromises.length + " accumulated rehost promises");
+                    FileManager.rehoster.rehostPromises = [];
+                }
             })
         })
     }
