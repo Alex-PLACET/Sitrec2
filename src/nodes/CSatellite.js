@@ -51,7 +51,11 @@ export class CSatellite {
 
         // Internal timing for position calculations
         this.timeStep = 2000;
+        this.setupBrightestArray();
 
+    }
+
+    setupBrightestArray() {
         // Brightest satellites list from Celestrack
         this.brightest = [
             [
@@ -671,7 +675,6 @@ export class CSatellite {
                 "ACS3"
             ]
         ];
-
     }
 
     /**

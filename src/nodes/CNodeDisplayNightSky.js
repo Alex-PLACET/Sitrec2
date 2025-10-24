@@ -398,7 +398,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
         if (v.starLink !== undefined) {
             console.log("parsing starlink "+v.starLink)
             if (FileManager.exists(v.starLink)) {
-                this.satellites.replaceTLE(FileManager.get(v.starLink))
+                this.replaceTLE(FileManager.get(v.starLink))
             } else {
                 if (v.starLink !== "starLink")
                     console.warn("Starlink file/ID "+v.starLink+" does not exist")
