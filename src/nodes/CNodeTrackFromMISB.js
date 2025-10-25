@@ -98,6 +98,14 @@ export class CNodeTrackFromMISB extends CNodeTrack {
 
     }
 
+    getValue(frameFloat) {
+        // Apply time offset to the frame before retrieving value
+        // also need to make sure the right things is being recalculated
+        const offset = this.in.misb.timeOffset ?? 0;
+        const offsetFrames = offset * Sit.fps;
+        return super.getValue(frameFloat + offsetFrames);
+    }
+
 
     exportGEOJSON() {
         const geo = new CGeoJSON()

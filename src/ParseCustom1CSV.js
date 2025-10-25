@@ -8,10 +8,14 @@ import {f2m} from "./utils";
 
 // For a custom format we have a list of acceptable column headers
 // for the various needed fields
-// we need at least time, lat, lon, and alt
+// we need at least time, lat, lon
+// if alt is missing or empty fields, then assume on the ground/sea level
+// if we have a trackID, then we group those points as one track (so multiple tracks per CSV file)
+// Time can be in ms (Epoch time) or ISO date string
 const CustomCSVFormats = {
     CUSTOM1: {
-        time:     ["TIME", "TIMESTAMP", "DATE", "UTC", "DATETIME", "DATE_TIME", "DATETIME_UTC"],
+        trackID:  ["THRESHERID", "TRACK_ID"],
+        time:     ["TIME", "TIMESTAMP", "DATE", "UTC", "DATETIME", "DATE_TIME", "DATETIME_UTC", "DTG"],
         lat:      ["LAT", "LATITUDE", "TPLAT"],
         lon:      ["LON", "LONG", "LONGITUDE", "TPLON"],
         alt:      ["ALTITUDE", "ALT", "ALTITUDE (m)*", "TPHAE", "alt_m"],
@@ -21,8 +25,6 @@ const CustomCSVFormats = {
         az:       ["AZIMUTH", "AZ"],
     }
 }
-
-
 
 
 export function isCustom1(csv) {
@@ -38,7 +40,8 @@ export function isCustom1(csv) {
     if (findColumn(csv, headerValues.time, true) !== -1
         && findColumn(csv, headerValues.lat, true) !== -1
         && findColumn(csv, headerValues.lon, true) !== -1
-        && (findColumn(csv, headerValues.alt, true) !== -1 || findColumn(csv, headerValues.agl, true) !== -1)
+        // alt is not required for detection
+        //      && (findColumn(csv, headerValues.alt, true) !== -1 || findColumn(csv, headerValues.agl, true) !== -1)
     ) {
         return true;
     }

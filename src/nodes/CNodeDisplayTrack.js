@@ -66,6 +66,9 @@ export class CNodeDisplayTrack extends CNode3DGroup {
 
         this.frames = v.frames ?? this.in.track.frames;
         this.useSitFrames = this.in.track.useSitFrames;
+        
+        // Initialize time offset on the input track
+        this.in.track.timeOffset ??= 0;
 
         this.lineOpacity = v.lineOpacity ?? 0.5;
         this.polyOpacity = v.polyOpacity ?? 0.1;
@@ -220,6 +223,23 @@ export class CNodeDisplayTrack extends CNode3DGroup {
                     pruneIfUnused: true
                 }, this.guiFolder)
 
+                track.timeOffset = 0;
+
+                new CNodeGUIValue({
+                    id: this.id + "timeOffset",
+                    value: 0,
+                    start: -60,
+                    end: 60,
+                    step: 0.001,
+                    desc: "Time offset (sec)",
+                    unitType: "none",
+                    onChange: (v) => {
+                        track.timeOffset = v;
+                        track.recalculateCascade()
+                    },
+                    pruneIfUnused: true
+                }, this.guiFolder)
+
 
             }
 
@@ -265,6 +285,7 @@ export class CNodeDisplayTrack extends CNode3DGroup {
             lineColor: hexColor(this.lineColor),
             polyColor: hexColor(this.polyColor),
             visible: this.visible,
+            timeOffset: this.in.track.timeOffset,
 
         }
     }
@@ -310,6 +331,11 @@ export class CNodeDisplayTrack extends CNode3DGroup {
 
         this.visible = v.visible;
         this.show(this.visible);
+        
+        // Restore time offset if it was saved
+        if (v.timeOffset !== undefined) {
+            this.in.track.timeOffset = v.timeOffset;
+        }
     }
 
 
