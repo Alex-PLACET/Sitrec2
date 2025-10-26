@@ -126,7 +126,7 @@ import {bestSat} from "../TLEUtils";
         if (!this.norad) {
             this.norad = this.getSatelliteNumber(this.satellite);
             if (!this.norad) {
-                console.warn(`CNodeSatelliteTrack:recalculate no NORAD number found for ${this.satellite}`);
+//                console.warn(`CNodeSatelliteTrack:recalculate no NORAD number found for ${this.satellite}`);
                 this.hide();
                 this.guiSatellite?.hide();
                 return false;
