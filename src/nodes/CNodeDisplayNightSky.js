@@ -13,6 +13,7 @@ import {par} from "../par";
 
 import SpriteText from '../js/three-spritetext';
 import {CNodeDisplayGlobeCircle} from "./CNodeDisplayGlobeCircle";
+import {CNodeDisplayEarthShadow} from "./CNodeDisplayEarthShadow";
 import {assert} from "../assert.js";
 import {intersectSphere2, V3} from "../threeUtils";
 import {calculateGST, celestialToECEF, getSiderealTime} from "../CelestialMath";
@@ -125,6 +126,10 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
             penumbraDepth: 5000
         });
 
+        // Initialize Earth's Shadow properties before GUI
+        this.earthShadowAltitude = Sit.earthShadowAltitude ?? (wgs84.RADIUS + 35786000); // Default to geostationary altitude (~35,786 km above Earth's surface)
+        this.showEarthShadow = Sit.showEarthShadow ?? false;
+
         satGUI.add(this.satellites,"updateLEOSats").name("Load LEO Satellites For Date")
             .onChange(function (x) {this.parent.close()})
             .tooltip("Get the latest LEO Satellite TLE data for the set simulator date/time. This will download the data from the internet, so it may take a few seconds.\nWill also enable the satellites to be displayed in the night sky.")
@@ -234,6 +239,33 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
         setLayerMaskRecursive(this.flareBandGroup, LAYER.MASK_HELPERS);
 
 
+        satGUI.add(this, 'earthShadowAltitude', wgs84.RADIUS, wgs84.RADIUS + 80000000, 1000).listen()
+            .onChange(() => {
+                setRenderOne(true);
+                Sit.earthShadowAltitude = this.earthShadowAltitude;
+                this.earthShadow.altitude = this.earthShadowAltitude;
+                this.earthShadow.rebuild();
+            })
+            .name("Earth's Shadow Altitude")
+            .tooltip("Distance from Earth's center to the plane at which to render Earth's shadow cone (in meters).")
+        this.addSimpleSerial("earthShadowAltitude")
+
+        // Earth's Shadow group
+        this.earthShadowGroup = new Group();
+        
+        this.earthShadow = new CNodeDisplayEarthShadow({
+            id: "earthShadow",
+            altitude: this.earthShadowAltitude,
+            fromSun: this.satellites.fromSun.clone(),
+            container: this.earthShadowGroup,
+        });
+        
+        this.earthShadowGroup.add(this.earthShadow.group);
+        this.earthShadowGroup.visible = this.showEarthShadow;
+        GlobalScene.add(this.earthShadowGroup);
+        
+        setLayerMaskRecursive(this.earthShadowGroup, LAYER.MASK_HELPERS);
+
 
         this.showFlareRegion = Sit.showFlareRegion;
         this.showFlareBand = Sit.showFlareBand;
@@ -255,6 +287,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
             { key: "showAllLabels", name: "Show all Labels", object: this, action: () => this.flareRegionGroup.visible = this.showFlareRegion},
             { key: "showFlareRegion", name: "Flare Region", object: this, action: () => this.flareRegionGroup.visible = this.showFlareRegion},
             { key: "showFlareBand", name: "Flare Band", object: this, action: () => this.flareBandGroup.visible = this.showFlareBand},
+            { key: "showEarthShadow", name: "Earth's Shadow", object: this, action: () => this.earthShadowGroup.visible = this.showEarthShadow},
         ];
 
         satelliteOptions.forEach(option => {
@@ -610,6 +643,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
         this.satelliteGroundGroup.visible = this.satellites.showSatelliteGround;
         this.satelliteTextGroup.visible = this.satellites.showSatelliteNames;
 
+        this.earthShadowGroup.visible = this.showEarthShadow;
 
         propagateLayerMaskObject(this.equatorialSphereGroup)
     }
@@ -749,6 +783,11 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
             const globeCircle2 = NodeMan.get("globeCircle2")
             globeCircle2.normal = this.satellites.fromSun.clone().normalize();
             globeCircle2.rebuild();
+        }
+
+        // Update Earth's Shadow for current Sun direction
+        if (this.showEarthShadow && this.earthShadow) {
+            this.earthShadow.update(this.satellites.fromSun);
         }
     }
 
@@ -1264,6 +1303,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
             // Store sun direction vectors for flare calculations
             this.satellites.toSun.copy(eusDir.clone().normalize())
             this.satellites.fromSun.copy(this.satellites.toSun.clone().negate())
+            Globals.fromSun = this.satellites.fromSun.clone()
         }
     }
 
@@ -1281,6 +1321,11 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
         // Clean up planets resources
         if (this.planets) {
             this.planets.dispose();
+        }
+        
+        // Clean up Earth's Shadow resources
+        if (this.earthShadow) {
+            this.earthShadow.dispose();
         }
         
         super.dispose();
