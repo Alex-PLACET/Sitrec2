@@ -238,6 +238,9 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
 
 
 
+        if (Sit.showEathShadow === undefined)
+            Sit.showEarthShadow = false;
+
 
         this.earthShadow = new CNodeDisplayEarthShadow({
             id: "earthShadow",
