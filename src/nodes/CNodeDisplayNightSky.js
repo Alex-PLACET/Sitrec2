@@ -244,6 +244,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
             altitude: this.earthShadowAltitude,
             fromSun: this.satellites.fromSun.clone(),
             gui: this.celestialGUI,
+            visible: Sit.showEarthShadow,
         });
         
         this.showFlareRegion = Sit.showFlareRegion;
