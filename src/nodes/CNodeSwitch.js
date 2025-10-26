@@ -97,7 +97,7 @@ class CNodeSwitch extends CNode {
 
             this.exportable = v.exportable
             if (this.exportable) {
-                NodeMan.addExportButton(this, "exportTrackCSV", "Traverse ")
+                NodeMan.addExportButton(this, "exportTrackCSV")
             }
         } else if(!isConsole) {
             console.warn("No gui for CNodeSwitch - this is probably not what you want")
@@ -176,13 +176,19 @@ class CNodeSwitch extends CNode {
         super.dispose()
     }
 
-    exportTrackCSV() {
+    exportTrackCSV(inspect = false) {
         // get the selected node
         // if it has and export function then call it.
         const choiceNode = this.inputs[this.choice];
         if (choiceNode.exportTrackCSV !== undefined) {
-            choiceNode.exportTrackCSV()
+            return choiceNode.exportTrackCSV(inspect)
+        } else {
+            if (inspect) {
+                console.error("CNodeSwitch:exportTrackCSV: selected node "+this.choice+" has no exportTrackCSV function")
+            }
         }
+
+
     }
 
 

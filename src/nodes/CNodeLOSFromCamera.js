@@ -33,6 +33,7 @@ export class CNodeLOSFromCamera extends CNodeLOS {
         // I don't think we have any examples of that yet
         // cameras are controlled by controllers
         const cameraNode = this.in.cameraNode
+        assert(cameraNode !== undefined, "CNodeLOSFromCamera missing cameraNode input");
         const oldCamera = cameraNode.camera;
         cameraNode._object = this.dummyCamera; // _object is the camera object
         // patch so this does not count as a controller update (recursion check)

@@ -15,16 +15,22 @@ import {Matrix3, Vector3} from "three";
 import {ECEF2ENU, ECEFToEUS, ENU2ECEF, EUSToECEF, EUSToLLA, wgs84} from "../LLA-ECEF-ENU";
 import {extractFOV} from "./CNodeControllerVarious";
 import {elevationAtLL} from "../threeExt";
+import {roundIfClose} from "../utils";
 
 export class CNodeLOS extends CNodeTrack {
     constructor(v) {
         super(v);
-
-        NodeMan.addExportButton(this, "exportLOSCSV", "CSV ")
-
     }
 
-    exportLOSCSV() {
+    update(f) {
+        super.update(f);
+        if (!this.addedExportButton) {
+            this.addedExportButton = true;
+            NodeMan.addExportButton(this, "exportLOSCSV")
+        }
+    }
+
+    exportLOSCSV(inspect = false) {
         // Get the first point to establish the ENU origin
         const firstData = this.getValueFrame(0);
         if (!firstData || !firstData.position) {
@@ -101,6 +107,11 @@ export class CNodeLOS extends CNodeTrack {
             const posECEF = EUSToECEF(posEUS);
             const posENU = ECEF2ENU(posECEF, originLat, originLon, wgs84.RADIUS, false);
 
+            // Round ENU position components if very close to whole numbers
+            const px = roundIfClose(posENU.x, 1e-6);
+            const py = roundIfClose(posENU.y, 1e-6);
+            const pz = roundIfClose(posENU.z, 1e-6);
+
             // Convert heading vector from EUS to ENU
             // First convert EUS to ENU at Sit location (axis swap)
             const headingEUS = data.heading;
@@ -172,12 +183,19 @@ export class CNodeLOS extends CNodeTrack {
             const maxRangeFormatted = maxRange === -1 ? -1 : maxRange.toFixed(3);
             const baseAltitudeFormatted = baseAltitude.toFixed(3);
             
-            csv += `${timestamp},${posENU.x},${posENU.y},${posENU.z},${headingENU.x},${headingENU.y},${headingENU.z},${maxRangeFormatted},${uncertaintyVertical},${uncertaintyHorizontal},${originLatDeg},${originLonDeg},${baseAltitudeFormatted}\n`;
+            csv += `${timestamp},${px},${py},${pz},${headingENU.x},${headingENU.y},${headingENU.z},${maxRangeFormatted},${uncertaintyVertical},${uncertaintyHorizontal},${originLatDeg},${originLonDeg},${baseAltitudeFormatted}\n`;
         }
 
         // Save the file
-        saveAs(new Blob([csv]), `LOS-${this.id}.csv`);
-        
+        if (inspect) {
+            return {
+                desc: "Lines of Sight CSV",
+                csv: csv,
+            }
+        }
+        else {
+            saveAs(new Blob([csv]), `LOS-${this.id}.csv`);
+        }
         // Test the reverse transformation
         this.testReverseExport(csv, originLat, originLon);
     }

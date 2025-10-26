@@ -239,6 +239,7 @@ class CTrackManager extends CManager {
             method: "moving",
             window: trackID + "_smoothValue",
             copyData: true,
+            exportable: false,
         });
     }
 

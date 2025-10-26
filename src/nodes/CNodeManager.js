@@ -130,14 +130,14 @@ export class CNodeManager extends CManager{
     }
 
 
-    addExportButton(node, exportFunction, base) {
+    addExportButton(node, exportFunction, exportType) {
         //note we store the base name so we can change it if
-        node.exportBaseName = base;
+        node.exportType = exportType;
         node.exportFunction = exportFunction;
         if (node.exportButtons === undefined) {
             node.exportButtons = [];
         }
-        node.exportButtons.push(FileManager.makeExportButton(node, node.exportFunction, node.exportBaseName + node.id))
+        node.exportButtons.push(FileManager.makeExportButton(node, node.exportFunction, node.exportType, node.id))
     }
 
 

@@ -2,6 +2,7 @@ import {CNode} from "./CNode";
 import {GlobalDateTimeNode, NodeMan, Sit} from "../Globals";
 import {assert} from "../assert.js";
 import {EUSToLLA} from "../LLA-ECEF-ENU";
+import {roundIfClose} from "../utils";
 
 export class CNodeArray extends CNode {
     constructor(v) {
@@ -13,15 +14,17 @@ export class CNodeArray extends CNode {
 
         this.exportable = v.exportable ?? false;
         if (this.exportable) {
-            NodeMan.addExportButton(this, "exportArray", "Array ")
+            NodeMan.addExportButton(this, "exportArray")
         }
     }
 
     // generic export function
     // if just a value, then export the value
-    exportArray() {
+    exportArray(inspect=false) {
+
+        let csv;
         if (typeof this.array[0] !== "object") {
-            let csv = "frame, time, value\n";
+            csv = "frame, time, value\n";
             for (let f = 0; f < this.frames; f++) {
                 // if it's not an object, then just export the value
                 const time = GlobalDateTimeNode.frameToMS(f)
@@ -31,7 +34,7 @@ export class CNodeArray extends CNode {
             // if it's an object, assume we want to export LLA, with Alt in meters
             // might need to convert from feet to meters
             // however I need to verify that's actually used
-            let csv = "Frame,Time,Lat,Lon,Alt(m)\n"
+            csv = "Frame,Time,Lat,Lon,Alt(m)\n"
             for (let f = 0; f < this.frames; f++) {
                 let pos = this.array[f].lla
                 let LLAm = []
@@ -47,9 +50,22 @@ export class CNodeArray extends CNode {
                     LLAm = [pos[0], pos[1], pos[2]]
   //                  debugger;
                 }
+
+                // Round altitude to nearest integer if within epsilon
+                LLAm[2] = roundIfClose(LLAm[2], 1e-6);
+
                 const time = GlobalDateTimeNode.frameToMS(f)
                 csv += f + "," + time + "," + (LLAm[0]) + "," + (LLAm[1]) + "," + LLAm[2] + "\n"
             }
+        }
+
+        if (inspect) {
+            return {
+                desc: "Per-frame array with frame and time (ms)",
+                csv: csv,
+            }
+        }
+        else {
             saveAs(new Blob([csv]), "sitrecArray-" + this.id + ".csv")
         }
     }
@@ -98,7 +114,3 @@ export class CNodeManualData extends CNodeEmptyArray {
 
 
 }
-
-
-
-

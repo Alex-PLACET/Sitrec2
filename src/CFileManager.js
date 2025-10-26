@@ -534,27 +534,85 @@ export class CFileManager extends CManager {
 
 
 
-    makeExportButton(object, functionName, name) {
+    /**
+     * Create an Export GUI button inside a per-object subfolder, lazily creating folders as needed.
+     *
+     * Behavior and side effects:
+     * - Ensures a top-level "Export" folder exists on the file manager GUI (this.exportFolder).
+     * - Ensures the provided object has an attached subfolder (object.exportSubFolder) named by folderName.
+     * - Adds a button/controller that triggers object[functionName] when clicked and labels it with exportType.
+     * - Returns the created controller so callers can further customize or keep a reference if desired.
+     *
+     * Notes:
+     * - Reuses existing folders if already created, so repeated calls are idempotent w.r.t. folder creation.
+     * - The object is decorated with an exportSubFolder property for later cleanup via removeExportButton().
+     *
+     * @param {object} object - The target object that owns the export action method.
+     * @param {string} functionName - The exportType of the method on object to invoke when the button is pressed.
+     * @param {string} exportType - The visible label for the button in the GUI.
+     * @param {string} folderName - The label for the object's subfolder within the top-level Export folder.
+     * @returns {*} The GUI controller created by .add(object, functionName).
+     */
+    makeExportButton(object, functionName, exportType, folderName) {
         if (this.exportFolder === undefined) {
             this.exportFolder = this.guiFolder.addFolder("Export").perm().close();
         }
 
-      //  showError("ADDING EXPORT BUTTON FOR "+object.id+" with function "+functionName+ "and name "+name)
+        // Some common folder names
+        if (folderName === "LOSTraverseSelectTrack")
+            folderName = "Traversal of the Lines of Sight";
+
+        if (folderName === "JetLOSCameraCenter")
+            folderName = "Lines of Sight"
 
 
-        return this.exportFolder.add(object, functionName).name(name);
+        // we need a subfolder with the title <folderName>
+        // decorate the object with an exportSubFolder property
+        if (object.exportSubFolder === undefined) {
+            object.exportSubFolder = this.exportFolder.addFolder(folderName).perm().close()
+                .tooltip("Export options for " + folderName);
+
+        }
+
+        let tooltip = exportType ? exportType : "";
+
+        // see if the function provides a description
+        const inspect = object[functionName](true);
+
+        assert(inspect !== undefined, `makeExportButton: Expected inspect info from ${functionName} on ${folderName}`);
+        tooltip += inspect.desc;
+
+        if (inspect.csv) {
+            const csv = inspect.csv;
+            const header = csv.split("\n")[0];
+            const row = csv.split("\n")[1];
+
+            tooltip += "\n\nHeader and Example Row:\n" + header;
+            tooltip += "\n" + row;
+        }
+
+        if (inspect.json) {
+            const jsonExample = JSON.stringify(inspect.json, null, 2).substring(0, 200) + "...";
+            tooltip += "\nExample JSON: " + jsonExample;
+        }
+
+        return object.exportSubFolder.add(object, functionName).name(inspect.desc)
+            .tooltip(tooltip);
 
     }
 
+    // remove all export buttons for this object
     removeExportButton(object) {
         if (this.exportFolder !== undefined) {
             if (object.exportButtons !== undefined) {
-        //        showError("Removing export button for " + object.id)
                 for (let i = 0; i < object.exportButtons.length; i++) {
                     object.exportButtons[i].destroy();
                 }
                 object.exportButtons = undefined;
-
+            }
+            if (object.exportSubFolder !== undefined) {
+                this.exportFolder.remove(object.exportSubFolder);
+                object.exportSubFolder = undefined;
             }
         }
     }

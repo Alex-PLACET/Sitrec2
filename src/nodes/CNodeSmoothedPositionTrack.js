@@ -1,9 +1,8 @@
 // given an array of "positions" smooth the x,y,and z tracks by moving average
 // or other techniques
 // optionally copy any other data (like color, fov, etc) to the new array
-import {CNodeEmptyArray} from "./CNodeArray";
-import {GlobalDateTimeNode, NodeMan} from "../Globals";
-import {f2m, RollingAverage, SlidingAverage} from "../utils";
+import {NodeMan} from "../Globals";
+import {RollingAverage, SlidingAverage} from "../utils";
 import {CatmullRomCurve3} from "three";
 import {V3} from "../threeUtils";
 import {assert} from "../assert";
@@ -35,29 +34,13 @@ export class CNodeSmoothedPositionTrack extends CNodeTrack {
 
         this.exportable = v.exportable ?? false;
         if (this.exportable) {
-            NodeMan.addExportButton(this, "exportTrackCSV", "Smoothed CSV ")
+            NodeMan.addExportButton(this, "exportTrackCSV")
         }
     }
 
 
-    exportTrackCSV() {
-        // let csv = "Frame,Time,Lat,Lon,Alt\n"
-        // for (let f = 0; f < this.frames; f++) {
-        //
-        //     let pos = this.array[f].lla
-        //     if (pos === undefined) {
-        //         // don't have an LLA, so convert from EUS
-        //         const posEUS = this.array[f].position
-        //         const posLLA = EUSToLLA(posEUS);
-        //         pos = [posLLA.x, posLLA.y, posLLA.z]
-        //     }
-        //     const time = GlobalDateTimeNode.frameToMS(f)
-        //
-        //     csv += f + "," + time + "," + (pos[0]) + "," + (pos[1]) + "," + f2m(pos[2]) + "\n"
-        // }
-        // saveAs(new Blob([csv]), "trackSmoothed-" + this.id + ".csv")
-
-        this.exportArray();
+    exportTrackCSV(inspect=false) {
+        return this.exportArray(inspect);
 
     }
 

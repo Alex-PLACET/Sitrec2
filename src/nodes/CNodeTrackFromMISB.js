@@ -36,13 +36,13 @@ export class CNodeTrackFromMISB extends CNodeTrack {
 
         this.exportable = exportable;
         if (this.exportable) {
-            NodeMan.addExportButton(this, "exportTrackCSV", "CSV ")
+            NodeMan.addExportButton(this, "exportTrackCSV")
             if (isLocal) {
                 if (Sit.isCustom) {
                     // limited to local custom use, as it triggers "more than one export button" warning
-                    NodeMan.addExportButton(this, "exportGEOJSON", "GEOJSON ")
-                    NodeMan.addExportButton(this, "exportALLGEO", "ALLGEO")
-                    NodeMan.addExportButton(this, "exportCustom1", "Custom1 ")
+                    NodeMan.addExportButton(this, "exportGEOJSON")
+                    NodeMan.addExportButton(this, "exportALLGEO")
+                    NodeMan.addExportButton(this, "exportCustom1")
                 }
             }
         }
@@ -71,7 +71,7 @@ export class CNodeTrackFromMISB extends CNodeTrack {
 
 
     // export the track as a CSV file (only used for testing Custom1 import functionality
-    exportCustom1() {
+    exportCustom1(inspect = false) {
         let csv = "TIME,MGRS,LAT_DMS,LON_DMS,LAT,LONG,LAT_DDM,LON_DDM,ALTITUDE,AIRCRAFT,CALLSIGN,SPEED_KTS\n"
         const misb = this.in.misb;
         misb.selectSourceColumns(this._columns);
@@ -92,9 +92,15 @@ export class CNodeTrackFromMISB extends CNodeTrack {
 
 
         }
-
-        saveAs(new Blob([csv]), "Custom1-"+this.id+".csv")
-
+        if (inspect) {
+            return {
+                desc: "Custom1 Export",
+                csv: csv,
+            }
+        }
+        else {
+            saveAs(new Blob([csv]), "Custom1-" + this.id + ".csv")
+        }
 
     }
 
@@ -107,16 +113,22 @@ export class CNodeTrackFromMISB extends CNodeTrack {
     }
 
 
-    exportGEOJSON() {
+    exportGEOJSON(inspect=false) {
         const geo = new CGeoJSON()
 
         const json = JSON.stringify(geo.json)
 
         console.log("CNodeTrackFromMISB:exportGEOJSON(): json = ", json)
 
-
-        saveAs(new Blob([json]), "trackFromMISB-"+this.id+".json")
-
+        if (inspect) {
+            return {
+                desc: "GEOJason Export",
+                json: json,
+            }
+        }
+        else {
+            saveAs(new Blob([json]), "trackFromMISB-" + this.id + ".json")
+        }
     }
 
 
@@ -131,7 +143,13 @@ export class CNodeTrackFromMISB extends CNodeTrack {
     }
 
     // export ALL the misb derived tracks as GEOJSON
-    exportALLGEO() {
+    exportALLGEO(inspect=false) {
+        if (inspect) {
+            return {
+                desc: "ALL GEOJason Export",
+                json: "{... all the tracks in GeoJSON format ...}",
+            }
+        }
         const geo = new CGeoJSON();
         name = "";
         NodeMan.iterate((key, node) => {
@@ -147,14 +165,8 @@ export class CNodeTrackFromMISB extends CNodeTrack {
     }
 
 
-    exportTrackCSV() {
-        // let csv = "Frame,Lat,Lon,Alt\n"
-        // for (let f=0;f<this.frames;f++) {
-        //     const pos = this.array[f].lla
-        //     csv += f + "," + (pos[0]) + "," + (pos[1]) + "," + f2m(pos[2]) + "\n"
-        // }
-        // saveAs(new Blob([csv]), "trackFromMISB-"+this.id+".csv")
-        this.exportArray();
+    exportTrackCSV(inspect=false) {
+       return this.exportArray(inspect);
     }
 
 

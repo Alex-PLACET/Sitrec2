@@ -38,7 +38,7 @@ export class CNodeMISBDataTrack extends CNodeEmptyArray {
 
         this.exportable = v.exportable ?? false;
         if (this.exportable) {
-            NodeMan.addExportButton(this, "exportMISBCSV", "MISB ")
+            NodeMan.addExportButton(this, "exportMISBCSV")
         }
 
 
@@ -55,7 +55,7 @@ export class CNodeMISBDataTrack extends CNodeEmptyArray {
         });
     }
 
-    exportMISBCSV() {
+    exportMISBCSV(inspect = false) {
         let csv = ""
         // MISB is an object of name -> index pairs, so we can get the column name from the index
         // but have to search for it.
@@ -82,7 +82,15 @@ export class CNodeMISBDataTrack extends CNodeEmptyArray {
                 csv = csv + value + (i<MISBFields-1?",":"\n");
             }
         }
-        saveAs(new Blob([csv]), "MISB-DATA"+this.id+".csv")
+        if (inspect) {
+            return {
+                desc: "MISB CSV Export",
+                csv: csv,
+            }
+        }
+        else {
+            saveAs(new Blob([csv]), "MISB-DATA" + this.id + ".csv")
+        }
     }
 
     // given an array of the MISB column names for lat,lon,alt
