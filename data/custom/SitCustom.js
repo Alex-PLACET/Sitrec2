@@ -53,7 +53,8 @@ sitch = {
 
     // extended far plane to include geostationary satellites
     // which ar 35,000 km away
-    lookCamera: {fov: 5, near: 1, far: 400000000},
+    lookCamera: {
+        fov: 5,  near: 1, far:  800000000},   // 80,000 km is the upper end of earth shadow slider
     mainCamera: {
         fov: 30, near: 1, far: 6000000000,
         startCameraPositionLLA: [28.732768, -117.711797, 242274.849513],

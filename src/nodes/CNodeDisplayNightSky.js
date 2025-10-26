@@ -263,9 +263,6 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
         this.earthShadowGroup.add(this.earthShadow.group);
         this.earthShadowGroup.visible = this.showEarthShadow;
         GlobalScene.add(this.earthShadowGroup);
-        
-        setLayerMaskRecursive(this.earthShadowGroup, LAYER.MASK_HELPERS);
-
 
         this.showFlareRegion = Sit.showFlareRegion;
         this.showFlareBand = Sit.showFlareBand;
