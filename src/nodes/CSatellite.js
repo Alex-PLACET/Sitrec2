@@ -3,7 +3,7 @@ import {intersectSphere2, V3} from "../threeUtils";
 import {LLAToEUSRadians} from "../LLA-ECEF-ENU";
 import {SITREC_APP, SITREC_SERVER} from "../configUtils";
 import {sharedUniforms} from "../js/map33/material/SharedUniforms";
-import {FileManager, setRenderOne} from "../Globals";
+import {FileManager, GlobalDateTimeNode, setRenderOne} from "../Globals";
 import {DragDropHandler} from "../DragDropHandler";
 import {EventManager} from "../CEventManager";
 import * as satellite from 'satellite.js';
@@ -1165,16 +1165,28 @@ export class CSatellite {
      */
     updateSats(satType) {
         // get the start time
-        const startTime = new Date();
-        // Note: this assumes GlobalDateTimeNode.dateNow is set elsewhere
-        // For now we use the current date
+        const startTime = GlobalDateTimeNode.dateNow;
 
         // go back one day so the TLE's are all before the current time
+        // server will add one day to the date to cover things.
+        // Say this is day D, we request D-1
+        // the server will ask for that +2, so we get
+        // D-1 to D+1
+        // but this essentiall gives us D-1 to all of D, which is what we want
+        // this still gives us some times in D that are in the future,
+        // but those are handled by the bestSat function
         startTime.setDate(startTime.getDate() - 1);
 
         // convert to YYYY-MM-DD
         const dateStr = startTime.toISOString().split('T')[0];
+        // get the file from the proxyStarlink URL
+        // note this is NOT a dynamic file
+        // it fixed based on the date
+        // so we don't need to rehost it
         const url = SITREC_SERVER + "proxyStarlink.php?request=" + dateStr + "&type=" + satType;
+
+        // TODO: (check if needed) remove the old starlink from the file manager.
+
 
         console.log("Getting satellites from " + url);
         const id = "starLink_" + dateStr + ".tle";
