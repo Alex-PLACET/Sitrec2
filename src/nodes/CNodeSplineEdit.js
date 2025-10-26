@@ -2,12 +2,12 @@ import {SplineEditor} from "../SplineEditor";
 import {guiMenus, NodeMan, Sit} from "../Globals";
 import {Vector3} from "three";
 import {PointEditor} from "../PointEditor";
-import {CNodeEmptyArray} from "./CNodeArray";
 import {getCameraNode} from "./CNodeCamera";
 import {assert} from "../assert.js";
+import {CNodeTrack} from "./CNodeTrack";
 
 // a node wrapper for varioius spline editors
-export class CNodeSplineEditor extends CNodeEmptyArray {
+export class CNodeSplineEditor extends CNodeTrack {
     constructor(v) {
         super(v);
         this.frames = v.frames ?? Sit.frames
