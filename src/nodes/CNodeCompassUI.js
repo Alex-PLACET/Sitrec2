@@ -84,7 +84,7 @@ export class   CNodeCompassUI extends CNodeViewUI {
         const currentLocalWindFrom = localWind?.from;
 
         // Check if anything has changed
-        if (this.lastHeading === headingRound && this.lastElevation === eleRound &&
+        if (this.lastHeading === headingRound && this.lastElevation === elevationRound &&
             this.lastTargetWindFrom === currentTargetWindFrom &&
             this.lastLocalWindFrom === currentLocalWindFrom) {
             return; // Nothing changed, early out
