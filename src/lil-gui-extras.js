@@ -1116,7 +1116,8 @@ export class CGuiMenuBar {
         
         // Set up the standalone menu properties
         gui.mode = "DETACHED";
-        gui.lockOpenClose = false;
+        // Lock standalone menus open - they should only be closed by dragging back to menubar or other explicit actions
+        gui.lockOpenClose = true;
         gui.originalLeft = x;
         gui.originalTop = y;
         
@@ -1161,7 +1162,8 @@ export class CGuiMenuBar {
                 
                 gui.mode = "DETACHED";
                 this.applyModeStyles(gui);
-                gui.lockOpenClose = false;
+                // Keep locked open after drag
+                gui.lockOpenClose = true;
                 
                 event.preventDefault();
             };
