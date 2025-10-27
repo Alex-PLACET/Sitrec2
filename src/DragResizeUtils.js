@@ -61,13 +61,13 @@ export function makeDraggable(element, options = {}) {
         // Prevent default to avoid text selection during drag
         e.preventDefault();
         
-        // Get initial positions
+        // Get initial positions - use element's current style for document-relative coordinates
         startX = e.clientX;
         startY = e.clientY;
         
-        const rect = element.getBoundingClientRect();
-        startLeft = rect.left;
-        startTop = rect.top;
+        // Get the element's current position in document coordinates, not viewport coordinates
+        startLeft = parseFloat(element.style.left) || 0;
+        startTop = parseFloat(element.style.top) || 0;
         
         isDragging = true;
         
@@ -274,8 +274,9 @@ export function makeResizable(element, options = {}) {
             const rect = element.getBoundingClientRect();
             startWidth = rect.width;
             startHeight = rect.height;
-            startLeft = rect.left;
-            startTop = rect.top;
+            // Get element position from style for document-relative coordinates, not viewport coordinates
+            startLeft = parseFloat(element.style.left) || 0;
+            startTop = parseFloat(element.style.top) || 0;
             
             if (options.aspectRatio) {
                 aspectRatio = startWidth / startHeight;

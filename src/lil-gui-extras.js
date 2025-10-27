@@ -690,6 +690,9 @@ export class CGuiMenuBar {
 
         assert (this.nextSlot < this.numSlots, "Too many GUIs in the menu bar");
 
+        // Store reference to GUI on the positioning container so we can find it later
+        this.divs[this.nextSlot]._gui = newGUI;
+        
         this.divs[this.nextSlot].style.left = this.totalWidth + "px";
 
         newGUI.originalLeft = this.totalWidth;
@@ -816,24 +819,41 @@ export class CGuiMenuBar {
     }
 
     /**
-     * Check if a menu div is >80% off-screen
-     * Returns true if most of the menu is outside the viewport
+     * Check if a menu tab is >80% off-screen
+     * Returns true if most of the tab (title bar - the clickable area) is outside the viewport
+     * 
+     * NOTE: We check the tab title bar area (what you can click on), not the entire menu content.
+     * This ensures you can still interact with the tab even if menu contents are off-screen.
      */
     isMenuOffScreen(newDiv) {
-        const rect = newDiv.getBoundingClientRect();
+        // If newDiv is a positioning container (1x1), find the tab element (title bar)
+        let tabElement = newDiv;
+        
+        // Try to find the GUI element's title bar (the clickable tab)
+        if (newDiv._gui) {
+            tabElement = newDiv._gui.$title;
+        } else {
+            // Search for a title element inside this div
+            const titleElement = newDiv.querySelector('.title');
+            if (titleElement) {
+                tabElement = titleElement;
+            }
+        }
+        
+        const rect = tabElement.getBoundingClientRect();
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
         
-        // Calculate how much of the menu is visible
+        // Calculate how much of the tab is visible
         const visibleWidth = Math.max(0, Math.min(rect.right, viewportWidth) - Math.max(rect.left, 0));
         const visibleHeight = Math.max(0, Math.min(rect.bottom, viewportHeight) - Math.max(rect.top, 0));
         
-        // Calculate the visible area as a percentage
-        const menuArea = rect.width * rect.height;
+        // Calculate the visible area as a percentage of the tab
+        const tabArea = rect.width * rect.height;
         const visibleArea = visibleWidth * visibleHeight;
-        const visiblePercentage = menuArea > 0 ? (visibleArea / menuArea) * 100 : 0;
+        const visiblePercentage = tabArea > 0 ? (visibleArea / tabArea) * 100 : 0;
         
-        // Return true if less than 20% is visible (i.e., >80% off-screen)
+        // Return true if less than 20% of the tab is visible (i.e., >80% off-screen)
         return visiblePercentage < 20;
     }
 
