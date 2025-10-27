@@ -982,14 +982,34 @@ export class CGuiMenuBar {
 
 
     handleTitleMouseOver(event) {
-        // now we have some menus locked open, mosuign over does not make sense
-        // // event.target will be the title element we just moused over
-        // // find the GUI object that has this title element
-        // const newGUI = this.slots.find((gui) => gui.$title === event.target);
-        //
-        // if (this.slots.some((gui) => !gui._closed && gui !== newGUI)) {
-        //     newGUI.open();
-        // }
+        // When mousing over a menu bar title, if there's another docked menu open, close it and switch to this one
+        // event.target will be the title element we just moused over
+        const newGUI = this.slots.find((gui) => gui.$title === event.target);
+        
+        if (!newGUI) {
+            return;
+        }
+        
+        // Only enable hover-to-switch for docked menu bar menus (ignore undocked/floating menus)
+        if (newGUI.mode !== "DOCKED" || !newGUI.wasOriginalllyInMenuBar) {
+            return;
+        }
+        
+        // Find if there are any other docked menus currently open
+        const otherOpenDockedMenus = this.slots.filter((gui) => 
+            !gui._closed && 
+            gui !== newGUI && 
+            gui.mode === "DOCKED" &&
+            gui.wasOriginalllyInMenuBar
+        );
+        
+        // If there are other docked menus open, close them and open this one
+        if (otherOpenDockedMenus.length > 0) {
+            otherOpenDockedMenus.forEach((gui) => {
+                gui.close();
+            });
+            newGUI.open();
+        }
     }
 
     destroy(all = true) {
