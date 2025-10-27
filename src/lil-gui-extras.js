@@ -881,18 +881,21 @@ export class CGuiMenuBar {
         newGUI.mode = "DRAGGING"
         this.applyModeStyles(newGUI)
 
+
+        // make sure it's open
+        if (newGUI._closed) {
+            // in case we got locked into a closed state
+            // (dragged menus are always open)
+            newGUI.lockOpenClose = false;
+            newGUI.open();
+        }
+        // lock it open
+        newGUI.lockOpenClose = true;
+
         // capture all the pointer move events and use then to move the div
         // when the pointer is released, remove the event listener
         const boundHandlePointerMove = (event) => {
-            // make sure it's open
-            if (newGUI._closed) {
-                // in case we got locked into a closed state
-                // (dragged menus are always open)
-                newGUI.lockOpenClose = false;
-                newGUI.open();
-                // lock it open
-            }
-            newGUI.lockOpenClose = true;
+
 
 
             newDiv.style.left = (parseInt(newDiv.style.left) + event.clientX - mouseX) + "px";
