@@ -97,7 +97,6 @@ export class   CNodeCompassUI extends CNodeViewUI {
         }
         else {
             this.removeText("heading");
-            this.text.size = 16;
             this.text = this.addText("heading", headingRound + "° / " + elevationRound + "°", 50, 20, 16, "white", "center", "Arial")
         }
 
