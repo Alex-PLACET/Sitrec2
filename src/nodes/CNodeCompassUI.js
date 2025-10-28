@@ -2,10 +2,10 @@
 // base on an input camera node
 
 import {CNodeViewUI} from "./CNodeViewUI";
-import {getCompassHeading} from "../SphericalMath";
-import {getAzElFromPositionAndForward} from "../SphericalMath";
+import {getAzElFromPositionAndForward, getCompassHeading} from "../SphericalMath";
 import {MV3} from "../threeUtils";
-import {NodeMan,Globals} from "../Globals";
+import {Globals, NodeMan} from "../Globals";
+
 //import {Globals} from "../Globals";
 
 export class   CNodeCompassUI extends CNodeViewUI {
@@ -98,6 +98,7 @@ export class   CNodeCompassUI extends CNodeViewUI {
         else {
             this.removeText("heading");
             this.text = this.addText("heading", headingRound + "° / " + elevationRound + "°", 50, 20, 16, "white", "center", "Arial")
+            this.lastElevation = elevationRound; // only track elevation if we're displaying it
         }
 
         // after updating the text, render the text
@@ -105,7 +106,6 @@ export class   CNodeCompassUI extends CNodeViewUI {
 
         // Update state
         this.lastHeading = headingRound;
-        this.lastElevation = elevationRound;
         this.lastTargetWindFrom = currentTargetWindFrom;
         this.lastLocalWindFrom = currentLocalWindFrom;
 

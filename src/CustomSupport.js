@@ -289,6 +289,15 @@ export class CCustomManager {
         if (GlobalScene.showCompassElevation === undefined) {
             Globals.showCompassElevation = false;
             guiMenus.showhide.add(Globals, "showCompassElevation").name("Show Compass Elevation")
+                .onChange(() => {
+                    // iterate over all nodes, find any CNodeCompassUI, and force update their text by changing lastHeading to null
+                    NodeMan.iterate((id, node) => {
+                        if (node.constructor.name === "CNodeCompassUI") {
+                            node.lastHeading = null;
+                        }
+                    })
+
+                })
         }
 
         guiMenus.contents.add(this, "removeAllTracks")
