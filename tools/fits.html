@@ -851,23 +851,30 @@
                     const yEnd = Math.min(y + chunkHeight, newHeight);
                     
                     for (let yy = y; yy < yEnd; yy++) {
+                        const yOffset = yy * newWidth;
+                        const srcYBase = yy * scale;
+                        
                         for (let x = 0; x < newWidth; x++) {
                             // Average 4x4 block
                             let sum = 0;
                             let count = 0;
+                            const srcXBase = x * scale;
 
                             for (let dy = 0; dy < scale; dy++) {
-                                for (let dx = 0; dx < scale; dx++) {
-                                    const srcX = x * scale + dx;
-                                    const srcY = yy * scale + dy;
-                                    if (srcX < width && srcY < height) {
-                                        sum += pixelData[srcY * width + srcX];
-                                        count++;
+                                const srcY = srcYBase + dy;
+                                if (srcY < height) {
+                                    const lineOffset = srcY * width;
+                                    for (let dx = 0; dx < scale; dx++) {
+                                        const srcX = srcXBase + dx;
+                                        if (srcX < width) {
+                                            sum += pixelData[lineOffset + srcX];
+                                            count++;
+                                        }
                                     }
                                 }
                             }
 
-                            sampledData[yy * newWidth + x] = count > 0 ? sum / count : 0;
+                            sampledData[yOffset + x] = count > 0 ? sum / count : 0;
                         }
                     }
 
