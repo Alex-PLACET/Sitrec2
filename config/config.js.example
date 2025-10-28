@@ -1,5 +1,4 @@
-import {md5} from 'js-md5';
-import {SITREC_CACHE, SITREC_SERVER} from "../src/configUtils";
+import {SITREC_SERVER} from "../src/configUtils";
 import {GlobalDateTimeNode, NodeMan} from "../src/Globals";
 import {EUSToLLA} from "../src/LLA-ECEF-ENU";
 
@@ -10,14 +9,6 @@ import {EUSToLLA} from "../src/LLA-ECEF-ENU";
 export const _configParams = {
 
     rehostRequiresLogin: true,
-
-    // NOTE: defaultMapType is no longer specified here, as it comes from shared.env
-    // the logic decidding which one to use is now in CNodeTerrainUI.js
-
-
-    defaultElevationType: process.env.DOCKER_BUILD
-        ? (process.env.DOCKER_ELEVATION_TYPE ?? "FLAT")
-        : (process.env.DEFAULT_ELEVATION_TYPE ?? "FLAT")
 
     customMapSources: {
 
@@ -34,6 +25,7 @@ export const _configParams = {
                 }
             },
             layer: "satellite",
+            minZoom: 0,
             maxZoom: 18,
             supportsOceanSurface: true, // MapBox satellite imagery can have ocean surface overlay
         },
@@ -85,6 +77,31 @@ export const _configParams = {
             maxZoom: 17,
             supportsOceanSurface: true, // OpenStreetMap can have ocean surface overlay
 
+        },
+        osmHighlight: {
+            name: "Open Streetmap (Highlight)",
+            excludeFromMenu: true,
+            mapURL: (z,x,y) => {
+                return SITREC_SERVER+"cachemaps.php?url=" + encodeURIComponent(`https://c.tile.openstreetmap.org/${z}/${x}/${y}.png`)
+            },
+            maxZoom: 17,
+            supportsOceanSurface: true,
+            // Color processing options
+            processColors: true,
+            colorProcessingOptions: {
+                colorDistance: 10,           // Maximum color-space distance for highlighting
+                minBlendDistance: 5,        // Minimum distance where blending starts
+               //targetColors: [[222, 222, 222], [218, 218, 218]], // Colors to highlight
+                targetColors: [[232, 147, 163], [252, 214, 164], [246,248, 190], // down to zoom 12
+                    [231,111,138], [244,200,136],
+                    [237,164,179], [242,198,206], // interstates zoomed way out
+                    [255,255,255], // white roads when zoomed in
+
+                ], // roads: pink (freeways), orange (highways), yellow (roads)
+
+                dimIntensity: 0.1,          // 10% intensity for non-highlighted pixels
+                highlightColor: [255, 255, 0] // Bright yellow for highlighted pixels
+            }
         },
         maptiler: {
             name: "MapTiler",
@@ -210,19 +227,23 @@ export const _configParams = {
             mapping: 4326,
         },
 
-        MapBoxRGB: {
-            name: "Mapbox Terrain-RGB",
-            mapURL: (z,x,y) => {
-                return`https://api.mapbox.com/v4/mapbox.terrain-rgb/${z}/${x}/${y}.pngraw?access_token=pk.eyJ1IjoibWlja3dlc3QiLCJhIjoiY21ianEydHIwMGliaTJrcHB4cDgzbGZuaSJ9.J7jU9B_pz4Mo723klYpywQ`;
-            },
 
-            maxZoom: 15,
-            minZoom: 7,  // Mapbox gives 404 errors for 6 or lower zooms (big tiles)
-            tileSize: 256,
-            attribution: "AWS Terrarium Elevation Data",
-        },
-
-
+        // getting 403 errors, removed for now
+        // MapBoxRGB: {
+        //     name: "Mapbox Terrain-RGB",
+        //     mapURL: (z,x,y) => {
+        //         return`https://api.mapbox.com/v4/mapbox.terrain-rgb/${z}/${x}/${y}.pngraw?access_token=pk.eyJ1IjoibWlja3dlc3QiLCJhIjoiY21nemoxbmpsMDBrbjJzb2lkdWQwdWhwdiJ9.QF7CdAKfsMp_HTsno8qCvw`;
+        //     },
+        //
+        //     // old pk.eyJ1IjoibWlja3dlc3QiLCJhIjoiY21ianEydHIwMGliaTJrcHB4cDgzbGZuaSJ9.J7jU9B_pz4Mo723klYpywQ
+        //     // new pk.eyJ1IjoibWlja3dlc3QiLCJhIjoiY21neml2bzBtMTRvaDJrcTFmaDVwbTltMyJ9.T8dfyOzBW6ft2UZHuI0mMQ
+        //
+        //
+        //     maxZoom: 15,
+        //     minZoom: 7,  // Mapbox gives 404 errors for 6 or lower zooms (big tiles)
+        //     tileSize: 256,
+        //     attribution: "AWS Terrarium Elevation Data",
+        // },
 
     },
 
@@ -268,8 +289,6 @@ function adsbReplay() {
         alert("ADSB Replay is not available for the last 30 minutes.\nPlease wait until the data is available.");
         return;
     }
-
-
 
     // get the current camera position from the lookCamera in Lat and Lon
     const lookCamera = NodeMan.get("lookCamera");
@@ -376,6 +395,6 @@ export async function customAltitudeFunction(lat, lon) {
 // aa2292, lakemichigan, chilean, porterville, folsomlake, n14aq, swr, swrcss
 // modelinspector, custom, afr179
 // This is the sitch that is loaded when running on local
-// export const localSituation = "modelinspector";
+// it will be ignored when running on the server
 export const localSituation = "custom";
 //////////////////////////////////////////////

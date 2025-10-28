@@ -4,6 +4,7 @@
 // for prod, it's a temporary folder that is then uploaded to the production server
 
 module.exports = {
-    dev_path: '/Users/mick/Library/CloudStorage/Dropbox/Metabunk/sitrec',
+    dev_path: '/Users/mick/Sites/sitrec',
     prod_path: '/Users/mick/sitrec-deploy'
 }
+
