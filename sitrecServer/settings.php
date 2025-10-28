@@ -17,6 +17,26 @@ header('Content-Type: application/json');
 
 $user_id = getUserID();
 
+global $s3creds;
+if (!isset($s3creds)) {
+    http_response_code(503);
+    echo json_encode(['error' => 'S3 credentials not configured']);
+    exit();
+}
+
+if (!is_array($s3creds) ||
+   !isset($s3creds['accessKeyId']) ||
+   !isset($s3creds['secretAccessKey']) ||
+   !isset($s3creds['region']) ||
+   !isset($s3creds['bucket']) ||
+    empty($s3creds['accessKeyId']) ||
+    $s3creds['accessKeyId'] === 0
+) {
+    http_response_code(503);
+    echo json_encode(['error' => 'S3 credentials incomplete']);
+    exit();
+}
+
 // If user is not logged in, return error
 if ($user_id == 0) {
     http_response_code(401);

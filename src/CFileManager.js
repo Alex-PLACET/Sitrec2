@@ -176,7 +176,12 @@ export class CFileManager extends CManager {
         // get the list of files saved on the server
         // this is basically a list of the folders in the user's directory
         let textSitches = [];
-        fetch((SITREC_SERVER + "getsitches.php?get=myfiles"), {mode: 'cors'}).then(response => response.text()).then(data => {
+        fetch((SITREC_SERVER + "getsitches.php?get=myfiles"), {mode: 'cors'}).then(response => {
+            if (response.status !== 200) {
+                throw new Error(`Server returned status ${response.status}`);
+            }
+            return response.text();
+        }).then(data => {
 //            console.log("Local files: " + data)
 
             const files = JSON.parse(data);
@@ -227,6 +232,9 @@ export class CFileManager extends CManager {
             }).moveAfter("Open (A-Z)")
                 .tooltip("Delete a saved sitch from your personal folder on the server");
 
+        }).catch(error => {
+            console.error("Error fetching user files from server:", error);
+            showError("Failed to fetch user files from server: " + error.message);
         })
 
     }
@@ -249,7 +257,12 @@ export class CFileManager extends CManager {
     // getVersions returns a promise that resolves to an array of versions of a sitch
     // which it gets from the server via getsitches.php
     getVersions(name) {
-        return fetch((SITREC_SERVER + "getsitches.php?get=versions&name="+name), {mode: 'cors'}).then(response => response.text()).then(data => {
+        return fetch((SITREC_SERVER + "getsitches.php?get=versions&name="+name), {mode: 'cors'}).then(response => {
+            if (response.status !== 200) {
+                throw new Error(`Server returned status ${response.status}`);
+            }
+            return response.text();
+        }).then(data => {
             console.log("versions: " + data)
             this.versions = JSON.parse(data) // will give an array of local files
             console.log("Parsed Versions url \n" + this.versions[0].url)
@@ -273,6 +286,9 @@ export class CFileManager extends CManager {
             //
 
             return this.versions;
+        }).catch(error => {
+            console.error("Error fetching versions from server:", error);
+            throw error; // re-throw so the caller can handle it
         })
     }
 

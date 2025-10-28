@@ -121,6 +121,27 @@ if (isset($_GET['get'])) {
 
 
     if ($useAWS) {
+        // Validate S3 credentials before attempting to use them
+        global $s3creds;
+        if (!isset($s3creds)) {
+            http_response_code(503);
+            echo json_encode(['error' => 'S3 credentials not configured']);
+            exit();
+        }
+
+        if (!is_array($s3creds) ||
+           !isset($s3creds['accessKeyId']) ||
+           !isset($s3creds['secretAccessKey']) ||
+           !isset($s3creds['region']) ||
+           !isset($s3creds['bucket']) ||
+            empty($s3creds['accessKeyId']) ||
+            $s3creds['accessKeyId'] === 0
+        ) {
+            http_response_code(503);
+            echo json_encode(['error' => 'S3 credentials incomplete']);
+            exit();
+        }
+
         require 'vendor/autoload.php';
 
         $aws = $s3creds;
@@ -166,57 +187,67 @@ if (isset($_GET['get'])) {
             exit();
         } else {
             // get the list of files in the S3 bucket
-            $objects = $s3->getIterator('ListObjects', array(
-                "Bucket" => $aws['bucket'],
-                "Prefix" => $dir . '/'
-            ));
-            $folders = array();
-            foreach ($objects as $object) {
-                $key = $object['Key'];
+            try {
+                $objects = $s3->getIterator('ListObjects', array(
+                    "Bucket" => $aws['bucket'],
+                    "Prefix" => $dir . '/'
+                ));
+                $folders = array();
+                foreach ($objects as $object) {
+                    $key = $object['Key'];
 
-                // strip off the full dir prefix to get the filename
-                // eg. if the dir is 99999998/ then we want to strip off the 99999998/
-                // check that it actually starts with this dir, including the slash
-                 $startText = $dir . '/';
-                 if (strpos($key, $startText) === 0) {
-                     $key = substr($key, strlen($startText));
-                 }
-
-
-                if ($key != "") {
+                    // strip off the full dir prefix to get the filename
+                    // eg. if the dir is 99999998/ then we want to strip off the 99999998/
+                    // check that it actually starts with this dir, including the slash
+                     $startText = $dir . '/';
+                     if (strpos($key, $startText) === 0) {
+                         $key = substr($key, strlen($startText));
+                     }
 
 
-
-                    // if $key is a folder, then add it to the array
-                    // we can tell if it's a folder because it will contain a /
-                    if (strpos($key, "/") !== false) {
-                        // strip off everything from the first / onwards
-                        $key = strtok($key, "/");
+                    if ($key != "") {
 
 
-                        // check if the key is already in the array
-                        $found = false;
-                        foreach ($folders as $folder) {
-                            if ($folder[0] == $key) {
-                                $found = true;
-                                break;
+
+                        // if $key is a folder, then add it to the array
+                        // we can tell if it's a folder because it will contain a /
+                        if (strpos($key, "/") !== false) {
+                            // strip off everything from the first / onwards
+                            $key = strtok($key, "/");
+
+
+                            // check if the key is already in the array
+                            $found = false;
+                            foreach ($folders as $folder) {
+                                if ($folder[0] == $key) {
+                                    $found = true;
+                                    break;
+                                }
+                            }
+
+
+                            // if it does not already exist in the array, then add it
+                            if (!$found) {
+                                $lastModified = $object['LastModified'];
+                                $lastDate = $lastModified->format('Y-m-d H:i:s');
+                                $folders[] = [$key, $lastDate];
                             }
                         }
-
-
-                        // if it does not already exist in the array, then add it
-                        if (!$found) {
-                            $lastModified = $object['LastModified'];
-                            $lastDate = $lastModified->format('Y-m-d H:i:s');
-                            $folders[] = [$key, $lastDate];
-                        }
                     }
+
+
                 }
-
-
+                echo json_encode($folders);
+                exit();
+            } catch (Aws\S3\Exception\S3Exception $e) {
+                http_response_code(503);
+                echo json_encode(['error' => 'S3 error: ' . $e->getMessage()]);
+                exit();
+            } catch (Exception $e) {
+                http_response_code(503);
+                echo json_encode(['error' => 'Server error: ' . $e->getMessage()]);
+                exit();
             }
-            echo json_encode($folders);
-            exit();
         }
 
 
@@ -239,26 +270,35 @@ if (isset($_GET['get'])) {
                 exit();
             } else {
                 // get the list of files in the S3 bucket
+                try {
+                    $objects = $s3->getIterator('ListObjects', array(
+                        "Bucket" => $aws['bucket'],
+                        "Prefix" => $dir
+                    ));
+                    foreach ($objects as $object) {
+                        $key = $object['Key'];
+                        // we need to strip off the full dir prefix to get the filename (the version)
+                        $key = str_replace($dir, "", $key);
+                        if ($key != "") {
+                            // get the url to the file in the bucket
+                            $url = $s3->getObjectUrl($aws['bucket'], $dir . $key);
 
-                $objects = $s3->getIterator('ListObjects', array(
-                    "Bucket" => $aws['bucket'],
-                    "Prefix" => $dir
-                ));
-                foreach ($objects as $object) {
-                    $key = $object['Key'];
-                    // we need to strip off the full dir prefix to get the filename (the version)
-                    $key = str_replace($dir, "", $key);
-                    if ($key != "") {
-                        // get the url to the file in the bucket
-                        $url = $s3->getObjectUrl($aws['bucket'], $dir . $key);
+                            // add to the array and object that contains the url and the version
+                            $versions[] = array('version' => $key, 'url' => $url);
 
-                        // add to the array and object that contains the url and the version
-                        $versions[] = array('version' => $key, 'url' => $url);
-
+                        }
                     }
+                    echo json_encode($versions);
+                    exit();
+                } catch (Aws\S3\Exception\S3Exception $e) {
+                    http_response_code(503);
+                    echo json_encode(['error' => 'S3 error: ' . $e->getMessage()]);
+                    exit();
+                } catch (Exception $e) {
+                    http_response_code(503);
+                    echo json_encode(['error' => 'Server error: ' . $e->getMessage()]);
+                    exit();
                 }
-                echo json_encode($versions);
-                exit();
             }
         }
     }
