@@ -1,5 +1,5 @@
 import {Camera, PerspectiveCamera, Vector3} from "three";
-import {f2m, m2f, vdump} from "../utils";
+import {f2m, m2f} from "../utils";
 import {GlobalDateTimeNode, guiMenus, NodeMan} from "../Globals";
 import {ECEFToLLAVD_Sphere, EUSToECEF, EUSToLLA, LLAVToEUS} from "../LLA-ECEF-ENU";
 import {
@@ -49,22 +49,6 @@ export class CNodeCamera extends CNode3D {
 
     }
 
-    adjustOrigin(diff) {
-        // adjust the camera position
-        this.camera.position.add(diff);
-        console.log("🎥🎥🎥 " + this.id + " adjustOrigin to " + vdump(this.camera.position));
-
-        // do we need to adjust the startPos, lookAt, startPosLLA, lookAtLLA?
-        // the seems mostly uses as default value
-
-    //    startpos undefined?????
-
-        this.startPos.add(diff);
-        this.lookAt.add(diff);
-        this.startPosLLA = EUSToLLA(this.startPos);
-        this.lookAtLLA = EUSToLLA(this.lookAt);
-
-    }
 
 
     modSerialize() {

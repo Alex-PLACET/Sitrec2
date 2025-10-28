@@ -815,14 +815,6 @@ class CNode {
     }
 
 
-    adjustOrigin(diff) {
-        // virtual function, derived nodes override to adjust the origin
-        // for example, a CNode3DGroup might adjust the position of the group
-        // based on the origin
-        console.log("adjustOrigin not implemented for " + this.id)
-    }
-
-
     // Composite nodes like CNodeSwitch refer to other nodes, and this vaies at runtime
     // so we have getRoot() to find the root node
     // for most nodes this is just themselves

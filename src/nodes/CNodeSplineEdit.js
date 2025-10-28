@@ -5,6 +5,7 @@ import {PointEditor} from "../PointEditor";
 import {getCameraNode} from "./CNodeCamera";
 import {assert} from "../assert.js";
 import {CNodeTrack} from "./CNodeTrack";
+import {EUSToLLA, LLAVToEUS} from "../LLA-ECEF-ENU";
 
 // a node wrapper for varioius spline editors
 export class CNodeSplineEditor extends CNodeTrack {
@@ -86,7 +87,9 @@ export class CNodeSplineEditor extends CNodeTrack {
         let positions = [];
         for (let i=0;i<this.splineEditor.positions.length;i++) {
             const p = this.splineEditor.positions[i];
-            positions.push([this.splineEditor.frameNumbers[i], p.x, p.y, p.z])
+            // Convert EUS coordinates to LLA (lat, lon, alt) for storage
+            const lla = EUSToLLA(p);
+            positions.push([this.splineEditor.frameNumbers[i], lla.x, lla.y, lla.z])
         }
         return {
             ...super.modSerialize(),
@@ -99,7 +102,16 @@ export class CNodeSplineEditor extends CNodeTrack {
     modDeserialize(v) {
         super.modDeserialize(v);
         if (v.positions !== undefined) {
-            this.splineEditor.load(v.positions)
+            // Convert LLA coordinates back to EUS before loading into spline editor
+            let eusPositions = [];
+            for (let i = 0; i < v.positions.length; i++) {
+                const posData = v.positions[i];
+                const frameNumber = posData[0];
+                const lla = new Vector3(posData[1], posData[2], posData[3]);
+                const eus = LLAVToEUS(lla);
+                eusPositions.push([frameNumber, eus.x, eus.y, eus.z]);
+            }
+            this.splineEditor.load(eusPositions)
         }
         if (v.constantSpeed !== undefined) {
             this.constantSpeed = v.constantSpeed

@@ -28,10 +28,11 @@ import {addOptionToGUIMenu, removeOptionFromGUIMenu} from "./lil-gui-extras";
 import {isCustom1, isFR24CSV, parseCustom1CSV, parseCustomFLLCSV, parseFR24CSV} from "./ParseCustom1CSV";
 import {stripDuplicateTimes} from "./ParseUtils";
 import {isConsole, isLocal, isServerless, SITREC_APP, SITREC_DOMAIN, SITREC_SERVER} from "./configUtils";
-import {resetGlobalOrigin} from "./ResetOrigin";
 import {probeTransportStreamBufferDetailed, TSParser} from "./TSParser";
 import {showError} from "./showError";
 import {asyncOperationRegistry} from "./AsyncOperationRegistry";
+import {ECEFToLLAVD_Sphere, EUSToECEF} from "./LLA-ECEF-ENU";
+import {V3} from "./threeUtils";
 
 
 // The file manager is a singleton that manages all the files
@@ -87,16 +88,13 @@ export class CFileManager extends CManager {
 
             this.guiFolder.add(this, "importFile").name("Import File").perm().tooltip("Import a file (or files) from your local system. Same as dragging and dropping a file into the browser window");
 
+            this.guiFolder.add(this, "resetOrigin").name("Reset Origin").perm();
 
             if (isLocal) {
                 this.guiFolder.add(NodeMan, "recalculateAllRootFirst").name("debug recalculate all").perm();
-                this.guiFolder.add(this, "resetOrigin").name("debug reset Origin").perm();
                 this.guiFolder.add(this, "dumpNodes").name("debug dump nodes").perm();
                 this.guiFolder.add(this, "dumpNodesBackwards").name("debug dump nodes backwards").perm();
                 this.guiFolder.add(this, "dumpRoots").name("debug dump Root notes").perm();
-
-
-
             }
 
         }
@@ -118,7 +116,34 @@ export class CFileManager extends CManager {
     }
 
     resetOrigin() {
-        resetGlobalOrigin();
+        // First, reset the origin to the current camera position
+        // This updates Sit.lat and Sit.lon and recalculates the EUS coordinate system
+        // resetGlobalOrigin();
+
+
+        const lookCamera = NodeMan.get("lookCamera").camera;
+        const pos = lookCamera.position;
+
+        // get the current EUS origin in ECEF
+        const oldEUSOrigin = EUSToECEF(V3(0,0,0));
+        const LLA = ECEFToLLAVD_Sphere(EUSToECEF(pos));
+
+        // Now serialize the sitch to capture the new origin (Sit.lat, Sit.lon)
+        // and then deserialize it in memory to reload everything with the new origin
+        const sitchString = CustomManager.getCustomSitchString();
+
+        const sitchObject = textSitchToObject(sitchString);
+
+        console.log("Resetting Origin to " + LLA.x + ", " + LLA.y + ", " + 0);
+        sitchObject.lat = LLA.x;
+        sitchObject.lon = LLA.y;
+
+
+        // Create a new CSituation object from the parsed sitch object
+        // This effectively "reloads" the sitch with the new origin
+        setNewSitchObject(sitchObject);
+        
+        console.log(`Reset Origin initiated: Sit.lat=${Sit.lat}, Sit.lon=${Sit.lon}`);
     }
 
 

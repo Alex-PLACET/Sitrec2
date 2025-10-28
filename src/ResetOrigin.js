@@ -1,7 +1,6 @@
 import {NodeMan, Sit} from "./Globals";
 import {ECEFToLLAVD_Sphere, EUSToECEF} from "./LLA-ECEF-ENU";
 import {V3} from "./threeUtils";
-import {CNode} from "./nodes/CNode";
 
 
 export function resetGlobalOrigin() {
@@ -37,25 +36,8 @@ export function resetGlobalOrigin() {
 
 
 
-    // iterate over all the nodes and adjust their positions
-
-    // TODO - update all things that rely on local ESU coordinates
-    // Cameras need position moving and transformation matrix updating
-    // Sprites need position moving
-    // CNodes need position moving - do they have a position?
-    // Tracks might need recalculating from LLA to ESU
-    // Display tracks similar.
-    // Terrain might need recalculating from LLA to ESU
-    // Prefer recalculation from LLA to ESU over transforming ESU->ECEF->(transfrom)->ESU coordinates
-    // Other?
-    //
-
-    NodeMan.iterate((id, node) => {
-        if (node instanceof CNode) {
-            node.adjustOrigin(diff);
-        }
-    })
-
-    NodeMan.recalculateAllRootFirst();
+    // Note: Origin adjustment now handled by CFileManager.resetOrigin() which performs
+    // a full serialize/deserialize cycle to properly reload all nodes with new coordinates
+    // This ensures all LLA to EUS transformations are recalculated correctly
 
 }
