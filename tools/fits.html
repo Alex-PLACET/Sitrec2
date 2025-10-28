@@ -886,6 +886,83 @@
             }
         }
 
+        // Worker Pool for parallel resampling
+        class WorkerPool {
+            constructor(workerScript, poolSize = 8) {
+                this.workers = [];
+                this.taskQueue = [];
+                this.activeWorkers = 0;
+                
+                // Create worker pool
+                for (let i = 0; i < poolSize; i++) {
+                    const worker = new Worker(workerScript);
+                    worker.idle = true;
+                    worker.id = i;
+                    
+                    worker.onmessage = (e) => {
+                        const { resolve, reject } = worker.currentTask;
+                        worker.currentTask = null;
+                        worker.idle = true;
+                        this.activeWorkers--;
+                        
+                        if (e.data.error) {
+                            reject(new Error(e.data.error));
+                        } else {
+                            resolve(e.data);
+                        }
+                        
+                        this.processQueue();
+                    };
+                    
+                    worker.onerror = (error) => {
+                        if (worker.currentTask) {
+                            const { reject } = worker.currentTask;
+                            worker.currentTask = null;
+                            worker.idle = true;
+                            this.activeWorkers--;
+                            reject(error);
+                            this.processQueue();
+                        }
+                    };
+                    
+                    this.workers.push(worker);
+                }
+            }
+            
+            async execute(data) {
+                return new Promise((resolve, reject) => {
+                    this.taskQueue.push({ data, resolve, reject });
+                    this.processQueue();
+                });
+            }
+            
+            processQueue() {
+                while (this.taskQueue.length > 0) {
+                    const idleWorker = this.workers.find(w => w.idle);
+                    if (!idleWorker) break;
+                    
+                    const task = this.taskQueue.shift();
+                    idleWorker.idle = false;
+                    idleWorker.currentTask = task;
+                    this.activeWorkers++;
+                    idleWorker.postMessage(task.data);
+                }
+            }
+            
+            async waitForAll() {
+                // Wait for all active workers to complete
+                while (this.activeWorkers > 0 || this.taskQueue.length > 0) {
+                    await new Promise(resolve => setTimeout(resolve, 10));
+                }
+            }
+            
+            terminate() {
+                this.workers.forEach(w => w.terminate());
+                this.workers = [];
+                this.taskQueue = [];
+            }
+        }
+
         // FITS Image Renderer - Progressive resampling to avoid timeouts
         class FITSImageRenderer {
             constructor(hdu, resultOrBuffer, domContainer = null) {
@@ -896,6 +973,65 @@
                 this.canvas = null;
                 this.progress = 0;
                 this.domContainer = domContainer;
+                this.workerPool = null;
+                this.workerScriptUrl = null;
+            }
+            
+            // Create worker script as a blob
+            createWorkerScript() {
+                const workerCode = `
+                    self.onmessage = function(e) {
+                        const { buffer, scale, reducedWidth, srcWidth, rowIndex } = e.data;
+                        
+                        try {
+                            const avgRowData = new Float32Array(reducedWidth);
+                            let localMin = Infinity;
+                            let localMax = -Infinity;
+                            
+                            const bufferLength = buffer.length;
+                            
+                            // Process all pixels
+                            for (let x = 0; x < reducedWidth; x++) {
+                                let sum = 0, count = 0;
+                                const srcXBase = x * scale;
+                                const srcXEnd = Math.min(srcXBase + scale, srcWidth);
+                                
+                                // Average across all rows in buffer
+                                for (let dy = 0; dy < bufferLength; dy++) {
+                                    const row = buffer[dy];
+                                    for (let srcX = srcXBase; srcX < srcXEnd; srcX++) {
+                                        const pixel = row[srcX];
+                                        if (isFinite(pixel)) {
+                                            sum += pixel;
+                                            count++;
+                                        }
+                                    }
+                                }
+                                
+                                const avg = count > 0 ? sum / count : 0;
+                                avgRowData[x] = avg;
+                                
+                                // Update local min/max
+                                if (avg < localMin) localMin = avg;
+                                if (avg > localMax) localMax = avg;
+                            }
+                            
+                            // Transfer back the result
+                            self.postMessage({
+                                avgRowData: avgRowData,
+                                localMin: localMin,
+                                localMax: localMax,
+                                rowIndex: rowIndex
+                            }, [avgRowData.buffer]);
+                            
+                        } catch (error) {
+                            self.postMessage({ error: error.message });
+                        }
+                    };
+                `;
+                
+                const blob = new Blob([workerCode], { type: 'application/javascript' });
+                return URL.createObjectURL(blob);
             }
 
             async renderAsync(onProgress) {
@@ -965,12 +1101,12 @@
 
             async readAndRenderProgressively(bitpix, width, height, scale, ctx, onProgress) {
                 // PERFORMANCE OPTIMIZATIONS:
-                // 1. Render every row progressively (no gaps) but with current normalization
-                // 2. Fill any gaps with duplicated data to avoid yellow background showing
-                // 3. Reduced async yields from every row to every 100 rows  
-                // 4. Exponential backoff for data waiting (1ms->2ms->4ms...->50ms)
-                // 5. Single ImageData allocation for final render instead of per-row
-                // 6. Optimized pixel averaging with loop unrolling and cached values
+                // 1. Web Worker Pool for parallel resampling (8 workers)
+                // 2. Render every row progressively (no gaps) but with current normalization
+                // 3. Fill any gaps with duplicated data to avoid yellow background showing
+                // 4. Reduced async yields from every row to every 100 rows  
+                // 5. Exponential backoff for data waiting (1ms->2ms->4ms...->50ms)
+                // 6. Single ImageData allocation for final render instead of per-row
                 // 7. Less frequent progress updates (every 100 rows or 10% intervals)
                 // 8. Final re-render pass with global normalization for consistency
                 
@@ -979,6 +1115,12 @@
                 const bytesPerScanline = width * bytesPerPixel;
                 const reducedWidth = Math.ceil(width / scale);
                 const reducedHeight = Math.ceil(height / scale);
+                
+                // Initialize worker pool for parallel processing
+                if (!this.workerScriptUrl) {
+                    this.workerScriptUrl = this.createWorkerScript();
+                }
+                this.workerPool = new WorkerPool(this.workerScriptUrl, 8);
                 
                 let offset = this.hdu.rawDataOffset;
                 const renderedRows = new Set(); // Track which rows have been rendered
@@ -991,7 +1133,10 @@
                 let globalMax = -Infinity;
                 const rowDataCache = new Map(); // Store row data for re-rendering with global normalization
                 
-                console.log(`[RENDERER] Reading and rendering ${height} scanlines...`);
+                // Queue for managing worker results
+                const pendingWorkerTasks = [];
+                
+                console.log(`[RENDERER] Reading and rendering ${height} scanlines with 8 parallel workers...`);
                 console.log(`[RENDERER] Canvas dimensions: ${reducedWidth}×${reducedHeight}, scale: ${scale}x`);
 
                 for (let row = 0; row < height; row++) {
@@ -1057,70 +1202,71 @@
                     if (isEndOfBatch && currentBatchBuffer.length > 0 && targetReducedRow < reducedHeight) {
                         // Process the batch if we haven't processed this row yet
                         if (!renderedRows.has(targetReducedRow)) {
-//                            console.log(`[RENDERER] Processing batch ${batchCount}: source rows [${currentBatchStartRow}-${row}] (${currentBatchBuffer.length} rows) → canvas row ${targetReducedRow}`);
+                            // Submit batch to worker pool for parallel processing
+                            const workerTask = this.workerPool.execute({
+                                buffer: currentBatchBuffer,
+                                scale: scale,
+                                reducedWidth: reducedWidth,
+                                srcWidth: currentBatchBuffer[0].length,
+                                rowIndex: targetReducedRow
+                            });
                             
-                            // Calculate averaged values for this row and update global min/max
-                            const avgRowData = new Float32Array(reducedWidth);
-                            const bufferLength = currentBatchBuffer.length;
-                            const firstRowLength = currentBatchBuffer[0].length;
-                            
-                            // Process all pixels at once for better performance
-                            for (let x = 0; x < reducedWidth; x++) {
-                                let sum = 0, count = 0;
-                                const srcXBase = x * scale;
-                                const srcXEnd = Math.min(srcXBase + scale, firstRowLength);
+                            // Store the pending task
+                            pendingWorkerTasks.push(workerTask.then(result => {
+                                // Update global min/max
+                                if (result.localMin < globalMin) globalMin = result.localMin;
+                                if (result.localMax > globalMax) globalMax = result.localMax;
                                 
-                                // Unroll inner loops for better performance
-                                for (let dy = 0; dy < bufferLength; dy++) {
-                                    const row = currentBatchBuffer[dy];
-                                    for (let srcX = srcXBase; srcX < srcXEnd; srcX++) {
-                                        const pixel = row[srcX];
-                                        if (isFinite(pixel)) {
-                                            sum += pixel;
-                                            count++;
+                                // Convert back to Float32Array from transferred buffer
+                                const avgRowData = new Float32Array(result.avgRowData);
+                                
+                                // Cache the averaged row data
+                                rowDataCache.set(result.rowIndex, avgRowData);
+                                renderedRows.add(result.rowIndex);
+                                
+                                // Render this row immediately for progressive display
+                                // Use current global min/max (will be re-normalized in final pass)
+                                this.renderRowWithNormalization(avgRowData, result.rowIndex, reducedWidth, ctx, 
+                                    isFinite(globalMin) ? globalMin : 0, 
+                                    isFinite(globalMax) ? globalMax : 1);
+                                
+                                // If there are gaps above this row (due to out-of-order processing),
+                                // fill them with duplicated data to avoid yellow gaps
+                                // Only check immediate gaps, not all rows (for performance)
+                                if (result.rowIndex > 0) {
+                                    // Fill up to 10 rows above if they're missing
+                                    const startGap = Math.max(0, result.rowIndex - 10);
+                                    for (let gapRow = startGap; gapRow < result.rowIndex; gapRow++) {
+                                        if (!renderedRows.has(gapRow) && !rowDataCache.has(gapRow)) {
+                                            // Fill gap with current row's data (stretched/duplicated)
+                                            this.renderRowWithNormalization(avgRowData, gapRow, reducedWidth, ctx, 
+                                                isFinite(globalMin) ? globalMin : 0, 
+                                                isFinite(globalMax) ? globalMax : 1);
+                                            // Mark as temporary fill (don't add to renderedRows so real data can overwrite)
                                         }
                                     }
                                 }
                                 
-                                const avg = count > 0 ? sum / count : 0;
-                                avgRowData[x] = avg;
-                                
-                                // Update global min/max inline
-                                if (avg < globalMin) globalMin = avg;
-                                if (avg > globalMax) globalMax = avg;
-                            }
+                                return result;
+                            }));
                             
-                            // Cache the averaged row data
-                            rowDataCache.set(targetReducedRow, avgRowData);
-                            renderedRows.add(targetReducedRow);
                             batchCount++;
                             
-                            // Render this row immediately for progressive display
-                            // Use current global min/max (will be re-normalized in final pass)
-                            this.renderRowWithNormalization(avgRowData, targetReducedRow, reducedWidth, ctx, 
-                                isFinite(globalMin) ? globalMin : 0, 
-                                isFinite(globalMax) ? globalMax : 1);
-                            
-                            // If there are gaps above this row (due to out-of-order processing),
-                            // fill them with duplicated data to avoid yellow gaps
-                            // Only check immediate gaps, not all rows (for performance)
-                            if (targetReducedRow > 0) {
-                                // Fill up to 10 rows above if they're missing
-                                const startGap = Math.max(0, targetReducedRow - 10);
-                                for (let gapRow = startGap; gapRow < targetReducedRow; gapRow++) {
-                                    if (!renderedRows.has(gapRow) && !rowDataCache.has(gapRow)) {
-                                        // Fill gap with current row's data (stretched/duplicated)
-                                        this.renderRowWithNormalization(avgRowData, gapRow, reducedWidth, ctx, 
-                                            isFinite(globalMin) ? globalMin : 0, 
-                                            isFinite(globalMax) ? globalMax : 1);
-                                        // Mark as temporary fill (don't add to renderedRows so real data can overwrite)
-                                    }
+                            // Process completed tasks periodically to keep UI responsive
+                            // Check every 10 batches or when we have many pending tasks
+                            if (batchCount % 10 === 0 || pendingWorkerTasks.length > 16) {
+                                // Wait for some tasks to complete
+                                const completedTasks = await Promise.race([
+                                    Promise.all(pendingWorkerTasks.slice(0, 8)), // Wait for first 8 tasks
+                                    new Promise(resolve => setTimeout(resolve, 100)) // Or timeout after 100ms
+                                ]);
+                                
+                                // Remove completed tasks
+                                if (Array.isArray(completedTasks)) {
+                                    pendingWorkerTasks.splice(0, 8);
                                 }
-                            }
-                            
-                            // Yield occasionally to keep UI responsive during rendering
-                            // But not too often - every 10 rendered rows
-                            if (batchCount % 10 === 0) {
+                                
+                                // Brief yield to keep UI responsive
                                 await new Promise(resolve => setTimeout(resolve, 0));
                             }
                         } else {
@@ -1140,6 +1286,25 @@
                     if (row % 100 === 0 && row > 0) {
                         await new Promise(resolve => setTimeout(resolve, 0));
                     }
+                }
+                
+                // Wait for all worker tasks to complete before final rendering
+                if (pendingWorkerTasks.length > 0) {
+                    console.log(`[RENDERER] Waiting for ${pendingWorkerTasks.length} worker tasks to complete...`);
+                    await Promise.all(pendingWorkerTasks);
+                    console.log(`[RENDERER] All worker tasks completed`);
+                }
+                
+                // Clean up worker pool
+                if (this.workerPool) {
+                    this.workerPool.terminate();
+                    this.workerPool = null;
+                }
+                
+                // Clean up worker script blob URL
+                if (this.workerScriptUrl) {
+                    URL.revokeObjectURL(this.workerScriptUrl);
+                    this.workerScriptUrl = null;
                 }
                 
                 // Final pass: Render all rows with consistent global normalization
