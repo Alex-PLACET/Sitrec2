@@ -541,6 +541,9 @@
 
         // Parse FITS file incrementally: get headers fast, load pixel data in background
         async function parseFileIncrementally(file, onPixelDataProgress) {
+            const startTime = performance.now();
+            console.log(`[FITS] Starting parseFileIncrementally for ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
+            
             const fileSize = file.size;
             let headerBuffer = new Uint8Array(0);
             let headersParsed = false;
@@ -565,6 +568,8 @@
                 // If parsing succeeded and we have HDUs, headers are complete
                 if (result.success && result.hdus.length > 0) {
                     headersParsed = true;
+                    const parseTime = performance.now() - startTime;
+                    console.log(`[FITS] Headers parsed in ${parseTime.toFixed(1)}ms (${(headerBuffer.length / 1024 / 1024).toFixed(2)} MB)`);
                 }
             }
 
@@ -580,6 +585,7 @@
             // Load remaining pixel data in background (fire-and-forget)
             if (fileSize > headerBuffer.length) {
                 // Fire without awaiting to return immediately to UI
+                console.log(`[FITS] Starting background pixel load (${((fileSize - headerBuffer.length) / 1024 / 1024).toFixed(2)} MB remaining)`);
                 loadPixelDataInBackground(file, result, headerBuffer.length, onPixelDataProgress).catch(err => {
                     console.error('Background pixel loading error:', err);
                 });
@@ -590,9 +596,16 @@
 
         // Load remaining pixel data in background without blocking UI
         async function loadPixelDataInBackground(file, result, headerSize, onProgress) {
+            const startTime = performance.now();
+            console.log(`[BG-LOAD] Background loading started at ${startTime.toFixed(0)}`);
+            
             const fileSize = file.size;
             let fullBuffer = result.headerBuffer;
             let loaded = headerSize;
+
+            // Set fullBuffer immediately so rendering can start using what's available
+            result.fullBuffer = fullBuffer;
+            console.log(`[BG-LOAD] Initial fullBuffer set: ${(fullBuffer.length / 1024 / 1024).toFixed(2)} MB`);
 
             // Immediately report that we're starting to load
             if (onProgress) {
@@ -608,6 +621,11 @@
                 newBuffer.set(fullBuffer);
                 newBuffer.set(chunk, fullBuffer.length);
                 fullBuffer = newBuffer;
+                
+                // Update result.fullBuffer immediately so rendering can use new data
+                result.fullBuffer = fullBuffer;
+                const elapsed = performance.now() - startTime;
+                console.log(`[BG-LOAD] ${elapsed.toFixed(0)}ms: Loaded to ${end / 1024 / 1024}MB / ${fileSize / 1024 / 1024}MB (fullBuffer: ${(fullBuffer.length / 1024 / 1024).toFixed(2)} MB)`);
 
                 loaded = end;
                 
@@ -620,19 +638,18 @@
                 await new Promise(resolve => setTimeout(resolve, 0));
             }
 
-            // Update result with complete buffer for rendering
-            result.fullBuffer = fullBuffer;
+            // Final update
             result.pixelDataReady = true;
+            const totalTime = performance.now() - startTime;
+            console.log(`[BG-LOAD] Completed in ${totalTime.toFixed(1)}ms (${(fullBuffer.length / 1024 / 1024).toFixed(2)} MB)`);
         }
 
-        // Get pixel data for rendering (either cached or load on-demand)
-        async function getPixelDataForRendering(file, result) {
-            if (result.fullBuffer) {
-                return result.fullBuffer;
-            }
-            
-            // Load full file on-demand if not already loaded
-            return new Uint8Array(await file.arrayBuffer());
+        // Get pixel data for rendering (either cached or load-on-demand)
+        // NOTE: The renderer can handle partial pixel data - it fills missing pixels with 0
+        async function getPixelDataForRendering(file, result, hdu) {
+            // Return immediately - let renderer handle progressive loading
+            console.log(`[RENDER] Returning result object for progressive rendering`);
+            return result;
         }
 
         // FITS Parser Implementation
@@ -866,11 +883,14 @@
 
         // FITS Image Renderer - Progressive resampling to avoid timeouts
         class FITSImageRenderer {
-            constructor(hdu, buffer) {
+            constructor(hdu, resultOrBuffer, domContainer = null) {
                 this.hdu = hdu;
-                this.buffer = new Uint8Array(buffer);
+                // Support both result object (progressive) and buffer (fallback)
+                this.result = (resultOrBuffer && resultOrBuffer.fullBuffer) ? resultOrBuffer : null;
+                this.buffer = this.result ? this.result.fullBuffer : new Uint8Array(resultOrBuffer);
                 this.canvas = null;
                 this.progress = 0;
+                this.domContainer = domContainer;
             }
 
             async renderAsync(onProgress) {
@@ -884,60 +904,288 @@
                         return null;
                     }
 
-                    // Read raw pixel data
-                    const pixelData = await this.readPixelDataAsync(bitpix, naxis1, naxis2, onProgress);
-                    if (!pixelData) return null;
-
-                    // Resample at 1/4 linear resolution (1/16 area)
-                    const sampledData = await this.resampleAsync(pixelData, naxis1, naxis2, onProgress);
-
-                    // Normalize and create canvas
-                    const normalized = this.normalizePixelData(sampledData.data, sampledData.width, sampledData.height);
-                    this.canvas = this.createCanvasImage(normalized, sampledData.width, sampledData.height);
-
-                    return this.canvas;
+                    // Progressive rendering: read and render scanlines incrementally
+                    return await this.renderProgressiveAsync(bitpix, naxis1, naxis2, onProgress);
                 } catch (err) {
+                    console.error('renderAsync error:', err);
                     return null;
                 }
             }
 
+            async renderProgressiveAsync(bitpix, width, height, onProgress) {
+                const scale = (width * height > 10000000) ? 8 : 4;
+                const reducedWidth = Math.ceil(width / scale);
+                const reducedHeight = Math.ceil(height / scale);
+
+                console.log(`[RENDERER] Progressive rendering: ${width}×${height} → ${reducedWidth}×${reducedHeight} (scale ${scale}x)`);
+
+                // Create canvas with grey pixels
+                this.canvas = document.createElement('canvas');
+                this.canvas.width = reducedWidth;
+                this.canvas.height = reducedHeight;
+                const ctx = this.canvas.getContext('2d');
+                const imageData = ctx.createImageData(reducedWidth, reducedHeight);
+                
+                // Fill with grey initially
+                for (let i = 0; i < imageData.data.length; i += 4) {
+                    imageData.data[i] = 128;     // R
+                    imageData.data[i + 1] = 128; // G
+                    imageData.data[i + 2] = 128; // B
+                    imageData.data[i + 3] = 255; // A
+                }
+                ctx.putImageData(imageData, 0, 0);
+
+                // If we have a DOM container, add canvas immediately so updates are visible
+                if (this.domContainer) {
+                    this.domContainer.innerHTML = '';
+                    const label = document.createElement('div');
+                    label.style.cssText = 'font-size: 12px; color: #666; margin-bottom: 8px; text-align: center;';
+                    label.textContent = `Rendering: ${reducedWidth}×${reducedHeight}...`;
+                    this.domContainer.appendChild(label);
+                    
+                    const canvasWrapper = document.createElement('div');
+                    canvasWrapper.style.cssText = 'display: flex; justify-content: center; flex-grow: 1;';
+                    canvasWrapper.appendChild(this.canvas);
+                    this.domContainer.appendChild(canvasWrapper);
+                    
+                    this.domContainer.style.display = 'flex';
+                    this.domContainer.style.flexDirection = 'column';
+                }
+
+                // Read and render scanlines progressively
+                await this.readAndRenderProgressively(bitpix, width, height, scale, ctx, onProgress);
+                
+                return this.canvas;
+            }
+
+            async readAndRenderProgressively(bitpix, width, height, scale, ctx, onProgress) {
+                const startTime = performance.now();
+                const bytesPerPixel = Math.abs(bitpix) / 8;
+                const bytesPerScanline = width * bytesPerPixel;
+                const reducedWidth = Math.ceil(width / scale);
+                const reducedHeight = Math.ceil(height / scale);
+                
+                let offset = this.hdu.rawDataOffset;
+                const scanlineBuffer = [];
+                let reducedRowIndex = 0;
+                let batchCount = 0;
+                let skippedBatches = 0;
+                let sourceRowStart = 0; // Track which source rows we're processing
+                
+                console.log(`[RENDERER] Reading and rendering ${height} scanlines...`);
+                console.log(`[RENDERER] Canvas dimensions: ${reducedWidth}×${reducedHeight}, Expected batches: ${Math.ceil(height / scale)}`);
+
+                for (let row = 0; row < height; row++) {
+                    const scanlineStart = offset + row * bytesPerScanline;
+                    const scanlineEnd = scanlineStart + bytesPerScanline;
+                    
+                    // Wait for this scanline's data
+                    let waitIterations = 0;
+                    while (this.buffer.byteLength < scanlineEnd && this.result) {
+                        if (this.result && this.result.fullBuffer) {
+                            this.buffer = this.result.fullBuffer;
+                        }
+                        if (this.buffer.byteLength >= scanlineEnd) break;
+                        waitIterations++;
+                        await new Promise(resolve => setTimeout(resolve, 10));
+                    }
+                    
+                    const bufferOK = this.buffer.byteLength >= scanlineEnd;
+                    if (waitIterations > 0 || !bufferOK) {
+                        if (row % 50 === 0 || !bufferOK) {
+                            console.log(`  [WAIT] Row ${row}: waited ${waitIterations * 10}ms, buffer ${this.buffer.byteLength}/${scanlineEnd} ${bufferOK ? '✓' : '✗'}`);
+                        }
+                    }
+                    
+                    // Read this scanline's pixels
+                    const rawScanline = new Float32Array(width);
+                    let hasData = true;
+                    for (let col = 0; col < width; col++) {
+                        const pixelOffset = scanlineStart + col * bytesPerPixel;
+                        if (pixelOffset + bytesPerPixel <= this.buffer.byteLength) {
+                            rawScanline[col] = this.readPixel(bitpix, pixelOffset);
+                        } else {
+                            rawScanline[col] = 0;
+                            hasData = false;
+                        }
+                    }
+                    
+                    scanlineBuffer.push(rawScanline);
+                    
+                    // When we have enough scanlines for a reduced row, render it
+                    if (scanlineBuffer.length === scale || row === height - 1) {
+                        if (reducedRowIndex < reducedHeight) {
+                            const sourceRowEnd = row + 1;
+                            console.log(`[RENDERER] Batch ${batchCount}: source rows [${sourceRowStart}-${sourceRowEnd}] → canvas row ${reducedRowIndex}, bufSize=${scanlineBuffer.length}, hasData=${hasData}`);
+                            this.renderReducedScanline(
+                                scanlineBuffer, 
+                                reducedRowIndex, 
+                                reducedWidth, 
+                                scale, 
+                                ctx
+                            );
+                            reducedRowIndex++;
+                            sourceRowStart = row + 1; // Next batch starts after this row
+                            batchCount++;
+                        } else {
+                            console.warn(`[RENDERER] SKIPPED batch at row=${row}: reducedRowIndex(${reducedRowIndex}) >= reducedHeight(${reducedHeight})`);
+                            skippedBatches++;
+                        }
+                        scanlineBuffer.length = 0;
+                    }
+                    
+                    if (onProgress && row % 10 === 0) {
+                        this.progress = (row + 1) / height;
+                        onProgress(Math.min(this.progress, 0.99), `Rendering ${row + 1}/${height}...`);
+                    }
+
+                    // Yield frequently to allow canvas to update
+                    if (row % 4 === 0) {
+                        await new Promise(resolve => setTimeout(resolve, 0));
+                    }
+                }
+                
+                const elapsed = performance.now() - startTime;
+                console.log(`[RENDERER] Progressive rendering completed in ${elapsed.toFixed(0)}ms`);
+                console.log(`[RENDERER] Summary: ${batchCount} batches rendered, ${skippedBatches} skipped`);
+                console.log(`[RENDERER] Canvas: ${reducedRowIndex}/${reducedHeight} rows rendered`);
+                
+                // Check for gaps
+                if (reducedRowIndex < reducedHeight) {
+                    console.warn(`[RENDERER] ⚠️ COVERAGE GAP: ${reducedHeight - reducedRowIndex} rows not rendered (rows ${reducedRowIndex}-${reducedHeight - 1})`);
+                } else {
+                    console.log(`[RENDERER] ✓ All ${reducedHeight} canvas rows covered`);
+                }
+                if (onProgress) {
+                    onProgress(1.0, 'Done!');
+                }
+            }
+
+            renderReducedScanline(scanlineBuffer, reducedRow, reducedWidth, scale, ctx) {
+                const imageData = ctx.createImageData(reducedWidth, 1);
+                let minVal = Infinity, maxVal = -Infinity;
+                
+                // Collect all raw pixels and find min/max for this block
+                const allPixels = [];
+                for (let scanline of scanlineBuffer) {
+                    for (let pixel of scanline) {
+                        allPixels.push(pixel);
+                        if (isFinite(pixel)) {
+                            minVal = Math.min(minVal, pixel);
+                            maxVal = Math.max(maxVal, pixel);
+                        }
+                    }
+                }
+                
+                if (!isFinite(minVal)) minVal = 0;
+                if (!isFinite(maxVal)) maxVal = 1;
+                const range = maxVal - minVal || 1;
+                
+                console.log(`  [RENDER] Row ${reducedRow}: ${scanlineBuffer.length} scanlines, ${allPixels.length} pixels, range [${minVal.toFixed(1)}, ${maxVal.toFixed(1)}]`);
+                
+                // Average pixels within each reduced pixel
+                let pixelValueStats = { min: Infinity, max: -Infinity, zero: 0, nonZero: 0 };
+                for (let x = 0; x < reducedWidth; x++) {
+                    let sum = 0, count = 0;
+                    const srcXBase = x * scale;
+                    
+                    for (let dy = 0; dy < scanlineBuffer.length; dy++) {
+                        for (let dx = 0; dx < scale; dx++) {
+                            const srcX = srcXBase + dx;
+                            if (srcX < scanlineBuffer[0].length) {
+                                const pixel = scanlineBuffer[dy][srcX];
+                                sum += isFinite(pixel) ? pixel : minVal;
+                                count++;
+                            }
+                        }
+                    }
+                    
+                    const avg = count > 0 ? sum / count : minVal;
+                    const normalized8bit = Math.floor(((avg - minVal) / range) * 255);
+                    
+                    pixelValueStats.min = Math.min(pixelValueStats.min, normalized8bit);
+                    pixelValueStats.max = Math.max(pixelValueStats.max, normalized8bit);
+                    if (normalized8bit === 0) pixelValueStats.zero++;
+                    else pixelValueStats.nonZero++;
+                    
+                    const idx = x * 4;
+                    imageData.data[idx] = normalized8bit;
+                    imageData.data[idx + 1] = normalized8bit;
+                    imageData.data[idx + 2] = normalized8bit;
+                    imageData.data[idx + 3] = 255;
+                }
+                
+                // Check if this row is all zeros (would show as black, not grey!)
+                if (pixelValueStats.zero === reducedWidth) {
+                    console.warn(`  [RENDER] ⚠️ Row ${reducedRow} is ALL BLACK (normalized 0)! Raw range was [${minVal.toFixed(1)}, ${maxVal.toFixed(1)}]`);
+                } else if (pixelValueStats.nonZero === 0) {
+                    console.warn(`  [RENDER] ⚠️ Row ${reducedRow} has only non-8bit pixels: ${pixelValueStats}`);
+                } else {
+                    console.log(`  [RENDER] Row ${reducedRow} pixels: ${pixelValueStats.zero} zeros, ${pixelValueStats.nonZero} nonzero, normalized range [${pixelValueStats.min}, ${pixelValueStats.max}]`);
+                }
+                
+                // Write to canvas
+                ctx.putImageData(imageData, 0, reducedRow);
+                console.log(`  [CANVAS] Wrote row ${reducedRow} to canvas at Y=${reducedRow}`);
+            }
+
             async readPixelDataAsync(bitpix, width, height, onProgress) {
+                const startTime = performance.now();
+                
                 const bytesPerPixel = Math.abs(bitpix) / 8;
                 const totalPixels = width * height;
                 const totalBytes = bytesPerPixel * totalPixels;
+                const bytesPerScanline = width * bytesPerPixel;
+
+                console.log(`[RENDERER] readPixelDataAsync started: ${width}×${height} (${totalPixels} pixels, BITPIX=${bitpix})`);
 
                 let offset = this.hdu.rawDataOffset;
-                const maxOffset = this.buffer.byteLength;
                 const pixelArray = new Float32Array(totalPixels);
 
-                // Process in chunks to avoid blocking
-                const chunkSize = Math.max(1000, Math.floor(totalPixels / 100)); // ~100 updates
-                
-                for (let i = 0; i < totalPixels; i += chunkSize) {
-                    const end = Math.min(i + chunkSize, totalPixels);
+                console.log(`[RENDERER] Buffer size: ${(this.buffer.byteLength / 1024 / 1024).toFixed(2)} MB, data offset: ${offset}, needs: ${(totalBytes / 1024 / 1024).toFixed(2)} MB`);
+
+                // Process scanline by scanline
+                for (let row = 0; row < height; row++) {
+                    const scanlineStart = offset + row * bytesPerScanline;
+                    const scanlineEnd = scanlineStart + bytesPerScanline;
                     
-                    for (let j = i; j < end; j++) {
-                        // Bounds check before reading
-                        if (offset + bytesPerPixel > maxOffset) {
-                            // Fill remaining pixels with 0 or return what we have
-                            for (let k = j; k < totalPixels; k++) {
-                                pixelArray[k] = 0;
-                            }
-                            return pixelArray;
+                    // Wait for this scanline's data to be available
+                    while (this.buffer.byteLength < scanlineEnd && this.result) {
+                        // Update buffer reference first
+                        if (this.result && this.result.fullBuffer) {
+                            this.buffer = this.result.fullBuffer;
                         }
-                        pixelArray[j] = this.readPixel(bitpix, offset);
-                        offset += bytesPerPixel;
+                        // Check again after update
+                        if (this.buffer.byteLength >= scanlineEnd) break;
+                        // Only sleep if still not available
+                        await new Promise(resolve => setTimeout(resolve, 10));
+                    }
+                    
+                    // Read this scanline's pixels
+                    for (let col = 0; col < width; col++) {
+                        const pixelIndex = row * width + col;
+                        const pixelOffset = scanlineStart + col * bytesPerPixel;
+                        
+                        if (pixelOffset + bytesPerPixel <= this.buffer.byteLength) {
+                            pixelArray[pixelIndex] = this.readPixel(bitpix, pixelOffset);
+                        } else {
+                            pixelArray[pixelIndex] = 0; // Out of bounds, fill with 0
+                        }
+                    }
+                    
+                    if (onProgress && row % 10 === 0) {  // Only report every 10 scanlines
+                        this.progress = (row + 1) / height;
+                        onProgress(Math.min(this.progress, 0.9), `Reading scanline ${row + 1}/${height}...`);
                     }
 
-                    if (onProgress) {
-                        this.progress = (i + chunkSize) / totalPixels;
-                        onProgress(Math.min(this.progress, 0.9), 'Reading pixels...');
+                    // Yield to browser every 50 scanlines
+                    if (row % 50 === 0) {
+                        await new Promise(resolve => setTimeout(resolve, 0));
                     }
-
-                    // Yield to browser
-                    await new Promise(resolve => setTimeout(resolve, 0));
                 }
 
+                const elapsed = performance.now() - startTime;
+                console.log(`[RENDERER] readPixelDataAsync completed in ${elapsed.toFixed(0)}ms`);
                 return pixelArray;
             }
 
@@ -975,6 +1223,9 @@
             }
 
             async resampleAsync(pixelData, width, height, onProgress) {
+                const startTime = performance.now();
+                console.log(`[RENDERER] resampleAsync started: ${width}×${height} → ${Math.floor(width / 4)}×${Math.floor(height / 4)}`);
+                
                 // For very large images (>10MP), use 1/8 linear to speed up processing
                 const scale = (width * height > 10000000) ? 8 : 4;
                 const newWidth = Math.floor(width / scale);
@@ -1024,6 +1275,8 @@
                     await new Promise(resolve => setTimeout(resolve, 0));
                 }
 
+                const elapsed = performance.now() - startTime;
+                console.log(`[RENDERER] resampleAsync completed in ${elapsed.toFixed(0)}ms`);
                 return { data: sampledData, width: newWidth, height: newHeight };
             }
 
@@ -1285,7 +1538,7 @@
                 data.hdus.forEach((hdu, idx) => {
                     if (getValue(hdu.header['NAXIS']) === 2 && hdu.dataSize > 0) {
                         setTimeout(() => {
-                            renderImageForHDU(hdu, idx, result.file, result.data);
+                            renderImageForHDU(hdu, idx, result.file, data);
                         }, 100);
                     }
                 });
@@ -1295,6 +1548,9 @@
         }
 
         async function renderImageForHDU(hdu, hduIndex, file, result) {
+            const renderStartTime = performance.now();
+            console.log(`[RENDER] renderImageForHDU started at ${renderStartTime.toFixed(0)} for HDU ${hduIndex}`);
+            
             // Create a unique container for this image in the right pane
             const containerId = `image-render-${Date.now()}-${hduIndex}`;
             const renderContainer = document.createElement('div');
@@ -1323,33 +1579,37 @@
             
             try {
                 // Get pixel data (either cached or load on-demand)
-                const pixelData = await getPixelDataForRendering(file, result);
+                console.log(`[RENDER] Getting pixel data...`);
+                const pixelDataStartTime = performance.now();
+                const pixelData = await getPixelDataForRendering(file, result, hdu);
+                const pixelDataTime = performance.now() - pixelDataStartTime;
+                console.log(`[RENDER] Pixel data acquired in ${pixelDataTime.toFixed(0)}ms`);
                 
-                const renderer = new FITSImageRenderer(hdu, pixelData);
+                console.log(`[RENDER] Creating FITSImageRenderer...`);
+                const renderer = new FITSImageRenderer(hdu, pixelData, renderContainer);
+                const rendererStartTime = performance.now();
                 const canvas = await renderer.renderAsync((progress, status) => {
                     const percent = Math.round(progress * 100);
                     progressBar.style.width = `${percent}%`;
                     progressBar.querySelector('span').textContent = `${percent}%`;
                     statusDiv.textContent = `🖼️ ${status}`;
                 });
+                
+                const rendererTime = performance.now() - rendererStartTime;
+                const totalTime = performance.now() - renderStartTime;
+                console.log(`[RENDER] Rendering completed in ${rendererTime.toFixed(0)}ms (total: ${totalTime.toFixed(0)}ms)`);
 
                 if (canvas) {
-                    renderContainer.innerHTML = '';
-                    const label = document.createElement('div');
-                    label.style.cssText = 'font-size: 12px; color: #666; margin-bottom: 8px; text-align: center;';
+                    // Update label with final dimensions
                     const width = getValue(hdu.header['NAXIS1']);
                     const height = getValue(hdu.header['NAXIS2']);
                     const scale = (width * height > 10000000) ? 8 : 4;
-                    label.textContent = `HDU ${hdu.hdu}: ${canvas.width}×${canvas.height} (1/${scale} from ${width}×${height})`;
-                    renderContainer.appendChild(label);
-                    
-                    const canvasWrapper = document.createElement('div');
-                    canvasWrapper.style.cssText = 'display: flex; justify-content: center; flex-grow: 1;';
-                    canvasWrapper.appendChild(canvas);
-                    renderContainer.appendChild(canvasWrapper);
-                    
-                    renderContainer.style.display = 'flex';
-                    renderContainer.style.flexDirection = 'column';
+                    const expectedWidth = Math.ceil(width / scale);
+                    const expectedHeight = Math.ceil(height / scale);
+                    const label = renderContainer.querySelector('div');
+                    if (label) {
+                        label.textContent = `✓ HDU ${hdu.hdu}: ${canvas.width}×${canvas.height} (1/${scale} from ${width}×${height}) [expected ${expectedWidth}×${expectedHeight}]`;
+                    }
                 } else {
                     statusDiv.textContent = '❌ Failed to render image';
                 }
