@@ -491,12 +491,102 @@
         const progressBar = document.getElementById('progressBar');
 
         let selectedFiles = [];
+        const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks for reading
 
         // Global helper to extract value from either plain number or {value, comment} object
         const getValue = (val) => {
             if (val === undefined) return undefined;
             return typeof val === 'object' && val !== null ? val.value : val;
         };
+
+        // Parse FITS file incrementally: get headers fast, load pixel data in background
+        async function parseFileIncrementally(file, onPixelDataProgress) {
+            const fileSize = file.size;
+            let headerBuffer = new Uint8Array(0);
+            let headersParsed = false;
+            let parser = null;
+            let result = null;
+
+            // First pass: read chunks until headers are complete (usually < 100MB)
+            for (let offset = 0; offset < fileSize && !headersParsed; offset += CHUNK_SIZE) {
+                const chunk = await file.slice(offset, Math.min(offset + CHUNK_SIZE, fileSize)).arrayBuffer();
+                const chunkArray = new Uint8Array(chunk);
+                
+                // Append to header buffer
+                const newBuffer = new Uint8Array(headerBuffer.length + chunkArray.length);
+                newBuffer.set(headerBuffer);
+                newBuffer.set(chunkArray, headerBuffer.length);
+                headerBuffer = newBuffer;
+
+                // Try to parse headers
+                parser = new FITSParser(headerBuffer);
+                result = parser.parse();
+                
+                // If parsing succeeded and we have HDUs, headers are complete
+                if (result.success && result.hdus.length > 0) {
+                    headersParsed = true;
+                }
+            }
+
+            if (!result || !result.success) {
+                return { success: false, error: 'Failed to parse FITS headers' };
+            }
+
+            // Store file reference for on-demand pixel data loading
+            result.file = file;
+            result.fileSize = fileSize;
+
+            // Load remaining pixel data in background
+            if (fileSize > headerBuffer.length) {
+                loadPixelDataInBackground(file, result, onPixelDataProgress);
+            }
+
+            return result;
+        }
+
+        // Load remaining pixel data in background without blocking UI
+        async function loadPixelDataInBackground(file, result, onProgress) {
+            const fileSize = file.size;
+            const headerBuffer = new Uint8Array(await file.slice(0, Math.min(fileSize, 100 * 1024 * 1024)).arrayBuffer());
+            
+            let fullBuffer = headerBuffer;
+            let loaded = headerBuffer.length;
+
+            for (let offset = headerBuffer.length; offset < fileSize; offset += CHUNK_SIZE) {
+                const end = Math.min(offset + CHUNK_SIZE, fileSize);
+                const chunk = new Uint8Array(await file.slice(offset, end).arrayBuffer());
+                
+                // Append chunk to full buffer
+                const newBuffer = new Uint8Array(fullBuffer.length + chunk.length);
+                newBuffer.set(fullBuffer);
+                newBuffer.set(chunk, fullBuffer.length);
+                fullBuffer = newBuffer;
+
+                loaded = end;
+                
+                // Report progress
+                if (onProgress) {
+                    onProgress((loaded / fileSize));
+                }
+
+                // Yield to browser
+                await new Promise(resolve => setTimeout(resolve, 0));
+            }
+
+            // Update result with complete buffer for rendering
+            result.fullBuffer = fullBuffer;
+            result.pixelDataReady = true;
+        }
+
+        // Get pixel data for rendering (either cached or load on-demand)
+        async function getPixelDataForRendering(file, result) {
+            if (result.fullBuffer) {
+                return result.fullBuffer;
+            }
+            
+            // Load full file on-demand if not already loaded
+            return new Uint8Array(await file.arrayBuffer());
+        }
 
         // FITS Parser Implementation
         class FITSParser {
@@ -998,14 +1088,18 @@
                 for (let fileIndex = 0; fileIndex < selectedFiles.length; fileIndex++) {
                     const file = selectedFiles[fileIndex];
                     const progress = ((fileIndex + 0.5) / selectedFiles.length) * 100;
-                    progressLabel.textContent = `Processing: ${file.name}`;
+                    progressLabel.textContent = `Parsing headers: ${file.name}`;
                     progressBar.style.width = `${Math.min(progress, 99)}%`;
                     progressBar.textContent = `${Math.round(Math.min(progress, 99))}%`;
 
                     try {
-                        const arrayBuffer = await file.arrayBuffer();
-                        const parser = new FITSParser(arrayBuffer);
-                        const result = parser.parse();
+                        // Parse headers incrementally first (they're at the start of the file)
+                        const result = await parseFileIncrementally(file, (loadProgress) => {
+                            const overallProgress = ((fileIndex + loadProgress) / selectedFiles.length) * 100;
+                            progressLabel.textContent = `Loading pixel data: ${file.name}`;
+                            progressBar.style.width = `${Math.min(overallProgress, 99)}%`;
+                            progressBar.textContent = `${Math.round(Math.min(overallProgress, 99))}%`;
+                        });
 
                         if (!result.success) {
                             displayResult({
@@ -1016,7 +1110,7 @@
                             displayResult({
                                 fileName: file.name,
                                 data: result,
-                                arrayBuffer: arrayBuffer
+                                file: file
                             });
                         }
                     } catch (err) {
@@ -1117,7 +1211,7 @@
                 data.hdus.forEach((hdu, idx) => {
                     if (getValue(hdu.header['NAXIS']) === 2 && hdu.dataSize > 0) {
                         setTimeout(() => {
-                            renderImageForHDU(hdu, idx, result.arrayBuffer);
+                            renderImageForHDU(hdu, idx, result.file, result.data);
                         }, 100);
                     }
                 });
@@ -1126,7 +1220,7 @@
             resultItems.appendChild(resultDiv);
         }
 
-        async function renderImageForHDU(hdu, hduIndex, arrayBuffer) {
+        async function renderImageForHDU(hdu, hduIndex, file, result) {
             const renderContainer = document.getElementById(`image-render-${hduIndex}`);
             if (!renderContainer) {
                 return;
@@ -1136,7 +1230,10 @@
             
             const progressBar = renderContainer.querySelector('.render-progress-bar');
             
-            const renderer = new FITSImageRenderer(hdu, arrayBuffer);
+            // Get pixel data (either cached or load on-demand)
+            const pixelData = await getPixelDataForRendering(file, result);
+            
+            const renderer = new FITSImageRenderer(hdu, pixelData);
             const canvas = await renderer.renderAsync((progress, status) => {
                 const percent = Math.round(progress * 100);
                 progressBar.style.width = `${percent}%`;
