@@ -215,11 +215,12 @@
         function trackOrientation() {
             function updateOrientation() {
                 if (screen.orientation) {
-                    // Modern API
+                    // Modern API - preferred method
                     const angle = screen.orientation.angle;
                     screenOrientation = angle;
                 } else if (window.orientation !== undefined) {
-                    // Legacy API (iOS)
+                    // Legacy fallback for older iOS devices (deprecated but necessary for compatibility)
+                    // @ts-ignore - window.orientation is deprecated but required for older iOS
                     screenOrientation = window.orientation;
                 }
             }
@@ -230,6 +231,7 @@
             if (screen.orientation) {
                 screen.orientation.addEventListener('change', updateOrientation);
             } else {
+                // @ts-ignore - orientationchange is deprecated but required for older iOS
                 window.addEventListener('orientationchange', updateOrientation);
             }
         }
