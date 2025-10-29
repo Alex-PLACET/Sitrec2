@@ -1447,6 +1447,54 @@
                 ctx.putImageData(imageData, 0, rowIndex);
             }
             
+            // Clean up resources and free memory
+            dispose() {
+                console.log('[RENDERER] Disposing renderer resources...');
+                
+                // Terminate worker pool
+                if (this.workerPool) {
+                    this.workerPool.terminate();
+                    this.workerPool = null;
+                }
+                
+                // Revoke worker script URL
+                if (this.workerScriptUrl) {
+                    URL.revokeObjectURL(this.workerScriptUrl);
+                    this.workerScriptUrl = null;
+                }
+                
+                // Clear cached data
+                if (this.rowDataCache) {
+                    this.rowDataCache.clear();
+                    this.rowDataCache = null;
+                }
+                
+                // Remove canvas from DOM if it has a parent
+                if (this.canvas && this.canvas.parentElement) {
+                    this.canvas.parentElement.remove();
+                }
+                
+                // Clear canvas context to release GPU memory
+                if (this.canvas) {
+                    const ctx = this.canvas.getContext('2d');
+                    if (ctx) {
+                        ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                    }
+                    this.canvas.width = 0;
+                    this.canvas.height = 0;
+                    this.canvas = null;
+                }
+                
+                // Clear DOM container reference
+                this.domContainer = null;
+                
+                // Clear buffer references
+                this.buffer = null;
+                this.result = null;
+                
+                console.log('[RENDERER] Disposal complete');
+            }
+            
             // Fast re-rendering with new normalization settings (uses cached data)
             reRenderWithNormalization(normalization, asinhScale) {
                 if (!this.canvas || !this.rowDataCache || !isFinite(this.globalMin) || !isFinite(this.globalMax)) {
@@ -1778,6 +1826,48 @@
             handleFiles(e.target.files);
         });
 
+        // Cleanup function to free all resources before loading new files
+        function cleanupAllResources() {
+            console.log('[CLEANUP] Starting cleanup of all resources...');
+            
+            // Dispose all active renderers
+            if (activeRenderers && activeRenderers.length > 0) {
+                console.log(`[CLEANUP] Disposing ${activeRenderers.length} renderers...`);
+                activeRenderers.forEach(renderer => {
+                    try {
+                        renderer.dispose();
+                    } catch (error) {
+                        console.error('[CLEANUP] Error disposing renderer:', error);
+                    }
+                });
+                activeRenderers = [];
+            }
+            
+            // Clear file list
+            selectedFiles = [];
+            
+            // Clear UI elements
+            fileItems.innerHTML = '';
+            resultItems.innerHTML = '';
+            imagePane.innerHTML = '<div style="color: #999; text-align: center; padding: 40px 20px; font-size: 14px;">Images will appear here</div>';
+            
+            // Hide UI sections
+            fileList.style.display = 'none';
+            actions.style.display = 'none';
+            results.style.display = 'none';
+            progressContainer.classList.remove('active');
+            
+            // Reset file input
+            fileInput.value = '';
+            
+            // Force garbage collection hint (browser will decide)
+            if (window.gc) {
+                window.gc();
+            }
+            
+            console.log('[CLEANUP] Cleanup complete');
+        }
+
         // Normalization controls
         const normSelect = document.getElementById('normSelect');
         const asinhScale = document.getElementById('asinhScale');
@@ -1818,6 +1908,9 @@
         }
 
         function handleFiles(files) {
+            // Clean up all existing resources before loading new files
+            cleanupAllResources();
+            
             selectedFiles = Array.from(files).filter(f => 
                 f.name.toLowerCase().match(/\.(fits|fit|fts)$/)
             );
@@ -1857,7 +1950,20 @@
             parseBtn.disabled = true;
             parseBtn.innerHTML = '<span class="spinner"></span>Parsing...';
             resultItems.innerHTML = '';
-            activeRenderers = []; // Clear old renderers when parsing new files
+            
+            // Safety: dispose any lingering renderers before clearing array
+            if (activeRenderers && activeRenderers.length > 0) {
+                console.log('[PARSE] Disposing lingering renderers...');
+                activeRenderers.forEach(renderer => {
+                    try {
+                        renderer.dispose();
+                    } catch (error) {
+                        console.error('[PARSE] Error disposing renderer:', error);
+                    }
+                });
+            }
+            activeRenderers = [];
+            
             imagePane.innerHTML = '<div style="color: #999; font-size: 14px;">Image previews will appear here</div>';
             progressContainer.classList.add('active');
 
@@ -1922,17 +2028,7 @@
         parseBtn.addEventListener('click', parseFiles);
 
         clearBtn.addEventListener('click', () => {
-            selectedFiles = [];
-            activeRenderers = []; // Clear renderers when clearing files
-            fileItems.innerHTML = '';
-            fileList.style.display = 'none';
-            actions.style.display = 'none';
-            results.style.display = 'none';
-            progressContainer.classList.remove('active');
-            fileInput.value = '';
-            
-            // Clear right pane
-            imagePane.innerHTML = '<div style="color: #999; text-align: center; padding: 40px 20px; font-size: 14px;">Images will appear here</div>';
+            cleanupAllResources();
         });
 
         function displayResult(result) {
