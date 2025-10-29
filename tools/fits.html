@@ -475,11 +475,26 @@
             <!-- Left Pane: Headers -->
             <div class="pane-left">
                 <div class="file-controls">
-                    <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                    <div style="display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; align-items: center;">
                         <label class="file-input-label">
                             Choose Files
                             <input type="file" id="fileInput" multiple accept=".fits,.fit,.fts">
                         </label>
+                        
+                        <div style="display: flex; align-items: center; gap: 6px; font-size: 13px;">
+                            <label for="normSelect" style="color: #667eea; font-weight: 600;">Normalization:</label>
+                            <select id="normSelect" style="padding: 6px 10px; border: 2px solid #667eea; border-radius: 4px; background: white; font-size: 13px; cursor: pointer;">
+                                <option value="linear">Linear</option>
+                                <option value="asinh" selected>Asinh</option>
+                                <option value="log">Logarithmic</option>
+                            </select>
+                        </div>
+                        
+                        <div id="asinhControls" style="display: flex; align-items: center; gap: 6px; font-size: 12px;">
+                            <label for="asinhScale" style="color: #666;">Scale:</label>
+                            <input type="range" id="asinhScale" min="0.01" max="10" step="0.01" value="1" style="width: 100px;">
+                            <span id="asinhScaleValue" style="color: #333; font-weight: 600; min-width: 40px;">1.00</span>
+                        </div>
                     </div>
 
                     <div class="file-list" id="fileList">
@@ -965,7 +980,7 @@
 
         // FITS Image Renderer - Progressive resampling to avoid timeouts
         class FITSImageRenderer {
-            constructor(hdu, resultOrBuffer, domContainer = null) {
+            constructor(hdu, resultOrBuffer, domContainer = null, normalization = 'asinh', asinhScale = 1.0) {
                 this.hdu = hdu;
                 // Support both result object (progressive) and buffer (fallback)
                 this.result = (resultOrBuffer && resultOrBuffer.fullBuffer) ? resultOrBuffer : null;
@@ -975,6 +990,43 @@
                 this.domContainer = domContainer;
                 this.workerPool = null;
                 this.workerScriptUrl = null;
+                this.normalization = normalization;
+                this.asinhScale = asinhScale;
+            }
+            
+            // Normalization functions
+            normalize(value, min, max) {
+                const range = max - min || 1;
+                switch (this.normalization) {
+                    case 'asinh':
+                        return this.normalizeAsinh(value, min, max, this.asinhScale);
+                    case 'log':
+                        return this.normalizeLog(value, min, max);
+                    case 'linear':
+                    default:
+                        return ((value - min) / range);
+                }
+            }
+            
+            normalizeAsinh(value, min, max, scale = 1.0) {
+                // Asinh (inverse hyperbolic sine) normalization
+                // Good for astronomical images: linear for faint features, log for bright
+                const range = max - min || 1;
+                const normalized = (value - min) / range; // [0, 1]
+                const scaled = normalized * scale;
+                
+                // Apply asinh: asinh(scaled) / asinh(scale) maps [0, scale] to [0, 1]
+                const asinhMax = Math.asinh(scale);
+                const asinhValue = Math.asinh(scaled);
+                return asinhMax > 0 ? asinhValue / asinhMax : 0;
+            }
+            
+            normalizeLog(value, min, max) {
+                // Logarithmic normalization - reduced effect to avoid over-brightening
+                const range = max - min || 1;
+                const normalized = (value - min) / range; // [0, 1]
+                // Use log1p with smaller multiplier (9 instead of 999) for gentler curve
+                return Math.log1p(normalized * 9) / Math.log1p(9); // maps [0, 1] to [0, 1] logarithmically
             }
             
             // Create worker script as a blob
@@ -1319,7 +1371,8 @@
                     for (const [rowIndex, rowData] of rowDataCache.entries()) {
                         for (let x = 0; x < reducedWidth; x++) {
                             const value = rowData[x];
-                            const normalized = Math.floor(((value - globalMin) / range) * 255);
+                            const normalized01 = this.normalize(value, globalMin, globalMax);
+                            const normalized = Math.floor(normalized01 * 255);
                             const clamped = Math.max(0, Math.min(255, normalized));
                             
                             const idx = (rowIndex * reducedWidth + x) * 4;
@@ -1364,7 +1417,8 @@
                 
                 for (let x = 0; x < width; x++) {
                     const value = rowData[x];
-                    const normalized = Math.floor(((value - minVal) / range) * 255);
+                    const normalized01 = this.normalize(value, minVal, maxVal);
+                    const normalized = Math.floor(normalized01 * 255);
                     const clamped = Math.max(0, Math.min(255, normalized));
                     
                     const idx = x * 4;
@@ -1417,7 +1471,8 @@
                     }
                     
                     const avg = count > 0 ? sum / count : minVal;
-                    const normalized8bit = Math.floor(((avg - minVal) / range) * 255);
+                    const normalized01 = this.normalize(avg, minVal, maxVal);
+                    const normalized8bit = Math.floor(normalized01 * 255);
                     
                     pixelValueStats.min = Math.min(pixelValueStats.min, normalized8bit);
                     pixelValueStats.max = Math.max(pixelValueStats.max, normalized8bit);
@@ -1612,7 +1667,8 @@
 
                 for (let i = 0; i < pixelData.length; i++) {
                     const val = isFinite(pixelData[i]) ? pixelData[i] : min;
-                    const normalized8bit = Math.floor(((val - min) / range) * 255);
+                    const normalized01 = this.normalize(val, min, max);
+                    const normalized8bit = Math.floor(normalized01 * 255);
                     
                     const idx = i * 4;
                     normalized[idx] = normalized8bit;     // R
@@ -1669,6 +1725,28 @@
         fileInput.addEventListener('change', (e) => {
             handleFiles(e.target.files);
         });
+
+        // Normalization controls
+        const normSelect = document.getElementById('normSelect');
+        const asinhScale = document.getElementById('asinhScale');
+        const asinhScaleValue = document.getElementById('asinhScaleValue');
+        const asinhControls = document.getElementById('asinhControls');
+        
+        // Update scale value display
+        if (asinhScale && asinhScaleValue) {
+            asinhScale.addEventListener('input', (e) => {
+                asinhScaleValue.textContent = parseFloat(e.target.value).toFixed(2);
+            });
+        }
+        
+        // Show/hide asinh controls based on normalization method
+        if (normSelect && asinhControls) {
+            const updateAsinhControlsVisibility = () => {
+                asinhControls.style.display = normSelect.value === 'asinh' ? 'flex' : 'none';
+            };
+            updateAsinhControlsVisibility();
+            normSelect.addEventListener('change', updateAsinhControlsVisibility);
+        }
 
         function handleFiles(files) {
             selectedFiles = Array.from(files).filter(f => 
@@ -1902,7 +1980,9 @@
                 console.log(`[RENDER] Pixel data acquired in ${pixelDataTime.toFixed(0)}ms`);
                 
                 console.log(`[RENDER] Creating FITSImageRenderer...`);
-                const renderer = new FITSImageRenderer(hdu, pixelData, renderContainer);
+                const normMethod = document.getElementById('normSelect')?.value || 'asinh';
+                const asinhScale = parseFloat(document.getElementById('asinhScale')?.value || 1.0);
+                const renderer = new FITSImageRenderer(hdu, pixelData, renderContainer, normMethod, asinhScale);
                 const rendererStartTime = performance.now();
                 const canvas = await renderer.renderAsync((progress, status) => {
                     const percent = Math.round(progress * 100);
