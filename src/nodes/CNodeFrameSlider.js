@@ -206,6 +206,7 @@ export class CNodeFrameSlider extends CNode {
 
         const newFrame = (frame) => {
             par.frame = frame;
+            GlobalDateTimeNode.liveMode = false;
             setRenderOne(true);
         };
 
@@ -881,10 +882,14 @@ export class CNodeFrameSlider extends CNode {
 
         if (this.fastForwardButton && this.fastForwardButton.held) {
             par.frame = Math.min(parseInt(par.frame, 10) + 10, parseInt(this.sliderInput.max, 10));
+            GlobalDateTimeNode.liveMode = false;
+
         }
 
         if (this.fastRewindButton && this.fastRewindButton.held) {
             par.frame = Math.max(parseInt(par.frame, 10) - 10, 0);
+            GlobalDateTimeNode.liveMode = false;
+
         }
 
         // Check if canvas needs to be redrawn
@@ -1215,6 +1220,8 @@ export function SetupFrameSlider() {
     return new CNodeFrameSlider({ id: "FrameSlider" });
 }
 
+// Updated function to update the frame slider UI
+// it does NOT change par.frame, it just updates the slider to match par.frame, and updates the play/pause button
 export function updateFrameSlider() {
     const slider = NodeMan.get("FrameSlider");
     slider.updateFrameSlider();

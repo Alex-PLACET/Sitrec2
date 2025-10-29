@@ -141,12 +141,25 @@ export class CNodeDateTime extends CNode {
         this.populateStartTimeFromUTCString(startTime);
         this.dateNow = startToNowDateTime(this.dateStart);
 
+
+        this.liveMode = (Sit.startLive === true);
+        Sit.startLive = false; // only start in live mode once, we can't serialize live mode,  as it only applies to the local user, Saving a sitch with live mode will save at that time.
+
+        this.dateTimeFolder.add( this, "liveMode").name("Live Mode").listen().onChange(v=>{
+            if (this.liveMode === true) {
+                par.paused = true;
+            }
+            setRenderOne(true);
+        })
+            .tooltip("If Live Mode is on, then the playback will always be synced to the current time.\nPausing or scrubbing the time will disable live mode")
+
+
         // var for the menu to sync the time to the start time or the now time or a track
         // not currently used, but the UI needs the variable.
         this.syncMethod = null;
         this.addSyncSwitch();
 
-        // test the start2now and now2start functions, ensure the go back and forth with no changes
+        // test the start2now and now2start functions, ensure they go back and forth with no changes
         for (var i = 0; i < 100000; i++) {
             const start = this.dateNow.valueOf() + i;
             const now = startToNowMS(start);
@@ -545,6 +558,7 @@ export class CNodeDateTime extends CNode {
     // i.e. takes all the UI entires, and sets the now time, which will set the start time
     updateDateTime(v) {
         if (!this.refreshingUI) {
+            this.liveMode = false;
 
             // if they set the time, don't auto set it later
             setSitchEstablished(true);
@@ -626,6 +640,15 @@ export class CNodeDateTime extends CNode {
     }
 
     update(frame) {
+
+        // first check for live mode
+        if (this.liveMode) {
+            // we lock the frame to the center of the slider
+            par.frame = Math.floor(Sit.frames / 2);
+            const currentTime = new Date();
+            this.setNowDateTime(currentTime);
+        }
+
         this.frame = frame
         this.dateNow = startToNowDateTime(this.dateStart);
 

@@ -7,12 +7,14 @@ export const SitStarlink = {
     // // spcifically for the Starlink Horizon Flares simulation
     //
      name: "starlink",
-     menuName: "Starlink Horizon Flares",
+     menuName: "Starlink Horizon Flares (LIVE)",
     showFlareBand: true,
     showSunArrows: true,
     isTool: true, // we need this here even thought it is in SitCustom.js, as it's checked before merging SitCustom.js
     isRoot: true,
-    isCustom: true, // same as above, we need this here
+    isCustom: true,  // same as above, we need this here
+    startLive: true, // start in permanent live mode. User can exit this by dragging the time
+
 
 
     // no quad terrain for now, as we want a globe

@@ -1,5 +1,5 @@
 import {par} from "./par";
-import {Sit} from "./Globals";
+import {GlobalDateTimeNode, Sit} from "./Globals";
 import {isKeyHeld} from "./KeyBoardHandler";
 import {updateFrameSlider} from "./nodes/CNodeFrameSlider";
 import {UpdatePRFromEA} from "./JetStuff";
@@ -9,6 +9,8 @@ import {Frame2Az, Frame2El} from "./JetUtils";
 // given the elapsed time since this was last called,
 // update the frame number and time based on the current state of the controls
 export function updateFrame(elapsed) {
+
+
 
     const dt = elapsed;
 
@@ -23,15 +25,19 @@ export function updateFrame(elapsed) {
     if (isKeyHeld('arrowup')) {
         par.frame -= 10 * frameStep;
         par.paused = true;
+        GlobalDateTimeNode.liveMode = false;
     } else if (isKeyHeld('arrowdown')) {
         par.frame += 10 * frameStep;
         par.paused = true;
+        GlobalDateTimeNode.liveMode = false;
     } else if (isKeyHeld('arrowleft')) {
         par.frame -= frameStep
         par.paused = true;
+        GlobalDateTimeNode.liveMode = false;
     } else if (isKeyHeld('arrowright')) {
         par.frame += frameStep
         par.paused = true;
+        GlobalDateTimeNode.liveMode = false;
     } else if (!par.paused && !par.noLogic) {
         // Frame advance with no controls (i.e. just playing)
         // time is advanced based on frames in the video
@@ -64,7 +70,14 @@ export function updateFrame(elapsed) {
         if (par.pingPong) par.direction = -par.direction
     }
 
+    const beforeSliderFrame = par.frame;
+
     updateFrameSlider();
+
+    // if the the frame was changed by the slider, turn off live mode
+    if (par.frame !== beforeSliderFrame) {
+        GlobalDateTimeNode.liveMode = false;
+    }
 
     // par time no longer controls things, but we update it for the UI display
     par.time = par.frame / Sit.fps
