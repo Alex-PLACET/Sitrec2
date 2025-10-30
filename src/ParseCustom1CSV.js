@@ -54,7 +54,13 @@ export function parseCustom1CSV(csv) {
     const rows = csv.length;
     let MISBArray = new Array(rows - 1);
 
+    // Possible new formats:
+    // thresherId,dtg,lat,lon,alt,tailNumber - Aircraft
+    // track_Id,dtg,lat,lon,tailNumber
+
+
     const headerValues= CustomCSVFormats.CUSTOM1;
+    const trackIDCol =  findColumn(csv, headerValues.trackID, true)
     const dateCol =     findColumn(csv, headerValues.time, true)
     const latCol =      findColumn(csv, headerValues.lat, true)
     const lonCol =      findColumn(csv, headerValues.lon, true)
@@ -65,6 +71,7 @@ export function parseCustom1CSV(csv) {
     const callsignCol = findColumn(csv, headerValues.callsign, true)
 
     console.log("Detected Custom1 CSV format with columns: " +
+        "trackIDCol=" + trackIDCol + ", " +
     "dateCol=" + dateCol + ", latCol=" + latCol +
         ", lonCol=" + lonCol + ", altCol=" + altCol +
         ", aglCol=" + aglCol + ", aircraftCol=" + aircraftCol +
@@ -92,6 +99,10 @@ export function parseCustom1CSV(csv) {
 
         MISBArray[i - 1][MISB.SensorLatitude] = Number(csv[i][latCol])
         MISBArray[i - 1][MISB.SensorLongitude] = Number(csv[i][lonCol])
+
+        if (trackIDCol !== -1) {
+            MISBArray[i - 1][MISB.TrackID] = csv[i][trackIDCol];
+        }
 
         // we expect either alt or agl to be present, but not both
         // altitude is in meters, agl is in meters above ground level

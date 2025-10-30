@@ -145,6 +145,45 @@ class CMetaTrack {
 }
 
 
+
+// a co
+function extractIndexedMisbCSV(complexMisb, index) {
+    console.log("extractIndexedMisbCSV: extracting index ", index, " from complex MISB CSV with length ", complexMisb.length);
+    // first we cound the number of unique values in the TrackID column
+    // this is a full MISB array with the PlatformCallSign standing in for TrackID
+    // (they both have the same column index)
+    const trackIDs = new Set();
+    const trackIDCol = MISB.TrackID;
+    for (let i = 0; i < complexMisb.length; i++) {
+        const trackID = complexMisb[i][trackIDCol];
+        if (trackID !== null && trackID !== undefined) {
+            trackIDs.add(trackID);
+        }
+    }
+
+    const trackIDArray = Array.from(trackIDs);
+    // if empty, then just patch is as if it has one entry
+    if (trackIDArray.length === 0) {
+        console.warn("extractIndexedMisbCSV: No TrackIDs found, assuming single track with index 0");
+        trackIDArray.push("dummyTrackID");
+    }
+
+    if (index >= trackIDArray.length) {
+        console.warn("extractIndexedMisbCSV: index ", index, " out of range, only ", trackIDArray.length, " unique TrackIDs");
+        return null;
+    }
+
+    // now create a new MISB array with only the entries (rows) matching the selected TrackID
+    const selectedTrackID = trackIDArray[index];
+    const extractedMisb = complexMisb.filter(row => row[trackIDCol] === selectedTrackID);
+    console.log("extractIndexedMisbCSV: extracted MISB length ", extractedMisb.length);
+    return extractedMisb;
+
+
+
+}
+
+
 class CTrackManager extends CManager {
 
     constructor() {
@@ -173,8 +212,11 @@ class CTrackManager extends CManager {
             misb = geo.toMISB(trackIndex);
         } else if (ext === "kml") {
             misb = KMLToMISB(FileManager.get(sourceFile), trackIndex);
-        } else if (ext === "srt" || ext === "csv" || ext === "klv") {
+        } else if (ext === "srt" || ext === "klv") {
             misb = FileManager.get(sourceFile);
+        } else if (ext === "csv") {
+            const complexMisb = FileManager.get(sourceFile);
+            misb = extractIndexedMisbCSV(complexMisb, trackIndex)
         } else {
             assert(0, "Unknown file type: " + fileInfo.filename);
         }
@@ -1072,6 +1114,15 @@ class CTrackManager extends CManager {
             }
 
         }
+
+        // CHECK HERE
+        // for complex CSV, like we do in extractIndexedMisbCSV
+        // if there's only one track then carry on as before
+        // if there are multiple tracks, then we need to find the right one using the
+        // same logic as extractIndexedMisbCSV (refactor as needed here)
+        // If there's a tail number, use that as the short name
+        // otherwise use the trackID
+
 
 
         if (!found) {

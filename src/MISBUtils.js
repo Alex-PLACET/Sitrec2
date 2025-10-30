@@ -67,7 +67,8 @@ export const MISB = {
     PlatformGroundSpeed: 56,
     GroundRange: 57,
     PlatformFuelRemaining: 58,
-    PlatformCallSign: 59,
+    PlatformCallSign: 59,   // Mick: We reuse this for TrackID
+    TrackID: 59,            // Mick: same as PlatformCallSign
     LaserPRFCode: 62,
     SensorFieldofViewName: 63,
     PlatformMagneticHeading: 64,
