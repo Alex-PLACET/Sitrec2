@@ -534,14 +534,19 @@ export class CNodeFeatureMarker extends CNodeLabel3D {
         // Set the groupNode to FeaturesGroupNode instead of MeasurementsGroupNode
         v.groupNode = v.groupNode ?? "FeaturesGroupNode";
         
-        // Set the label to be 100 pixels above the feature
-        v.offsetY = v.offsetY ?? 100;
+        // Store the arrow length (default 100 pixels)
+        const arrowLength = v.arrowLength ?? 100;
+        
+        // Set the label to be arrowLength pixels above the feature
+        v.offsetY = v.offsetY ?? arrowLength;
         v.centerY = v.centerY ?? 0; // Bottom of label at the top of arrow
         
         // Set default white color for text label
         v.color = v.color ?? 0xFFFFFF;
         
         super(v);
+
+        this.arrowLength = arrowLength;
         
         // Store the text for serialization
         this.text = v.text ?? "";
@@ -606,8 +611,8 @@ export class CNodeFeatureMarker extends CNodeLabel3D {
     preRender(view) {
         super.preRender(view);
         
-        // Calculate the top position (100 pixels above in screen space)
-        const topPosition = view.offsetScreenPixels(this.featurePosition.clone(), 0, 100);
+        // Calculate the top position (arrowLength pixels above in screen space)
+        const topPosition = view.offsetScreenPixels(this.featurePosition.clone(), 0, this.arrowLength);
         
         // Arrow is always red for feature markers
         const color = 0xFF0000;

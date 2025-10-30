@@ -11,7 +11,7 @@ import {Vector3} from "three";
 class CFeatureManager extends CManager {
     constructor() {
         super();
-    }
+    } 
 
     /**
      * Add a feature marker
@@ -87,6 +87,7 @@ class CFeatureManager extends CManager {
                     lat: featureNode.lla.lat,
                     lon: featureNode.lla.lon,
                     alt: featureNode.lla.alt,
+                    arrowLength: featureNode.arrowLength ?? 100,
                 };
                 
                 features.push(featureData);
@@ -122,7 +123,8 @@ class CFeatureManager extends CManager {
                         lat: featureData.lat,
                         lon: featureData.lon,
                         alt: featureData.alt
-                    }
+                    },
+                    arrowLength: featureData.arrowLength ?? 100
                 });
                 
                 console.log(`Deserialized feature marker: ${featureData.text}`);
@@ -151,10 +153,10 @@ class CFeatureManager extends CManager {
         this.iterate((id, featureNode) => {
             if (!featureNode.featurePosition || !featureNode.group.visible) return;
             
-            // Check both the arrow (at featurePosition) and the label (100px above)
+            // Check both the arrow (at featurePosition) and the label (at arrowLength pixels above)
             const positions = [
                 featureNode.featurePosition,  // Arrow base
-                view.offsetScreenPixels(featureNode.featurePosition.clone(), 0, 100)  // Label position
+                view.offsetScreenPixels(featureNode.featurePosition.clone(), 0, featureNode.arrowLength)  // Label position
             ];
             
             for (const pos3D of positions) {
@@ -226,6 +228,16 @@ class CFeatureManager extends CManager {
             standaloneMenu.add({lon: featureNode.lla.lon.toFixed(6)}, 'lon').name('Longitude').listen().disable();
             standaloneMenu.add({alt: featureNode.lla.alt.toFixed(2)}, 'alt').name('Altitude (m)').listen().disable();
         }
+        
+        // Add arrow length slider
+        standaloneMenu.add(featureNode, 'arrowLength', 0, 300, 1)
+            .name('Arrow Length')
+            .listen()
+            .onChange((value) => {
+                // Update the offset.y to match the new arrow length
+                // (offset is a Vector2, not individual properties)
+                featureNode.offset.y = value;
+            });
         
         // Add Delete button
         const deleteObj = {
