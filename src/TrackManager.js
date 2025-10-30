@@ -194,6 +194,11 @@ function extractIndexedMisbCSV(complexMisb, index) {
         return null;
     }
 
+    if (trackIDArray.length === 1) {
+        console.log("extractIndexedMisbCSV: only one TrackID present, returning full MISB");
+        return complexMisb;
+    }
+
     // now create a new MISB array with only the entries (rows) matching the selected TrackID
     const selectedTrackID = trackIDArray[index];
     const extractedMisb = complexMisb.filter(row => row[MISB.TrackID] === selectedTrackID);
