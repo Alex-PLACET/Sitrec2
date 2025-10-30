@@ -136,6 +136,14 @@ export class CNodeLabel3D extends CNode3DGroup {
 //            this.sprite.position.set(pos.x, pos.y, pos.z);
             this.position.copy(pos)
         }
+
+        // simple LLA input for markers
+        if (v.positionLLA !== undefined) {
+            const lla = v.positionLLA;
+            const pos = LLAToEUS(lla.lat, lla.lon, lla.alt);
+            this.position.set(pos.x, pos.y, pos.z);
+        }
+
         this.input("color",true)
 
         let color = '#FFFFFF';

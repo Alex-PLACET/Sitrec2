@@ -12,6 +12,7 @@ import {doesKMLContainTrack, extractKMLObjects} from "./KMLUtils";
 import {findColumn} from "./ParseUtils";
 import {EventManager} from "./CEventManager";
 import {CNodeArray} from "./nodes/CNodeArray";
+import {CNodeLabel3D} from "./nodes/CNodeLabels3D";
 
 // The DragDropHandler is more like the local client file handler, with rehosting, and parsing
 class CDragDropHandler {
@@ -396,6 +397,12 @@ class CDragDropHandler {
             return;
         }
 
+        // first we check for special files that need special handling
+        if (fileManagerEntry.dataType === "FEATURES") {
+            return extractFeaturesFromFile(parsedFile);
+        }
+
+
         // if it's a CSV, the first check if it contails AZ and EL
         // if it does, then we want to send it to the customAzElController node
         if (fileExt === "csv") {
@@ -618,5 +625,41 @@ class CDragDropHandler {
 
 
 }
+
+// a features CSV has lat, lon, alt, and label columns
+// iterate over it and make markers with labels at those locations
+function extractFeaturesFromFile(csv) {
+    console.log("Extracting FEATURES from CSV file\csv[0]");
+    for (let i = 1; i < csv.length; i++) {
+        const row = csv[i];
+        const latCol = findColumn(csv, "lat", true);
+        const lonCol = findColumn(csv, "lon", true);
+        const altCol = findColumn(csv, "alt", true);
+        const labelCol = findColumn(csv, "label", true);
+
+        if (latCol === -1 || lonCol === -1 || altCol === -1 || labelCol === -1) {
+            console.warn("FEATURES CSV missing required columns");
+            return;
+        }
+
+        const lat = parseFloat(row[latCol]);
+        const lon = parseFloat(row[lonCol]);
+        let alt = parseFloat(row[altCol]);
+        if (isNaN(alt)) alt = 0;
+        const label = row[labelCol] ?? "";
+
+        console.log(`Adding feature: ${label} at (${lat}, ${lon}, ${alt})`);
+
+        // Create a marker node at the specified location with the label
+        new CNodeLabel3D({
+            id: `feature_${i}_${label}`,
+            text: label,
+            positionLLA: {lat: lat, lon: lon, alt: alt},
+        })
+        //const markerNode = NodeMan.createMarkerNode(lat, lon, alt, label);
+        //NodeMan.add(markerNode);
+    }
+}
+
 
 export const DragDropHandler = new CDragDropHandler();
