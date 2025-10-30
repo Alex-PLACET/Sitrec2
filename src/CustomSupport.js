@@ -44,6 +44,7 @@ import {SITREC_APP} from "./configUtils";
 import {CNodeDisplayTrack} from "./nodes/CNodeDisplayTrack";
 import {DebugArrowAB, elevationAtLL} from "./threeExt";
 import {TrackManager} from "./TrackManager";
+import {FeatureManager} from "./CFeatureManager";
 import {CNodeTrackGUI} from "./nodes/CNodeControllerTrackGUI";
 import {forceUpdateUIText} from "./nodes/CNodeViewUI";
 import {configParams} from "./login";
@@ -2073,6 +2074,9 @@ export class CCustomManager {
         // before mods are applied to their nodes
         out.syntheticTracks = TrackManager.serialize()
 
+        // Serialize feature markers from FeatureManager
+        out.featureMarkers = FeatureManager.serialize()
+
         // do the export version tracking last, so none of the combining sitches overwrites it
         out.exportVersion = process.env.BUILD_VERSION_STRING
         out.exportTag = process.env.VERSION;
@@ -2238,6 +2242,12 @@ export class CCustomManager {
             // This recreates the track nodes so that mods can be applied to them
             if (sitchData.syntheticTracks) {
                 TrackManager.deserialize(sitchData.syntheticTracks)
+            }
+
+            // Deserialize feature markers BEFORE applying mods
+            // This creates the necessary feature marker nodes
+            if (sitchData.featureMarkers) {
+                FeatureManager.deserialize(sitchData.featureMarkers)
             }
 
             // now we've either got

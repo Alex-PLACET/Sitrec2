@@ -1423,6 +1423,13 @@ export class CFileManager extends CManager {
 
         Object.keys(this.list).forEach(key => {
             const f = this.list[key];
+            
+            // Skip files marked for no serialization (e.g., FEATURES files)
+            if (f.skipSerialization) {
+                console.log("Skipping serialization for: " + key);
+                return;
+            }
+            
             if (f.dynamicLink && !f.staticURL) {
 
 

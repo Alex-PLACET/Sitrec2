@@ -12,7 +12,7 @@ import {doesKMLContainTrack, extractKMLObjects} from "./KMLUtils";
 import {findColumn} from "./ParseUtils";
 import {EventManager} from "./CEventManager";
 import {CNodeArray} from "./nodes/CNodeArray";
-import {CNodeFeatureMarker} from "./nodes/CNodeLabels3D";
+import {FeatureManager} from "./CFeatureManager";
 
 // The DragDropHandler is more like the local client file handler, with rehosting, and parsing
 class CDragDropHandler {
@@ -399,7 +399,11 @@ class CDragDropHandler {
 
         // first we check for special files that need special handling
         if (fileManagerEntry.dataType === "FEATURES") {
-            return extractFeaturesFromFile(parsedFile);
+            // Extract features and mark the file to not be saved
+            extractFeaturesFromFile(parsedFile);
+            // Mark this file as transient - don't save it during serialization
+            fileManagerEntry.skipSerialization = true;
+            return;
         }
 
 
@@ -629,18 +633,22 @@ class CDragDropHandler {
 // a features CSV has lat, lon, alt, and label columns
 // iterate over it and make markers with labels at those locations
 function extractFeaturesFromFile(csv) {
-    console.log("Extracting FEATURES from CSV file\csv[0]");
+    console.log("Extracting FEATURES from CSV file");
+    
+    // Find column indices once before the loop
+    const latCol = findColumn(csv, "lat", true);
+    const lonCol = findColumn(csv, "lon", true);
+    const altCol = findColumn(csv, "alt", true);
+    const labelCol = findColumn(csv, "label", true);
+
+    if (latCol === -1 || lonCol === -1 || altCol === -1 || labelCol === -1) {
+        console.warn("FEATURES CSV missing required columns (lat, lon, alt, label)");
+        return;
+    }
+
+    // Iterate over rows (skip header row at index 0)
     for (let i = 1; i < csv.length; i++) {
         const row = csv[i];
-        const latCol = findColumn(csv, "lat", true);
-        const lonCol = findColumn(csv, "lon", true);
-        const altCol = findColumn(csv, "alt", true);
-        const labelCol = findColumn(csv, "label", true);
-
-        if (latCol === -1 || lonCol === -1 || altCol === -1 || labelCol === -1) {
-            console.warn("FEATURES CSV missing required columns");
-            return;
-        }
 
         const lat = parseFloat(row[latCol]);
         const lon = parseFloat(row[lonCol]);
@@ -648,15 +656,20 @@ function extractFeaturesFromFile(csv) {
         if (isNaN(alt)) alt = 0;
         const label = row[labelCol] ?? "";
 
-        console.log(`Adding feature: ${label} at (${lat}, ${lon}, ${alt})`);
+        // Skip empty rows
+        if (isNaN(lat) || isNaN(lon) || !label) {
+            continue;
+        }
 
-        // Create a feature marker node with an arrow pointing down to the feature
-        new CNodeFeatureMarker({
-            id: `feature_${i}_${label}`,
+        // Create a feature marker using FeatureManager
+        FeatureManager.addFeature({
+            id: `feature_${i}_${label.replace(/\s+/g, '_')}`,
             text: label,
             positionLLA: {lat: lat, lon: lon, alt: alt},
         });
     }
+    
+    console.log(`Extracted ${FeatureManager.size()} feature markers`);
 }
 
 
