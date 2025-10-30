@@ -1813,17 +1813,16 @@
         document.body.addEventListener('drop', (e) => {
             e.preventDefault();
             document.body.classList.remove('dragover');
-            handleFiles(e.dataTransfer.files);
+            // Convert FileList to Array immediately to avoid potential issues
+            const filesArray = Array.from(e.dataTransfer.files);
+            handleFiles(filesArray);
         });
 
         // File input button
-        const fileInputLabel = document.querySelector('.file-input-label');
-        if (fileInputLabel) {
-            fileInputLabel.addEventListener('click', () => fileInput.click());
-        }
-
         fileInput.addEventListener('change', (e) => {
-            handleFiles(e.target.files);
+            // Convert FileList to Array immediately to avoid it being cleared by cleanup
+            const filesArray = Array.from(e.target.files);
+            handleFiles(filesArray);
         });
 
         // Cleanup function to free all resources before loading new files
