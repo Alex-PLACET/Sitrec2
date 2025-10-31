@@ -299,6 +299,7 @@ export class CCustomManager {
                     })
 
                 })
+                .listen();
         }
 
         guiMenus.contents.add(this, "removeAllTracks")

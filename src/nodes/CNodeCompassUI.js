@@ -35,23 +35,30 @@ export class   CNodeCompassUI extends CNodeViewUI {
 
 
     onMouseDown(e, mouseX, mouseY) {
+        const view = this.in.relativeTo;
+        
         // clicking on the compass in the main view should rotate the view to north
-        // There's a plane defined by the camera's position and the local up vector and the north pole
-        // the camera shoudl end up with it up and forward vectors in that plane
-        // and the right vector pointing east
-        // so the camera's rotation matrix should be set to that
-
-        const mainView = this.in.relativeTo;
-        if (mainView?.id === "mainView") {
-
-            mainView.controls.fixUp(true);
-            mainView.controls.fixHeading(0)
-            mainView.controls.fixHeading(0)
-            mainView.controls.fixHeading(0)
-            mainView.controls.fixHeading(0)
+        if (view?.id === "mainView") {
+            // There's a plane defined by the camera's position and the local up vector and the north pole
+            // the camera shoudl end up with it up and forward vectors in that plane
+            // and the right vector pointing east
+            // so the camera's rotation matrix should be set to that
+            view.controls.fixUp(true);
+            view.controls.fixHeading(0)
+            view.controls.fixHeading(0)
+            view.controls.fixHeading(0)
+            view.controls.fixHeading(0)
         }
-
-
+        // clicking on the compass in the look view should toggle "Show Compass Elevation"
+        else if (view?.id === "lookView") {
+            Globals.showCompassElevation = !Globals.showCompassElevation;
+            // Force update of all compass UI nodes by resetting their state
+            NodeMan.iterate((id, node) => {
+                if (node.constructor.name === "CNodeCompassUI") {
+                    node.lastHeading = null;
+                }
+            });
+        }
     }
 
 
