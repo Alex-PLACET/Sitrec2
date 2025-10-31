@@ -193,7 +193,9 @@ export class CNodeLabel3D extends CNode3DGroup {
         this.sprite.color = color;
         this.sprite.layers.mask = v.layers ?? LAYER.MASK_HELPERS;
         this.group.add(this.sprite);
-        this.isMeasurement = true;
+        
+        // Only mark as measurement if it's actually in a measurement group
+        this.isMeasurement = groupNode.isMeasurement ?? false;
 
         // for sprite center (anchor point), 0,0 is lower left
         this.sprite.center = V2(v.centerX ?? 0.5, v.centerY ?? 0.5);
