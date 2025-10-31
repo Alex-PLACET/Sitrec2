@@ -18,6 +18,7 @@ export class CMouseHandler {
         this.longPressStartY = 0;
         this.longPressEvent = null;
         this.isLongPressTriggered = false;
+        this.activePointers = new Set(); // Track active pointer IDs for multi-touch detection
 
         this.view.canvas.addEventListener('wheel', e => this.handleMouseWheel(e));
         this.view.canvas.addEventListener('pointermove', e => this.handleMouseMove(e));
@@ -96,16 +97,20 @@ export class CMouseHandler {
 //        e.preventDefault();
         this.view.canvas.setPointerCapture(e.pointerId)
 
+        // Track pointer for multi-touch detection
+        this.activePointers.add(e.pointerId);
+
         this.newPosition(e, true)
         this.dragging = true;
         
-        // Debug logging
-        console.log("handleMouseDown - pointerType:", e.pointerType, "button:", e.button, "buttons:", e.buttons);
+        // Cancel long press if a second finger touches down
+        if (this.activePointers.size > 1 && this.longPressTimer) {
+            this.clearLongPressTimer();
+        }
         
-        // Start long press timer for touch events (not for mouse right-click)
+        // Start long press timer for single-finger touch events only (not for mouse right-click)
         // pointerType will be 'touch' for touch events, 'mouse' for mouse events
-        if (e.pointerType === 'touch' && e.button === 0) {
-            console.log("Starting long press timer...");
+        if (e.pointerType === 'touch' && e.button === 0 && this.activePointers.size === 1) {
             this.longPressStartX = e.clientX;
             this.longPressStartY = e.clientY;
             this.longPressEvent = e;
@@ -113,7 +118,6 @@ export class CMouseHandler {
             
             this.longPressTimer = setTimeout(() => {
                 this.isLongPressTriggered = true;
-                console.log("Long press triggered!");
                 
                 // Create synthetic right-click event for context menu
                 const syntheticEvent = new PointerEvent('contextmenu', {
@@ -145,6 +149,9 @@ export class CMouseHandler {
     handleMouseUp(e) {
 //        e.preventDefault();
         this.view.canvas.releasePointerCapture(e.pointerId)
+
+        // Remove pointer from active set
+        this.activePointers.delete(e.pointerId);
 
         // Clear long press timer
         this.clearLongPressTimer();

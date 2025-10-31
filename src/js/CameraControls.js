@@ -107,6 +107,7 @@ class CameraMapControls {
 		this.longPressStartY = 0;
 		this.longPressEvent = null;
 		this.isLongPressTriggered = false;
+		this.activePointers = new Set(); // Track active pointer IDs for multi-touch detection
 
 		this.canvas.addEventListener( 'contextmenu', e => this.onContextMenu(e) );
 		this.canvas.addEventListener( 'pointerdown', e => this.handleMouseDown(e) );
@@ -561,14 +562,23 @@ class CameraMapControls {
 //		console.log ("CameraMapControls Mouse DOWN, button = "+event.button)
 		this.button = event.button;
 		
+		// Track pointer for multi-touch detection
+		this.activePointers.add(event.pointerId);
+		
 		// Track right mouse button down position for context menu drag detection
 		if (event.button === 2) {
 			this.contextMenuDownPos = { x: event.clientX, y: event.clientY };
 		}
 		
-		// Start long press timer for touch events (not for mouse right-click)
-		if (event.pointerType === 'touch' && event.button === 0) {
-			console.log("CameraControls: Starting long press timer...");
+		// Cancel long press if a second finger touches down
+		if (this.activePointers.size > 1 && this.longPressTimer) {
+			clearTimeout(this.longPressTimer);
+			this.longPressTimer = null;
+			this.isLongPressTriggered = false;
+		}
+		
+		// Start long press timer for single-finger touch events only (not for mouse right-click)
+		if (event.pointerType === 'touch' && event.button === 0 && this.activePointers.size === 1) {
 			this.longPressStartX = event.clientX;
 			this.longPressStartY = event.clientY;
 			this.longPressEvent = event;
@@ -576,7 +586,6 @@ class CameraMapControls {
 			
 			this.longPressTimer = setTimeout(() => {
 				this.isLongPressTriggered = true;
-				console.log("CameraControls: Long press triggered!");
 				
 				// Create synthetic context menu event
 				const syntheticEvent = new PointerEvent('contextmenu', {
@@ -636,6 +645,9 @@ class CameraMapControls {
 
 
 	handleMouseUp(event) {
+
+		// Remove pointer from active set
+		this.activePointers.delete(event.pointerId);
 
 		// if not paused, then removed the cursor's LLA label
 		if (!par.paused) {
