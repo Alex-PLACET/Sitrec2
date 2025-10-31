@@ -99,6 +99,15 @@ class CameraMapControls {
 		this.pinchDistance = 0;
 		this.lastPinchDistance = 0;
 
+		// Long press support for mobile context menu
+		this.longPressTimer = null;
+		this.longPressDuration = 500; // 500ms
+		this.longPressThreshold = 10; // 10px movement threshold
+		this.longPressStartX = 0;
+		this.longPressStartY = 0;
+		this.longPressEvent = null;
+		this.isLongPressTriggered = false;
+
 		this.canvas.addEventListener( 'contextmenu', e => this.onContextMenu(e) );
 		this.canvas.addEventListener( 'pointerdown', e => this.handleMouseDown(e) );
 		this.canvas.addEventListener( 'pointerup', e => this.handleMouseUp(e) );
@@ -185,6 +194,12 @@ class CameraMapControls {
 
 	}
 
+	clearLongPressTimer() {
+		if (this.longPressTimer) {
+			clearTimeout(this.longPressTimer);
+			this.longPressTimer = null;
+		}
+	}
 
 
 	handleMouseWheel( event ) {
@@ -551,6 +566,44 @@ class CameraMapControls {
 			this.contextMenuDownPos = { x: event.clientX, y: event.clientY };
 		}
 		
+		// Start long press timer for touch events (not for mouse right-click)
+		if (event.pointerType === 'touch' && event.button === 0) {
+			console.log("CameraControls: Starting long press timer...");
+			this.longPressStartX = event.clientX;
+			this.longPressStartY = event.clientY;
+			this.longPressEvent = event;
+			this.isLongPressTriggered = false;
+			
+			this.longPressTimer = setTimeout(() => {
+				this.isLongPressTriggered = true;
+				console.log("CameraControls: Long press triggered!");
+				
+				// Create synthetic context menu event
+				const syntheticEvent = new PointerEvent('contextmenu', {
+					bubbles: true,
+					cancelable: true,
+					clientX: this.longPressStartX,
+					clientY: this.longPressStartY,
+					pointerType: 'touch',
+					button: 2
+				});
+				
+				// Add custom properties
+				Object.defineProperty(syntheticEvent, 'isSynthetic', { value: true });
+				Object.defineProperty(syntheticEvent, 'originalEvent', { value: event });
+				
+				// Call the view's context menu handler directly (same as handleMouseUp does)
+				if (this.view && this.view.onContextMenu) {
+					this.view.onContextMenu(syntheticEvent, this.longPressStartX, this.longPressStartY);
+				}
+				
+				// Vibrate for tactile feedback
+				if (navigator.vibrate) {
+					navigator.vibrate(50);
+				}
+			}, this.longPressDuration);
+		}
+		
 		this.updateStateFromEvent(event)
 		const [x, y] = mouseToView(this.view, event.clientX, event.clientY)
 		this.mouseStart.set( x, y );
@@ -590,10 +643,19 @@ class CameraMapControls {
 		}
 		this.view.cursorSprite.visible = false;
 
+		// Clear long press timer
+		this.clearLongPressTimer();
+
 		// Check for tap gesture (left button, minimal movement) before handling context menu
-		if (event.button === 0 && this.state === STATE.NONE) {
+		// Don't trigger if long press was triggered
+		if (event.button === 0 && this.state === STATE.NONE && !this.isLongPressTriggered) {
 			// It was a tap gesture - check for double-tap zoom
 			this.handleSingleTap(event);
+		}
+		
+		// Reset long press flag
+		if (this.isLongPressTriggered) {
+			this.isLongPressTriggered = false;
 		}
 		
 		// Check if this was a right-click release without dragging
@@ -645,6 +707,16 @@ class CameraMapControls {
 		if (!this.enabled) {
 			this.state = STATE.NONE
 			return;
+		}
+
+		// Check if movement exceeds long press threshold
+		if (this.longPressTimer) {
+			const deltaX = Math.abs(event.clientX - this.longPressStartX);
+			const deltaY = Math.abs(event.clientY - this.longPressStartY);
+			
+			if (deltaX > this.longPressThreshold || deltaY > this.longPressThreshold) {
+				this.clearLongPressTimer();
+			}
 		}
 
 		// Skip mouse move handling if we're in a touch gesture

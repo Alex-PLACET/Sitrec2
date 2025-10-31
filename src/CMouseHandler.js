@@ -1,6 +1,5 @@
 // The basic functionality of a mouse handler attached to a view
 // stores last mouse position, delta, etc
-// TODO: touch functionality
 export class CMouseHandler {
     constructor(view, handlers) {
         this.view = view
@@ -10,6 +9,15 @@ export class CMouseHandler {
         this.dx = 0;
         this.dy = 0;
         this.dragging = false;
+
+        // Long press support for mobile context menu
+        this.longPressTimer = null;
+        this.longPressDuration = 500; // 500ms
+        this.longPressThreshold = 10; // 10px movement threshold
+        this.longPressStartX = 0;
+        this.longPressStartY = 0;
+        this.longPressEvent = null;
+        this.isLongPressTriggered = false;
 
         this.view.canvas.addEventListener('wheel', e => this.handleMouseWheel(e));
         this.view.canvas.addEventListener('pointermove', e => this.handleMouseMove(e));
@@ -51,6 +59,16 @@ export class CMouseHandler {
 //        e.preventDefault();
         this.newPosition(e)
 
+        // Check if movement exceeds long press threshold
+        if (this.longPressTimer) {
+            const deltaX = Math.abs(e.clientX - this.longPressStartX);
+            const deltaY = Math.abs(e.clientY - this.longPressStartY);
+            
+            if (deltaX > this.longPressThreshold || deltaY > this.longPressThreshold) {
+                this.clearLongPressTimer();
+            }
+        }
+
         if (this.dragging) {
             if (e.buttons === 1) {
                 if (this.handlers.drag) {
@@ -78,9 +96,48 @@ export class CMouseHandler {
 //        e.preventDefault();
         this.view.canvas.setPointerCapture(e.pointerId)
 
-
         this.newPosition(e, true)
         this.dragging = true;
+        
+        // Debug logging
+        console.log("handleMouseDown - pointerType:", e.pointerType, "button:", e.button, "buttons:", e.buttons);
+        
+        // Start long press timer for touch events (not for mouse right-click)
+        // pointerType will be 'touch' for touch events, 'mouse' for mouse events
+        if (e.pointerType === 'touch' && e.button === 0) {
+            console.log("Starting long press timer...");
+            this.longPressStartX = e.clientX;
+            this.longPressStartY = e.clientY;
+            this.longPressEvent = e;
+            this.isLongPressTriggered = false;
+            
+            this.longPressTimer = setTimeout(() => {
+                this.isLongPressTriggered = true;
+                console.log("Long press triggered!");
+                
+                // Create synthetic right-click event for context menu
+                const syntheticEvent = new PointerEvent('contextmenu', {
+                    bubbles: true,
+                    cancelable: true,
+                    clientX: this.longPressStartX,
+                    clientY: this.longPressStartY,
+                    pointerType: 'touch',
+                    button: 2
+                });
+                
+                // Add custom properties
+                Object.defineProperty(syntheticEvent, 'isSynthetic', { value: true });
+                Object.defineProperty(syntheticEvent, 'originalEvent', { value: e });
+                
+                this.handleContextMenu(syntheticEvent);
+                
+                // Vibrate for tactile feedback
+                if (navigator.vibrate) {
+                    navigator.vibrate(50);
+                }
+            }, this.longPressDuration);
+        }
+        
         if (this.handlers.down) this.handlers.down(e)
 
     }
@@ -89,10 +146,19 @@ export class CMouseHandler {
 //        e.preventDefault();
         this.view.canvas.releasePointerCapture(e.pointerId)
 
+        // Clear long press timer
+        this.clearLongPressTimer();
 
         this.newPosition(e)
         this.dragging = false;
-        if (this.handlers.up) this.handlers.up(e)
+        
+        // Don't trigger up handler if long press was triggered
+        if (!this.isLongPressTriggered) {
+            if (this.handlers.up) this.handlers.up(e)
+        } else {
+            // Reset flag
+            this.isLongPressTriggered = false;
+        }
 
     }
 
@@ -118,6 +184,13 @@ export class CMouseHandler {
             this.handlers.contextMenu(event);
         }
 
+    }
+
+    clearLongPressTimer() {
+        if (this.longPressTimer) {
+            clearTimeout(this.longPressTimer);
+            this.longPressTimer = null;
+        }
     }
 
 
