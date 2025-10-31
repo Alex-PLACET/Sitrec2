@@ -4,7 +4,7 @@ import {Color, Group, Matrix4, Raycaster, Scene, Sphere, Vector3} from "three";
 import {degrees, radians} from "../utils";
 import {FileManager, GlobalDateTimeNode, Globals, guiMenus, guiShowHide, NodeMan, setRenderOne, Sit} from "../Globals";
 import {DebugArrow, DebugArrowAB, propagateLayerMaskObject, setLayerMaskRecursive} from "../threeExt";
-import {ECEF2EUS, ECEFToLLAVD_Sphere, EUSToECEF, wgs84} from "../LLA-ECEF-ENU";
+import {ECEFToLLAVD_Sphere, EUSToECEF, wgs84} from "../LLA-ECEF-ENU";
 // npm install three-text2d --save-dev
 // https://github.com/gamestdio/three-text2d
 //import { MeshText2D, textAlign } from 'three-text2d'
@@ -16,7 +16,7 @@ import {CNodeDisplayGlobeCircle} from "./CNodeDisplayGlobeCircle";
 import {CNodeDisplayEarthShadow} from "./CNodeDisplayEarthShadow";
 import {assert} from "../assert.js";
 import {intersectSphere2, V3} from "../threeUtils";
-import {calculateGST, celestialToECEF, getSiderealTime} from "../CelestialMath";
+import {getCelestialDirectionFromRaDec, getSiderealTime} from "../CelestialMath";
 import {ViewMan} from "../CViewManager";
 import {CNodeLabeledArrow} from "./CNodeLabels3D";
 import {CNodeDisplaySkyOverlay} from "./CNodeDisplaySkyOverlay";
@@ -1263,19 +1263,14 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
         }
 
         if (this[flagName]) {
-             const gst = calculateGST(date);
-            const ecef = celestialToECEF(ra, dec, wgs84.RADIUS, gst)
-            const eusDir = ECEF2EUS(ecef, radians(Sit.lat), radians(Sit.lon), 0, true);
-            eusDir.normalize();
+            const eusDir = getCelestialDirectionFromRaDec(ra, dec, date)
             this[obName].updateDirection(eusDir)
         }
 
         // Handle Sun-specific calculations for flare region
         if (planet === "Sun") {
-            const gst = calculateGST(date);
-            const ecef = celestialToECEF(ra, dec, wgs84.RADIUS, gst)
-            const eusDir = ECEF2EUS(ecef, radians(Sit.lat), radians(Sit.lon), 0, true).normalize();
-            
+            const eusDir = getCelestialDirectionFromRaDec(ra, dec, date)
+
             // Store sun direction vectors for flare calculations
             this.satellites.toSun.copy(eusDir.clone().normalize())
             this.satellites.fromSun.copy(this.satellites.toSun.clone().negate())
