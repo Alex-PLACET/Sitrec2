@@ -2175,22 +2175,55 @@ export class CNodeSynthBuilding extends CNode3DGroup {
             cp.geometry.dispose();
             cp.material.dispose();
         });
+        this.controlPoints = [];
+        
+        // Remove roof center handle
+        if (this.roofCenterHandle) {
+            this.group.remove(this.roofCenterHandle);
+            this.roofCenterHandle.geometry.dispose();
+            this.roofCenterHandle.material.dispose();
+            this.roofCenterHandle = null;
+        }
+        
+        // Remove roofline handle
+        if (this.rooflineHandle) {
+            this.group.remove(this.rooflineHandle);
+            this.rooflineHandle.geometry.dispose();
+            this.rooflineHandle.material.dispose();
+            this.rooflineHandle = null;
+        }
+        
+        // Remove rotation handles
+        this.rotationHandles.forEach(handle => {
+            this.group.remove(handle);
+            handle.geometry.dispose();
+            handle.material.dispose();
+        });
+        this.rotationHandles = [];
         
         // Remove meshes
         if (this.solidMesh) {
             this.group.remove(this.solidMesh);
             this.solidMesh.geometry.dispose();
-            this.solidMesh.material.dispose();
+            // Handle both single material and material array
+            if (Array.isArray(this.solidMesh.material)) {
+                this.solidMesh.material.forEach(m => m.dispose());
+            } else {
+                this.solidMesh.material.dispose();
+            }
+            this.solidMesh = null;
         }
         if (this.wireframe) {
             this.group.remove(this.wireframe);
             this.wireframe.geometry.dispose();
             this.wireframe.material.dispose();
+            this.wireframe = null;
         }
         
         // Remove GUI folder
         if (this.guiFolder) {
             this.guiFolder.destroy();
+            this.guiFolder = null;
         }
         
         super.dispose();
