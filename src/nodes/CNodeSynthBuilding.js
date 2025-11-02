@@ -720,6 +720,25 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         console.log("  Raycaster layers:", this.raycaster.layers.mask.toString(2));
         console.log("  Camera layers:", view.camera.layers.mask.toString(2));
         
+        // Check for Alt/Option key - if pressed, duplicate the building and switch to editing the copy
+        // Only duplicate if we haven't already done so for this event (prevent infinite recursion)
+        if (event.altKey && !event._duplicatedBuilding) {
+            console.log("  Alt key detected - duplicating building");
+            const duplicate = this.duplicate();
+            if (duplicate) {
+                // Enter edit mode on the duplicate
+                duplicate.setEditMode(true);
+                
+                // Mark the event as having triggered duplication to prevent recursion
+                event._duplicatedBuilding = true;
+                
+                // Continue with the drag/rotate logic on the duplicate
+                // by re-triggering the event handling on the duplicate
+                duplicate.onPointerDown(event);
+            }
+            return;
+        }
+        
         // FIRST: Check intersection with actual handles (control points + roof center handle)
         // These should have priority over rotation rings
         const allHandles = [...this.controlPoints];
@@ -1205,6 +1224,50 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         
         // Initially hide the folder
         this.guiFolder.hide();
+    }
+    
+    /**
+     * Duplicate this building and return the copy
+     * @returns {CNodeSynthBuilding} The duplicated building
+     */
+    duplicate() {
+        // Serialize the current building
+        const serialized = this.serialize();
+        
+        // Exit edit mode on the original
+        this.setEditMode(false);
+        
+        // Convert vertices back to EUS for the new building
+        const verticesEUS = serialized.vertices.map(v => {
+            const eus = LLAToEUS(v.position[0], v.position[1], v.position[2]);
+            return {
+                position: eus,
+                type: v.type,
+                next: v.next,
+                prev: v.prev,
+                linkedVertex: v.linkedVertex
+            };
+        });
+        
+        // Create building data for the manager (without ID so it gets auto-assigned)
+        const buildingData = {
+            name: this.name + " Copy",
+            vertices: verticesEUS,
+            faces: serialized.faces,
+            material: serialized.material,
+            color: serialized.color,
+            opacity: serialized.opacity,
+            transparent: serialized.transparent,
+            depthTest: serialized.depthTest,
+            wireframe: serialized.wireframe
+        };
+        
+        // Use the manager's addBuilding to properly create and register the duplicate
+        const duplicate = Synth3DManager.addBuilding(buildingData);
+        
+        console.log(`Duplicated building ${this.buildingID} -> ${duplicate.buildingID}`);
+        
+        return duplicate;
     }
     
     /**
