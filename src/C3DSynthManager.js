@@ -14,7 +14,6 @@ import {wgs84} from "./LLA-ECEF-ENU";
 export class C3DSynthManager extends CManager {
     constructor() {
         super();
-        this.buildings = new Map();  // Map of buildingID -> CNodeSynthBuilding
         this.nextBuildingID = 1;
         
         console.log("C3DSynthManager initialized");
@@ -30,7 +29,10 @@ export class C3DSynthManager extends CManager {
             id: id
         });
         
-        this.buildings.set(id, building);
+        // Note: CNodeSynthBuilding extends CNode, which automatically adds itself to NodeMan in its constructor
+        
+        // Add to manager using inherited CManager.add() method
+        this.add(id, building);
         console.log(`Added building: ${id}`);
         setRenderOne(true);
         return building;
@@ -40,10 +42,15 @@ export class C3DSynthManager extends CManager {
      * Remove a building
      */
     removeBuilding(buildingID) {
-        const building = this.buildings.get(buildingID);
-        if (building) {
-            building.dispose();
-            this.buildings.delete(buildingID);
+        if (this.exists(buildingID)) {
+            const building = this.get(buildingID);
+            
+            // Use NodeMan.disposeRemove which handles both disposal and removal from NodeMan
+            NodeMan.disposeRemove(building);
+            
+            // Remove from this manager using inherited method
+            this.remove(buildingID);
+            
             console.log(`Removed building: ${buildingID}`);
             setRenderOne(true);
         }
@@ -53,7 +60,7 @@ export class C3DSynthManager extends CManager {
      * Get a building by ID
      */
     getBuilding(buildingID) {
-        return this.buildings.get(buildingID);
+        return this.exists(buildingID) ? this.get(buildingID) : undefined;
     }
     
     /**
@@ -154,7 +161,7 @@ export class C3DSynthManager extends CManager {
         let closestBuilding = null;
         let closestDistance = Infinity;
         
-        this.buildings.forEach((building, id) => {
+        this.iterate((id, building) => {
             if (building.solidMesh) {
                 const intersects = view.raycaster.intersectObject(building.solidMesh, false);
                 if (intersects.length > 0 && intersects[0].distance < closestDistance) {
@@ -172,7 +179,7 @@ export class C3DSynthManager extends CManager {
      */
     serialize() {
         const buildingsArray = [];
-        this.buildings.forEach((building, id) => {
+        this.iterate((id, building) => {
             buildingsArray.push(building.serialize());
         });
         
@@ -189,21 +196,32 @@ export class C3DSynthManager extends CManager {
         if (!data || !data.buildings) return;
         
         // Clear existing buildings
-        this.buildings.forEach((building, id) => {
-            building.dispose();
-        });
-        this.buildings.clear();
+        this.clear();
         
         // Load buildings
         data.buildings.forEach(buildingData => {
             const building = CNodeSynthBuilding.deserialize(buildingData);
-            this.buildings.set(building.buildingID, building);
+            
+            // Note: CNodeSynthBuilding's constructor automatically adds itself to NodeMan
+            
+            // Add to manager using inherited CManager.add() method
+            this.add(building.buildingID || building.id, building);
         });
         
-        this.nextBuildingID = data.nextBuildingID || this.buildings.size + 1;
+        this.nextBuildingID = data.nextBuildingID || this.size() + 1;
         
-        console.log(`Loaded ${this.buildings.size} buildings`);
+        console.log(`Loaded ${this.size()} buildings`);
         setRenderOne(true);
+    }
+    
+    /**
+     * Clear all buildings
+     */
+    clear() {
+        const ids = Object.keys(this.list);
+        ids.forEach(id => {
+            this.removeBuilding(id);
+        });
     }
     
     /**
@@ -216,10 +234,7 @@ export class C3DSynthManager extends CManager {
         document.removeEventListener('pointerup', this.onPointerUpBound);
         
         // Dispose all buildings
-        this.buildings.forEach((building, id) => {
-            building.dispose();
-        });
-        this.buildings.clear();
+        this.clear();
         
         if (this.creationPreviewBuilding) {
             this.creationPreviewBuilding.dispose();

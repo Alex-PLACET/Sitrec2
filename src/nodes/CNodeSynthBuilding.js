@@ -28,6 +28,8 @@ import {mouseInViewOnly} from "../ViewUtils";
 
 export class CNodeSynthBuilding extends CNode3DGroup {
     constructor(v) {
+
+        v.rawColor = v.color;
         super(v);
         
         // Mesh data structure (what we save/load)
@@ -52,7 +54,7 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         
         // Material properties
         this.materialType = v.material || 'lambert';
-        this.materialColor = v.color || 0x8888ff;
+        this.materialColor = v.rawColor || 0x8888ff;
         this.materialOpacity = v.opacity !== undefined ? v.opacity : 0.7;
         this.materialTransparent = v.transparent !== undefined ? v.transparent : true;
         this.materialDepthTest = v.depthTest !== undefined ? v.depthTest : true;
@@ -1148,9 +1150,9 @@ export class CNodeSynthBuilding extends CNode3DGroup {
     serialize() {
         // Convert vertices to LLA for portability across different map origins
         const verticesLLA = this.vertices.map(v => {
-            const lla = EUSToLLA(v.position.x, v.position.y, v.position.z);
+            const lla = EUSToLLA(v.position);
             return {
-                position: {lat: lla.lat, lon: lla.lon, alt: lla.alt},
+                position: [lla.x, lla.y, lla.z],
                 type: v.type,
                 next: v.next,
                 prev: v.prev,
@@ -1180,7 +1182,7 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         const verticesEUS = data.vertices.map(v => {
             // Handle both old format (just position) and new format (with metadata)
             if (v.position) {
-                const eus = LLAToEUS(v.position.lat, v.position.lon, v.position.alt);
+                const eus = LLAToEUS(v.position[0], v.position[1], v.position[2]);
                 return {
                     position: eus,
                     type: v.type || 'free',

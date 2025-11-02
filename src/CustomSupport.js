@@ -2223,6 +2223,9 @@ export class CCustomManager {
         // Serialize feature markers from FeatureManager
         out.featureMarkers = FeatureManager.serialize()
 
+        // Serialize synthetic 3D buildings from Synth3DManager
+        out.syntheticBuildings = Synth3DManager.serialize()
+
         // do the export version tracking last, so none of the combining sitches overwrites it
         out.exportVersion = process.env.BUILD_VERSION_STRING
         out.exportTag = process.env.VERSION;
@@ -2394,6 +2397,12 @@ export class CCustomManager {
             // This creates the necessary feature marker nodes
             if (sitchData.featureMarkers) {
                 FeatureManager.deserialize(sitchData.featureMarkers)
+            }
+
+            // Deserialize synthetic 3D buildings BEFORE applying mods
+            // This recreates the building nodes so that mods can be applied to them
+            if (sitchData.syntheticBuildings) {
+                Synth3DManager.deserialize(sitchData.syntheticBuildings)
             }
 
             // now we've either got
