@@ -28,7 +28,15 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         super(v);
         
         // Mesh data structure (what we save/load)
-        this.vertices = [];  // Array of Vector3 positions in EUS coordinates
+        // Each vertex is now an object with position and metadata:
+        // {
+        //   position: Vector3,
+        //   type: 'top' | 'bottom' | 'free',
+        //   next: vertexIndex (for ring navigation),
+        //   prev: vertexIndex (for ring navigation),
+        //   linkedVertex: vertexIndex (top <-> bottom pairing)
+        // }
+        this.vertices = [];  // Array of vertex objects
         this.faces = [];     // Array of face objects: {indices: [v0, v1, v2, ...]}
         
         // Optional: Store edges explicitly for wireframe rendering
@@ -77,7 +85,28 @@ export class CNodeSynthBuilding extends CNode3DGroup {
      * Load geometry from vertices and faces arrays
      */
     loadGeometry(vertices, faces) {
-        this.vertices = vertices.map(v => new Vector3(v.x, v.y, v.z));
+        // Handle both old format (just positions) and new format (vertex objects)
+        this.vertices = vertices.map(v => {
+            if (v.position) {
+                // New format with metadata
+                return {
+                    position: new Vector3(v.position.x, v.position.y, v.position.z),
+                    type: v.type || 'free',
+                    next: v.next !== undefined ? v.next : -1,
+                    prev: v.prev !== undefined ? v.prev : -1,
+                    linkedVertex: v.linkedVertex !== undefined ? v.linkedVertex : -1
+                };
+            } else {
+                // Old format - just a position, treat as free vertex
+                return {
+                    position: new Vector3(v.x, v.y, v.z),
+                    type: 'free',
+                    next: -1,
+                    prev: -1,
+                    linkedVertex: -1
+                };
+            }
+        });
         this.faces = faces.map(f => ({indices: [...f.indices]}));
         this.computeEdges();
     }
@@ -93,15 +122,30 @@ export class CNodeSynthBuilding extends CNode3DGroup {
             return;
         }
         
-        // Bottom 4 vertices (on ground)
-        this.vertices = footprint.map(p => p.clone());
+        // Create bottom ring (vertices 0-3)
+        for (let i = 0; i < 4; i++) {
+            this.vertices.push({
+                position: footprint[i].clone(),
+                type: 'bottom',
+                next: (i + 1) % 4,        // Circular: 0→1→2→3→0
+                prev: (i + 3) % 4,        // Circular: 0←1←2←3←0
+                linkedVertex: i + 4       // Links to corresponding top vertex
+            });
+        }
         
-        // Top 4 vertices (extruded up by height along local up vector)
+        // Create top ring (vertices 4-7)
         for (let i = 0; i < 4; i++) {
             const bottomPos = footprint[i];
             const localUp = getLocalUpVector(bottomPos);
             const topPos = bottomPos.clone().add(localUp.multiplyScalar(height));
-            this.vertices.push(topPos);
+            
+            this.vertices.push({
+                position: topPos,
+                type: 'top',
+                next: 4 + ((i + 1) % 4),  // Circular: 4→5→6→7→4
+                prev: 4 + ((i + 3) % 4),  // Circular: 4←5←6←7←4
+                linkedVertex: i            // Links to corresponding bottom vertex
+            });
         }
         
         // Define faces as quads (we'll triangulate for rendering)
@@ -173,7 +217,8 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         });
         
         // Build position buffer
-        this.vertices.forEach(v => {
+        this.vertices.forEach(vertex => {
+            const v = vertex.position;
             positions.push(v.x, v.y, v.z);
         });
         
@@ -197,8 +242,8 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         const edgeGeometry = new BufferGeometry();
         const edgePositions = [];
         this.edges.forEach(edge => {
-            const v0 = this.vertices[edge.v0];
-            const v1 = this.vertices[edge.v1];
+            const v0 = this.vertices[edge.v0].position;
+            const v1 = this.vertices[edge.v1].position;
             edgePositions.push(v0.x, v0.y, v0.z);
             edgePositions.push(v1.x, v1.y, v1.z);
         });
@@ -239,7 +284,7 @@ export class CNodeSynthBuilding extends CNode3DGroup {
             });
             
             const sphere = new Mesh(geometry, material);
-            sphere.position.copy(vertex);
+            sphere.position.copy(vertex.position);
             sphere.layers.mask = LAYER.MASK_HELPERS;
             sphere.userData.vertexIndex = idx;
             
@@ -366,9 +411,9 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         
         this.raycaster.setFromCamera(mouseRay, view.camera);
         
-        // Determine if this is a top or bottom vertex
-        // For cuboid: vertices 0-3 are bottom, 4-7 are top
-        const isTopVertex = this.draggingVertexIndex >= 4;
+        // Get the vertex being dragged
+        const draggedVertex = this.vertices[this.draggingVertexIndex];
+        const isTopVertex = draggedVertex.type === 'top';
         
         let plane = new Plane();
         
@@ -394,9 +439,53 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         // Intersect ray with plane
         const newPosition = new Vector3();
         if (this.raycaster.ray.intersectPlane(plane, newPosition)) {
-            // Update vertex position
-            this.vertices[this.draggingVertexIndex].copy(newPosition);
-            this.draggingPoint.position.copy(newPosition);
+            if (isTopVertex) {
+                // For top vertices, calculate the new HEIGHT and apply to all tops
+                // This keeps each top vertex directly above its corresponding bottom
+                
+                // Get the linked bottom vertex for the dragged top vertex
+                const bottomVertex = this.vertices[draggedVertex.linkedVertex];
+                const bottomPos = bottomVertex.position;
+                const localUp = getLocalUpVector(bottomPos);
+                
+                // Calculate what the new height would be
+                const toTop = newPosition.clone().sub(bottomPos);
+                let newHeight = toTop.dot(localUp);
+                
+                // Minimum height of 1 meter
+                const minHeight = 1.0;
+                if (newHeight < minHeight) {
+                    newHeight = minHeight;
+                }
+                
+                // Apply this HEIGHT to all top vertices by iterating the ring
+                let currentIdx = this.draggingVertexIndex;
+                do {
+                    const topVertex = this.vertices[currentIdx];
+                    const linkedBottom = this.vertices[topVertex.linkedVertex];
+                    const upVector = getLocalUpVector(linkedBottom.position);
+                    
+                    // Position this top vertex directly above its bottom at newHeight
+                    topVertex.position.copy(linkedBottom.position.clone().add(upVector.multiplyScalar(newHeight)));
+                    
+                    currentIdx = topVertex.next;
+                } while (currentIdx !== this.draggingVertexIndex);
+                
+            } else {
+                // For bottom vertices, move the vertex and its linked top
+                draggedVertex.position.copy(newPosition);
+                
+                // Move the linked top vertex to stay directly above
+                const linkedTop = this.vertices[draggedVertex.linkedVertex];
+                const localUp = getLocalUpVector(draggedVertex.position);
+                
+                // Calculate current height of the linked top
+                const toTop = linkedTop.position.clone().sub(draggedVertex.position);
+                const currentHeight = toTop.dot(localUp);
+                
+                // Reposition top to maintain its height above the new bottom position
+                linkedTop.position.copy(draggedVertex.position.clone().add(localUp.multiplyScalar(currentHeight)));
+            }
             
             // Rebuild mesh
             this.buildMesh();
