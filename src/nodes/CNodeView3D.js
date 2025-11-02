@@ -1550,7 +1550,12 @@ export class CNodeView3D extends CNodeViewCanvas {
             menuTitle = `Star: ${celestialObject.name}`;
         }
         
-        const standaloneMenu = Globals.menuBar.createStandaloneMenu(menuTitle, clientX, clientY);
+        const standaloneMenu = Globals.menuBar.createStandaloneMenu(menuTitle, clientX, clientY, true);
+        
+        // If menu creation was blocked (persistent menu is open), return early
+        if (!standaloneMenu) {
+            return;
+        }
         
         // Add information about the celestial object
         if (celestialObject.type === 'planet') {
@@ -1703,7 +1708,12 @@ export class CNodeView3D extends CNodeViewCanvas {
             const menuTitle = `Track: ${closestTrack.trackOb?.menuText || closestTrack.trackID}`;
             
             // Create a standalone menu and mirror the track's GUI folder
-            const standaloneMenu = Globals.menuBar.createStandaloneMenu(menuTitle, event.clientX, event.clientY);
+            const standaloneMenu = Globals.menuBar.createStandaloneMenu(menuTitle, event.clientX, event.clientY, true);
+            
+            // If menu creation was blocked (persistent menu is open), return early
+            if (!standaloneMenu) {
+                return;
+            }
             
             // Set up dynamic mirroring for the track's GUI folder
             CustomManager.setupDynamicMirroring(closestTrack.guiFolder, standaloneMenu);
@@ -1775,7 +1785,12 @@ export class CNodeView3D extends CNodeViewCanvas {
                             
                             // Create a standalone menu and mirror the object's GUI folder
                             // Use the same approach as tracks for consistency
-                            const standaloneMenu = Globals.menuBar.createStandaloneMenu(menuTitle, event.clientX, event.clientY);
+                            const standaloneMenu = Globals.menuBar.createStandaloneMenu(menuTitle, event.clientX, event.clientY, true);
+                            
+                            // If menu creation was blocked (persistent menu is open), return early
+                            if (!standaloneMenu) {
+                                return;
+                            }
                             
                             // Set up dynamic mirroring for the object's GUI folder
                             CustomManager.setupDynamicMirroring(node.gui, standaloneMenu);

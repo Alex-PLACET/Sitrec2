@@ -1343,7 +1343,14 @@ export class CCustomManager {
         }
         
         // Create the context menu using lil-gui standalone menu
-        const menu = Globals.menuBar.createStandaloneMenu("Ground", mouseX, mouseY);
+        // Pass true for dismissOnOutsideClick so it behaves like a context menu
+        const menu = Globals.menuBar.createStandaloneMenu("Ground", mouseX, mouseY, true);
+        
+        // If menu creation was blocked (persistent menu is open), return early
+        if (!menu) {
+            return;
+        }
+        
         menu.open();
         
         // Store reference to track this menu
