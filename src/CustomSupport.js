@@ -25,6 +25,7 @@ import {
     setSitchEstablished,
     Sit,
     Synth3DManager,
+    UndoManager,
     Units
 } from "./Globals";
 import {isKeyHeld, toggler} from "./KeyBoardHandler";
@@ -1509,6 +1510,24 @@ export class CCustomManager {
                 // Create a default 7x7x4 building centered at the ground point
                 const building = Synth3DManager.createBuildingAtPoint(groundPoint);
                 
+                // Add undo action for building creation
+                if (building && UndoManager) {
+                    const buildingID = building.buildingID;
+                    const buildingState = building.serialize();
+                    
+                    UndoManager.add({
+                        undo: () => {
+                            // Delete the created building
+                            Synth3DManager.removeBuilding(buildingID);
+                        },
+                        redo: () => {
+                            // Recreate the building
+                            Synth3DManager.addBuilding(buildingState);
+                        },
+                        description: `Create building "${building.name}"`
+                    });
+                }
+                
                 // Immediately enter edit mode and show edit menu
                 if (building) {
                     building.setEditMode(true);
@@ -1731,6 +1750,24 @@ export class CCustomManager {
             },
             deleteBuilding: () => {
                 if (confirm(`Delete building "${buildingName}"?`)) {
+                    // Add undo action for deletion
+                    if (UndoManager) {
+                        const buildingState = building.serialize();
+                        const buildingID = building.buildingID;
+                        
+                        UndoManager.add({
+                            undo: () => {
+                                // Recreate the building
+                                Synth3DManager.addBuilding(buildingState);
+                            },
+                            redo: () => {
+                                // Delete the building again
+                                Synth3DManager.removeBuilding(buildingID);
+                            },
+                            description: `Delete building "${buildingName}"`
+                        });
+                    }
+                    
                     Synth3DManager.removeBuilding(building.buildingID);
                     menu.destroy();
                     this.buildingEditMenu = null;

@@ -1962,6 +1962,24 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         const actions = {
             delete: () => {
                 if (confirm(`Delete building "${this.name}"?`)) {
+                    // Capture state before deletion for undo
+                    if (UndoManager) {
+                        const buildingState = this.serialize();
+                        const buildingID = this.buildingID;
+                        
+                        UndoManager.add({
+                            undo: () => {
+                                // Recreate the building
+                                Synth3DManager.addBuilding(buildingState);
+                            },
+                            redo: () => {
+                                // Delete the building again
+                                Synth3DManager.removeBuilding(buildingID);
+                            },
+                            description: `Delete building "${this.name}"`
+                        });
+                    }
+                    
                     // Manager will handle deletion
                     Synth3DManager.removeBuilding(this.buildingID);
                 }
@@ -2040,6 +2058,23 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         
         // Use the manager's addBuilding to properly create and register the duplicate
         const duplicate = Synth3DManager.addBuilding(buildingData);
+        
+        // Add undo action for duplication
+        if (UndoManager && duplicate) {
+            const duplicateID = duplicate.buildingID;
+            
+            UndoManager.add({
+                undo: () => {
+                    // Delete the duplicated building
+                    Synth3DManager.removeBuilding(duplicateID);
+                },
+                redo: () => {
+                    // Recreate the duplicated building
+                    Synth3DManager.addBuilding(buildingData);
+                },
+                description: `Duplicate building "${this.name}"`
+            });
+        }
         
         return duplicate;
     }
