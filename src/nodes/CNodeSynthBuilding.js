@@ -181,7 +181,7 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         // roof1 is between top vertices 4 and 5 (side A-B)
         // roof2 is between top vertices 6 and 7 (side C-D, opposite side)
         // They start at the same height as the top vertices
-        const rooflineHeight = height * 1.2; // Start 20% higher than walls
+        const rooflineHeight = height; // Start flat with the walls
         
         // roof1: midpoint between vertices 4 and 5
         const roof1Pos = footprint[0].clone().add(footprint[1]).multiplyScalar(0.5);
@@ -512,32 +512,35 @@ export class CNodeSynthBuilding extends CNode3DGroup {
             }
         });
         
-        // Create one grey handle at the center of the roof
-        const topVertices = this.vertices.filter(v => v.type === 'top');
-        if (topVertices.length > 0) {
-            // Calculate the center of all top vertices
-            const roofCenter = new Vector3();
-            topVertices.forEach(v => roofCenter.add(v.position));
-            roofCenter.divideScalar(topVertices.length);
+        // Create one grey handle at the center of the roofline
+        const rooflineVertices = this.vertices.filter(v => v.type === 'roofline');
+        if (rooflineVertices.length >= 2) {
+            // Calculate the center of the roofline (midpoint between roof1 and roof2)
+            const roof1 = this.vertices[8];
+            const roof2 = this.vertices[9];
             
-            const roofMaterial = new MeshLambertMaterial({
-                color: 0x888888,  // Grey
-                transparent: true,
-                opacity: 0.9,
-                depthTest: true
-            });
-            
-            this.roofCenterHandle = new Mesh(geometry, roofMaterial);
-            this.roofCenterHandle.position.copy(roofCenter);
-            this.roofCenterHandle.layers.mask = LAYER.MASK_HELPERS;
-            this.roofCenterHandle.userData.isRoofCenter = true;
-            
-            this.group.add(this.roofCenterHandle);
-            this.controlPoints.push(this.roofCenterHandle);
+            if (roof1 && roof2 && roof1.type === 'roofline' && roof2.type === 'roofline') {
+                const roofCenter = roof1.position.clone().add(roof2.position).multiplyScalar(0.5);
+                
+                const roofMaterial = new MeshLambertMaterial({
+                    color: 0x888888,  // Grey
+                    transparent: true,
+                    opacity: 0.9,
+                    depthTest: true
+                });
+                
+                this.roofCenterHandle = new Mesh(geometry, roofMaterial);
+                this.roofCenterHandle.position.copy(roofCenter);
+                this.roofCenterHandle.layers.mask = LAYER.MASK_HELPERS;
+                this.roofCenterHandle.userData.isRoofCenter = true;
+                
+                this.group.add(this.roofCenterHandle);
+                this.controlPoints.push(this.roofCenterHandle);
+            }
         }
         
         // Create cyan handle for roofline (roof1)
-        const rooflineVertices = this.vertices.filter(v => v.type === 'roofline');
+        // rooflineVertices already declared above, reuse it
         if (rooflineVertices.length > 0) {
             // Use roof1 position (vertex 8)
             const roof1 = this.vertices[8];
@@ -1244,6 +1247,14 @@ export class CNodeSynthBuilding extends CNode3DGroup {
                 const displacement = currentIntersection.clone().sub(this.dragInitialIntersection);
                 newPosition = this.dragInitialHandlePosition.clone().add(displacement);
                 
+                if (isRoofCenter) {
+                    console.log("Roof Center Movement Calc:");
+                    console.log("  dragInitialIntersection:", this.dragInitialIntersection);
+                    console.log("  currentIntersection:", currentIntersection);
+                    console.log("  displacement:", displacement);
+                    console.log("  displacement.length():", displacement.length());
+                }
+                
                 if (isRoofline) {
                     // For roofline handle, calculate the new HEIGHT and apply to both roofline vertices
                     // Get reference bottom position for height calculation
@@ -1287,18 +1298,88 @@ export class CNodeSynthBuilding extends CNode3DGroup {
                         roof2.position.copy(roof2BasePos.clone().add(upVector2.multiplyScalar(newHeight)));
                     }
                     
-                } else if (isRoofCenter || isTopVertex) {
-                // For roof center handle and top vertices, calculate the new HEIGHT and apply to all tops
-                // This keeps each top vertex directly above its corresponding bottom
+                } else if (isRoofCenter) {
+                // For roof center handle, calculate the HEIGHT CHANGE from initial drag position
+                // This maintains the height difference between roofline and top vertices
                 
-                // Get a reference bottom vertex (use first one, or linked one for top vertex)
-                let referenceBottomVertex;
-                if (isRoofCenter) {
-                    referenceBottomVertex = this.vertices.find(v => v.type === 'bottom');
-                } else {
-                    referenceBottomVertex = this.vertices[draggedVertex.linkedVertex];
+                // Get a reference bottom vertex
+                const referenceBottomVertex = this.vertices.find(v => v.type === 'bottom');
+                const bottomPos = referenceBottomVertex.position;
+                const localUp = getLocalUpVector(bottomPos);
+                
+                // Calculate the initial height (where drag started)
+                const toInitial = this.dragInitialHandlePosition.clone().sub(bottomPos);
+                const initialHeight = toInitial.dot(localUp);
+                
+                // Calculate the new height (where handle is now)
+                const toNew = newPosition.clone().sub(bottomPos);
+                const newHeight = toNew.dot(localUp);
+                
+                // Calculate the HEIGHT CHANGE (delta) - only the movement from initial position
+                const heightDelta = newHeight - initialHeight;
+                
+                console.log("Roof Center Drag Debug:");
+                console.log("  dragInitialHandlePosition:", this.dragInitialHandlePosition);
+                console.log("  newPosition:", newPosition);
+                console.log("  initialHeight:", initialHeight);
+                console.log("  newHeight:", newHeight);
+                console.log("  heightDelta:", heightDelta);
+                
+                // Minimum height of 1 meter for top vertices
+                const minHeight = 1.0;
+                
+                // Get all top vertices
+                const topVertices = this.vertices.filter(v => v.type === 'top');
+                
+                // Apply this HEIGHT CHANGE to all top vertices
+                topVertices.forEach(topVertex => {
+                    const linkedBottom = this.vertices[topVertex.linkedVertex];
+                    const upVector = getLocalUpVector(linkedBottom.position);
+                    
+                    // Get current height
+                    const currentHeight = topVertex.position.clone().sub(linkedBottom.position).dot(upVector);
+                    let adjustedHeight = currentHeight + heightDelta;
+                    
+                    // Don't go below minimum
+                    if (adjustedHeight < minHeight) {
+                        adjustedHeight = minHeight;
+                    }
+                    
+                    // Position this top vertex directly above its bottom at adjusted height
+                    topVertex.position.copy(linkedBottom.position.clone().add(upVector.multiplyScalar(adjustedHeight)));
+                });
+                
+                // Apply the same HEIGHT CHANGE to roofline vertices (roof1 and roof2)
+                const roof1 = this.vertices[8];
+                const roof2 = this.vertices[9];
+                
+                if (roof1 && roof1.type === 'roofline') {
+                    const roof1BasePos = this.vertices[0].position.clone().add(this.vertices[1].position).multiplyScalar(0.5);
+                    const upVector1 = getLocalUpVector(roof1BasePos);
+                    
+                    // Get current roofline height
+                    const currentRoofHeight = roof1.position.clone().sub(roof1BasePos).dot(upVector1);
+                    const adjustedRoofHeight = currentRoofHeight + heightDelta;
+                    
+                    roof1.position.copy(roof1BasePos.clone().add(upVector1.multiplyScalar(adjustedRoofHeight)));
                 }
                 
+                if (roof2 && roof2.type === 'roofline') {
+                    const roof2BasePos = this.vertices[2].position.clone().add(this.vertices[3].position).multiplyScalar(0.5);
+                    const upVector2 = getLocalUpVector(roof2BasePos);
+                    
+                    // Get current roofline height
+                    const currentRoofHeight = roof2.position.clone().sub(roof2BasePos).dot(upVector2);
+                    const adjustedRoofHeight = currentRoofHeight + heightDelta;
+                    
+                    roof2.position.copy(roof2BasePos.clone().add(upVector2.multiplyScalar(adjustedRoofHeight)));
+                }
+                
+            } else if (isTopVertex) {
+                // For top vertices, calculate the new HEIGHT and apply to that top only
+                
+                // Get the linked bottom vertex
+                const referenceBottomVertex = this.vertices[draggedVertex.linkedVertex];
                 const bottomPos = referenceBottomVertex.position;
                 const localUp = getLocalUpVector(bottomPos);
                 
@@ -1312,15 +1393,9 @@ export class CNodeSynthBuilding extends CNode3DGroup {
                     newHeight = minHeight;
                 }
                 
-                // Apply this HEIGHT to all top vertices
-                const topVertices = this.vertices.filter(v => v.type === 'top');
-                topVertices.forEach(topVertex => {
-                    const linkedBottom = this.vertices[topVertex.linkedVertex];
-                    const upVector = getLocalUpVector(linkedBottom.position);
-                    
-                    // Position this top vertex directly above its bottom at newHeight
-                    topVertex.position.copy(linkedBottom.position.clone().add(upVector.multiplyScalar(newHeight)));
-                });
+                // Apply this HEIGHT to this top vertex only
+                const upVector = getLocalUpVector(bottomPos);
+                draggedVertex.position.copy(bottomPos.clone().add(upVector.multiplyScalar(newHeight)));
                 
             } else {
                 // For bottom vertices, move the vertex and its two neighbors
@@ -1420,16 +1495,25 @@ export class CNodeSynthBuilding extends CNode3DGroup {
             // Recreate control points to update their positions
             this.createControlPoints();
             
-            // Re-identify the dragging point
+            // Re-identify the dragging point and update initial positions for next frame
             if (isBuildingMesh) {
                 // Keep the fake dragging point for building mesh
                 this.draggingPoint = {userData: {isBuildingMesh: true}};
             } else if (isRoofCenter) {
                 this.draggingPoint = this.roofCenterHandle;
+                // Update the initial position and intersection for next frame (incremental dragging)
+                this.dragInitialHandlePosition.copy(this.roofCenterHandle.position);
+                this.dragInitialIntersection.copy(currentIntersection);
             } else if (isRoofline) {
                 this.draggingPoint = this.rooflineHandle;
+                // Update the initial position and intersection for next frame (incremental dragging)
+                this.dragInitialHandlePosition.copy(this.rooflineHandle.position);
+                this.dragInitialIntersection.copy(currentIntersection);
             } else {
                 this.draggingPoint = this.controlPoints[this.draggingVertexIndex];
+                // Update the initial position and intersection for next frame (incremental dragging)
+                this.dragInitialHandlePosition.copy(this.draggingPoint.position);
+                this.dragInitialIntersection.copy(currentIntersection);
             }
             
             setRenderOne(true);
