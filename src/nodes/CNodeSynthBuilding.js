@@ -400,11 +400,13 @@ export class CNodeSynthBuilding extends CNode3DGroup {
             }
         });
         
-        // Create one grey handle at the first corner of the roof
+        // Create one grey handle at the center of the roof
         const topVertices = this.vertices.filter(v => v.type === 'top');
         if (topVertices.length > 0) {
-            // Use the first top vertex position
-            const firstTopVertex = topVertices[0];
+            // Calculate the center of all top vertices
+            const roofCenter = new Vector3();
+            topVertices.forEach(v => roofCenter.add(v.position));
+            roofCenter.divideScalar(topVertices.length);
             
             const roofMaterial = new MeshLambertMaterial({
                 color: 0x888888,  // Grey
@@ -414,7 +416,7 @@ export class CNodeSynthBuilding extends CNode3DGroup {
             });
             
             this.roofCenterHandle = new Mesh(geometry, roofMaterial);
-            this.roofCenterHandle.position.copy(firstTopVertex.position);
+            this.roofCenterHandle.position.copy(roofCenter);
             this.roofCenterHandle.layers.mask = LAYER.MASK_HELPERS;
             this.roofCenterHandle.userData.isRoofCenter = true;
             
