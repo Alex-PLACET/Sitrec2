@@ -782,8 +782,7 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         
         this.raycaster.setFromCamera(mouseRay, view.camera);
         
-        // FIRST: Check intersection with actual handles (control points + roof center handle + roofline handle)
-        // These are smaller and should have priority
+        // Check intersection with actual handles (control points + roof center handle + roofline handle)
         const allHandles = [...this.controlPoints];
         if (this.roofCenterHandle) {
             allHandles.push(this.roofCenterHandle);
@@ -794,10 +793,42 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         
         const intersects = this.raycaster.intersectObjects(allHandles, false);
         
-        if (intersects.length > 0) {
-            // Hovering over an actual handle
+        // Check intersection with rotation handles
+        const rotationIntersects = this.rotationHandles.length > 0 
+            ? this.raycaster.intersectObjects(this.rotationHandles, false) 
+            : [];
+        
+        // If both sphere handle and disk intersect, prioritize the closest one to camera
+        if (intersects.length > 0 && rotationIntersects.length > 0) {
+            // Compare distances - use the closest
+            if (intersects[0].distance < rotationIntersects[0].distance) {
+                // Handle is closer - use it
+                if (!this.hoveredHandle || this.hoveredHandle !== intersects[0].object) {
+                    if (intersects[0].object.userData.isRoofCenter || intersects[0].object.userData.isRoofline) {
+                        document.body.style.cursor = 'row-resize';
+                    } else {
+                        document.body.style.cursor = 'move';
+                    }
+                    this.hoveredHandle = intersects[0].object;
+                }
+            } else {
+                // Rotation handle is closer - use it
+                const rotationHandle = rotationIntersects[0].object;
+                const intersectionPoint = rotationIntersects[0].point;
+                const cornerVertexIndex = rotationHandle.userData.cornerVertexIndex;
+                
+                if (this.isOutsideHandleInPlane(cornerVertexIndex, intersectionPoint)) {
+                    if (!this.hoveredHandle || !this.hoveredHandle.userData || !this.hoveredHandle.userData.isRotationRing) {
+                        document.body.style.cursor = 'grab';
+                        this.hoveredHandle = {userData: {isRotationRing: true, cornerVertexIndex: cornerVertexIndex}};
+                    }
+                } else {
+                    this.checkBuildingMeshHover();
+                }
+            }
+        } else if (intersects.length > 0) {
+            // Only handle intersect
             if (!this.hoveredHandle || this.hoveredHandle !== intersects[0].object) {
-                // Use row-resize cursor for roof center and roofline handles, move for corner handles
                 if (intersects[0].object.userData.isRoofCenter || intersects[0].object.userData.isRoofline) {
                     document.body.style.cursor = 'row-resize';
                 } else {
@@ -805,37 +836,23 @@ export class CNodeSynthBuilding extends CNode3DGroup {
                 }
                 this.hoveredHandle = intersects[0].object;
             }
-        } else {
-            // SECOND: Check if hovering in any rotation ring (only if NOT over actual handle)
-            if (this.rotationHandles.length > 0) {
-                const rotationIntersects = this.raycaster.intersectObjects(this.rotationHandles, false);
-                
-                if (rotationIntersects.length > 0) {
-                    // Get the closest rotation ring
-                    const rotationHandle = rotationIntersects[0].object;
-                    const intersectionPoint = rotationIntersects[0].point;
-                    
-                    // Corner rotation ring (for building rotation)
-                    const cornerVertexIndex = rotationHandle.userData.cornerVertexIndex;
-                    
-                    // Project intersection onto plane and check if outside handle radius
-                    if (this.isOutsideHandleInPlane(cornerVertexIndex, intersectionPoint)) {
-                        if (!this.hoveredHandle || !this.hoveredHandle.userData || !this.hoveredHandle.userData.isRotationRing) {
-                            document.body.style.cursor = 'grab';
-                            this.hoveredHandle = {userData: {isRotationRing: true, cornerVertexIndex: cornerVertexIndex}};
-                        }
-                    } else {
-                        // Inside visible handle but outside actual handle - check building mesh
-                        this.checkBuildingMeshHover();
-                    }
-                } else {
-                    // THIRD: Check if hovering over the building mesh itself
-                    this.checkBuildingMeshHover();
+        } else if (rotationIntersects.length > 0) {
+            // Only rotation handle intersect
+            const rotationHandle = rotationIntersects[0].object;
+            const intersectionPoint = rotationIntersects[0].point;
+            const cornerVertexIndex = rotationHandle.userData.cornerVertexIndex;
+            
+            if (this.isOutsideHandleInPlane(cornerVertexIndex, intersectionPoint)) {
+                if (!this.hoveredHandle || !this.hoveredHandle.userData || !this.hoveredHandle.userData.isRotationRing) {
+                    document.body.style.cursor = 'grab';
+                    this.hoveredHandle = {userData: {isRotationRing: true, cornerVertexIndex: cornerVertexIndex}};
                 }
             } else {
-                // No rotation handles, check building mesh
                 this.checkBuildingMeshHover();
             }
+        } else {
+            // No intersections - check building mesh
+            this.checkBuildingMeshHover();
         }
     }
     
@@ -978,8 +995,7 @@ export class CNodeSynthBuilding extends CNode3DGroup {
             return;
         }
         
-        // FIRST: Check intersection with actual handles (control points + roof center handle + roofline handle)
-        // These should have priority over rotation rings
+        // Check intersection with actual handles (control points + roof center handle + roofline handle)
         const allHandles = [...this.controlPoints];
         if (this.roofCenterHandle) {
             allHandles.push(this.roofCenterHandle);
@@ -989,8 +1005,29 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         }
         const intersects = this.raycaster.intersectObjects(allHandles, false);
         
+        // Check for rotation ring intersections
+        const rotationIntersects = this.rotationHandles.length > 0 
+            ? this.raycaster.intersectObjects(this.rotationHandles, false)
+            : [];
 
-        if (intersects.length > 0) {
+        // If both sphere handle and disk intersect, prioritize the closest one to camera
+        let useHandle = false;
+        let useRotation = false;
+        
+        if (intersects.length > 0 && rotationIntersects.length > 0) {
+            // Compare distances - use the closest
+            if (intersects[0].distance < rotationIntersects[0].distance) {
+                useHandle = true;
+            } else {
+                useRotation = true;
+            }
+        } else if (intersects.length > 0) {
+            useHandle = true;
+        } else if (rotationIntersects.length > 0) {
+            useRotation = true;
+        }
+
+        if (useHandle) {
             // Hit an actual handle
             this.draggingPoint = intersects[0].object;
             this.draggingVertexIndex = this.draggingPoint.userData.vertexIndex;
@@ -1037,9 +1074,8 @@ export class CNodeSynthBuilding extends CNode3DGroup {
             return; // Don't check rotation rings
         }
         
-        // SECOND: Check for rotation ring click (only if NOT over actual handle)
-        if (this.rotationHandles.length > 0) {
-            const rotationIntersects = this.raycaster.intersectObjects(this.rotationHandles, false);
+        // Check for rotation ring click
+        if (useRotation) {
             
             if (rotationIntersects.length > 0) {
                 // Get the closest rotation ring
@@ -1348,8 +1384,8 @@ export class CNodeSynthBuilding extends CNode3DGroup {
                 // Calculate the HEIGHT CHANGE (delta) - only the movement from initial position
                 const heightDelta = newHeight - initialHeight;
                 
-                // Minimum height of 1 meter for top vertices
-                const minHeight = 1.0;
+                // Minimum height of 0.01 meter for top vertices
+                const minHeight = 0.01;
                 
                 // Get all top vertices
                 const topVertices = this.vertices.filter(v => v.type === 'top');
@@ -1410,8 +1446,8 @@ export class CNodeSynthBuilding extends CNode3DGroup {
                 const toTop = newPosition.clone().sub(bottomPos);
                 let newHeight = toTop.dot(localUp);
                 
-                // Minimum height of 1 meter
-                const minHeight = 1.0;
+                // Minimum height of 0.01 meter
+                const minHeight = 0.01;
                 if (newHeight < minHeight) {
                     newHeight = minHeight;
                 }
