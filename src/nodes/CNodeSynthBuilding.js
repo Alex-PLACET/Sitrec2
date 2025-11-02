@@ -56,8 +56,8 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         
         // Material properties
         this.materialType = v.material || 'lambert';
-        this.materialColor = v.rawColor || 0x8888ff;
-        this.materialOpacity = v.opacity !== undefined ? v.opacity : 0.7;
+        this.materialColor = v.rawColor || 0xc0c0c0;
+        this.materialOpacity = v.opacity !== undefined ? v.opacity : 1.0;
         this.materialTransparent = v.transparent !== undefined ? v.transparent : true;
         this.materialDepthTest = v.depthTest !== undefined ? v.depthTest : true;
         this.materialWireframe = v.wireframe || false;
@@ -394,7 +394,8 @@ export class CNodeSynthBuilding extends CNode3DGroup {
             opacity: this.materialOpacity,
             depthTest: this.materialDepthTest,
             wireframe: this.materialWireframe,
-            depthWrite: true
+            depthWrite: true,
+            flatShading: true  // Use face normals for flat surfaces
         };
         
         switch (this.materialType) {
