@@ -1500,6 +1500,12 @@ export class CCustomManager {
                 this.groundContextMenu = null;
                 menu.destroy();
                 
+                // First, exit edit mode on the currently edited building (if any)
+                if (Globals.editingBuilding) {
+                    console.log(`  Exiting edit mode on previous building: ${Globals.editingBuilding.buildingID}`);
+                    Globals.editingBuilding.setEditMode(false);
+                }
+                
                 // Create a default 7x7x4 building centered at the ground point
                 const building = Synth3DManager.createBuildingAtPoint(groundPoint);
                 

@@ -1784,6 +1784,12 @@ export class CNodeView3D extends CNodeViewCanvas {
                             if (building) {
                                 console.log(`Right-clicked on synthetic building: ${objectID}, entering edit mode`);
                                 
+                                // First, exit edit mode on the currently edited building (if any)
+                                if (Globals.editingBuilding && Globals.editingBuilding !== building) {
+                                    console.log(`  Exiting edit mode on previous building: ${Globals.editingBuilding.buildingID}`);
+                                    Globals.editingBuilding.setEditMode(false);
+                                }
+                                
                                 // Enter edit mode (this will create handles and set up state)
                                 building.setEditMode(true);
                                 

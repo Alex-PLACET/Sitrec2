@@ -1181,6 +1181,11 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         // Edit mode checkbox
         const editModeData = {editMode: this.editMode};
         this.guiFolder.add(editModeData, 'editMode').name('Edit Mode').onChange((value) => {
+            // If enabling edit mode, first exit edit mode on any other building
+            if (value && Globals.editingBuilding && Globals.editingBuilding !== this) {
+                console.log(`  Exiting edit mode on previous building: ${Globals.editingBuilding.buildingID}`);
+                Globals.editingBuilding.setEditMode(false);
+            }
             this.setEditMode(value);
         });
         
