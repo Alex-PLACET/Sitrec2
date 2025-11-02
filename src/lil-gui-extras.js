@@ -151,6 +151,18 @@ Controller.prototype.setValueQuietly = function(value) {
     return this; // Return the controller to allow method chaining
 }
 
+// Set this button as the double-click action for its parent GUI/folder
+// Allows chaining: gui.add(obj, 'method').name('Button').setDoubleClickAction()
+Controller.prototype.setDoubleClickAction = function() {
+    // Find the parent GUI
+    const parentGui = this.parent;
+    if (parentGui && parentGui.setDoubleClickAction) {
+        parentGui.setDoubleClickAction(this);
+    }
+    
+    return this; // Return the controller to allow method chaining
+}
+
 
 // same but for a GUI object (i.e. a folder)
 GUI.prototype.setLabelColor = function(color, min=0) {
@@ -185,6 +197,32 @@ GUI.prototype.setLabelColor = function(color, min=0) {
 GUI.prototype.tooltip = function(tooltip) {
     this.domElement.title = tooltip;
     return this; // Return the controller to allow method chaining
+}
+
+// Set a button action to fire when the folder title is double-clicked
+// This is useful for context menus where double-clicking should perform a default action
+GUI.prototype.setDoubleClickAction = function(buttonController) {
+    // Store the button controller reference
+    this._doubleClickButton = buttonController;
+    
+    // Add the double-click listener to the title if not already added
+    if (!this._doubleClickListenerAdded) {
+        this.$title.addEventListener("dblclick", (event) => {
+            if (this._doubleClickButton) {
+                // Trigger the button's action
+                const obj = this._doubleClickButton.object;
+                const prop = this._doubleClickButton.property;
+                if (obj && prop && typeof obj[prop] === 'function') {
+                    obj[prop]();
+                }
+                event.preventDefault();
+                event.stopPropagation();
+            }
+        });
+        this._doubleClickListenerAdded = true;
+    }
+    
+    return this; // Return the GUI to allow method chaining
 }
 
 

@@ -1833,7 +1833,7 @@ export class CNodeView3D extends CNodeViewCanvas {
                         return; // Found an object, don't check tracks or ground
                     } else {
                         // Debug: log what we're hitting
-                        console.log(`Hit object without valid name: ${object.type}, name: "${object.name}", userData:`, object.userData);
+                       // console.log(`Hit object without valid name: ${object.type}, name: "${object.name}", userData:`, object.userData);
                     }
                 }
                 
