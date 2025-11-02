@@ -29,6 +29,7 @@ import {ViewMan} from "../CViewManager";
 import {CustomManager, Globals, guiMenus, setRenderOne, Synth3DManager, UndoManager} from "../Globals";
 import {mouseInViewOnly} from "../ViewUtils";
 import {getPointBelow, pointAbove} from "../threeExt";
+import {EventManager} from "../CEventManager";
 
 export class CNodeSynthBuilding extends CNode3DGroup {
     constructor(v) {
@@ -987,6 +988,13 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         document.addEventListener('pointerdown', this.onPointerDownBound);
         document.addEventListener('pointermove', this.onPointerMoveBound);
         document.addEventListener('pointerup', this.onPointerUpBound);
+        
+        // Listen for elevation changes (flat elevation toggle, resolution changes, etc.)
+        EventManager.addEventListener("elevationChanged", () => {
+            this.recalculateVerticesFromTerrain();
+            this.buildMesh();
+            setRenderOne();
+        });
     }
     
     /**
