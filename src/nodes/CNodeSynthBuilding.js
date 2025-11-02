@@ -28,6 +28,7 @@ import {makeMouseRay} from "../mouseMoveView";
 import {ViewMan} from "../CViewManager";
 import {CustomManager, Globals, guiMenus, setRenderOne, Synth3DManager, UndoManager} from "../Globals";
 import {mouseInViewOnly} from "../ViewUtils";
+import {getPointBelow, pointAbove} from "../threeExt";
 
 export class CNodeSynthBuilding extends CNode3DGroup {
     constructor(v) {
@@ -69,6 +70,13 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         this.materialDepthTest = v.depthTest !== undefined ? v.depthTest : true;
         this.materialWireframe = v.wireframe || false;
         
+        // Building height parameters (terrain-relative)
+        // Store corner positions as lat/lon only, heights calculated from highPoint
+        this.cornerLatLons = v.cornerLatLons || [];  // Array of {lat, lon} for 4 corners
+        this.roofAGL = v.roofAGL !== undefined ? v.roofAGL : 4;  // Roof height above highest ground point
+        this.rooflineHeightAGL = v.rooflineHeightAGL !== undefined ? v.rooflineHeightAGL : 0;  // Additional height of roofline above roof corners
+        this.highPoint = null;  // Cached highest ground point (recalculated as needed)
+        
         // THREE.js rendering objects
         this.solidMesh = null;      // The rendered building mesh
         this.wireframe = null;      // Wireframe edges
@@ -93,7 +101,11 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         this.raycaster.layers.mask = LAYER.MASK_HELPERS;
         
         // If we're given initial geometry, create it
-        if (v.vertices && v.faces) {
+        if (v.cornerLatLons && v.cornerLatLons.length === 4) {
+            // New format: recalculate from terrain
+            this.recalculateVerticesFromTerrain();
+        } else if (v.vertices && v.faces) {
+            // Old format: load vertices directly
             this.loadGeometry(v.vertices, v.faces);
         } else if (v.footprint && v.height !== undefined) {
             // Create a cuboid from a footprint rectangle and height
@@ -151,9 +163,290 @@ export class CNodeSynthBuilding extends CNode3DGroup {
     }
     
     /**
+     * Extract cornerLatLons and heights from current vertex positions
+     * This syncs the stored parameters with the actual geometry
+     */
+    syncParametersFromVertices() {
+        if (this.vertices.length < 10) {
+            console.warn("Cannot sync parameters: need at least 10 vertices");
+            return;
+        }
+        
+        // Extract corner lat/lons from bottom vertices (0-3)
+        this.cornerLatLons = [];
+        for (let i = 0; i < 4; i++) {
+            if (this.vertices[i] && this.vertices[i].type === 'bottom') {
+                const lla = EUSToLLA(this.vertices[i].position);
+                this.cornerLatLons.push({lat: lla.x, lon: lla.y});
+            }
+        }
+        
+        // Calculate roofAGL from the top vertices
+        // CRITICAL: roofAGL is the height of the roof above the HIGHEST ground point
+        // NOT the average of roof heights above each ground point
+        
+        // Step 1: Find the highest ground point
+        let maxGroundHeight = -Infinity;
+        let highestGroundIndex = 0;
+        const refGround = this.vertices[0].position;
+        const refUp = getLocalUpVector(refGround);
+        
+        for (let i = 0; i < 4; i++) {
+            if (this.vertices[i] && this.vertices[i].type === 'bottom') {
+                const height = this.vertices[i].position.clone().sub(refGround).dot(refUp);
+                if (height > maxGroundHeight) {
+                    maxGroundHeight = height;
+                    highestGroundIndex = i;
+                    this.highPoint = this.vertices[i].position.clone();
+                }
+            }
+        }
+        
+        // Step 2: Calculate roofAGL as height of roof above the HIGHEST ground
+        // Use the roof vertex linked to the highest ground vertex
+        const highestGround = this.vertices[highestGroundIndex];
+        const linkedRoofIndex = highestGround.linkedVertex;
+        
+        if (this.vertices[linkedRoofIndex] && this.vertices[linkedRoofIndex].type === 'top') {
+            const roofVertex = this.vertices[linkedRoofIndex];
+            const upVector = getLocalUpVector(highestGround.position);
+            this.roofAGL = roofVertex.position.clone().sub(highestGround.position).dot(upVector);
+        } else {
+            // Fallback: use any roof vertex's height above highest ground
+            if (this.vertices[4] && this.vertices[4].type === 'top') {
+                const upVector = getLocalUpVector(this.highPoint);
+                this.roofAGL = this.vertices[4].position.clone().sub(this.highPoint).dot(upVector);
+            } else {
+                this.roofAGL = 4; // default
+            }
+        }
+        
+        // Calculate rooflineHeightAGL from roofline vertices
+        // This is the height ABOVE the roof edge (midpoint of top vertices)
+        if (this.vertices[8] && this.vertices[8].type === 'roofline') {
+            const roof1 = this.vertices[8];
+            
+            // Calculate roof edge position (midpoint between top vertices 4 and 5)
+            const top4 = this.vertices[4];
+            const top5 = this.vertices[5];
+            const roofEdgePos = top4.position.clone().add(top5.position).multiplyScalar(0.5);
+            const upVector = getLocalUpVector(roofEdgePos);
+            
+            // Height of roofline above roof edge
+            const heightAboveRoof = roof1.position.clone().sub(roofEdgePos).dot(upVector);
+            
+            this.rooflineHeightAGL = Math.max(0, heightAboveRoof);
+        } else {
+            this.rooflineHeightAGL = 0;
+        }
+    }
+    
+    /**
+     * Snap all ground vertices (0-3) to terrain and update linked top vertices
+     * This is called after moving or rotating the building to ensure ground vertices
+     * stay on the terrain surface.
+     * 
+     * CRITICAL: All roof vertices (4-7) MUST be at the same altitude, which is
+     * roofAGL above the HIGHEST ground vertex. This ensures the roof edges form
+     * a horizontal plane, and all triangles are coplanar.
+     */
+    snapGroundVerticesToTerrain() {
+        // Step 1: Snap all ground vertices (0-3) to terrain
+        const groundPositions = [];
+        for (let i = 0; i < 4; i++) {
+            const groundVertex = this.vertices[i];
+            if (!groundVertex || groundVertex.type !== 'bottom') continue;
+            
+            const currentPos = groundVertex.position.clone();
+            const localUp = getLocalUpVector(currentPos);
+            
+            // Lift point high above terrain, then drop to find ground
+            const highPoint = currentPos.clone().add(localUp.clone().multiplyScalar(10000));
+            const terrainPoint = getPointBelow(highPoint);
+            
+            // Update ground vertex position
+            groundVertex.position.copy(terrainPoint);
+            groundPositions.push(terrainPoint);
+        }
+        
+        // Step 2: Find the HIGHEST ground vertex
+        // All roof vertices must be at the same altitude: roofAGL above this highest point
+        const refGround = groundPositions[0];
+        const refUp = getLocalUpVector(refGround);
+        
+        let maxHeight = 0;
+        let highPointIndex = 0;
+        for (let i = 0; i < 4; i++) {
+            const height = groundPositions[i].clone().sub(refGround).dot(refUp);
+            if (height > maxHeight) {
+                maxHeight = height;
+                highPointIndex = i;
+            }
+        }
+        const highestGround = groundPositions[highPointIndex].clone();
+        
+        // Step 3: Position all roof vertices at the SAME altitude
+        // Each roof vertex is positioned above its corresponding ground vertex,
+        // but at an altitude that equals: highestGround + roofAGL
+        for (let i = 0; i < 4; i++) {
+            const groundPos = groundPositions[i];
+            const roofVertex = this.vertices[i + 4]; // roof vertices are at indices 4-7
+            
+            if (roofVertex && roofVertex.type === 'top') {
+                const localUp = getLocalUpVector(groundPos);
+                
+                // Calculate height from this ground to the highest ground
+                const groundToHigh = highestGround.clone().sub(groundPos).dot(localUp);
+                
+                // Position roof vertex at: groundToHigh + roofAGL above this ground point
+                // This ensures all roof vertices are at the same absolute altitude
+                roofVertex.position.copy(pointAbove(groundPos, groundToHigh + this.roofAGL));
+            }
+        }
+        
+        // Step 4: Update roofline vertices
+        // Both roofline vertices must be at the SAME altitude as each other
+        const roof1 = this.vertices[8];
+        const roof2 = this.vertices[9];
+        
+        if (roof1 && roof1.type === 'roofline' && roof2 && roof2.type === 'roofline') {
+            // roof1 is at midpoint between top vertices 4 and 5
+            const roof1EdgePos = this.vertices[4].position.clone().add(this.vertices[5].position).multiplyScalar(0.5);
+            const upVector1 = getLocalUpVector(roof1EdgePos);
+            roof1.position.copy(roof1EdgePos.clone().add(upVector1.multiplyScalar(this.rooflineHeightAGL)));
+            
+            // roof2 is at midpoint between top vertices 6 and 7
+            const roof2EdgePos = this.vertices[6].position.clone().add(this.vertices[7].position).multiplyScalar(0.5);
+            const upVector2 = getLocalUpVector(roof2EdgePos);
+            roof2.position.copy(roof2EdgePos.clone().add(upVector2.multiplyScalar(this.rooflineHeightAGL)));
+        }
+    }
+    
+    /**
+     * Recalculate all vertex positions from cornerLatLons and height parameters
+     * This method uses getPointBelow() to find ground positions and then calculates
+     * all vertices relative to the highest ground point.
+     */
+    recalculateVerticesFromTerrain() {
+        if (this.cornerLatLons.length !== 4) {
+            console.warn("Cannot recalculate vertices: need exactly 4 corners");
+            return;
+        }
+        
+        // Step 1: Find ground positions under each corner
+        const groundCorners = [];
+        for (let i = 0; i < 4; i++) {
+            const {lat, lon} = this.cornerLatLons[i];
+            const highPoint = LLAToEUS(lat, lon, 10000); // Start at high altitude
+            const groundPoint = getPointBelow(highPoint);
+            groundCorners.push(groundPoint);
+        }
+        
+        // Step 2: Find the highest ground point
+        // Use the first corner as reference for calculating relative heights
+        const refGround = groundCorners[0];
+        const refUp = getLocalUpVector(refGround);
+        
+        let maxHeight = 0;
+        let highPointIndex = 0;
+        for (let i = 0; i < 4; i++) {
+            const height = groundCorners[i].clone().sub(refGround).dot(refUp);
+            if (height > maxHeight) {
+                maxHeight = height;
+                highPointIndex = i;
+            }
+        }
+        this.highPoint = groundCorners[highPointIndex].clone();
+        
+        // Step 3: Calculate roof corner positions
+        // Each roof corner is at its lat/lon position, at altitude = highPoint + roofAGL
+        const roofCorners = [];
+        for (let i = 0; i < 4; i++) {
+            const groundPos = groundCorners[i];
+            const localUp = getLocalUpVector(groundPos);
+            
+            // Height from this ground to the highest ground
+            const groundToHigh = this.highPoint.clone().sub(groundPos).dot(localUp);
+            
+            // Roof position is groundToHigh + roofAGL above this ground point
+            const roofPos = pointAbove(groundPos, groundToHigh + this.roofAGL);
+            roofCorners.push(roofPos);
+        }
+        
+        // Step 4: Clear vertices and rebuild
+        this.vertices = [];
+        
+        // Create bottom ring (vertices 0-3) - ground vertices
+        for (let i = 0; i < 4; i++) {
+            this.vertices.push({
+                position: groundCorners[i].clone(),
+                type: 'bottom',
+                next: (i + 1) % 4,
+                prev: (i + 3) % 4,
+                linkedVertex: i + 4
+            });
+        }
+        
+        // Create top ring (vertices 4-7) - roof corner vertices
+        for (let i = 0; i < 4; i++) {
+            this.vertices.push({
+                position: roofCorners[i].clone(),
+                type: 'top',
+                next: 4 + ((i + 1) % 4),
+                prev: 4 + ((i + 3) % 4),
+                linkedVertex: i
+            });
+        }
+        
+        // Step 5: Create roofline vertices (vertices 8-9)
+        // roof1 is at midpoint between TOP vertices 4 and 5 (above ground corners 0 and 1)
+        // roof2 is at midpoint between TOP vertices 6 and 7 (above ground corners 2 and 3)
+        // Height is rooflineHeightAGL ABOVE the roof edge
+        
+        // roof1: midpoint between top corners 4 and 5
+        const roof1Base = roofCorners[0].clone().add(roofCorners[1]).multiplyScalar(0.5);
+        const roof1Up = getLocalUpVector(roof1Base);
+        const roof1Pos = pointAbove(roof1Base, this.rooflineHeightAGL);
+        
+        this.vertices.push({
+            position: roof1Pos,
+            type: 'roofline',
+            next: 9,
+            prev: 9,
+            linkedVertex: 9
+        });
+        
+        // roof2: midpoint between top corners 6 and 7
+        const roof2Base = roofCorners[2].clone().add(roofCorners[3]).multiplyScalar(0.5);
+        const roof2Up = getLocalUpVector(roof2Base);
+        const roof2Pos = pointAbove(roof2Base, this.rooflineHeightAGL);
+        
+        this.vertices.push({
+            position: roof2Pos,
+            type: 'roofline',
+            next: 8,
+            prev: 8,
+            linkedVertex: 8
+        });
+        
+        // Step 6: Define faces
+        this.faces = [
+            {indices: [3, 2, 1, 0], type: 'wall'},  // Bottom face
+            {indices: [4, 5, 1, 0], type: 'wall'},  // Side faces
+            {indices: [5, 6, 2, 1], type: 'wall'},
+            {indices: [6, 7, 3, 2], type: 'wall'},
+            {indices: [7, 4, 0, 3], type: 'wall'},
+        ];
+        
+        // Add roof faces
+        this.buildRoofFaces();
+        this.computeEdges();
+    }
+    
+    /**
      * Create a cuboid (rectangular prism) from a footprint and height
      * @param {Array} footprint - Array of 4 corner positions [Vector3] forming rectangle on ground
-     * @param {number} height - Height of the building in meters
+     * @param {number} height - Height of the building in meters (now stored as roofAGL)
      */
     createCuboidFromFootprint(footprint, height) {
         if (footprint.length !== 4) {
@@ -161,83 +454,22 @@ export class CNodeSynthBuilding extends CNode3DGroup {
             return;
         }
         
-        // Create bottom ring (vertices 0-3)
+        // Convert footprint positions to lat/lon
+        this.cornerLatLons = [];
         for (let i = 0; i < 4; i++) {
-            this.vertices.push({
-                position: footprint[i].clone(),
-                type: 'bottom',
-                next: (i + 1) % 4,        // Circular: 0→1→2→3→0
-                prev: (i + 3) % 4,        // Circular: 0←1←2←3←0
-                linkedVertex: i + 4       // Links to corresponding top vertex
+            const lla = EUSToLLA(footprint[i]);
+            this.cornerLatLons.push({
+                lat: lla.x,
+                lon: lla.y
             });
         }
         
-        // Create top ring (vertices 4-7)
-        for (let i = 0; i < 4; i++) {
-            const bottomPos = footprint[i];
-            const localUp = getLocalUpVector(bottomPos);
-            const topPos = bottomPos.clone().add(localUp.multiplyScalar(height));
-            
-            this.vertices.push({
-                position: topPos,
-                type: 'top',
-                next: 4 + ((i + 1) % 4),  // Circular: 4→5→6→7→4
-                prev: 4 + ((i + 3) % 4),  // Circular: 4←5←6←7←4
-                linkedVertex: i            // Links to corresponding bottom vertex
-            });
-        }
+        // Store the height as roofAGL
+        this.roofAGL = height;
+        this.rooflineHeightAGL = 0; // Start with flat roof
         
-        // Create roofline vertices (vertices 8-9)
-        // roof1 is between top vertices 4 and 5 (side A-B)
-        // roof2 is between top vertices 6 and 7 (side C-D, opposite side)
-        // They start at the same height as the top vertices
-        const rooflineHeight = height; // Start flat with the walls
-        
-        // roof1: midpoint between vertices 4 and 5
-        const roof1Pos = footprint[0].clone().add(footprint[1]).multiplyScalar(0.5);
-        const localUp1 = getLocalUpVector(roof1Pos);
-        roof1Pos.add(localUp1.multiplyScalar(rooflineHeight));
-        
-        this.vertices.push({
-            position: roof1Pos,
-            type: 'roofline',
-            next: 9,           // Points to roof2
-            prev: 9,           // Points to roof2
-            linkedVertex: 9    // Links to roof2
-        });
-        
-        // roof2: midpoint between vertices 6 and 7
-        const roof2Pos = footprint[2].clone().add(footprint[3]).multiplyScalar(0.5);
-        const localUp2 = getLocalUpVector(roof2Pos);
-        roof2Pos.add(localUp2.multiplyScalar(rooflineHeight));
-        
-        this.vertices.push({
-            position: roof2Pos,
-            type: 'roofline',
-            next: 8,           // Points to roof1
-            prev: 8,           // Points to roof1
-            linkedVertex: 8    // Links to roof1
-        });
-        
-        // Define faces as quads (we'll triangulate for rendering)
-        // Vertex order: 0,1,2,3 = bottom corners (CCW from above)
-        //               4,5,6,7 = top corners (CCW from above)
-        //               8 = roof1 (between 4 and 5)
-        //               9 = roof2 (between 6 and 7)
-        // NOTE: Winding order REVERSED so normals point OUTWARD from the building
-        this.faces = [
-            {indices: [3, 2, 1, 0], type: 'wall'},  // Bottom face (reversed - normal points down/out)
-            // Roof faces will be generated dynamically in buildRoofFaces()
-            {indices: [4, 5, 1, 0], type: 'wall'},  // Side face (reversed - normal points out)
-            {indices: [5, 6, 2, 1], type: 'wall'},  // Side face (reversed - normal points out)
-            {indices: [6, 7, 3, 2], type: 'wall'},  // Side face (reversed - normal points out)
-            {indices: [7, 4, 0, 3], type: 'wall'},  // Side face (reversed - normal points out)
-        ];
-        
-        // Add roof faces
-        this.buildRoofFaces();
-        
-        this.computeEdges();
+        // Recalculate all vertices from terrain
+        this.recalculateVerticesFromTerrain();
     }
     
     /**
@@ -710,17 +942,13 @@ export class CNodeSynthBuilding extends CNode3DGroup {
     
     /**
      * Capture current building state for undo/redo
-     * Returns a deep copy of all vertex positions
+     * Returns a deep copy of cornerLatLons and heights
      */
     captureState() {
         return {
-            vertices: this.vertices.map(v => ({
-                position: v.position.clone(),
-                type: v.type,
-                next: v.next,
-                prev: v.prev,
-                linkedVertex: v.linkedVertex
-            }))
+            cornerLatLons: this.cornerLatLons.map(c => ({lat: c.lat, lon: c.lon})),
+            roofAGL: this.roofAGL,
+            rooflineHeightAGL: this.rooflineHeightAGL
         };
     }
     
@@ -729,17 +957,15 @@ export class CNodeSynthBuilding extends CNode3DGroup {
      * @param {Object} state - State object from captureState()
      */
     restoreState(state) {
-        // Restore vertices
-        this.vertices = state.vertices.map(v => ({
-            position: v.position.clone(),
-            type: v.type,
-            next: v.next,
-            prev: v.prev,
-            linkedVertex: v.linkedVertex
-        }));
+        // Restore cornerLatLons and heights
+        this.cornerLatLons = state.cornerLatLons.map(c => ({lat: c.lat, lon: c.lon}));
+        this.roofAGL = state.roofAGL;
+        this.rooflineHeightAGL = state.rooflineHeightAGL;
+        
+        // Recalculate all vertices from terrain
+        this.recalculateVerticesFromTerrain();
         
         // Rebuild the mesh with new vertex positions
-        this.computeEdges();
         this.buildMesh();
         
         // Update control points if in edit mode
@@ -1217,8 +1443,14 @@ export class CNodeSynthBuilding extends CNode3DGroup {
             // Update the start angle for next frame (incremental rotation)
             this.rotationStartAngle = currentAngle;
             
+            // Snap ground vertices to terrain after rotation
+            this.snapGroundVerticesToTerrain();
+            
             // Rebuild mesh
             this.buildMesh();
+            
+            // Sync parameters from the modified vertices
+            this.syncParametersFromVertices();
             
             // Recreate control points
             this.createControlPoints();
@@ -1316,52 +1548,47 @@ export class CNodeSynthBuilding extends CNode3DGroup {
                 // Update drag start point for next frame (incremental translation)
                 this.dragStartPoint.copy(newPosition);
                 
+                // Snap ground vertices to terrain after translation
+                this.snapGroundVerticesToTerrain();
+                
             } else {
                 // For vertex/roof/roofline dragging: use relative displacement from initial click point
                 const displacement = currentIntersection.clone().sub(this.dragInitialIntersection);
                 newPosition = this.dragInitialHandlePosition.clone().add(displacement);
                 
                 if (isRoofline) {
-                    // For roofline handle, calculate the new HEIGHT and apply to both roofline vertices
-                    // Get reference bottom position for height calculation
-                    const refBottom = this.vertices[0].position;
-                    const localUp = getLocalUpVector(refBottom);
+                    // For roofline handle, calculate height ABOVE the roof edge (top vertices)
+                    // Get the roof edge position (midpoint between top vertices 4 and 5)
+                    const top4 = this.vertices[4];
+                    const top5 = this.vertices[5];
+                    const roofEdgePos = top4.position.clone().add(top5.position).multiplyScalar(0.5);
+                    const localUp = getLocalUpVector(roofEdgePos);
                     
-                    // Calculate what the new height would be
-                    const toRoofline = newPosition.clone().sub(refBottom);
-                    let newHeight = toRoofline.dot(localUp);
+                    // Calculate what the new height ABOVE THE ROOF EDGE would be
+                    const toRoofline = newPosition.clone().sub(roofEdgePos);
+                    let newHeightAboveRoof = toRoofline.dot(localUp);
                     
-                    // Get the minimum height from top vertices
-                    const topVertices = this.vertices.filter(v => v.type === 'top');
-                    let minTopHeight = 0;
-                    if (topVertices.length > 0) {
-                        const heights = topVertices.map(v => {
-                            const linkedBottom = this.vertices[v.linkedVertex];
-                            const up = getLocalUpVector(linkedBottom.position);
-                            return v.position.clone().sub(linkedBottom.position).dot(up);
-                        });
-                        minTopHeight = Math.min(...heights);
+                    // Don't let roofline go below the roof edge (minimum 0)
+                    if (newHeightAboveRoof < 0) {
+                        newHeightAboveRoof = 0;
                     }
                     
-                    // Don't let roofline go below top vertices (snap to top if it goes below)
-                    if (newHeight < minTopHeight) {
-                        newHeight = minTopHeight;
-                    }
-                    
-                    // Apply this HEIGHT to both roofline vertices (roof1 and roof2)
+                    // Apply this HEIGHT ABOVE ROOF to both roofline vertices (roof1 and roof2)
                     const roof1 = this.vertices[8];
                     const roof2 = this.vertices[9];
                     
                     if (roof1 && roof1.type === 'roofline') {
-                        const roof1BasePos = this.vertices[0].position.clone().add(this.vertices[1].position).multiplyScalar(0.5);
-                        const upVector1 = getLocalUpVector(roof1BasePos);
-                        roof1.position.copy(roof1BasePos.clone().add(upVector1.multiplyScalar(newHeight)));
+                        // roof1 is at midpoint between top vertices 4 and 5
+                        const roof1EdgePos = this.vertices[4].position.clone().add(this.vertices[5].position).multiplyScalar(0.5);
+                        const upVector1 = getLocalUpVector(roof1EdgePos);
+                        roof1.position.copy(roof1EdgePos.clone().add(upVector1.multiplyScalar(newHeightAboveRoof)));
                     }
                     
                     if (roof2 && roof2.type === 'roofline') {
-                        const roof2BasePos = this.vertices[2].position.clone().add(this.vertices[3].position).multiplyScalar(0.5);
-                        const upVector2 = getLocalUpVector(roof2BasePos);
-                        roof2.position.copy(roof2BasePos.clone().add(upVector2.multiplyScalar(newHeight)));
+                        // roof2 is at midpoint between top vertices 6 and 7
+                        const roof2EdgePos = this.vertices[6].position.clone().add(this.vertices[7].position).multiplyScalar(0.5);
+                        const upVector2 = getLocalUpVector(roof2EdgePos);
+                        roof2.position.copy(roof2EdgePos.clone().add(upVector2.multiplyScalar(newHeightAboveRoof)));
                     }
                     
                 } else if (isRoofCenter) {
@@ -1409,29 +1636,32 @@ export class CNodeSynthBuilding extends CNode3DGroup {
                 });
                 
                 // Apply the same HEIGHT CHANGE to roofline vertices (roof1 and roof2)
+                // Roofline is relative to roof edge (top vertices), not ground
                 const roof1 = this.vertices[8];
                 const roof2 = this.vertices[9];
                 
                 if (roof1 && roof1.type === 'roofline') {
-                    const roof1BasePos = this.vertices[0].position.clone().add(this.vertices[1].position).multiplyScalar(0.5);
-                    const upVector1 = getLocalUpVector(roof1BasePos);
+                    // roof1 is at midpoint between top vertices 4 and 5
+                    const roof1EdgePos = this.vertices[4].position.clone().add(this.vertices[5].position).multiplyScalar(0.5);
+                    const upVector1 = getLocalUpVector(roof1EdgePos);
                     
-                    // Get current roofline height
-                    const currentRoofHeight = roof1.position.clone().sub(roof1BasePos).dot(upVector1);
-                    const adjustedRoofHeight = currentRoofHeight + heightDelta;
+                    // Get current roofline height ABOVE roof edge
+                    const currentRoofHeightAboveEdge = roof1.position.clone().sub(roof1EdgePos).dot(upVector1);
+                    const adjustedRoofHeight = currentRoofHeightAboveEdge + heightDelta;
                     
-                    roof1.position.copy(roof1BasePos.clone().add(upVector1.multiplyScalar(adjustedRoofHeight)));
+                    roof1.position.copy(roof1EdgePos.clone().add(upVector1.multiplyScalar(adjustedRoofHeight)));
                 }
                 
                 if (roof2 && roof2.type === 'roofline') {
-                    const roof2BasePos = this.vertices[2].position.clone().add(this.vertices[3].position).multiplyScalar(0.5);
-                    const upVector2 = getLocalUpVector(roof2BasePos);
+                    // roof2 is at midpoint between top vertices 6 and 7
+                    const roof2EdgePos = this.vertices[6].position.clone().add(this.vertices[7].position).multiplyScalar(0.5);
+                    const upVector2 = getLocalUpVector(roof2EdgePos);
                     
-                    // Get current roofline height
-                    const currentRoofHeight = roof2.position.clone().sub(roof2BasePos).dot(upVector2);
-                    const adjustedRoofHeight = currentRoofHeight + heightDelta;
+                    // Get current roofline height ABOVE roof edge
+                    const currentRoofHeightAboveEdge = roof2.position.clone().sub(roof2EdgePos).dot(upVector2);
+                    const adjustedRoofHeight = currentRoofHeightAboveEdge + heightDelta;
                     
-                    roof2.position.copy(roof2BasePos.clone().add(upVector2.multiplyScalar(adjustedRoofHeight)));
+                    roof2.position.copy(roof2EdgePos.clone().add(upVector2.multiplyScalar(adjustedRoofHeight)));
                 }
                 
             } else if (isTopVertex) {
@@ -1457,17 +1687,33 @@ export class CNodeSynthBuilding extends CNode3DGroup {
                 draggedVertex.position.copy(bottomPos.clone().add(upVector.multiplyScalar(newHeight)));
                 
             } else {
-                // For bottom vertices, move the vertex and its two neighbors
-                // to maintain the shape of the building
+                // For bottom vertices, move the vertex and its two neighbors horizontally only
+                // (no vertical movement), then snap to terrain
                 
                 // Store the original position before moving
                 const oldPosition = draggedVertex.position.clone();
                 
-                // Calculate the displacement vector for the dragged vertex
-                const displacement = newPosition.clone().sub(oldPosition);
+                // Calculate the horizontal displacement vector (project onto horizontal plane)
+                // Remove any component parallel to localUp
+                const localUp = getLocalUpVector(oldPosition);
+                const rawDisplacement = newPosition.clone().sub(oldPosition);
+                const verticalComponent = rawDisplacement.dot(localUp);
+                const horizontalDisplacement = rawDisplacement.clone().sub(localUp.clone().multiplyScalar(verticalComponent));
                 
-                // Move the dragged vertex
-                draggedVertex.position.copy(newPosition);
+                // Calculate new horizontal position
+                const newHorizontalPos = oldPosition.clone().add(horizontalDisplacement);
+                
+                // Snap to terrain using getPointBelow()
+                // First, lift the point high above terrain, then drop it to find ground
+                const highPoint = newHorizontalPos.clone().add(localUp.clone().multiplyScalar(10000));
+                const terrainPoint = getPointBelow(highPoint);
+                
+                // Move the dragged vertex to the terrain position
+                draggedVertex.position.copy(terrainPoint);
+                
+                // Calculate the horizontal displacement (for neighbors)
+                const displacement = terrainPoint.clone().sub(oldPosition);
+                const horizontalDisp = displacement.clone().sub(localUp.clone().multiplyScalar(displacement.dot(localUp)));
                 
                 // Find the two neighbors using the ring structure
                 const neighbor1Idx = draggedVertex.next;
@@ -1491,8 +1737,13 @@ export class CNodeSynthBuilding extends CNode3DGroup {
                     // Move neighbor1: project A's displacement onto the edge connecting opposite to neighbor1
                     const edgeToNeighbor1 = neighbor1.position.clone().sub(opposite.position);
                     const edgeDir1 = edgeToNeighbor1.clone().normalize();
-                    const projectedMovement1 = displacement.dot(edgeDir1);
-                    neighbor1.position.add(edgeDir1.multiplyScalar(projectedMovement1));
+                    const projectedMovement1 = horizontalDisp.dot(edgeDir1);
+                    const neighbor1NewPos = neighbor1.position.clone().add(edgeDir1.multiplyScalar(projectedMovement1));
+                    
+                    // Snap neighbor1 to terrain
+                    const neighbor1Up = getLocalUpVector(neighbor1.position);
+                    const neighbor1High = neighbor1NewPos.clone().add(neighbor1Up.clone().multiplyScalar(10000));
+                    neighbor1.position.copy(getPointBelow(neighbor1High));
                     
                     // Update the linked top vertex for neighbor1
                     const linkedTop1 = this.vertices[neighbor1.linkedVertex];
@@ -1504,8 +1755,13 @@ export class CNodeSynthBuilding extends CNode3DGroup {
                     // Move neighbor2: project A's displacement onto the edge connecting opposite to neighbor2
                     const edgeToNeighbor2 = neighbor2.position.clone().sub(opposite.position);
                     const edgeDir2 = edgeToNeighbor2.clone().normalize();
-                    const projectedMovement2 = displacement.dot(edgeDir2);
-                    neighbor2.position.add(edgeDir2.multiplyScalar(projectedMovement2));
+                    const projectedMovement2 = horizontalDisp.dot(edgeDir2);
+                    const neighbor2NewPos = neighbor2.position.clone().add(edgeDir2.multiplyScalar(projectedMovement2));
+                    
+                    // Snap neighbor2 to terrain
+                    const neighbor2Up = getLocalUpVector(neighbor2.position);
+                    const neighbor2High = neighbor2NewPos.clone().add(neighbor2Up.clone().multiplyScalar(10000));
+                    neighbor2.position.copy(getPointBelow(neighbor2High));
                     
                     // Update the linked top vertex for neighbor2
                     const linkedTop2 = this.vertices[neighbor2.linkedVertex];
@@ -1517,39 +1773,42 @@ export class CNodeSynthBuilding extends CNode3DGroup {
                 
                 // Move the linked top vertex for the dragged vertex to stay directly above
                 const linkedTop = this.vertices[draggedVertex.linkedVertex];
-                const localUp = getLocalUpVector(draggedVertex.position);
+                const dragLocalUp = getLocalUpVector(draggedVertex.position);
                 
                 // Calculate current height of the linked top
                 const toTop = linkedTop.position.clone().sub(draggedVertex.position);
-                const currentHeight = toTop.dot(localUp);
+                const currentHeight = toTop.dot(dragLocalUp);
                 
                 // Reposition top to maintain its height above the new bottom position
-                linkedTop.position.copy(draggedVertex.position.clone().add(localUp.multiplyScalar(currentHeight)));
+                linkedTop.position.copy(draggedVertex.position.clone().add(dragLocalUp.multiplyScalar(currentHeight)));
                 
-                // Update roofline vertices to stay at midpoint between their respective top vertices
+                // Update roofline vertices to stay at midpoint between TOP vertices (roof edge)
                 const roof1 = this.vertices[8];
                 const roof2 = this.vertices[9];
                 
                 if (roof1 && roof1.type === 'roofline' && roof2 && roof2.type === 'roofline') {
-                    // Get current roofline height
-                    const roof1BasePos = this.vertices[0].position.clone().add(this.vertices[1].position).multiplyScalar(0.5);
-                    const currentRoof1Height = roof1.position.clone().sub(roof1BasePos).dot(getLocalUpVector(roof1BasePos));
+                    // Get current roofline height ABOVE the roof edge (top vertices)
+                    const currentRoof1EdgePos = this.vertices[4].position.clone().add(this.vertices[5].position).multiplyScalar(0.5);
+                    const currentRoof1HeightAboveRoof = roof1.position.clone().sub(currentRoof1EdgePos).dot(getLocalUpVector(currentRoof1EdgePos));
                     
-                    // Update roof1 position (between vertices 0 and 1, i.e., vertices 4 and 5 on top)
-                    const newRoof1BasePos = this.vertices[0].position.clone().add(this.vertices[1].position).multiplyScalar(0.5);
-                    const upVector1 = getLocalUpVector(newRoof1BasePos);
-                    roof1.position.copy(newRoof1BasePos.clone().add(upVector1.multiplyScalar(currentRoof1Height)));
+                    // Update roof1 position (at midpoint between top vertices 4 and 5)
+                    const newRoof1EdgePos = this.vertices[4].position.clone().add(this.vertices[5].position).multiplyScalar(0.5);
+                    const upVector1 = getLocalUpVector(newRoof1EdgePos);
+                    roof1.position.copy(newRoof1EdgePos.clone().add(upVector1.multiplyScalar(currentRoof1HeightAboveRoof)));
                     
-                    // Update roof2 position (between vertices 2 and 3, i.e., vertices 6 and 7 on top)
-                    const newRoof2BasePos = this.vertices[2].position.clone().add(this.vertices[3].position).multiplyScalar(0.5);
-                    const upVector2 = getLocalUpVector(newRoof2BasePos);
-                    roof2.position.copy(newRoof2BasePos.clone().add(upVector2.multiplyScalar(currentRoof1Height)));
+                    // Update roof2 position (at midpoint between top vertices 6 and 7)
+                    const newRoof2EdgePos = this.vertices[6].position.clone().add(this.vertices[7].position).multiplyScalar(0.5);
+                    const upVector2 = getLocalUpVector(newRoof2EdgePos);
+                    roof2.position.copy(newRoof2EdgePos.clone().add(upVector2.multiplyScalar(currentRoof1HeightAboveRoof)));
                 }
                 }
             }
             
             // Rebuild mesh (for all drag types)
             this.buildMesh();
+            
+            // Sync parameters from the modified vertices
+            this.syncParametersFromVertices();
             
             // Recreate control points to update their positions
             this.createControlPoints();
@@ -1753,26 +2012,15 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         // Exit edit mode on the original
         this.setEditMode(false);
         
-        // Convert vertices back to EUS for the new building
-        const verticesEUS = serialized.vertices.map(v => {
-            const eus = LLAToEUS(v.position[0], v.position[1], v.position[2]);
-            return {
-                position: eus,
-                type: v.type,
-                next: v.next,
-                prev: v.prev,
-                linkedVertex: v.linkedVertex
-            };
-        });
-        
         // Generate a unique name with incremental numbering
         const newName = this.generateUniqueName();
         
         // Create building data for the manager (without ID so it gets auto-assigned)
         const buildingData = {
             name: newName,
-            vertices: verticesEUS,
-            faces: serialized.faces,
+            cornerLatLons: serialized.cornerLatLons,
+            roofAGL: serialized.roofAGL,
+            rooflineHeightAGL: serialized.rooflineHeightAGL,
             material: serialized.material,
             wallColor: serialized.wallColor,
             roofColor: serialized.roofColor,
@@ -1792,23 +2040,12 @@ export class CNodeSynthBuilding extends CNode3DGroup {
      * Serialize to save data
      */
     serialize() {
-        // Convert vertices to LLA for portability across different map origins
-        const verticesLLA = this.vertices.map(v => {
-            const lla = EUSToLLA(v.position);
-            return {
-                position: [lla.x, lla.y, lla.z],
-                type: v.type,
-                next: v.next,
-                prev: v.prev,
-                linkedVertex: v.linkedVertex
-            };
-        });
-        
         return {
             id: this.buildingID,
             name: this.name,
-            vertices: verticesLLA,
-            faces: this.faces.map(f => ({indices: [...f.indices], type: f.type})),
+            cornerLatLons: this.cornerLatLons.map(c => ({lat: c.lat, lon: c.lon})),
+            roofAGL: this.roofAGL,
+            rooflineHeightAGL: this.rooflineHeightAGL,
             material: this.materialType,
             wallColor: this.wallColor,
             roofColor: this.roofColor,
@@ -1823,44 +2060,96 @@ export class CNodeSynthBuilding extends CNode3DGroup {
      * Deserialize from saved data
      */
     static deserialize(data) {
-        // Convert LLA vertices back to EUS
-        const verticesEUS = data.vertices.map(v => {
-            // Handle both old format (just position) and new format (with metadata)
-            if (v.position) {
-                const eus = LLAToEUS(v.position[0], v.position[1], v.position[2]);
-                return {
-                    position: eus,
-                    type: v.type || 'free',
-                    next: v.next !== undefined ? v.next : -1,
-                    prev: v.prev !== undefined ? v.prev : -1,
-                    linkedVertex: v.linkedVertex !== undefined ? v.linkedVertex : -1
-                };
+        // Check if this is the new format (with cornerLatLons) or old format (with vertices)
+        if (data.cornerLatLons) {
+            // New format - use terrain-relative heights
+            return new CNodeSynthBuilding({
+                id: data.id,
+                name: data.name,
+                cornerLatLons: data.cornerLatLons.map(c => ({lat: c.lat, lon: c.lon})),
+                roofAGL: data.roofAGL !== undefined ? data.roofAGL : 4,
+                rooflineHeightAGL: data.rooflineHeightAGL !== undefined ? data.rooflineHeightAGL : 0,
+                material: data.material,
+                wallColor: data.wallColor,
+                roofColor: data.roofColor,
+                color: data.color,
+                opacity: data.opacity,
+                transparent: data.transparent,
+                depthTest: data.depthTest,
+                wireframe: data.wireframe
+            });
+        } else if (data.vertices) {
+            // Old format - convert to new format
+            // Extract the 4 bottom corners and calculate roofAGL
+            const verticesEUS = data.vertices.map(v => {
+                if (v.position) {
+                    return {
+                        position: LLAToEUS(v.position[0], v.position[1], v.position[2]),
+                        type: v.type || 'free'
+                    };
+                } else {
+                    return {
+                        position: LLAToEUS(v.lat, v.lon, v.alt),
+                        type: 'free'
+                    };
+                }
+            });
+            
+            // Find bottom and top vertices
+            const bottomVerts = verticesEUS.filter(v => v.type === 'bottom').slice(0, 4);
+            const topVerts = verticesEUS.filter(v => v.type === 'top').slice(0, 4);
+            
+            if (bottomVerts.length === 4 && topVerts.length === 4) {
+                // Extract cornerLatLons from bottom vertices
+                const cornerLatLons = bottomVerts.map(v => {
+                    const lla = EUSToLLA(v.position);
+                    return {lat: lla.x, lon: lla.y};
+                });
+                
+                // Calculate average height
+                let totalHeight = 0;
+                for (let i = 0; i < 4; i++) {
+                    const diff = topVerts[i].position.clone().sub(bottomVerts[i].position);
+                    totalHeight += diff.length();
+                }
+                const roofAGL = totalHeight / 4;
+                
+                return new CNodeSynthBuilding({
+                    id: data.id,
+                    name: data.name,
+                    cornerLatLons: cornerLatLons,
+                    roofAGL: roofAGL,
+                    rooflineHeightAGL: 0,
+                    material: data.material,
+                    wallColor: data.wallColor,
+                    roofColor: data.roofColor,
+                    color: data.color,
+                    opacity: data.opacity,
+                    transparent: data.transparent,
+                    depthTest: data.depthTest,
+                    wireframe: data.wireframe
+                });
             } else {
-                // Old format
-                return {
-                    position: LLAToEUS(v.lat, v.lon, v.alt),
-                    type: 'free',
-                    next: -1,
-                    prev: -1,
-                    linkedVertex: -1
-                };
+                // Fallback: use old method if we can't determine structure
+                return new CNodeSynthBuilding({
+                    id: data.id,
+                    name: data.name,
+                    vertices: verticesEUS,
+                    faces: data.faces,
+                    material: data.material,
+                    wallColor: data.wallColor,
+                    roofColor: data.roofColor,
+                    color: data.color,
+                    opacity: data.opacity,
+                    transparent: data.transparent,
+                    depthTest: data.depthTest,
+                    wireframe: data.wireframe
+                });
             }
-        });
-        
-        return new CNodeSynthBuilding({
-            id: data.id,
-            name: data.name,
-            vertices: verticesEUS,
-            faces: data.faces,
-            material: data.material,
-            wallColor: data.wallColor,
-            roofColor: data.roofColor,
-            color: data.color, // Backward compatibility - will be used as wallColor if wallColor not present
-            opacity: data.opacity,
-            transparent: data.transparent,
-            depthTest: data.depthTest,
-            wireframe: data.wireframe
-        });
+        } else {
+            console.error("Invalid building data format");
+            return null;
+        }
     }
     
     /**
