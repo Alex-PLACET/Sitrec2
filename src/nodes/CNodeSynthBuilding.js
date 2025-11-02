@@ -544,10 +544,65 @@ export class CNodeSynthBuilding extends CNode3DGroup {
                 } while (currentIdx !== this.draggingVertexIndex);
                 
             } else {
-                // For bottom vertices, move the vertex and its linked top
+                // For bottom vertices, move the vertex and its two neighbors
+                // to maintain the shape of the building
+                
+                // Store the original position before moving
+                const oldPosition = draggedVertex.position.clone();
+                
+                // Calculate the displacement vector for the dragged vertex
+                const displacement = newPosition.clone().sub(oldPosition);
+                
+                // Move the dragged vertex
                 draggedVertex.position.copy(newPosition);
                 
-                // Move the linked top vertex to stay directly above
+                // Find the two neighbors using the ring structure
+                const neighbor1Idx = draggedVertex.next;
+                const neighbor2Idx = draggedVertex.prev;
+                const neighbor1 = this.vertices[neighbor1Idx];
+                const neighbor2 = this.vertices[neighbor2Idx];
+                
+                // Find the opposite corner (the vertex that's not this one or the neighbors)
+                // For a rectangle, bottom vertices are indices 0-3
+                let oppositeIdx = -1;
+                for (let i = 0; i < 4; i++) {
+                    if (i !== this.draggingVertexIndex && i !== neighbor1Idx && i !== neighbor2Idx) {
+                        oppositeIdx = i;
+                        break;
+                    }
+                }
+                
+                if (oppositeIdx !== -1) {
+                    const opposite = this.vertices[oppositeIdx];
+                    
+                    // Move neighbor1: project A's displacement onto the edge connecting opposite to neighbor1
+                    const edgeToNeighbor1 = neighbor1.position.clone().sub(opposite.position);
+                    const edgeDir1 = edgeToNeighbor1.clone().normalize();
+                    const projectedMovement1 = displacement.dot(edgeDir1);
+                    neighbor1.position.add(edgeDir1.multiplyScalar(projectedMovement1));
+                    
+                    // Update the linked top vertex for neighbor1
+                    const linkedTop1 = this.vertices[neighbor1.linkedVertex];
+                    const localUp1 = getLocalUpVector(neighbor1.position);
+                    const toTop1 = linkedTop1.position.clone().sub(neighbor1.position);
+                    const currentHeight1 = toTop1.dot(localUp1);
+                    linkedTop1.position.copy(neighbor1.position.clone().add(localUp1.multiplyScalar(currentHeight1)));
+                    
+                    // Move neighbor2: project A's displacement onto the edge connecting opposite to neighbor2
+                    const edgeToNeighbor2 = neighbor2.position.clone().sub(opposite.position);
+                    const edgeDir2 = edgeToNeighbor2.clone().normalize();
+                    const projectedMovement2 = displacement.dot(edgeDir2);
+                    neighbor2.position.add(edgeDir2.multiplyScalar(projectedMovement2));
+                    
+                    // Update the linked top vertex for neighbor2
+                    const linkedTop2 = this.vertices[neighbor2.linkedVertex];
+                    const localUp2 = getLocalUpVector(neighbor2.position);
+                    const toTop2 = linkedTop2.position.clone().sub(neighbor2.position);
+                    const currentHeight2 = toTop2.dot(localUp2);
+                    linkedTop2.position.copy(neighbor2.position.clone().add(localUp2.multiplyScalar(currentHeight2)));
+                }
+                
+                // Move the linked top vertex for the dragged vertex to stay directly above
                 const linkedTop = this.vertices[draggedVertex.linkedVertex];
                 const localUp = getLocalUpVector(draggedVertex.position);
                 
