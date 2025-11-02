@@ -1232,6 +1232,42 @@ export class CNodeSynthBuilding extends CNode3DGroup {
     }
     
     /**
+     * Generate a unique name for a duplicate by adding or incrementing a numeric suffix
+     * @returns {string} A unique name that doesn't conflict with existing buildings
+     */
+    generateUniqueName() {
+        // Check if current name ends with "-N" where N is a number
+        const match = this.name.match(/^(.+?)-(\d+)$/);
+        let baseName, startNumber;
+        
+        if (match) {
+            // Name already has a number suffix, extract base and increment
+            baseName = match[1];
+            startNumber = parseInt(match[2], 10);
+        } else {
+            // No number suffix, use full name as base
+            baseName = this.name;
+            startNumber = 1;
+        }
+        
+        // Collect all existing building names
+        const existingNames = new Set();
+        Synth3DManager.iterate((id, building) => {
+            existingNames.add(building.name);
+        });
+        
+        // Find the first available number
+        let counter = startNumber;
+        let candidateName;
+        do {
+            candidateName = `${baseName}-${counter}`;
+            counter++;
+        } while (existingNames.has(candidateName));
+        
+        return candidateName;
+    }
+    
+    /**
      * Duplicate this building and return the copy
      * @returns {CNodeSynthBuilding} The duplicated building
      */
@@ -1254,9 +1290,12 @@ export class CNodeSynthBuilding extends CNode3DGroup {
             };
         });
         
+        // Generate a unique name with incremental numbering
+        const newName = this.generateUniqueName();
+        
         // Create building data for the manager (without ID so it gets auto-assigned)
         const buildingData = {
-            name: this.name + " Copy",
+            name: newName,
             vertices: verticesEUS,
             faces: serialized.faces,
             material: serialized.material,
