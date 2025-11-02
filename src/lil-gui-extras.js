@@ -201,6 +201,7 @@ GUI.prototype.tooltip = function(tooltip) {
 
 // Set a button action to fire when the folder title is double-clicked
 // This is useful for context menus where double-clicking should perform a default action
+// If no buttonController is provided, double-clicking will close the menu (same as clicking outside)
 GUI.prototype.setDoubleClickAction = function(buttonController) {
     // Store the button controller reference
     this._doubleClickButton = buttonController;
@@ -215,9 +216,12 @@ GUI.prototype.setDoubleClickAction = function(buttonController) {
                 if (obj && prop && typeof obj[prop] === 'function') {
                     obj[prop]();
                 }
-                event.preventDefault();
-                event.stopPropagation();
+            } else {
+                // No double-click action set - close the menu (same as clicking outside)
+                this.destroy();
             }
+            event.preventDefault();
+            event.stopPropagation();
         });
         this._doubleClickListenerAdded = true;
     }
@@ -1246,6 +1250,9 @@ export class CGuiMenuBar {
         
         // Add mouse tracking to disable keyboard shortcuts
         addGUIMouseTracking(gui);
+        
+        // Enable double-click on title to close menu (can be overridden with setDoubleClickAction)
+        gui.setDoubleClickAction();
         
         // Add drag functionality to the title
         gui.$title.addEventListener("mousedown", (event) => {
