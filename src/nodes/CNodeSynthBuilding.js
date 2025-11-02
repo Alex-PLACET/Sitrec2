@@ -56,7 +56,8 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         
         // Material properties
         this.materialType = v.material || 'lambert';
-        this.materialColor = v.rawColor || 0xc0c0c0;
+        this.wallColor = v.wallColor || v.color || v.rawColor || 0xc0c0c0;
+        this.roofColor = v.roofColor || 0x404040;
         this.materialOpacity = v.opacity !== undefined ? v.opacity : 1.0;
         this.materialTransparent = v.transparent !== undefined ? v.transparent : true;
         this.materialDepthTest = v.depthTest !== undefined ? v.depthTest : true;
@@ -129,7 +130,10 @@ export class CNodeSynthBuilding extends CNode3DGroup {
                 };
             }
         });
-        this.faces = faces.map(f => ({indices: [...f.indices]}));
+        this.faces = faces.map(f => ({
+            indices: [...f.indices],
+            type: f.type || 'wall'  // Default to 'wall' for backward compatibility
+        }));
         
         // If we have roofline vertices, rebuild roof faces
         const hasRoofline = this.vertices.some(v => v.type === 'roofline');
@@ -216,12 +220,12 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         //               9 = roof2 (between 6 and 7)
         // NOTE: Winding order REVERSED so normals point OUTWARD from the building
         this.faces = [
-            {indices: [3, 2, 1, 0]},  // Bottom face (reversed - normal points down/out)
+            {indices: [3, 2, 1, 0], type: 'wall'},  // Bottom face (reversed - normal points down/out)
             // Roof faces will be generated dynamically in buildRoofFaces()
-            {indices: [4, 5, 1, 0]},  // Side face (reversed - normal points out)
-            {indices: [5, 6, 2, 1]},  // Side face (reversed - normal points out)
-            {indices: [6, 7, 3, 2]},  // Side face (reversed - normal points out)
-            {indices: [7, 4, 0, 3]},  // Side face (reversed - normal points out)
+            {indices: [4, 5, 1, 0], type: 'wall'},  // Side face (reversed - normal points out)
+            {indices: [5, 6, 2, 1], type: 'wall'},  // Side face (reversed - normal points out)
+            {indices: [6, 7, 3, 2], type: 'wall'},  // Side face (reversed - normal points out)
+            {indices: [7, 4, 0, 3], type: 'wall'},  // Side face (reversed - normal points out)
         ];
         
         // Add roof faces
@@ -272,17 +276,16 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         
         if (heightDiff < flatThreshold) {
             // Flat roof: single quad
-            this.faces.push({indices: [7, 6, 5, 4]});  // Top face (reversed - normal points up/out)
+            this.faces.push({indices: [7, 6, 5, 4], type: 'roof'});  // Top face (reversed - normal points up/out)
         } else {
-            // Peaked roof: two triangular faces
-            // Side 1: vertices 4, 5, roof1 (8)
-            this.faces.push({indices: [8, 5, 4]});  // Triangle pointing up
-            // Side 2: vertices 6, 7, roof2 (9)
-            this.faces.push({indices: [9, 7, 6]});  // Triangle pointing up
-            // Front gable: vertices 5, 6, roof2 (9), roof1 (8)
-            this.faces.push({indices: [8, 9, 6, 5]});  // Quad gable end
-            // Back gable: vertices 7, 4, roof1 (8), roof2 (9)
-            this.faces.push({indices: [9, 8, 4, 7]});  // Quad gable end
+            // From gable: vertices 4, 5, roof1 (8)
+            this.faces.push({indices: [8, 5, 4], type: 'wall'});
+            // Back gable: vertices 6, 7, roof2 (9)
+            this.faces.push({indices: [9, 7, 6], type: 'wall'});
+            // Roof 1: vertices 5, 6, roof2 (9), roof1 (8)
+            this.faces.push({indices: [8, 9, 6, 5], type: 'roof'});
+            // Roof 2: vertices 7, 4, roof1 (8), roof2 (9)
+            this.faces.push({indices: [9, 8, 4, 7], type: 'roof'});
         }
     }
     
@@ -316,7 +319,11 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         if (this.solidMesh) {
             this.group.remove(this.solidMesh);
             this.solidMesh.geometry.dispose();
-            this.solidMesh.material.dispose();
+            if (Array.isArray(this.solidMesh.material)) {
+                this.solidMesh.material.forEach(m => m.dispose());
+            } else {
+                this.solidMesh.material.dispose();
+            }
         }
         if (this.wireframe) {
             this.group.remove(this.wireframe);
@@ -333,32 +340,57 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         // Create BufferGeometry from vertices and faces
         const geometry = new BufferGeometry();
         
-        // Triangulate faces and build position array
+        // Build position buffer first
         const positions = [];
-        const triangulatedIndices = [];
-        
-        this.faces.forEach(face => {
-            const indices = face.indices;
-            // Simple fan triangulation for convex polygons
-            for (let i = 1; i < indices.length - 1; i++) {
-                triangulatedIndices.push(indices[0], indices[i], indices[i + 1]);
-            }
-        });
-        
-        // Build position buffer
         this.vertices.forEach(vertex => {
             const v = vertex.position;
             positions.push(v.x, v.y, v.z);
         });
-        
         geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
-        geometry.setIndex(triangulatedIndices);
+        
+        // Triangulate faces and assign to material groups
+        // Group 0: walls (bottom, sides, and gable ends)
+        // Group 1: roof (only the sloped/flat top surfaces)
+        const wallIndices = [];
+        const roofIndices = [];
+        
+        this.faces.forEach(face => {
+            const indices = face.indices;
+            
+            // Determine if this is a roof face based on face type
+            const isRoofFace = face.type === 'roof';
+            
+            // Simple fan triangulation for convex polygons
+            const triangles = [];
+            for (let i = 1; i < indices.length - 1; i++) {
+                triangles.push(indices[0], indices[i], indices[i + 1]);
+            }
+            
+            if (isRoofFace) {
+                roofIndices.push(...triangles);
+            } else {
+                wallIndices.push(...triangles);
+            }
+        });
+        
+        // Combine indices: walls first, then roof
+        const combinedIndices = [...wallIndices, ...roofIndices];
+        geometry.setIndex(combinedIndices);
         geometry.computeVertexNormals();
         
-        // Create solid mesh with material
-        const material = this.createMaterial();
+        // Add material groups
+        if (wallIndices.length > 0) {
+            geometry.addGroup(0, wallIndices.length, 0); // Group 0 for walls
+        }
+        if (roofIndices.length > 0) {
+            geometry.addGroup(wallIndices.length, roofIndices.length, 1); // Group 1 for roof
+        }
         
-        this.solidMesh = new Mesh(geometry, material);
+        // Create materials: [0] walls, [1] roof
+        const wallMaterial = this.createMaterial(this.wallColor);
+        const roofMaterial = this.createMaterial(this.roofColor);
+        
+        this.solidMesh = new Mesh(geometry, [wallMaterial, roofMaterial]);
         this.solidMesh.layers.mask = LAYER.MASK_MAIN | LAYER.MASK_LOOK;
         this.group.add(this.solidMesh);
         
@@ -386,10 +418,11 @@ export class CNodeSynthBuilding extends CNode3DGroup {
     
     /**
      * Create a material based on current material properties
+     * @param {number} color - The color for this material
      */
-    createMaterial() {
+    createMaterial(color) {
         const materialConfig = {
-            color: this.materialColor,
+            color: color,
             transparent: this.materialTransparent,
             opacity: this.materialOpacity,
             depthTest: this.materialDepthTest,
@@ -418,8 +451,19 @@ export class CNodeSynthBuilding extends CNode3DGroup {
     rebuildMaterial() {
         if (this.solidMesh) {
             const oldMaterial = this.solidMesh.material;
-            this.solidMesh.material = this.createMaterial();
-            oldMaterial.dispose();
+            
+            // Create new materials
+            const wallMaterial = this.createMaterial(this.wallColor);
+            const roofMaterial = this.createMaterial(this.roofColor);
+            this.solidMesh.material = [wallMaterial, roofMaterial];
+            
+            // Dispose old materials
+            if (Array.isArray(oldMaterial)) {
+                oldMaterial.forEach(m => m.dispose());
+            } else {
+                oldMaterial.dispose();
+            }
+            
             setRenderOne(true);
         }
     }
@@ -1581,8 +1625,12 @@ export class CNodeSynthBuilding extends CNode3DGroup {
             .name('Type')
             .onChange(() => this.rebuildMaterial());
         
-        this.materialFolder.addColor(this, 'materialColor')
-            .name('Color')
+        this.materialFolder.addColor(this, 'wallColor')
+            .name('Wall Color')
+            .onChange(() => this.rebuildMaterial());
+        
+        this.materialFolder.addColor(this, 'roofColor')
+            .name('Roof Color')
             .onChange(() => this.rebuildMaterial());
         
         this.materialFolder.add(this, 'materialOpacity', 0, 1, 0.01)
@@ -1684,7 +1732,8 @@ export class CNodeSynthBuilding extends CNode3DGroup {
             vertices: verticesEUS,
             faces: serialized.faces,
             material: serialized.material,
-            color: serialized.color,
+            wallColor: serialized.wallColor,
+            roofColor: serialized.roofColor,
             opacity: serialized.opacity,
             transparent: serialized.transparent,
             depthTest: serialized.depthTest,
@@ -1717,9 +1766,10 @@ export class CNodeSynthBuilding extends CNode3DGroup {
             id: this.buildingID,
             name: this.name,
             vertices: verticesLLA,
-            faces: this.faces.map(f => ({indices: [...f.indices]})),
+            faces: this.faces.map(f => ({indices: [...f.indices], type: f.type})),
             material: this.materialType,
-            color: this.materialColor,
+            wallColor: this.wallColor,
+            roofColor: this.roofColor,
             opacity: this.materialOpacity,
             transparent: this.materialTransparent,
             depthTest: this.materialDepthTest,
@@ -1761,7 +1811,9 @@ export class CNodeSynthBuilding extends CNode3DGroup {
             vertices: verticesEUS,
             faces: data.faces,
             material: data.material,
-            color: data.color,
+            wallColor: data.wallColor,
+            roofColor: data.roofColor,
+            color: data.color, // Backward compatibility - will be used as wallColor if wallColor not present
             opacity: data.opacity,
             transparent: data.transparent,
             depthTest: data.depthTest,
