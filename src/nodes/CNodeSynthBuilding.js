@@ -384,12 +384,11 @@ export class CNodeSynthBuilding extends CNode3DGroup {
             }
         });
         
-        // Create one grey handle in the center of the roof
+        // Create one grey handle at the first corner of the roof
         const topVertices = this.vertices.filter(v => v.type === 'top');
         if (topVertices.length > 0) {
-            const center = new Vector3();
-            topVertices.forEach(v => center.add(v.position));
-            center.divideScalar(topVertices.length);
+            // Use the first top vertex position
+            const firstTopVertex = topVertices[0];
             
             const roofMaterial = new MeshLambertMaterial({
                 color: 0x888888,  // Grey
@@ -399,28 +398,12 @@ export class CNodeSynthBuilding extends CNode3DGroup {
             });
             
             this.roofCenterHandle = new Mesh(geometry, roofMaterial);
-            this.roofCenterHandle.position.copy(center);
+            this.roofCenterHandle.position.copy(firstTopVertex.position);
             this.roofCenterHandle.layers.mask = LAYER.MASK_HELPERS;
             this.roofCenterHandle.userData.isRoofCenter = true;
             
             this.group.add(this.roofCenterHandle);
             this.controlPoints.push(this.roofCenterHandle);
-            
-            // Add invisible rotation ring around roof center for building translation
-            const roofRotationMaterial = new MeshBasicMaterial({
-                color: 0x0000ff,
-                transparent: true,
-                opacity: 0.0,  // Completely invisible
-                depthTest: true
-            });
-            
-            const roofRotationRing = new Mesh(rotationGeometry, roofRotationMaterial);
-            roofRotationRing.position.copy(center);
-            roofRotationRing.layers.mask = LAYER.MASK_HELPERS;
-            roofRotationRing.userData.isRoofRotationRing = true;
-            
-            this.group.add(roofRotationRing);
-            this.rotationHandles.push(roofRotationRing);
         }
         
         // Calculate and store the building centroid at ground level (for rotation)
@@ -567,60 +550,66 @@ export class CNodeSynthBuilding extends CNode3DGroup {
                     const rotationHandle = rotationIntersects[0].object;
                     const intersectionPoint = rotationIntersects[0].point;
                     
-                    // Check if this is the roof rotation ring (for building translation)
-                    if (rotationHandle.userData.isRoofRotationRing) {
-                        // Get roof center position
-                        const roofCenterPosition = this.roofCenterHandle.position;
-                        const distanceFromRoofCenter = intersectionPoint.distanceTo(roofCenterPosition);
-                        
-                        // Only show move cursor if outside the visible handle radius (3m)
-                        if (distanceFromRoofCenter > 3) {
-                            if (!this.hoveredHandle || !this.hoveredHandle.userData || !this.hoveredHandle.userData.isRoofRotationRing) {
-                                document.body.style.cursor = 'move';
-                                this.hoveredHandle = {userData: {isRoofRotationRing: true}};
-                            }
-                        } else {
-                            // Inside visible handle but outside actual handle - reset
-                            if (this.hoveredHandle) {
-                                document.body.style.cursor = 'default';
-                                this.hoveredHandle = null;
-                            }
+                    // Corner rotation ring (for building rotation)
+                    const cornerVertexIndex = rotationHandle.userData.cornerVertexIndex;
+                    const cornerPosition = this.vertices[cornerVertexIndex].position;
+                    
+                    // Calculate distance from corner handle center
+                    const distanceFromCorner = intersectionPoint.distanceTo(cornerPosition);
+                    
+                    // Only show rotation cursor if outside the visible handle radius (3m)
+                    if (distanceFromCorner > 3) {
+                        if (!this.hoveredHandle || !this.hoveredHandle.userData || !this.hoveredHandle.userData.isRotationRing) {
+                            document.body.style.cursor = 'grab';
+                            this.hoveredHandle = {userData: {isRotationRing: true, cornerVertexIndex: cornerVertexIndex}};
                         }
                     } else {
-                        // Corner rotation ring (for building rotation)
-                        const cornerVertexIndex = rotationHandle.userData.cornerVertexIndex;
-                        const cornerPosition = this.vertices[cornerVertexIndex].position;
-                        
-                        // Calculate distance from corner handle center
-                        const distanceFromCorner = intersectionPoint.distanceTo(cornerPosition);
-                        
-                        // Only show rotation cursor if outside the visible handle radius (3m)
-                        if (distanceFromCorner > 3) {
-                            if (!this.hoveredHandle || !this.hoveredHandle.userData || !this.hoveredHandle.userData.isRotationRing) {
-                                document.body.style.cursor = 'grab';
-                                this.hoveredHandle = {userData: {isRotationRing: true, cornerVertexIndex: cornerVertexIndex}};
-                            }
-                        } else {
-                            // Inside visible handle but outside actual handle - reset
-                            if (this.hoveredHandle) {
-                                document.body.style.cursor = 'default';
-                                this.hoveredHandle = null;
-                            }
-                        }
+                        // Inside visible handle but outside actual handle - check building mesh
+                        this.checkBuildingMeshHover();
                     }
                 } else {
-                    // Not hovering over any handle
-                    if (this.hoveredHandle) {
-                        document.body.style.cursor = 'default';
-                        this.hoveredHandle = null;
-                    }
+                    // THIRD: Check if hovering over the building mesh itself
+                    this.checkBuildingMeshHover();
                 }
             } else {
-                // Not hovering over any handle
+                // No rotation handles, check building mesh
+                this.checkBuildingMeshHover();
+            }
+        }
+    }
+    
+    /**
+     * Check if hovering over the building mesh for translation
+     */
+    checkBuildingMeshHover() {
+        if (this.solidMesh) {
+            // Temporarily change raycaster layer mask to include mesh layers
+            const savedMask = this.raycaster.layers.mask;
+            this.raycaster.layers.mask = LAYER.MASK_MAIN | LAYER.MASK_LOOK;
+            
+            const intersects = this.raycaster.intersectObject(this.solidMesh, false);
+            
+            // Restore raycaster layer mask
+            this.raycaster.layers.mask = savedMask;
+            
+            if (intersects.length > 0) {
+                // Hovering over building mesh - show move cursor
+                if (!this.hoveredHandle || !this.hoveredHandle.userData || !this.hoveredHandle.userData.isBuildingMesh) {
+                    document.body.style.cursor = 'move';
+                    this.hoveredHandle = {userData: {isBuildingMesh: true}};
+                }
+            } else {
+                // Not hovering over anything
                 if (this.hoveredHandle) {
                     document.body.style.cursor = 'default';
                     this.hoveredHandle = null;
                 }
+            }
+        } else {
+            // Not hovering over anything
+            if (this.hoveredHandle) {
+                document.body.style.cursor = 'default';
+                this.hoveredHandle = null;
             }
         }
     }
@@ -701,34 +690,7 @@ export class CNodeSynthBuilding extends CNode3DGroup {
                 const rotationHandle = rotationIntersects[0].object;
                 const intersectionPoint = rotationIntersects[0].point;
                 
-                // Check if this is the roof rotation ring (for building translation)
-                if (rotationHandle.userData.isRoofRotationRing) {
-                    // Get roof center position
-                    const roofCenterPosition = this.roofCenterHandle.position;
-                    const distanceFromRoofCenter = intersectionPoint.distanceTo(roofCenterPosition);
-                    
-                    // Only start translation if outside the visible handle radius (3m)
-                    if (distanceFromRoofCenter > 3) {
-                        console.log("  Started building translation mode from roof ring");
-                        this.isDragging = true;
-                        this.isRotating = false;
-                        this.draggingPoint = {userData: {isRoofRotationRing: true}};
-                        this.draggingVertexIndex = -1;
-                        
-                        // Store the initial intersection point for translation
-                        this.dragStartPoint = intersectionPoint.clone();
-                        
-                        document.body.style.cursor = 'move';
-                        
-                        // Disable camera controls while translating
-                        if (view.controls) {
-                            view.controls.enabled = false;
-                        }
-                        
-                        event.stopPropagation();
-                        event.preventDefault();
-                    }
-                } else if (rotationHandle.userData.cornerVertexIndex !== undefined && this.buildingCentroid) {
+                if (rotationHandle.userData.cornerVertexIndex !== undefined && this.buildingCentroid) {
                     // Corner rotation ring (for building rotation)
                     const cornerVertexIndex = rotationHandle.userData.cornerVertexIndex;
                     const cornerPosition = this.vertices[cornerVertexIndex].position;
@@ -769,8 +731,42 @@ export class CNodeSynthBuilding extends CNode3DGroup {
                         
                         event.stopPropagation();
                         event.preventDefault();
+                        return; // Don't check building mesh
                     }
                 }
+            }
+        }
+        
+        // THIRD: Check for click on building mesh (for building translation)
+        if (this.solidMesh) {
+            // Temporarily change raycaster layer mask to include mesh layers
+            const savedMask = this.raycaster.layers.mask;
+            this.raycaster.layers.mask = LAYER.MASK_MAIN | LAYER.MASK_LOOK;
+            
+            const meshIntersects = this.raycaster.intersectObject(this.solidMesh, false);
+            
+            // Restore raycaster layer mask
+            this.raycaster.layers.mask = savedMask;
+            
+            if (meshIntersects.length > 0) {
+                console.log("  Started building translation mode from mesh click");
+                this.isDragging = true;
+                this.isRotating = false;
+                this.draggingPoint = {userData: {isBuildingMesh: true}};
+                this.draggingVertexIndex = -1;
+                
+                // Store the initial intersection point for translation
+                this.dragStartPoint = meshIntersects[0].point.clone();
+                
+                document.body.style.cursor = 'move';
+                
+                // Disable camera controls while translating
+                if (view.controls) {
+                    view.controls.enabled = false;
+                }
+                
+                event.stopPropagation();
+                event.preventDefault();
             }
         }
     }
@@ -876,18 +872,18 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         
         this.raycaster.setFromCamera(mouseRay, view.camera);
         
-        // Check if dragging the roof center handle or roof rotation ring
+        // Check if dragging the roof center handle or building mesh
         const isRoofCenter = this.draggingPoint.userData.isRoofCenter;
-        const isRoofRotationRing = this.draggingPoint.userData.isRoofRotationRing;
+        const isBuildingMesh = this.draggingPoint.userData.isBuildingMesh;
         
-        // Get the vertex being dragged (if not roof center or rotation ring)
-        const draggedVertex = (isRoofCenter || isRoofRotationRing) ? null : this.vertices[this.draggingVertexIndex];
-        const isTopVertex = !isRoofCenter && !isRoofRotationRing && (draggedVertex && draggedVertex.type === 'top');
+        // Get the vertex being dragged (if not roof center or building mesh)
+        const draggedVertex = (isRoofCenter || isBuildingMesh) ? null : this.vertices[this.draggingVertexIndex];
+        const isTopVertex = !isRoofCenter && !isBuildingMesh && (draggedVertex && draggedVertex.type === 'top');
         
         let plane = new Plane();
         
-        if (isRoofRotationRing) {
-            // For roof rotation ring, create a horizontal plane for moving entire building
+        if (isBuildingMesh) {
+            // For building mesh, create a horizontal plane for moving entire building
             const localUp = getLocalUpVector(this.buildingCentroid);
             plane.setFromNormalAndCoplanarPoint(localUp, this.dragStartPoint);
         } else if (isRoofCenter || isTopVertex) {
@@ -912,8 +908,8 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         // Intersect ray with plane
         const newPosition = new Vector3();
         if (this.raycaster.ray.intersectPlane(plane, newPosition)) {
-            if (isRoofRotationRing) {
-                // For roof rotation ring: move the entire building horizontally
+            if (isBuildingMesh) {
+                // For building mesh: move the entire building horizontally
                 const displacement = newPosition.clone().sub(this.dragStartPoint);
                 
                 // Move all vertices by the same displacement
@@ -1040,9 +1036,9 @@ export class CNodeSynthBuilding extends CNode3DGroup {
             this.createControlPoints();
             
             // Re-identify the dragging point
-            if (isRoofRotationRing) {
-                // Keep the fake dragging point for roof rotation ring
-                this.draggingPoint = {userData: {isRoofRotationRing: true}};
+            if (isBuildingMesh) {
+                // Keep the fake dragging point for building mesh
+                this.draggingPoint = {userData: {isBuildingMesh: true}};
             } else if (isRoofCenter) {
                 this.draggingPoint = this.roofCenterHandle;
             } else {
