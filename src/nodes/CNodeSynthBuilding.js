@@ -6,6 +6,7 @@ import {CNode3DGroup} from "./CNode3DGroup";
 import {
     BufferGeometry,
     CircleGeometry,
+    Color,
     DoubleSide,
     Float32BufferAttribute,
     LineBasicMaterial,
@@ -56,8 +57,13 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         
         // Material properties
         this.materialType = v.material || 'lambert';
-        this.wallColor = v.wallColor || v.color || v.rawColor || 0xc0c0c0;
-        this.roofColor = v.roofColor || 0x404040;
+        
+        // Convert colors to hex string format for GUI (#RRGGBB)
+        const wallColorValue = v.wallColor || v.color || v.rawColor || 0xc0c0c0;
+        const roofColorValue = v.roofColor || 0x404040;
+        this.wallColor = "#" + new Color(wallColorValue).getHexString();
+        this.roofColor = "#" + new Color(roofColorValue).getHexString();
+        
         this.materialOpacity = v.opacity !== undefined ? v.opacity : 1.0;
         this.materialTransparent = v.transparent !== undefined ? v.transparent : true;
         this.materialDepthTest = v.depthTest !== undefined ? v.depthTest : true;

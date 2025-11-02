@@ -1704,8 +1704,12 @@ export class CCustomManager {
             .name('Type')
             .onChange(() => building.rebuildMaterial());
         
-        materialFolder.addColor(building, 'materialColor')
-            .name('Color')
+        materialFolder.addColor(building, 'wallColor')
+            .name('Wall Color')
+            .onChange(() => building.rebuildMaterial());
+        
+        materialFolder.addColor(building, 'roofColor')
+            .name('Roof Color')
             .onChange(() => building.rebuildMaterial());
         
         materialFolder.add(building, 'materialOpacity', 0, 1, 0.01)
