@@ -1100,7 +1100,7 @@ class CameraMapControls {
 
 		let update = false;
 
-		if (isKeyHeld('a')) {
+		if (isKeyHeld('v')) {
 			this.measureStartPoint.set(cursorPos.x, cursorPos.y, cursorPos.z);
 			update = true;
 		}
