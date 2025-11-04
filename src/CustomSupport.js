@@ -1742,29 +1742,63 @@ export class CCustomManager {
         // Add height controls with automatic unit conversion
         const heightFolder = menu.addFolder('Height');
         
+        // Create proxy object for roof edge height
+        // This stores the value in current display units (ft/m)
+        // Building stores SI units (m), so we convert when reading/writing
+        const roofEdgeProxy = {
+            _displayValue: building.roofAGL,  // Initialize with SI value (will be converted by setUnitType)
+            get height() {
+                // Return the display value (ft or m depending on current units)
+                return this._displayValue;
+            },
+            set height(displayValue) {
+                // Store display value
+                this._displayValue = displayValue;
+            }
+        };
+        
         // Store controller reference on building so it can be updated
-        building.roofEdgeHeightController = heightFolder.add(building, 'roofAGL', 0.1, 100, 0.01)
+        building.roofEdgeHeightController = heightFolder.add(roofEdgeProxy, 'height', 0.1, 100, 0.01)
             .name('Roof Edge Height')
-            .setUnitType('small')  // Automatically converts between m/ft
-            .onChange((value) => building.updateRoofEdgeHeight(value))
+            .setUnitType('small')  // Controller stores display units, setUnitType converts initial SI value
+            .onChange(() => {
+                // When user changes the controller, get SI value and update building
+                const siValue = building.roofEdgeHeightController.getSIValue();
+                building.updateRoofEdgeHeight(siValue);
+            })
             .listen();
         
-        // Create computed property for ridgeline height (total height from ground)
+        // Store proxy on building so we can update it when building changes
+        building.roofEdgeProxy = roofEdgeProxy;
+        
+        // Create proxy object for ridgeline height (total height from ground)
+        // This stores the value in current display units (ft/m)
         const ridgelineHeightProxy = {
+            _displayValue: building.roofAGL + building.rooflineHeightAGL,  // Initialize with SI value (will be converted)
             get height() {
-                return building.roofAGL + building.rooflineHeightAGL;
+                // Return the display value
+                return this._displayValue;
             },
-            set height(value) {
-                const newRooflineHeight = Math.max(0, value - building.roofAGL);
-                building.updateRooflineHeight(newRooflineHeight);
+            set height(displayValue) {
+                // Store display value
+                this._displayValue = displayValue;
             }
         };
         
         // Store controller reference on building so it can be updated
         building.ridgelineHeightController = heightFolder.add(ridgelineHeightProxy, 'height', 0.1, 100, 0.01)
             .name('Ridgeline Height')
-            .setUnitType('small')  // Automatically converts between m/ft
+            .setUnitType('small')  // Controller stores display units
+            .onChange(() => {
+                // When user changes the controller, get SI value and calculate roofline height
+                const siValue = building.ridgelineHeightController.getSIValue();
+                const newRooflineHeight = Math.max(0, siValue - building.roofAGL);
+                building.updateRooflineHeight(newRooflineHeight);
+            })
             .listen();
+        
+        // Store proxy on building so we can update it when building changes
+        building.ridgelineProxy = ridgelineHeightProxy;
         
         // Create menu actions
         const menuData = {

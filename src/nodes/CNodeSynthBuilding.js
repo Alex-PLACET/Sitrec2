@@ -350,13 +350,17 @@ export class CNodeSynthBuilding extends CNode3DGroup {
     
     /**
      * Update GUI controllers to reflect current values
+     * Controllers store display units, so we use setSIValue to convert from building's SI values
      */
     updateGUIControllers() {
         if (this.roofEdgeHeightController) {
-            this.roofEdgeHeightController.updateDisplay();
+            // Update proxy display value from building's SI value
+            this.roofEdgeHeightController.setSIValue(this.roofAGL);
         }
         if (this.ridgelineHeightController) {
-            this.ridgelineHeightController.updateDisplay();
+            // Update proxy display value from building's SI values
+            const totalHeight = this.roofAGL + this.rooflineHeightAGL;
+            this.ridgelineHeightController.setSIValue(totalHeight);
         }
     }
     
