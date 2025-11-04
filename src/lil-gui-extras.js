@@ -1,7 +1,7 @@
 // Helper functions for lil-gui
 import GUI, {Controller} from "./js/lil-gui.esm";
 //import {updateSize} from "./JetStuff";
-import {Globals, setMouseOverGUI} from "./Globals";
+import {Globals, setMouseOverGUI, Units} from "./Globals";
 import {Color} from "three";
 import {assert} from "./assert";
 import {ViewMan} from "./CViewManager";
@@ -148,6 +148,116 @@ Controller.prototype.setValueQuietly = function(value) {
     // Update the display
     this.updateDisplay();
 
+    return this; // Return the controller to allow method chaining
+}
+
+// Add unit conversion support to numerical controllers
+// Usage: controller.setUnitType("small") - for height/distance in m/ft
+// Assumes internal value is in SI units (meters), displays in user's preferred units
+Controller.prototype.setUnitType = function(unitType) {
+    // Store the unit type
+    this._unitType = unitType;
+    
+    // Only works for number controllers with $input
+    if (!this.$input) {
+        console.warn('setUnitType only works on number controllers');
+        return this;
+    }
+    
+    // Store the original name (without units)
+    if (!this._originalName) {
+        this._originalName = this._name;
+    }
+    
+    // Update the display name with units
+    const updateName = () => {
+        if (!Units) return;
+        
+        const unitInfo = Units.factors[Units.units][unitType];
+        if (unitInfo) {
+            this._name = this._originalName + ' (' + unitInfo.abbrev + ')';
+            this.$name.innerHTML = this._name;
+        }
+    };
+    
+    // Initial name update
+    updateName();
+    
+    // Save the original updateDisplay if we haven't already
+    if (!this._originalUpdateDisplay) {
+        this._originalUpdateDisplay = this.updateDisplay;
+    }
+    
+    // Override updateDisplay to convert values for display
+    this.updateDisplay = function() {
+        if (!Units) {
+            return this._originalUpdateDisplay();
+        }
+        
+        const unitInfo = Units.factors[Units.units][unitType];
+        if (!unitInfo) {
+            return this._originalUpdateDisplay();
+        }
+        
+        // Get the value in SI units (meters)
+        const valueInMeters = this.getValue();
+        
+        // Convert to display units
+        const displayValue = valueInMeters / unitInfo.toM;
+        
+        // Update the input display
+        this.$input.value = displayValue.toFixed(this._decimals === undefined ? 2 : this._decimals);
+        
+        return this;
+    };
+    
+    // Save the original onChange if we haven't already
+    if (!this._originalOnChange) {
+        this._originalOnChange = this._onChange;
+    }
+    
+    // Wrap onChange to convert from display units back to SI
+    this._onChange = (value) => {
+        if (!Units) {
+            return this._originalOnChange ? this._originalOnChange(value) : undefined;
+        }
+        
+        const unitInfo = Units.factors[Units.units][unitType];
+        if (!unitInfo) {
+            return this._originalOnChange ? this._originalOnChange(value) : undefined;
+        }
+        
+        // value comes in as display units, convert to meters
+        const valueInMeters = value * unitInfo.toM;
+        
+        // Call original onChange with SI value
+        if (this._originalOnChange) {
+            return this._originalOnChange(valueInMeters);
+        }
+    };
+    
+    // Listen for unit changes to update display
+    const onUnitsChange = () => {
+        updateName();
+        this.updateDisplay();
+    };
+    
+    // Store the listener so we can remove it later if needed
+    this._unitsChangeListener = onUnitsChange;
+    
+    // Listen for global units changes
+    // This assumes there's a way to detect when Units changes
+    // We'll check periodically if the units have changed
+    if (!this._unitsCheckInterval) {
+        let lastUnits = Units ? Units.units : null;
+        this._unitsCheckInterval = setInterval(() => {
+            if (Units && Units.units !== lastUnits) {
+                lastUnits = Units.units;
+                onUnitsChange();
+            }
+        }, 500);
+    }
+    
     return this; // Return the controller to allow method chaining
 }
 

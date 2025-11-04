@@ -1739,12 +1739,13 @@ export class CCustomManager {
             .name('Transparent')
             .onChange(() => building.rebuildMaterial());
         
-        // Add height controls
+        // Add height controls with automatic unit conversion
         const heightFolder = menu.addFolder('Height');
         
         // Store controller reference on building so it can be updated
         building.roofEdgeHeightController = heightFolder.add(building, 'roofAGL', 0.1, 100, 0.01)
             .name('Roof Edge Height')
+            .setUnitType('small')  // Automatically converts between m/ft
             .onChange((value) => building.updateRoofEdgeHeight(value))
             .listen();
         
@@ -1762,6 +1763,7 @@ export class CCustomManager {
         // Store controller reference on building so it can be updated
         building.ridgelineHeightController = heightFolder.add(ridgelineHeightProxy, 'height', 0.1, 100, 0.01)
             .name('Ridgeline Height')
+            .setUnitType('small')  // Automatically converts between m/ft
             .listen();
         
         // Create menu actions
