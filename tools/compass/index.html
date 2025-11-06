@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <title>Compass & Elevation</title>
+    <title>Compass & Elevation (v2 - Shared Library)</title>
     <style>
         * {
             margin: 0;
@@ -20,7 +20,7 @@
             flex-direction: column;
             align-items: center;
             justify-content: flex-start;
-            padding: 20px;
+            padding: 10px;
             color: white;
             overflow-y: auto;
         }
@@ -30,26 +30,31 @@
             width: 100%;
             display: flex;
             flex-direction: column;
-            gap: 20px;
+            gap: 10px;
         }
 
         .header {
             text-align: center;
-            margin-bottom: 20px;
+            margin-bottom: 5px;
         }
 
         .header h1 {
-            font-size: 28px;
-            margin-bottom: 10px;
+            font-size: 20px;
+            margin-bottom: 5px;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .instruments-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            width: 100%;
         }
 
         .compass-container {
             position: relative;
             width: 100%;
-            max-width: 350px;
             aspect-ratio: 1;
-            margin: 0 auto;
             background: rgba(255, 255, 255, 0.1);
             border-radius: 50%;
             box-shadow: 0 10px 40px rgba(0,0,0,0.3);
@@ -62,49 +67,66 @@
             border-radius: 50%;
         }
 
+        .horizon-container {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 1;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            backdrop-filter: blur(10px);
+            overflow: hidden;
+        }
+
+        #horizonCanvas {
+            width: 100%;
+            height: 100%;
+        }
+
         .readings {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            margin-top: 20px;
+            gap: 8px;
+            margin-top: 5px;
         }
 
         .reading-card {
             background: rgba(255, 255, 255, 0.15);
             backdrop-filter: blur(10px);
-            border-radius: 15px;
-            padding: 20px;
+            border-radius: 10px;
+            padding: 8px 10px;
             text-align: center;
             box-shadow: 0 5px 20px rgba(0,0,0,0.2);
         }
 
         .reading-label {
-            font-size: 14px;
+            font-size: 11px;
             opacity: 0.9;
-            margin-bottom: 10px;
+            margin-bottom: 3px;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 0.5px;
         }
 
         .reading-value {
             font-size: 36px;
             font-weight: bold;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            line-height: 1;
         }
 
         .reading-unit {
-            font-size: 18px;
+            font-size: 11px;
             opacity: 0.8;
-            margin-top: 5px;
+            margin-top: 2px;
         }
 
         .status {
             text-align: center;
             background: rgba(255, 255, 255, 0.15);
             backdrop-filter: blur(10px);
-            border-radius: 15px;
-            padding: 15px;
-            font-size: 14px;
+            border-radius: 10px;
+            padding: 10px;
+            font-size: 12px;
             box-shadow: 0 5px 20px rgba(0,0,0,0.2);
         }
 
@@ -147,16 +169,44 @@
         }
 
         .direction {
-            font-size: 20px;
-            margin-top: 5px;
+            font-size: 14px;
+            margin-top: 2px;
             font-weight: 600;
+        }
+
+        .raw-data-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px 15px;
+            font-size: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+            line-height: 1.4;
+            font-weight: 500;
+        }
+
+        .raw-data-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .raw-label {
+            font-size: 16px;
+            opacity: 0.8;
+            margin-right: 8px;
+        }
+
+        .raw-value {
+            font-weight: bold;
+            text-align: right;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>📱 XCompass & Elevation</h1>
+            <h1>📱 Compass & Elevation v2</h1>
+            <p style="font-size: 11px; opacity: 0.8;">Shared Library</p>
         </div>
 
         <div id="permissionSection">
@@ -166,8 +216,13 @@
             </p>
         </div>
 
-        <div class="compass-container">
-            <canvas id="compassCanvas" width="700" height="700"></canvas>
+        <div class="instruments-row">
+            <div class="compass-container">
+                <canvas id="compassCanvas" width="700" height="700"></canvas>
+            </div>
+            <div class="horizon-container">
+                <canvas id="horizonCanvas" width="700" height="700"></canvas>
+            </div>
         </div>
 
         <div class="readings">
@@ -185,15 +240,33 @@
             </div>
         </div>
 
-        <div class="reading-card" style="margin-top: 15px;">
-            <div class="reading-label">Raw Sensor Data</div>
-            <div id="rawData" style="font-size: 14px; font-family: monospace; line-height: 1.8;">
-                <div>alpha: <span id="alphaValue">--</span>°</div>
-                <div>beta: <span id="betaValue">--</span>°</div>
-                <div>gamma: <span id="gammaValue">--</span>°</div>
-                <div>webkitCompassHeading: <span id="webkitValue">--</span>°</div>
-                <div>screenOrientation: <span id="orientValue">--</span>°</div>
-                <div>isAbsolute: <span id="absoluteValue">--</span></div>
+        <div class="reading-card" style="margin-top: 5px; padding: 10px 15px;">
+            <div class="reading-label" style="margin-bottom: 8px;">Raw Sensor Data</div>
+            <div class="raw-data-grid">
+                <div class="raw-data-item">
+                    <span class="raw-label">α:</span>
+                    <span class="raw-value" id="alphaValue">--</span>
+                </div>
+                <div class="raw-data-item">
+                    <span class="raw-label">β:</span>
+                    <span class="raw-value" id="betaValue">--</span>
+                </div>
+                <div class="raw-data-item">
+                    <span class="raw-label">γ:</span>
+                    <span class="raw-value" id="gammaValue">--</span>
+                </div>
+                <div class="raw-data-item">
+                    <span class="raw-label">wCH:</span>
+                    <span class="raw-value" id="webkitValue">--</span>
+                </div>
+                <div class="raw-data-item">
+                    <span class="raw-label">sO:</span>
+                    <span class="raw-value" id="orientValue">--</span>
+                </div>
+                <div class="raw-data-item">
+                    <span class="raw-label">isA:</span>
+                    <span class="raw-value" id="absoluteValue">--</span>
+                </div>
             </div>
         </div>
 
@@ -202,64 +275,41 @@
         </div>
     </div>
 
-    <script>
+    <script type="module">
+        // Import the shared DeviceOrientationCompass library
+        import { DeviceOrientationCompass } from '../src/DeviceOrientationCompass.js';
+
+        // Create compass instance
+        const compass = new DeviceOrientationCompass();
+        
+        let compassCanvas, compassCtx;
+        let horizonCanvas, horizonCtx;
+        let animationId;
         let compassHeading = 0;
         let elevationAngle = 0;
-        let isAbsolute = false;
-        let canvas, ctx;
-        let animationId;
-        let screenOrientation = 0; // 0, 90, -90, 180
-        let rawAlpha = 0;
-        let rawBeta = 0;
-        let rawGamma = 0;
-        let rawWebkit = null;
-        
-        // Detect iOS
-        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
-                      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
-        // Initialize
-        window.addEventListener('load', () => {
-            canvas = document.getElementById('compassCanvas');
-            ctx = canvas.getContext('2d');
-            checkPermissions();
+        // Set up compass callbacks
+        compass.onUpdate = (readings) => {
+            compassHeading = readings.heading;
+            elevationAngle = readings.elevation;
+            updateReadings(readings);
+        };
+
+        compass.onStatusChange = (message, isError) => {
+            updateStatus(message, isError);
+        };
+
+        // Initialize on load
+        window.addEventListener('load', async () => {
+            compassCanvas = document.getElementById('compassCanvas');
+            compassCtx = compassCanvas.getContext('2d');
+            
+            horizonCanvas = document.getElementById('horizonCanvas');
+            horizonCtx = horizonCanvas.getContext('2d');
+            
+            await checkPermissions();
             startRendering();
-            trackOrientation();
         });
-        
-        // Track screen orientation changes
-        function trackOrientation() {
-            function updateOrientation() {
-                let angle = 0;
-                
-                if (screen.orientation) {
-                    // Modern API - returns 0, 90, 180, 270
-                    angle = screen.orientation.angle;
-                } else if (window.orientation !== undefined) {
-                    // Legacy API - returns 0, 90, -90, 180
-                    // @ts-ignore - window.orientation is deprecated but required for older iOS
-                    angle = window.orientation;
-                }
-                
-                // Normalize to modern standard: Convert -90 to 270
-                // Both represent landscape-right (device rotated clockwise when in portrait)
-                if (angle === -90) {
-                    angle = 270;
-                }
-                
-                screenOrientation = angle;
-            }
-            
-            updateOrientation();
-            
-            // Listen for orientation changes
-            if (screen.orientation) {
-                screen.orientation.addEventListener('change', updateOrientation);
-            } else {
-                // @ts-ignore - orientationchange is deprecated but required for older iOS
-                window.addEventListener('orientationchange', updateOrientation);
-            }
-        }
 
         async function checkPermissions() {
             // Check if we need to request permission (iOS 13+)
@@ -269,174 +319,44 @@
                 updateStatus('Tap "Enable Sensors" to start', false);
             } else {
                 // Android or older iOS - start directly
-                startListening();
+                startCompass();
             }
         }
 
         async function requestPermission() {
-            try {
-                const permission = await DeviceOrientationEvent.requestPermission();
-                if (permission === 'granted') {
-                    document.getElementById('permissionSection').style.display = 'none';
-                    startListening();
-                } else {
-                    updateStatus('Permission denied. Please allow sensor access.', true);
-                }
-            } catch (error) {
-                updateStatus('Error requesting permission: ' + error.message, true);
+            const granted = await compass.requestPermission();
+            if (granted) {
+                document.getElementById('permissionSection').style.display = 'none';
+                startCompass();
             }
         }
+        
+        // Make requestPermission available globally for the button onclick
+        window.requestPermission = requestPermission;
 
-        function startListening() {
-            if (!window.DeviceOrientationEvent) {
-                updateStatus('Device orientation not supported on this device.', true);
-                return;
-            }
-            
-            // iOS: uses deviceorientation with webkitCompassHeading
-            // Android: uses deviceorientationabsolute with absolute flag
-            if (isIOS) {
-                window.addEventListener('deviceorientation', handleOrientation, true);
-                updateStatus('Starting compass (iOS)...', false);
-            } else {
-                // For Android, listen to deviceorientationabsolute
-                window.addEventListener('deviceorientationabsolute', handleOrientation, true);
-                updateStatus('Starting compass (Android)...', false);
-            }
-            
-            // Listen for compass calibration needs
-            window.addEventListener('compassneedscalibration', (e) => {
-                updateStatus('⚠️ Compass needs calibration - wave phone in figure 8', true);
-                e.preventDefault();
-            }, true);
-            
-            setTimeout(() => {
-                if (compassHeading === 0 && elevationAngle === 0) {
-                    updateStatus('⚠️ No sensor data received. Ensure sensors are enabled.', true);
-                }
-            }, 3000);
+        function startCompass() {
+            compass.startListening();
         }
 
-        let goodHeading = 0;
-
-        function handleOrientation(event) {
-            // Store raw values
-            rawAlpha = event.alpha !== null ? event.alpha : 0;
-            rawBeta = event.beta !== null ? event.beta : 0;
-            rawGamma = event.gamma !== null ? event.gamma : 0;
-            rawWebkit = event.webkitCompassHeading !== undefined ? event.webkitCompassHeading : null;
-            
-            // Check if we have absolute orientation
-            isAbsolute = event.absolute === true || event.type === 'deviceorientationabsolute';
-            
-            let rawHeading = 0;
-            let useWebkitHeading = false;
-            
-            // iOS: webkitCompassHeading gives true heading (0-360, 0 = North)
-            // Note: webkitCompassHeading has a known issue - it flips 180° when pitch > ~45°
-            // We need to calculate the heading properly using rotation matrix when tilted
-            if (event.webkitCompassHeading !== undefined && event.webkitCompassHeading !== null) {
-                // Use webkitCompassHeading as a base, but we'll correct it below
-                rawHeading = event.webkitCompassHeading;
-                useWebkitHeading = true;
-                isAbsolute = true;
-                
-                // When pitch > 45° in portrait, webkitCompassHeading flips 180°
-                // Note: this is a patch for observed behavior on iOS devices only
-                if (screenOrientation === 0 && Math.abs(rawBeta) >= 135) {
-                    // Flip it back
-                    rawHeading = (rawHeading + 180) % 360;
-                    updateStatus('✓ Active (iOS, tilt-corrected)', false);
-                } else {
-                    updateStatus('✓ Active (iOS)', false);
-                }
-
-                // handle 180° flips near 135°
-                // if more than 100° away from last good heading, flip it
-                if (screenOrientation === 0) {
-                    if (Math.abs(rawBeta) <= 133) {
-                        // we assmume the heading is good when beta is less than 133° or more than 137°
-                        // based on observed behavior
-                        goodHeading = rawHeading;
-                    } else {
-                        // If current heading is more than 100° away from last good heading, flip it
-                        if (Math.abs(rawHeading - goodHeading) > 100) {
-                            rawHeading = (rawHeading + 180) % 360;
-                            updateStatus('✓ Active (iOS, tilt-corrected+)', false);
-                        }
-
-                    }
-
-                }
-
-
-
-            } 
-            // Android with absolute orientation
-            else if (event.alpha !== null && event.beta !== null && event.gamma !== null) {
-                // Formula that works in any device orientation (flat, upright, tilted)
-                // This accounts for device tilt using beta and gamma
-                rawHeading = -(rawAlpha + rawBeta * rawGamma / 90);
-                // Normalize to [0, 360) range
-                rawHeading = rawHeading - Math.floor(rawHeading / 360) * 360;
-                
-                if (isAbsolute) {
-                    updateStatus('✓ Active (absolute)', false);
-                } else {
-                    updateStatus('⚠️ Relative heading - needs device calibration', true);
-                }
-            }
-            
-            // Adjust heading based on screen orientation
-            // webkitCompassHeading gives the direction the DEVICE top is pointing
-            // We need to adjust it to show the direction the SCREEN top is pointing
-            // screenOrientation: 0 (portrait), 90 (landscape-left), 270 (landscape-right), 180 (upside down)
-            compassHeading = (rawHeading + screenOrientation + 360) % 360;
-            
-            // Calculate elevation using simple gamma correction
-            // Gamma goes 0 to -90 then 90 to 0
-            let correctedElevation = rawGamma;
-            if (screenOrientation === 90) {
-                // Landscape-left
-                if (rawGamma < 0) {
-                    correctedElevation = -rawGamma;
-                } else {
-                    correctedElevation = 180 - rawGamma;
-                }
-            } else if (screenOrientation === 270) {
-                // Landscape-right (inverted)
-                if (rawGamma < 0) {
-                    correctedElevation = 180 - (-rawGamma);
-                } else {
-                    correctedElevation = rawGamma;
-                }
-            } else {
-                // Portrait mode (0° or 180°) - use beta
-                correctedElevation = rawBeta;
-            }
-            elevationAngle = correctedElevation;
-            
-            updateReadings();
-        }
-
-        function updateReadings() {
+        function updateReadings(readings) {
             // Update heading
-            const heading = Math.round(compassHeading);
+            const heading = Math.round(readings.heading);
             document.getElementById('headingValue').textContent = heading;
             document.getElementById('headingDirection').textContent = getCardinalDirection(heading);
             
             // Update elevation (pitch)
-            const elevation = Math.round(elevationAngle);
+            const elevation = Math.round(readings.elevation);
             document.getElementById('elevationValue').textContent = elevation;
             document.getElementById('elevationDirection').textContent = getElevationDescription(elevation);
             
             // Update raw sensor data
-            document.getElementById('alphaValue').textContent = rawAlpha.toFixed(1);
-            document.getElementById('betaValue').textContent = rawBeta.toFixed(1);
-            document.getElementById('gammaValue').textContent = rawGamma.toFixed(1);
-            document.getElementById('webkitValue').textContent = rawWebkit !== null ? rawWebkit.toFixed(1) : 'N/A';
-            document.getElementById('orientValue').textContent = screenOrientation;
-            document.getElementById('absoluteValue').textContent = isAbsolute ? 'Yes' : 'No';
+            const raw = readings.raw;
+            document.getElementById('alphaValue').textContent = raw.alpha.toFixed(0) + '°';
+            document.getElementById('betaValue').textContent = raw.beta.toFixed(0) + '°';
+            document.getElementById('gammaValue').textContent = raw.gamma.toFixed(0) + '°';
+            document.getElementById('webkitValue').textContent = raw.webkit !== null ? raw.webkit.toFixed(0) + '°' : 'N/A';
+            document.getElementById('orientValue').textContent = raw.screenOrientation + '°';
+            document.getElementById('absoluteValue').textContent = readings.isAbsolute ? 'Y' : 'N';
         }
 
         function getCardinalDirection(degrees) {
@@ -466,38 +386,39 @@
         function startRendering() {
             function render() {
                 drawCompass();
+                drawArtificialHorizon();
                 animationId = requestAnimationFrame(render);
             }
             render();
         }
 
         function drawCompass() {
-            const size = canvas.width;
+            const size = compassCanvas.width;
             const center = size / 2;
             const radius = size * 0.4;
             
             // Clear
-            ctx.clearRect(0, 0, size, size);
+            compassCtx.clearRect(0, 0, size, size);
             
             // Save context
-            ctx.save();
-            ctx.translate(center, center);
+            compassCtx.save();
+            compassCtx.translate(center, center);
             
             // Rotate based on heading (counter-clockwise to keep North at top)
-            ctx.rotate(-compassHeading * Math.PI / 180);
+            compassCtx.rotate(-compassHeading * Math.PI / 180);
             
             // Draw outer circle
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.arc(0, 0, radius, 0, 2 * Math.PI);
-            ctx.stroke();
+            compassCtx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            compassCtx.lineWidth = 3;
+            compassCtx.beginPath();
+            compassCtx.arc(0, 0, radius, 0, 2 * Math.PI);
+            compassCtx.stroke();
             
             // Draw cardinal directions
-            ctx.fillStyle = 'white';
-            ctx.font = 'bold 48px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
+            compassCtx.fillStyle = 'white';
+            compassCtx.font = 'bold 48px sans-serif';
+            compassCtx.textAlign = 'center';
+            compassCtx.textBaseline = 'middle';
             
             const directions = [
                 { label: 'N', angle: 0, color: '#ff6b6b' },
@@ -507,81 +428,144 @@
             ];
             
             directions.forEach(dir => {
-                ctx.save();
-                ctx.rotate(dir.angle * Math.PI / 180);
-                ctx.fillStyle = dir.color;
-                ctx.fillText(dir.label, 0, -radius * 0.75);
-                ctx.restore();
+                compassCtx.save();
+                compassCtx.rotate(dir.angle * Math.PI / 180);
+                compassCtx.fillStyle = dir.color;
+                compassCtx.fillText(dir.label, 0, -radius * 0.75);
+                compassCtx.restore();
             });
             
             // Draw degree markers
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-            ctx.lineWidth = 2;
+            compassCtx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+            compassCtx.lineWidth = 2;
             for (let i = 0; i < 360; i += 10) {
-                ctx.save();
-                ctx.rotate(i * Math.PI / 180);
-                ctx.beginPath();
+                compassCtx.save();
+                compassCtx.rotate(i * Math.PI / 180);
+                compassCtx.beginPath();
                 const length = i % 30 === 0 ? 30 : 15;
-                ctx.moveTo(0, -radius);
-                ctx.lineTo(0, -radius + length);
-                ctx.stroke();
-                ctx.restore();
+                compassCtx.moveTo(0, -radius);
+                compassCtx.lineTo(0, -radius + length);
+                compassCtx.stroke();
+                compassCtx.restore();
             }
             
             // Draw North arrow (always pointing up in rotated context)
-            ctx.fillStyle = '#ff6b6b';
-            ctx.strokeStyle = 'white';
-            ctx.lineWidth = 4;
-            ctx.beginPath();
-            ctx.moveTo(0, -radius * 0.5);  // Top point
-            ctx.lineTo(-20, -radius * 0.2); // Left point
-            ctx.lineTo(0, -radius * 0.3);   // Center notch
-            ctx.lineTo(20, -radius * 0.2);  // Right point
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
+            compassCtx.fillStyle = '#ff6b6b';
+            compassCtx.strokeStyle = 'white';
+            compassCtx.lineWidth = 4;
+            compassCtx.beginPath();
+            compassCtx.moveTo(0, -radius * 0.5);  // Top point
+            compassCtx.lineTo(-20, -radius * 0.2); // Left point
+            compassCtx.lineTo(0, -radius * 0.3);   // Center notch
+            compassCtx.lineTo(20, -radius * 0.2);  // Right point
+            compassCtx.closePath();
+            compassCtx.fill();
+            compassCtx.stroke();
             
             // Draw center circle
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-            ctx.beginPath();
-            ctx.arc(0, 0, 15, 0, 2 * Math.PI);
-            ctx.fill();
+            compassCtx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+            compassCtx.beginPath();
+            compassCtx.arc(0, 0, 15, 0, 2 * Math.PI);
+            compassCtx.fill();
             
-            ctx.restore();
-            
-            // Draw elevation indicator
-            drawElevationIndicator(center, radius);
+            compassCtx.restore();
         }
 
-        function drawElevationIndicator(center, radius) {
-            const x = center + radius * 1.3;
-            const y = center;
-            const barHeight = radius * 1.5;
-            const barWidth = 40;
+        function drawArtificialHorizon() {
+            const size = horizonCanvas.width;
+            const center = size / 2;
             
-            // Draw background bar
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
-            ctx.fillRect(x - barWidth / 2, y - barHeight / 2, barWidth, barHeight);
+            // Clear
+            horizonCtx.clearRect(0, 0, size, size);
             
-            // Draw elevation marker
-            const normalizedElevation = Math.max(-90, Math.min(90, elevationAngle));
-            const markerY = y - (normalizedElevation / 90) * (barHeight / 2) * 0.8;
+            horizonCtx.save();
+            horizonCtx.translate(center, center);
             
-            ctx.fillStyle = '#4dabf7';
-            ctx.strokeStyle = 'white';
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.arc(x, markerY, 15, 0, 2 * Math.PI);
-            ctx.fill();
-            ctx.stroke();
+            // Calculate pitch offset (elevation angle affects vertical position)
+            // Normalize to pixels: 1 degree = size/180 pixels
+            const pitchOffset = (elevationAngle * size) / 180;
             
-            // Draw 0 degree line
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(x - barWidth / 2 - 10, y);
-            ctx.lineTo(x + barWidth / 2 + 10, y);
-            ctx.stroke();
+            // Draw sky (upper half - blue)
+            horizonCtx.fillStyle = '#4a90e2';
+            horizonCtx.fillRect(-center, -center - pitchOffset, size, center + pitchOffset);
+            
+            // Draw ground (lower half - brown)
+            horizonCtx.fillStyle = '#8b6f47';
+            horizonCtx.fillRect(-center, -pitchOffset, size, center + pitchOffset);
+            
+            // Draw horizon line
+            horizonCtx.strokeStyle = 'white';
+            horizonCtx.lineWidth = 4;
+            horizonCtx.beginPath();
+            horizonCtx.moveTo(-center, -pitchOffset);
+            horizonCtx.lineTo(center, -pitchOffset);
+            horizonCtx.stroke();
+            
+            // Draw pitch ladder lines (every 10 degrees)
+            horizonCtx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+            horizonCtx.lineWidth = 2;
+            horizonCtx.font = 'bold 24px sans-serif';
+            horizonCtx.textAlign = 'center';
+            horizonCtx.textBaseline = 'middle';
+            horizonCtx.fillStyle = 'white';
+            
+            for (let pitch = -90; pitch <= 90; pitch += 10) {
+                if (pitch === 0) continue; // Skip horizon line
+                
+                const yPos = -pitchOffset - (pitch * size) / 180;
+                
+                // Only draw if visible
+                if (Math.abs(yPos) < center) {
+                    const lineLength = Math.abs(pitch) % 30 === 0 ? 120 : 80;
+                    
+                    horizonCtx.beginPath();
+                    horizonCtx.moveTo(-lineLength / 2, yPos);
+                    horizonCtx.lineTo(lineLength / 2, yPos);
+                    horizonCtx.stroke();
+                    
+                    // Draw pitch value
+                    if (Math.abs(pitch) % 30 === 0) {
+                        const label = Math.abs(pitch).toString();
+                        horizonCtx.fillText(label, -lineLength / 2 - 30, yPos);
+                        horizonCtx.fillText(label, lineLength / 2 + 30, yPos);
+                    }
+                }
+            }
+            
+            // Draw center aircraft symbol (fixed reference)
+            horizonCtx.strokeStyle = '#ffcc00';
+            horizonCtx.lineWidth = 6;
+            horizonCtx.fillStyle = '#ffcc00';
+            
+            // Center dot
+            horizonCtx.beginPath();
+            horizonCtx.arc(0, 0, 8, 0, 2 * Math.PI);
+            horizonCtx.fill();
+            
+            // Wings
+            horizonCtx.beginPath();
+            horizonCtx.moveTo(-100, 0);
+            horizonCtx.lineTo(-30, 0);
+            horizonCtx.moveTo(30, 0);
+            horizonCtx.lineTo(100, 0);
+            horizonCtx.stroke();
+            
+            // Wing tips down
+            horizonCtx.beginPath();
+            horizonCtx.moveTo(-100, 0);
+            horizonCtx.lineTo(-100, 20);
+            horizonCtx.moveTo(100, 0);
+            horizonCtx.lineTo(100, 20);
+            horizonCtx.stroke();
+            
+            // Draw border circle
+            horizonCtx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            horizonCtx.lineWidth = 3;
+            horizonCtx.beginPath();
+            horizonCtx.arc(0, 0, center * 0.95, 0, 2 * Math.PI);
+            horizonCtx.stroke();
+            
+            horizonCtx.restore();
         }
     </script>
 </body>
