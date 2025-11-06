@@ -1334,7 +1334,10 @@ export class CGuiMenuBar {
             if (v[key] !== undefined) {
                 const gui = this.slots[i];
                 const data = guiData[key];
-                gui._closed = data.closed;
+                // When loading a sitch, all docked menus should be closed
+                // Ignore the serialized closed state and always close menus
+                // This ensures the internal _closed state matches the DOM (closed class and aria-expanded attribute)
+                gui.close();
                 gui.domElement.parentElement.style.left = data.left;
                 gui.domElement.parentElement.style.top = data.top;
                 // Restore z-index if available, otherwise use base value
