@@ -356,7 +356,7 @@ GUI.prototype.setDoubleClickAction = function(buttonController) {
     
     // Add the double-click listener to the title if not already added
     if (!this._doubleClickListenerAdded) {
-        this.$title.addEventListener("dblclick", (event) => {
+        const handleDoubleClickAction = (event) => {
             if (this._doubleClickButton) {
                 // Trigger the button's action
                 const obj = this._doubleClickButton.object;
@@ -370,7 +370,45 @@ GUI.prototype.setDoubleClickAction = function(buttonController) {
             }
             event.preventDefault();
             event.stopPropagation();
+        };
+        
+        // Add dblclick event for mouse users
+        this.$title.addEventListener("dblclick", handleDoubleClickAction);
+        
+        // Add touch-based double-tap detection for Android (dblclick doesn't work reliably on Android)
+        let lastTapTime = 0;
+        let lastTapX = 0;
+        let lastTapY = 0;
+        const doubleTapDelay = 300; // ms - maximum time between taps to count as double-tap
+        const doubleTapDistance = 30; // px - maximum distance between taps
+        
+        this.$title.addEventListener("touchend", (event) => {
+            const currentTime = Date.now();
+            const timeDiff = currentTime - lastTapTime;
+            
+            // Get touch position
+            const touch = event.changedTouches[0];
+            const currentX = touch.clientX;
+            const currentY = touch.clientY;
+            const distance = Math.sqrt(
+                Math.pow(currentX - lastTapX, 2) + 
+                Math.pow(currentY - lastTapY, 2)
+            );
+            
+            // Check if this is a double-tap
+            if (timeDiff < doubleTapDelay && distance < doubleTapDistance) {
+                // This is a double-tap - trigger the same action as dblclick
+                handleDoubleClickAction(event);
+                // Reset to prevent triple-tap from being detected as another double-tap
+                lastTapTime = 0;
+            } else {
+                // Store this tap for potential double-tap detection
+                lastTapTime = currentTime;
+                lastTapX = currentX;
+                lastTapY = currentY;
+            }
         });
+        
         this._doubleClickListenerAdded = true;
     }
     
@@ -967,6 +1005,41 @@ export class CGuiMenuBar {
         // Use pointerdown instead of mousedown for better off-screen drag support
         newGUI.$title.addEventListener("pointerdown", this.boundHandleTitleMouseDown);
         newGUI.$title.addEventListener("dblclick", this.boundHandleTitleDoubleClick);
+
+        // Add touch-based double-tap detection for Android (dblclick doesn't work reliably on Android)
+        let lastTapTime = 0;
+        let lastTapX = 0;
+        let lastTapY = 0;
+        const doubleTapDelay = 300; // ms - maximum time between taps to count as double-tap
+        const doubleTapDistance = 30; // px - maximum distance between taps
+        
+        newGUI.$title.addEventListener("touchend", (event) => {
+            const currentTime = Date.now();
+            const timeDiff = currentTime - lastTapTime;
+            
+            // Get touch position
+            const touch = event.changedTouches[0];
+            const currentX = touch.clientX;
+            const currentY = touch.clientY;
+            const distance = Math.sqrt(
+                Math.pow(currentX - lastTapX, 2) + 
+                Math.pow(currentY - lastTapY, 2)
+            );
+            
+            // Check if this is a double-tap
+            if (timeDiff < doubleTapDelay && distance < doubleTapDistance) {
+                // This is a double-tap - trigger the same action as dblclick
+                event.preventDefault(); // Prevent any default behavior
+                this.handleTitleDoubleClick(event);
+                // Reset to prevent triple-tap from being detected as another double-tap
+                lastTapTime = 0;
+            } else {
+                // Store this tap for potential double-tap detection
+                lastTapTime = currentTime;
+                lastTapX = currentX;
+                lastTapY = currentY;
+            }
+        });
 
         // Add click listener to the entire GUI to bring it to front when any part is clicked
         newGUI.domElement.addEventListener("pointerdown", (event) => {
