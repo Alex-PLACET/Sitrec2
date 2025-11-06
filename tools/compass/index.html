@@ -317,6 +317,8 @@
             }, 3000);
         }
 
+        let goodHeading = 0;
+
         function handleOrientation(event) {
             // Store raw values
             rawAlpha = event.alpha !== null ? event.alpha : 0;
@@ -331,12 +333,44 @@
             let useWebkitHeading = false;
             
             // iOS: webkitCompassHeading gives true heading (0-360, 0 = North)
-            // Note: webkitCompassHeading already accounts for screen orientation on iOS
+            // Note: webkitCompassHeading has a known issue - it flips 180° when pitch > ~45°
+            // We need to calculate the heading properly using rotation matrix when tilted
             if (event.webkitCompassHeading !== undefined && event.webkitCompassHeading !== null) {
+                // Use webkitCompassHeading as a base, but we'll correct it below
                 rawHeading = event.webkitCompassHeading;
                 useWebkitHeading = true;
                 isAbsolute = true;
-                updateStatus('✓ Active (iOS)', false);
+                
+                // When pitch > 45° in portrait, webkitCompassHeading flips 180°
+                // Note: this is a patch for observed behavior on iOS devices only
+                if (screenOrientation === 0 && Math.abs(rawBeta) >= 135) {
+                    // Flip it back
+                    rawHeading = (rawHeading + 180) % 360;
+                    updateStatus('✓ Active (iOS, tilt-corrected)', false);
+                } else {
+                    updateStatus('✓ Active (iOS)', false);
+                }
+
+                // handle 180° flips near 135°
+                // if more than 100° away from last good heading, flip it
+                if (screenOrientation === 0) {
+                    if (Math.abs(rawBeta) <= 133) {
+                        // we assmume the heading is good when beta is less than 133° or more than 137°
+                        // based on observed behavior
+                        goodHeading = rawHeading;
+                    } else {
+                        // If current heading is more than 100° away from last good heading, flip it
+                        if (Math.abs(rawHeading - goodHeading) > 100) {
+                            rawHeading = (rawHeading + 180) % 360;
+                            updateStatus('✓ Active (iOS, tilt-corrected+)', false);
+                        }
+
+                    }
+
+                }
+
+
+
             } 
             // Android with absolute orientation
             else if (event.alpha !== null && event.beta !== null && event.gamma !== null) {
