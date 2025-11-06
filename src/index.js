@@ -115,6 +115,21 @@ document.addEventListener('contextmenu', (event) => {
     event.stopPropagation();
 }, { capture: true });
 
+// CRITICAL: Prevent pull-to-refresh on mobile browsers (especially Android)
+// This works in conjunction with the CSS overscroll-behavior property
+// Some Android browsers need both CSS and JavaScript prevention
+document.addEventListener('touchstart', (event) => {
+    // Allow default touch behavior - we only need to prevent touchmove
+}, { passive: true });
+
+document.addEventListener('touchmove', (event) => {
+    // Only prevent default if user is at the top of the page
+    // This prevents pull-to-refresh while still allowing scrolling in scrollable elements
+    if (window.scrollY === 0) {
+        event.preventDefault();
+    }
+}, { passive: false });
+
 console.log ("SITREC START - index.js after imports")
 
 // This is the main entry point for the sitrec web application

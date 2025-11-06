@@ -187,6 +187,9 @@ html, body {
     -webkit-touch-callout: none;
     -webkit-user-select: none;
     user-select: none;
+    /* Prevent pull-to-refresh on mobile browsers (especially Android) */
+    overscroll-behavior: none;
+    overscroll-behavior-y: none;
 }
 
 /* Menu title bar styling - make titles appear as tabs instead of full-width bars */
