@@ -76,6 +76,12 @@ if ($type == "ALL") {
     $url = "https://www.space-track.org/basicspacedata/query/class/gp_history/CREATION_DATE/" . $request . "--" . $nextDay . "/orderby/NORAD_CAT_ID,EPOCH/format/3le";
 }
 
+// if the getTLECustom function is defined, use that to get the URL
+if (function_exists('getTLECustom')) {
+    $url = getTLECustom($request, $nextDay, $type, $url);
+}
+
+
 // encode angle brackets for compatibility with cURL
 $url = encodeAngleBrackets($url);
 
