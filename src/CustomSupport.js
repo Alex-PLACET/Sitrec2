@@ -2488,6 +2488,8 @@ export class CCustomManager {
 
         console.log("Sitch exportTagNumber: " + Globals.exportTagNumber)
 
+        Globals.deserializing = true;
+
         const loadingPromises = [];
         if (sitchData.loadedFiles) {
             // load the files as if they have been drag-and-dropped in
@@ -2502,6 +2504,7 @@ export class CCustomManager {
                 ))
             }
         }
+
 
         // wait for the files to load
         Promise.all(loadingPromises).then(() => {
@@ -2647,6 +2650,7 @@ export class CCustomManager {
         }
 
         Globals.dontRecalculate = false;
+        Globals.deserializing = false;
 
         // recalculate everything after the mods
         // in case there's some missing dependency

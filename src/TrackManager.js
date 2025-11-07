@@ -1240,7 +1240,9 @@ class CTrackManager extends CManager {
 
         // if the short name is a number string, then prepend a #
         // for backwards compatibility, do not do this for loaded sitches prior to 2.9.2
-        if (Globals.exportTagNumber >= 2009002 && !isNaN(Number(shortName))) {
+        // but do do it if we are not deserializing
+        if ((!Globals.deserializing || Globals.exportTagNumber >= 2009003)
+            && !isNaN(Number(shortName))) {
             console.warn("Track short name is numeric only, prepending # to make it a valid name: ", shortName);
             shortName = "#" + shortName;
         }
