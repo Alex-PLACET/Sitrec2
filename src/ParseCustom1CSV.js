@@ -10,16 +10,19 @@ import {f2m} from "./utils";
 // for the various needed fields
 // we need at least time, lat, lon
 // if alt is missing or empty fields, then assume on the ground/sea level
+// alt is assumed to be in meters unless an "altFeet" column is present
 // if we have a trackID, then we group those points as one track (so multiple tracks per CSV file)
 // Time can be in ms (Epoch time) or ISO date string
+// case is ignored for header matching
 const CustomCSVFormats = {
     CUSTOM1: {
         trackID:  ["THRESHERID", "TRACK_ID"],
-        time:     ["TIME", "TIMESTAMP", "DATE", "UTC", "DATETIME", "DATE_TIME", "DATETIME_UTC", "DTG"],
+        time:     ["TIME", "TIMESTAMP", "DATE", "UTC", "DATETIME", "DATE_TIME", "DATETIME_UTC", "DTG", "DT"],
         lat:      ["LAT", "LATITUDE", "TPLAT"],
         lon:      ["LON", "LONG", "LONGITUDE", "TPLON"],
         alt:      ["ALTITUDE", "ALT", "ALTITUDE (m)*", "TPHAE", "alt_m"],
         agl:      ["AGL", "ALT (m/agl)"],
+        altFeet:  ["ALTITUDE (FT)", "ALT (FT)", "ALTITUDE(FT)", "ALT(FT)"],
         aircraft: ["AIRCRAFT", "AIRCRAFTSPECIFICTYPE"],
         callsign: ["CALLSIGN", "TAILNUMBER"],
         az:       ["AZIMUTH", "AZ"],
@@ -65,8 +68,9 @@ export function parseCustom1CSV(csv) {
     const latCol =      findColumn(csv, headerValues.lat, true)
     const lonCol =      findColumn(csv, headerValues.lon, true)
     const altCol =      findColumn(csv, headerValues.alt, true)
+    const altFeet =     findColumn(csv, headerValues.altFeet, true)
     const aglCol =      findColumn(csv, headerValues.agl, true)
-    const azCol =   findColumn(csv, headerValues.az, true)
+    const azCol =       findColumn(csv, headerValues.az, true)
     const aircraftCol = findColumn(csv, headerValues.aircraft, true)
     const callsignCol = findColumn(csv, headerValues.callsign, true)
 
@@ -74,7 +78,9 @@ export function parseCustom1CSV(csv) {
         "trackIDCol=" + trackIDCol + ", " +
     "dateCol=" + dateCol + ", latCol=" + latCol +
         ", lonCol=" + lonCol + ", altCol=" + altCol +
-        ", aglCol=" + aglCol + ", aircraftCol=" + aircraftCol +
+        ", aglCol=" + aglCol +
+        ", altFeet=" + altFeet +
+        ", aircraftCol=" + aircraftCol +
         ", callsignCol=" + callsignCol);
 
     // speed is currently ignored, and is generally derived from the position data
@@ -106,12 +112,22 @@ export function parseCustom1CSV(csv) {
 
         // we expect either alt or agl to be present, but not both
         // altitude is in meters, agl is in meters above ground level
+        // they are just used in in inverted priority
+        // so we use alt if present, otherwise agl
+        // and then altFeet takes precedence over both
+        // (this is to support some datasets that have alt in feet)
         if (altCol !== -1) {
             MISBArray[i - 1][MISB.SensorTrueAltitude] = Number(csv[i][altCol]);
         }
 
         if (aglCol !== -1) {
             MISBArray[i - 1][MISB.AltitudeAGL] = Number(csv[i][aglCol]);
+        }
+
+        // altFeet takes precedence over alt in meters
+        if (altFeet !== -1) {
+            const altitude = f2m(Number(csv[i][altFeet]));
+            MISBArray[i - 1][MISB.SensorTrueAltitude] = isNaN(altitude) ? null : altitude;
         }
 
         if (aircraftCol !== -1) {
