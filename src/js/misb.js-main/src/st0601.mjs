@@ -161,6 +161,8 @@ export function parse(buffer, options = {}) {
 	if (!klv.isChecksumValid(packet.subarray(0, parsedLength), checksumValue)) {
 		checksum.valid = false;
 		console.debug("Invalid checksum");
+		// since we have noisy data from chopped-up files, we won't throw an error here
+
 		//throw new Error(`Invalid checksum`)
 	}
 
@@ -247,8 +249,35 @@ function convert(key, dataview, options) {
 					console.warn(`ST0601: Non-standard 1-byte checksum detected (expected 2 bytes). Value: 0x${checksumValue.toString(16).padStart(2, '0')}`);
 				} else if (dataview.byteLength === 2) {
 					checksumValue = dataview.getUint16(0, false);
+					// There are lots of checksum packets in large files, so we won't log each one
+					// console.log(`ST0601: Standard 2-byte checksum detected. Value: 0x${checksumValue.toString(16).padStart(4, '0')}`);
 				} else {
-					throw new Error(`ST0601: Invalid checksum length. Expected 1 or 2 bytes, got ${dataview.byteLength} bytes`);
+				//	throw new Error(`ST0601: Invalid checksum length. Expected 1 or 2 bytes, got ${dataview.byteLength} bytes`);
+					// patch for invalid checksum length
+					// throwing an error here breaks parsing of some files in the wild
+					// so we log a warning and set checksum to 0
+
+					// // hex dump the invalid checksum data
+					// let hexString = '';
+					// for (let i = 0; i < dataview.byteLength; i++) {
+					// 	const byte = dataview.getUint8(i);
+					// 	hexString += byte.toString(16).padStart(2, '0') + ' ';
+					// }
+					// console.warn(`ST0601: Invalid checksum data (length ${dataview.byteLength} bytes): ${hexString.trim()}`);
+					//
+					// // and decimal dump
+					// let decimalString = '';
+					// for (let i = 0; i < dataview.byteLength; i++) {
+					// 	const byte = dataview.getUint8(i);
+					// 	decimalString += byte.toString(10).padStart(3, '0') + ' ';
+					// }
+					// console.warn(`ST0601: Invalid checksum data (length ${dataview.byteLength} bytes): ${decimalString.trim()}`);
+
+
+					//checksumValue = dataview.getUint16(0, false);
+					checksumValue = 32767;
+					console.warn(`ST0601: Invalid checksum length. Expected 1 or 2 bytes, got ${dataview.byteLength} bytes. Setting checksum to ${checksumValue}`);
+
 				}
 				return {
 					key,
