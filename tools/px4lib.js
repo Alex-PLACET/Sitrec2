@@ -1,3 +1,15 @@
+function crc16Xmodem(bytes, init = 0x0000) {
+    let crc = init & 0xFFFF;
+    for (let i = 0; i < bytes.length; i++) {
+        crc ^= (bytes[i] & 0xFF) << 8;
+        for (let b = 0; b < 8; b++) {
+            crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) : (crc << 1);
+            crc &= 0xFFFF;
+        }
+    }
+    return crc;
+}
+
 export class ULogParser {
     constructor() {
         this.formats = new Map();
@@ -26,21 +38,86 @@ export class ULogParser {
         const timestamp = view.getBigUint64(offset, true);
         offset += 8;
 
+        this.version = version;
         this.info.set('version', version);
         this.info.set('timestamp', timestamp);
 
+        console.log(`ULog version: 0x${version.toString(16)}, timestamp: 0x${timestamp.toString(16)}`);
+        console.log(`Header parsed. Starting messages at offset 0x${offset.toString(16)}`);
+        console.log(`First 180 bytes of file:`, this.readBytes(view, 0, 180).map(b => b.toString(16).padStart(2, '0')).join(' '));
+
+        let messageCount = 0;
+        let firstUnknownOffset = null;
+
         while (offset < view.byteLength) {
             if (offset + 3 > view.byteLength) break;
+            
+            const msgStartOffset = offset;
+            
+            if (messageCount < 5) {
+                const peek20 = this.readBytes(view, offset, Math.min(20, view.byteLength - offset));
+                console.log(`Offset 0x${offset.toString(16)}, next 20 bytes:`, peek20.map(b => b.toString(16).padStart(2, '0')).join(' '));
+            }
             
             const msgSize = view.getUint16(offset, true);
             offset += 2;
 
             const msgType = view.getUint8(offset);
             offset += 1;
+            
+            if (messageCount < 5) {
+                console.log(`Message #${messageCount} at offset 0x${msgStartOffset.toString(16)}: size=0x${msgSize.toString(16)}, type=0x${msgType.toString(16)} '${String.fromCharCode(msgType)}'`);
+            }
 
-            if (offset + msgSize > view.byteLength) break;
+            if (offset + msgSize > view.byteLength) {
+                console.warn(`Message at offset 0x${(offset-3).toString(16)} has size 0x${msgSize.toString(16)} which exceeds file length. Stopping parse.`);
+                break;
+            }
             
             const msgData = new DataView(arrayBuffer, offset, msgSize);
+            
+            const validTypes = [70, 73, 77, 80, 65, 68, 66, 76, 82, 83, 79, 67, 81];
+            if (!validTypes.includes(msgType) && firstUnknownOffset === null) {
+                firstUnknownOffset = offset - 3;
+                console.error(`First unknown message type at offset 0x${firstUnknownOffset.toString(16)}:`);
+                console.error(`  Message #${messageCount}`);
+                console.error(`  Size: 0x${msgSize.toString(16)}`);
+                console.error(`  Type: 0x${msgType.toString(16)} '${String.fromCharCode(msgType)}'`);
+                console.error(`  Previous 10 bytes:`, this.readBytes(view, Math.max(0, offset - 13), 10).map(b => b.toString(16).padStart(2, '0')).join(' '));
+                console.error(`  Next 10 bytes:`, this.readBytes(view, offset, 10).map(b => b.toString(16).padStart(2, '0')).join(' '));
+                
+                console.log('Searching for next valid message type...');
+                let found = false;
+                let bestMatch = null;
+                for (let searchOffset = offset; searchOffset < Math.min(offset + 100, view.byteLength - 3); searchOffset++) {
+                    const testSize = view.getUint16(searchOffset, true);
+                    const testType = view.getUint8(searchOffset + 2);
+                    if (validTypes.includes(testType) && testSize > 0 && testSize < 10000) {
+                        if (!bestMatch) {
+                            bestMatch = searchOffset;
+                            console.log(`  Found valid message at offset 0x${searchOffset.toString(16)}: size=0x${testSize.toString(16)}, type=0x${testType.toString(16)} ('${String.fromCharCode(testType)}')`);
+                            console.log(`  Gap bytes (offset 0x${offset.toString(16)} to 0x${searchOffset.toString(16)}):`, this.readBytes(view, offset, searchOffset - offset).map(b => b.toString(16).padStart(2, '0')).join(' '));
+                            
+                            if (searchOffset === offset + 2) {
+                                console.log('  -> Exactly 2 bytes off! This might be a padding/alignment issue.');
+                                offset = searchOffset;
+                                continue;
+                            }
+                        }
+                        if (searchOffset - offset < 5) break;
+                    }
+                }
+                
+                if (messageCount < 5 && !bestMatch) {
+                    console.error(`Stopping parse due to early unknown message type.`);
+                    throw new Error(`Invalid ULog format: unknown message type 0x${msgType.toString(16)} at offset 0x${firstUnknownOffset.toString(16)} (message #${messageCount})`);
+                } else if (bestMatch && bestMatch !== offset) {
+                    console.log(`Skipped to offset 0x${bestMatch.toString(16)} to recover from parse error`);
+                    offset = bestMatch;
+                    messageCount--;
+                    continue;
+                }
+            }
             
             try {
                 switch (msgType) {
@@ -62,6 +139,9 @@ export class ULogParser {
                     case 68: // 'D' - Data
                         this.parseData(msgData);
                         break;
+                    case 66: // 'B' - Flag Bits
+                        this.parseFlagBits(msgData);
+                        break;
                     case 76: // 'L' - Logged String
                         break;
                     case 82: // 'R' - Remove Logged Message
@@ -70,14 +150,47 @@ export class ULogParser {
                         break;
                     case 79: // 'O' - Dropout
                         break;
+                    case 67: // 'C' - Logging Tagged
+                        break;
+                    case 81: // 'Q' - Parameter Default
+                        break;
                     default:
-                        console.warn(`Unknown message type: ${msgType} (${String.fromCharCode(msgType)})`);
+                        if (messageCount < 100) {
+                            console.warn(`Unknown message type: 0x${msgType.toString(16)} ('${String.fromCharCode(msgType)}') at offset 0x${(offset-3).toString(16)}`);
+                        }
                 }
             } catch (e) {
-                console.error(`Error parsing message type ${String.fromCharCode(msgType)}:`, e);
+                console.error(`Error parsing message type '${String.fromCharCode(msgType)}' at offset 0x${(offset-3).toString(16)}:`, e);
             }
 
             offset += msgSize;
+            
+            if (this.version >= 2) {
+                const msgBytes = new Uint8Array(3 + msgSize);
+                msgBytes[0] = msgSize & 0xFF;
+                msgBytes[1] = (msgSize >>> 8) & 0xFF;
+                msgBytes[2] = msgType;
+                for (let i = 0; i < msgSize; i++) {
+                    msgBytes[3 + i] = view.getUint8(msgStartOffset + 3 + i);
+                }
+                
+                const calculatedCrc = crc16Xmodem(msgBytes);
+                const fileCrcLow = view.getUint8(offset);
+                const fileCrcHigh = view.getUint8(offset + 1);
+                const fileCrc = fileCrcLow | (fileCrcHigh << 8);
+                
+                if (calculatedCrc !== fileCrc) {
+                    if (messageCount < 100) {
+                        console.error(`CRC mismatch at message #${messageCount} (offset 0x${offset.toString(16)}): calculated=0x${calculatedCrc.toString(16)}, file=0x${fileCrc.toString(16)}`);
+                    }
+                } else if (messageCount < 5) {
+                    console.log(`ULog v2: CRC OK for message #${messageCount}: 0x${calculatedCrc.toString(16)}`);
+                }
+                
+                offset += 2;
+            }
+            
+            messageCount++;
         }
 
         return this.extractTrackData();
@@ -99,6 +212,38 @@ export class ULogParser {
             bytes.push(byte);
         }
         return String.fromCharCode(...bytes);
+    }
+
+    parseFlagBits(view) {
+        if (view.byteLength < 16) {
+            console.warn('Flag Bits message too short');
+            return;
+        }
+
+        const compatFlags = view.getBigUint64(0, true);
+        const incompatFlags = view.getBigUint64(8, true);
+        
+        console.log(`Flag Bits: compat=0x${compatFlags.toString(16)}, incompat=0x${incompatFlags.toString(16)}`);
+        
+        const INCOMPAT_FLAG0_DATA_APPENDED_MASK = 1n;
+        if (incompatFlags & INCOMPAT_FLAG0_DATA_APPENDED_MASK) {
+            const numAppendedOffsets = (view.byteLength - 16) / 8;
+            console.log(`File has appended data. 0x${numAppendedOffsets.toString(16)} appended offsets.`);
+            this.info.set('has_appended_data', true);
+            
+            const appendedOffsets = [];
+            for (let i = 0; i < numAppendedOffsets; i++) {
+                appendedOffsets.push(view.getBigUint64(16 + i * 8, true));
+            }
+            this.info.set('appended_offsets', appendedOffsets);
+        }
+        
+        if (incompatFlags !== 0n) {
+            console.warn(`Incompatible flags detected: 0x${incompatFlags.toString(16)}`);
+            if (incompatFlags & ~INCOMPAT_FLAG0_DATA_APPENDED_MASK) {
+                console.error('Unknown incompatibility flags - file may not parse correctly');
+            }
+        }
     }
 
     parseFormat(view) {
@@ -317,7 +462,9 @@ export class ULogParser {
             case 'char':
                 return { value: String.fromCharCode(view.getUint8(offset)), size: 1 };
             default:
-                console.warn(`Unknown type: ${type}`);
+                if (!this.formats.has(type)) {
+                    console.warn(`Unknown type: ${type}`);
+                }
                 return { value: null, size: 1 };
         }
     }
@@ -326,8 +473,8 @@ export class ULogParser {
         const trackPoints = [];
         
         const positionMessages = this.data.filter(d => 
-            d._msgName === 'vehicle_global_position' || 
-            d._msgName === 'vehicle_local_position' ||
+            // d._msgName === 'vehicle_global_position' ||
+            // d._msgName === 'vehicle_local_position' ||
             d._msgName === 'vehicle_gps_position'
         );
 
@@ -403,13 +550,20 @@ export class ULogParser {
             return '';
         }
 
-        const fields = Object.keys(result.points[0]);
+        const allFields = new Set();
+        result.points.forEach(point => {
+            Object.keys(point).forEach(key => allFields.add(key));
+        });
+        
+        const fields = Array.from(allFields).sort();
         let csv = fields.join(',') + '\n';
 
         for (const point of result.points) {
             const row = fields.map(field => {
                 const value = point[field];
-                return value !== undefined ? value : '';
+                if (value === undefined || value === null) return '';
+                if (typeof value === 'number' && !isFinite(value)) return 'NaN';
+                return value;
             });
             csv += row.join(',') + '\n';
         }

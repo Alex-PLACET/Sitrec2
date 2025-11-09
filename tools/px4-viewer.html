@@ -88,6 +88,7 @@
             color: #c00;
             font-size: 11px;
             margin-top: 5px;
+            white-space: pre-wrap;
         }
     </style>
 </head>
@@ -283,30 +284,115 @@
             const file = event.target.files[0];
             if (!file) return;
 
-            setStatus('Loading file...');
+            console.log('File selected:', {
+                name: file.name,
+                size: file.size,
+                type: file.type,
+                lastModified: file.lastModified
+            });
+
+            setStatus(`Loading file (${(file.size / 1024 / 1024).toFixed(2)} MB)...`);
             setError('');
 
             try {
-                const arrayBuffer = await file.arrayBuffer();
+                let arrayBuffer;
+                
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+                try {
+                    console.log('Attempting file.arrayBuffer()...');
+                    arrayBuffer = await file.arrayBuffer();
+                    console.log('file.arrayBuffer() succeeded, buffer size:', arrayBuffer.byteLength);
+                } catch (readError) {
+                    console.warn('file.arrayBuffer() failed:', readError);
+                    console.log('Trying FileReader fallback...');
+                    
+                    arrayBuffer = await new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = (e) => {
+                            console.log('FileReader succeeded, buffer size:', e.target.result.byteLength);
+                            resolve(e.target.result);
+                        };
+                        reader.onerror = (e) => {
+                            console.error('FileReader failed:', reader.error);
+                            reject(reader.error);
+                        };
+                        reader.onprogress = (e) => {
+                            if (e.lengthComputable) {
+                                setStatus(`Reading file: ${(e.loaded / e.total * 100).toFixed(0)}%`);
+                            }
+                        };
+                        reader.readAsArrayBuffer(file);
+                    });
+                }
+                
+                if (!arrayBuffer || arrayBuffer.byteLength === 0) {
+                    throw new Error('File read resulted in empty buffer');
+                }
                 
                 setStatus('Parsing ULog data...');
                 const parser = new ULogParser();
                 parseResult = await parser.parse(arrayBuffer);
                 
-                setStatus('Processing track data...');
-                processTrackData(parseResult);
+                console.log('Parse result:', {
+                    pointCount: parseResult.points?.length || 0,
+                    allDataCount: parseResult.allData?.length || 0,
+                    formatCount: Object.keys(parseResult.formats || {}).length,
+                    messageTypes: [...new Set(parseResult.allData?.map(d => d._type) || [])].sort()
+                });
                 
-                setStatus('Rendering visualization...');
-                visualizeTrack();
-                updateInfo();
+                console.log('Available formats:', Object.keys(parseResult.formats || {}).sort());
+                
+                if (parseResult.points && parseResult.points.length > 0) {
+                    console.log('First 3 points:', parseResult.points.slice(0, 3));
+                    const pointKeys = new Set();
+                    parseResult.points.forEach(p => Object.keys(p).forEach(k => pointKeys.add(k)));
+                    console.log('Point data fields:', [...pointKeys].sort());
+                } else {
+                    console.warn('No track points found. Looking for position messages in allData...');
+                    const positionTypes = parseResult.allData?.filter(d => 
+                        d._type?.includes('position') || d._type?.includes('gps') || d._type?.includes('local')
+                    ) || [];
+                    console.log('Position-related messages found:', positionTypes.length);
+                    if (positionTypes.length > 0) {
+                        console.log('First position message:', positionTypes[0]);
+                    }
+                }
                 
                 document.getElementById('exportTrackCSV').disabled = false;
                 document.getElementById('exportAllCSV').disabled = false;
                 
-                setStatus('Ready');
+                setStatus('Processing track data...');
+                try {
+                    processTrackData(parseResult);
+                    
+                    setStatus('Rendering visualization...');
+                    visualizeTrack();
+                    updateInfo();
+                    
+                    setStatus('Ready');
+                } catch (trackError) {
+                    console.warn('Track visualization failed:', trackError);
+                    setStatus('CSV export available (no track visualization)');
+                    setError('Warning: ' + trackError.message + '\n\nCSV export is still available to inspect the data.');
+                    
+                    document.getElementById('pointCount').textContent = parseResult.points?.length || 0;
+                    document.getElementById('messageCount').textContent = parseResult.allData?.length || 0;
+                }
             } catch (error) {
                 console.error('Error loading file:', error);
-                setError('Error: ' + error.message);
+                let errorMsg = 'Error: ' + error.message;
+                
+                if (error.name === 'NotReadableError') {
+                    errorMsg += '\n\nPossible solutions:\n';
+                    errorMsg += '• Close any programs that might have the file open\n';
+                    errorMsg += '• Copy the file to a local folder (not OneDrive/Dropbox)\n';
+                    errorMsg += '• Check if antivirus is blocking access\n';
+                    errorMsg += '• Try a different browser\n';
+                    errorMsg += '• Ensure the file is fully downloaded/synced';
+                }
+                
+                setError(errorMsg);
                 setStatus('');
             }
         }
@@ -328,6 +414,8 @@
 
             let refLat = null, refLon = null, refAlt = null;
 
+            const EARTH_RADIUS = 6378137.0;
+            
             for (const point of result.points) {
                 if (point.lat !== undefined && point.lon !== undefined) {
                     if (refLat === null) {
@@ -336,8 +424,10 @@
                         refAlt = point.alt || 0;
                     }
 
-                    const x = (point.lon - refLon) * 111320 * Math.cos(refLat * Math.PI / 180);
-                    const y = (point.lat - refLat) * 110540;
+                    const dLat = point.lat - refLat;
+                    const dLon = point.lon - refLon;
+                    const x = dLon * (Math.PI / 180) * EARTH_RADIUS * Math.cos(refLat * Math.PI / 180);
+                    const y = dLat * (Math.PI / 180) * EARTH_RADIUS;
                     const z = (point.alt || 0) - refAlt;
 
                     trackData.push({
