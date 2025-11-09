@@ -2433,10 +2433,15 @@ export class QuadTreeTile {
         );
     }
 
-    applyMaterial() {
+    async applyMaterial() {
         const sourceDef = this.map.terrainNode.UI.getSourceDef();
         if (sourceDef.isDebug) {
 
+            const delayPromise = Globals.tileDelay > 0
+                ? new Promise(resolve => setTimeout(resolve, Globals.tileDelay * 1000))
+                : Promise.resolve();
+
+            await delayPromise;
 
             this.updateDebugMaterial();
             this.addAfterLoaded();
