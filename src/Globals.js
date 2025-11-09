@@ -13,6 +13,7 @@ export var Globals = {
     showCompassElevation: false, // Show elevation on compass
     isMobile: false, // Is device a mobile/touchscreen device
     arMode: false, // AR mode active (camera follows device orientation)
+    tileDelay: 0,  // Additional delay before loading tiles (0-5 seconds)
     
     // Granular render debug flags - shared across ALL views
     renderDebugFlags: {
@@ -23,6 +24,7 @@ export var Globals = {
         dbg_renderEffects: true,
         dbg_copyToScreen: true,
         dbg_updateCameraMatrices: true,
+        dbg_mainViewUseLookLayers: false,
         // Granular renderSky() step flags
         dbg_updateStarScales: true,
         dbg_updateSatelliteScales: true,

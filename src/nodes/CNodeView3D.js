@@ -1,5 +1,4 @@
 import {par} from "../par";
-import {normalizeLayerType} from "../utils";
 import {XYZ2EA, XYZJ2PR} from "../SphericalMath";
 import {
     CustomManager,
@@ -108,8 +107,6 @@ export class CNodeView3D extends CNodeViewCanvas {
 
         this.isIR = v.isIR ?? false;
         this.fovOverride = v.fovOverride;
-        this.layers = normalizeLayerType(v.layers) ?? undefined; // leaving it undefined will use the camera layers
-
 
         this.syncVideoZoom = v.syncVideoZoom ?? false;  // by default, don't sync the zoom with the video view, as we might not have a zoom controlelr
         this.syncPixelZoomWithVideo = v.syncPixelZoomWithVideo ?? false;
@@ -168,6 +165,9 @@ export class CNodeView3D extends CNodeViewCanvas {
             debugFolder.add(Globals.renderDebugFlags, "dbg_renderEffects").name("Render Effects").onChange(() => setRenderOne(true));
             debugFolder.add(Globals.renderDebugFlags, "dbg_copyToScreen").name("Copy To Screen").onChange(() => setRenderOne(true));
             debugFolder.add(Globals.renderDebugFlags, "dbg_updateCameraMatrices").name("Update Camera Matrices").onChange(() => setRenderOne(true));
+            debugFolder.add(Globals.renderDebugFlags, "dbg_mainViewUseLookLayers").name("Main Use Look Layers").onChange(() => setRenderOne(true));
+            
+            debugFolder.add(Globals, "tileDelay", 0, 5, 0.01).name("Tile Load Delay (s)").onChange(() => setRenderOne(true));
             
             // Add renderSky sub-folder
             const skyFolder = debugFolder.addFolder("Sky Steps");
@@ -621,10 +621,20 @@ export class CNodeView3D extends CNodeViewCanvas {
 // fovOverride WAS (incorrectly) being applied here
 
                 const oldLayers = this.camera.layers.mask;
-                if (this.layers !== undefined) {
-                    this.camera.layers.mask = this.layers;
-                }
 
+                // this.layers can be used to override the camera layers for this view
+                // for example lookView2 in the custom flir1 setup
+                // if (this.layers !== undefined) {
+                //     assert(0,"DEPRECATED CNodeView3D renderTargetAndEffects: setting camera layers from this.layers")
+                //     this.camera.layers.mask = this.layers;
+                // }
+
+                if (Globals.renderDebugFlags.dbg_mainViewUseLookLayers && this.id === "mainView") {
+                    const lookView = ViewMan.get("lookView", false);
+                    if (lookView) {
+                        this.camera.layers.mask = lookView.camera.layers.mask;
+                    }
+                }
 
                 // [DBG] Render main scene
                 if (Globals.renderDebugFlags.dbg_renderMainScene) {
@@ -632,9 +642,8 @@ export class CNodeView3D extends CNodeViewCanvas {
                     this.renderer.render(GlobalScene, this.camera);
                 }
 
-                if (this.layers !== undefined) {
-                    this.camera.layers.mask = oldLayers;
-                }
+
+                this.camera.layers.mask = oldLayers;
 
 
                 if (this.fovOverride !== undefined) {

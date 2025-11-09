@@ -1277,9 +1277,17 @@ export class QuadTreeTile {
 
         // Create AbortController for this texture load
         this.textureAbortController = new AbortController();
+        const abortSignal = this.textureAbortController.signal;
+
+        // Apply delay if configured
+        const delayPromise = Globals.tileDelay > 0
+            ? new Promise(resolve => setTimeout(resolve, Globals.tileDelay * 1000))
+            : Promise.resolve();
 
         // Create and cache the loading promise to prevent concurrent loads
-        const loadPromise = loadTextureWithRetries(url, 3, 100, 0, 0, this.textureAbortController.signal).then((texture) => {
+        const loadPromise = delayPromise.then(() => 
+            loadTextureWithRetries(url, 3, 100, 0, 0, abortSignal)
+        ).then((texture) => {
             let finalTexture = texture;
 
             // Apply color processing if enabled for this source
@@ -1343,6 +1351,7 @@ export class QuadTreeTile {
 
         // Create AbortController for this texture load
         this.textureAbortController = new AbortController();
+        const abortSignal = this.textureAbortController.signal;
 
         // Create cache key for the base texture (without zoom level)
         const baseCacheKey = `static_${url}_base${processColorsSuffix}`;
@@ -1350,6 +1359,11 @@ export class QuadTreeTile {
         // Create the material building promise
         const buildPromise = (async () => {
             try {
+                // Apply delay if configured
+                if (Globals.tileDelay > 0) {
+                    await new Promise(resolve => setTimeout(resolve, Globals.tileDelay * 1000));
+                }
+
                 // First, ensure we have the base texture loaded and cached
                 let baseTexture;
                 if (materialCache.has(baseCacheKey)) {
@@ -1362,7 +1376,7 @@ export class QuadTreeTile {
                     } else {
 
                         // Create and cache the base texture loading promise
-                        const baseLoadPromise = loadTextureWithRetries(url, 3, 100, 0, 0, this.textureAbortController.signal).then((texture) => {
+                        const baseLoadPromise = loadTextureWithRetries(url, 3, 100, 0, 0, abortSignal).then((texture) => {
                             let finalTexture = texture;
 
                             // Apply color processing if enabled for this source
