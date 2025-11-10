@@ -7,6 +7,7 @@ import {CanvasTexture} from "three/src/textures/CanvasTexture";
 import {NearestFilter} from "three/src/constants";
 import {createTerrainDayNightMaterial} from "./js/map33/material/TerrainDayNightMaterial";
 import {asyncOperationRegistry} from "./AsyncOperationRegistry";
+import {assert} from "./assert";
 
 class QuadTreeMapTexture extends QuadTreeMap {
     constructor(scene, terrainNode, geoLocation, options = {}) {
@@ -155,6 +156,112 @@ class QuadTreeMapTexture extends QuadTreeMap {
     }
 
 
+    // check if the area of a tile is fully covered by its descendants
+    // which might be the direct children, or further descendants
+    // this is a sanity check before removing a parent tile from the scene
+    // should only be needed for debugging
+    areaCoveredByDescendants(tile, tileLayerMask) {
+        // if no children, return false
+        if (!tile.children) {
+            return false;
+        }
+
+        // tile.children should have 4 children
+        assert(tile.children.length === 4, `Tile ${tile.key()} should have 4 children, has ${tile.children.length}`);
+
+        // for each child, check if it is loaded and visible OR has all visible children
+        for (let child of tile.children) {
+            if (!child.loaded
+                || !child.added
+                || !child.mesh.visible
+                || !(child.mesh.layers.mask & tileLayerMask)
+                || !child.mesh.material
+                || !child.mesh.material.uniforms?.map           // No texture
+                || child.mesh.material.wireframe      // Still wireframe
+                // || child.isLoading                    // Currently loading
+                // || child.pendingAncestorLoad          // Waiting for parent
+                || !child.mesh.parent                 // Not in scene
+            ) {
+                // if it has no children, then log which of the above failed
+                if (!child.children) {
+//                     console.warn(`Child tile ${child.key()} missing: loaded=${child.loaded}, added=${child.added}, visible=${child.mesh.visible}, layerMask=${child.mesh.layers.mask & tileLayerMask}, hasMaterial=${!!child.mesh.material}, hasTexture=${!!child.mesh.material.map}, wireframe=${child.mesh.material.wireframe}, inScene=${!!child.mesh.parent}`);
+                }
+
+
+                // child is not loaded or not visible
+                // but maybe all its children are?
+                if (!this.areaCoveredByDescendants(child, tileLayerMask)) {
+                    return false;
+                }
+            }
+
+            // tile flags look goog, check the center is good
+
+            // calculate the LLA position of the center of the tile
+            const lat1 = this.options.mapProjection.getNorthLatitude(child.y, child.z);
+            const lon1 = this.options.mapProjection.getLeftLongitude(child.x, child.z);
+            const lat2 = this.options.mapProjection.getNorthLatitude(child.y + 1, child.z);
+            const lon2 = this.options.mapProjection.getLeftLongitude(child.x + 1, child.z);
+            const lat = (lat1 + lat2) / 2;
+            const lon = (lon1 + lon2) / 2;
+            const center = LLAToEUS(lat, lon, 0);
+
+            assert(center.x === child.mesh.position.x
+                && center.y === child.mesh.position.y
+                && center.z === child.mesh.position.z,
+                `Child tile ${child.key()} center position mismatch: expected (${center.x}, ${center.y}, ${center.z}), got (${child.mesh.position.x}, ${child.mesh.position.y}, ${child.mesh.position.z}), `
+            );
+
+
+        }
+        return true;
+    }
+
+    // Covered if EITHER
+    // 1) all 4 children are loaded and visible
+    // OR
+    // 2) at least one ancestor is loaded and visible
+    areaIsCovered(tile, tileLayerMask) {
+        // Check if any ancestor is loaded and visible
+        let current = tile.parent;
+        while (current) {
+            if (current.loaded && current.added && (current.mesh.layers.mask & tileLayerMask)) {
+                return true;
+            }
+            current = current.parent;
+        }
+
+        return this.areaCoveredByDescendants(tile, tileLayerMask)
+    }
+
+    dumpChildren(tile, indent = '') {
+        if (!tile.children) {
+            console.log(`${indent}No children`);
+            return;
+        }
+        for (let child of tile.children) {
+            console.log(`${indent}Child ${child.key()} loaded=${child.loaded} added=${child.added} mesh layers=${child.mesh?.layers.mask}`);
+            this.dumpChildren(child, indent + '  ');
+        }
+    }
+
+    dumpParents(tile) {
+        let current = tile.parent;
+        while (current) {
+            console.log(`Parent ${current.key()} loaded=${current.loaded} added=${current.added} tileLayers=${current.tileLayers}`);
+            current = current.parent;
+        }
+    }
+
+    dumpChildrenAndParents(tile) {
+        console.log(`Dumping children and parent of tile ${tile.key()}:`);
+        this.dumpChildren(tile);
+        this.dumpParents(tile);
+
+    }
+
+    // set the layer mask on the tile's mesh and skirt mesh
+
     deactivateTile(x, y, z, layerMask = 0, instant = false) {
         let tile = this.getTile(x, y, z);
         if (tile === undefined) {
@@ -169,6 +276,13 @@ class QuadTreeMapTexture extends QuadTreeMap {
             tile.tileLayers = tile.tileLayers & (~layerMask);
         }
 
+        // check if the area is still covered by descendants or ancestors
+        // (which is a requirement for deactivating a tile)
+        if (!this.areaIsCovered(tile, layerMask)) {
+            this.dumpChildrenAndParents(tile)
+
+            assert(0, `Deactivating tile ${z}/${x}/${y} which does not have full coverage, layerMask=${layerMask}`);
+        }
 
         if (instant) {
             // defer updating the mesh mask.
@@ -200,7 +314,7 @@ class QuadTreeMapTexture extends QuadTreeMap {
 
     // if tile exists, activate it, otherwise create it
     activateTile(x, y, z, layerMask = 0, useParentData = false) {
-//        console.log(`activateTile Texture ${z}/${x}/${y} layerMask=${layerMask} useParentData=${useParentData} maxZoom=${this.maxZoom}`);
+        //console.log(`activateTile Texture ${z}/${x}/${y} layerMask=${layerMask} useParentData=${useParentData} maxZoom=${this.maxZoom}`);
         
         // Don't create tiles beyond the effective max zoom (considering maxDetails)
         const effectiveMaxZoom = this.getEffectiveMaxZoom();

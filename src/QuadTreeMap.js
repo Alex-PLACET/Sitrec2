@@ -6,6 +6,7 @@ import {debugLog, Globals} from "./Globals";
 import {isLocal} from "./configUtils";
 import {altitudeAboveSphere, distanceToHorizon, hiddenByGlobe} from "./SphericalMath";
 import * as LAYER from "./LayerMasks";
+import {assert} from "./assert";
 
 // Reusable Vector3 objects to avoid garbage collection pressure
 // These are reused across all tile visibility calculations
@@ -285,6 +286,9 @@ export class QuadTreeMap {
                         this.refreshDebugGeometry(tile);
                     }
                 }
+
+                assert(this.areaIsCovered(tile), "Tile removed but area is not covered!");
+
             }
 
             // OPERATION 3: Identify tiles to prune (collect for deletion after iteration)
@@ -363,6 +367,23 @@ export class QuadTreeMap {
         // Skip subdivision for flat elevation maps
         if (this.constructor.name === 'QuadTreeMapElevation' && this.options.elevationType === "Flat") {
             return;
+        }
+
+        // debug code - check for holes in the map
+        // the root tile covers the whole world, so if it's not active, then check if it's covered by the descendants
+        if (isLocal) {
+            if (this.constructor.name === 'QuadTreeMapTexture') {
+                const rootTile = this.getTile(0, 0, 0);
+
+                if (!(rootTile.mesh.layers.mask & view.tileLayers)) {
+                    if (!this.areaCoveredByDescendants(rootTile, view.tileLayers)) {
+                        this.dumpChildren(rootTile);
+                        console.log(this.areaCoveredByDescendants(rootTile, view.tileLayers));
+                        // root tile is not active in this view - so check area coverage
+                        assert(0, "Root tile area is not covered!");
+                    }
+                }
+            }
         }
 
         const camera = view.cameraNode.camera;
@@ -512,10 +533,7 @@ export class QuadTreeMap {
     }
 
     /**
-     * Deactivate parent tiles when all their children are loaded and active
-     * Children with parent data are OK - they're valid for display, just lower quality
-     * The key is that children are loaded (even if using parent data) and added to scene
-     * 
+     * Deactivate parent tiles when their descendants cover the parent's area.
      * OPTIMIZATION: Only iterates over tiles that have children (tracked in parentTiles Set)
      * instead of all tiles. With 100 tiles, typically only 10-25 are parents (75-90% reduction).
      */
@@ -526,17 +544,8 @@ export class QuadTreeMap {
             if (tile.z >= this.maxZoom) return;
             if (tile.isLoading) return;
 
-            const children = this.getChildren(tile);
-            if (!children) return; // Safety check (shouldn't happen if parentTiles is maintained correctly)
-
-            // Children must be loaded and added (parent data is OK - it's valid for display)
-            const allChildrenReady = children.every(child => 
-                child && 
-                (child.tileLayers & tileLayers) && 
-                child.loaded && 
-                child.added
-            );
-
+            const allChildrenReady = this.areaCoveredByDescendants(tile, tileLayers)
+            
             if (allChildrenReady) {
                 this.deactivateTile(tile.x, tile.y, tile.z, tileLayers, true);
             }
@@ -680,8 +689,7 @@ export class QuadTreeMap {
         // For texture maps: Deactivate parent if all children are loaded and added
         // (even if using parent data - that's valid for display, just lower quality)
         if (isTextureMap) {
-            const children = this.getChildren(tile);
-            if (children && children.every(child => child && child.loaded && child.added)) {
+            if (this.areaCoveredByDescendants(tile, tileLayers)) {
                 this.deactivateTile(tile.x, tile.y, tile.z, tileLayers, true); // instant=true to hide parent immediately
             }
             // Otherwise parent stays active until children are ready

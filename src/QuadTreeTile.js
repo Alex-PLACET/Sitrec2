@@ -28,9 +28,12 @@ import {fileSystemFetch} from "./fileSystemFetch";
 //const tileMaterial = new MeshStandardMaterial({wireframe: true, color: "#408020", transparent: true, opacity: 0.5})
 
 // invisible material used when we don't want to see anything but still need a mesh
+// If you see holes in the terrain, it may be because they are being added with this invisible material
+//  We probably do not need this at all anymore????
+
 const tileMaterial = new MeshStandardMaterial({
     wireframe: true,
-    color: '#ffffff',
+    color: '#ff00ff',
     transparent: true,
     opacity: 0.0
 });
@@ -2437,11 +2440,13 @@ export class QuadTreeTile {
         const sourceDef = this.map.terrainNode.UI.getSourceDef();
         if (sourceDef.isDebug) {
 
-            const delayPromise = Globals.tileDelay > 0
-                ? new Promise(resolve => setTimeout(resolve, Globals.tileDelay * 1000))
-                : Promise.resolve();
-
-            await delayPromise;
+            // possible debugging delay
+            // we make it random so that multiple tiles load in staggered fashion
+            // which might better replicate real world conditions
+            if (Globals.tileDelay > 0) {
+                const delayPromise = new Promise(resolve => setTimeout(resolve, Math.random() * Globals.tileDelay * 1000))
+                await delayPromise;
+            }
 
             this.updateDebugMaterial();
             this.addAfterLoaded();
