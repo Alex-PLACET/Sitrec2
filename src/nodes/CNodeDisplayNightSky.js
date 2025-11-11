@@ -926,6 +926,8 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
                 // satellites might have invalid positions if we load a TLE that's not close to the time we are calculating for
                 // this would be updated when updating the satellites position
                 if (satData.invalidPosition) {
+                    this.satellites.removeSatelliteArrows(satData)
+                    this.satellites.removeSatSunArrows(satData)
                     continue;
                 }
 
@@ -1105,10 +1107,11 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
         for (let i = 0; i < numSats; i++) {
             const satData = this.satellites.TLEData.satData[i];
 
-            // if the satellite is not visible, skip it
+            // if the satellite is not visible or not valid, skip it
             // user filtered sats are either in the list, or ar e the brightest or the ISS (if those are enabled)
             // if the satellite is not user filtered, skip it
             if (satData.visible
+                && !satData.invalidPosition
                 && (satData.userFiltered || satData.eus.distanceTo(lookPos) < this.satellites.arrowRange * 1000)
                 && (satData.lastScale > 0 || this.showAllLabels) // if the scale is 0, we don't show the label, unless showAllLabels is true
             ) {
