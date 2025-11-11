@@ -30,6 +30,8 @@ export class CNodeCurveEditorView2 extends CNodeViewCanvas2D {
         this.isDragging = false;
         this.isDraggingLine = false;
         this.isDraggingFrame = false;
+        this.isDraggingAFrame = false;
+        this.isDraggingBFrame = false;
         this.lastMouseX = 0;
         this.lastMouseY = 0;
         this.stateBeforeDrag = null;
@@ -53,6 +55,9 @@ export class CNodeCurveEditorView2 extends CNodeViewCanvas2D {
         this.canvas.addEventListener('pointerdown', (e) => this.onMouseDown(e));
         this.canvas.addEventListener('pointermove', (e) => this.onMouseMove(e));
         this.canvas.addEventListener('pointerup', (e) => this.onMouseUp(e));
+        
+        this.documentMoveHandler = (e) => this.onMouseMove(e);
+        this.documentUpHandler = (e) => this.onMouseUp(e);
     }
     
     screenToGraph(screenX, screenY) {
@@ -137,6 +142,36 @@ export class CNodeCurveEditorView2 extends CNodeViewCanvas2D {
         return distance < threshold && screenY >= margin && screenY <= this.canvas.height - margin;
     }
     
+    isNearAFrameLine(screenX, screenY) {
+        const threshold = 8;
+        const margin = 60;
+        
+        if (Sit.aFrame === undefined) return false;
+        
+        const frameX = Sit.aFrame;
+        if (frameX < this.minX || frameX > this.maxX) return false;
+        
+        const screen = this.graphToScreen(frameX, this.minY);
+        const distance = Math.abs(screenX - screen.x);
+        
+        return distance < threshold && screenY >= margin && screenY <= this.canvas.height - margin;
+    }
+    
+    isNearBFrameLine(screenX, screenY) {
+        const threshold = 8;
+        const margin = 60;
+        
+        if (Sit.bFrame === undefined) return false;
+        
+        const frameX = Sit.bFrame;
+        if (frameX < this.minX || frameX > this.maxX) return false;
+        
+        const screen = this.graphToScreen(frameX, this.minY);
+        const distance = Math.abs(screenX - screen.x);
+        
+        return distance < threshold && screenY >= margin && screenY <= this.canvas.height - margin;
+    }
+    
     isInsideGraphArea(x, y) {
         const margin = 60;
         const width = this.canvas.width;
@@ -151,6 +186,72 @@ export class CNodeCurveEditorView2 extends CNodeViewCanvas2D {
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
         
+        const abDistance = (Sit.aFrame !== undefined && Sit.bFrame !== undefined) 
+            ? (Sit.bFrame - Sit.aFrame) 
+            : Infinity;
+        
+        if (abDistance < 10) {
+            if (this.isNearAFrameLine(x, y)) {
+                e.preventDefault();
+                e.stopPropagation();
+                this.isDragging = true;
+                this.isDraggingAFrame = true;
+                document.addEventListener('pointermove', this.documentMoveHandler);
+                document.addEventListener('pointerup', this.documentUpHandler);
+                return;
+            }
+            
+            if (this.isNearBFrameLine(x, y)) {
+                e.preventDefault();
+                e.stopPropagation();
+                this.isDragging = true;
+                this.isDraggingBFrame = true;
+                document.addEventListener('pointermove', this.documentMoveHandler);
+                document.addEventListener('pointerup', this.documentUpHandler);
+                return;
+            }
+            
+            if (this.isNearFrameLine(x, y)) {
+                e.preventDefault();
+                e.stopPropagation();
+                this.isDragging = true;
+                this.isDraggingFrame = true;
+                document.addEventListener('pointermove', this.documentMoveHandler);
+                document.addEventListener('pointerup', this.documentUpHandler);
+                return;
+            }
+        } else {
+            if (this.isNearFrameLine(x, y)) {
+                e.preventDefault();
+                e.stopPropagation();
+                this.isDragging = true;
+                this.isDraggingFrame = true;
+                document.addEventListener('pointermove', this.documentMoveHandler);
+                document.addEventListener('pointerup', this.documentUpHandler);
+                return;
+            }
+            
+            if (this.isNearAFrameLine(x, y)) {
+                e.preventDefault();
+                e.stopPropagation();
+                this.isDragging = true;
+                this.isDraggingAFrame = true;
+                document.addEventListener('pointermove', this.documentMoveHandler);
+                document.addEventListener('pointerup', this.documentUpHandler);
+                return;
+            }
+            
+            if (this.isNearBFrameLine(x, y)) {
+                e.preventDefault();
+                e.stopPropagation();
+                this.isDragging = true;
+                this.isDraggingBFrame = true;
+                document.addEventListener('pointermove', this.documentMoveHandler);
+                document.addEventListener('pointerup', this.documentUpHandler);
+                return;
+            }
+        }
+        
         if (!this.isInsideGraphArea(x, y)) {
             return;
         }
@@ -158,28 +259,22 @@ export class CNodeCurveEditorView2 extends CNodeViewCanvas2D {
         e.preventDefault();
         e.stopPropagation();
         
-        if (this.isNearFrameLine(x, y)) {
-            this.isDragging = true;
-            this.isDraggingFrame = true;
-            this.isDraggingLine = false;
-            return;
-        }
-        
         this.draggedPointIndex = this.findPointAt(x, y);
         if (this.draggedPointIndex !== null) {
             this.stateBeforeDrag = this.captureState();
             this.isDragging = true;
-            this.isDraggingLine = false;
-            this.isDraggingFrame = false;
+            document.addEventListener('pointermove', this.documentMoveHandler);
+            document.addEventListener('pointerup', this.documentUpHandler);
         } else {
             this.draggedLineIndex = this.findLineAt(x, y);
             if (this.draggedLineIndex !== null) {
                 this.stateBeforeDrag = this.captureState();
                 this.isDragging = true;
                 this.isDraggingLine = true;
-                this.isDraggingFrame = false;
                 this.lastMouseX = e.clientX;
                 this.lastMouseY = e.clientY;
+                document.addEventListener('pointermove', this.documentMoveHandler);
+                document.addEventListener('pointerup', this.documentUpHandler);
             }
         }
     }
@@ -189,7 +284,37 @@ export class CNodeCurveEditorView2 extends CNodeViewCanvas2D {
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
         
-        if (this.isDragging && this.isDraggingFrame) {
+        if (this.isDragging && this.isDraggingAFrame) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            this.canvas.style.cursor = 'ew-resize';
+            
+            const graph = this.screenToGraph(e.clientX, e.clientY);
+            let newFrame = Math.round(Math.max(this.minX, Math.min(this.maxX, graph.x)));
+            
+            if (Sit.bFrame !== undefined) {
+                newFrame = Math.min(newFrame, Sit.bFrame - 1);
+            }
+            
+            Sit.aFrame = newFrame;
+            setRenderOne(true);
+        } else if (this.isDragging && this.isDraggingBFrame) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            this.canvas.style.cursor = 'ew-resize';
+            
+            const graph = this.screenToGraph(e.clientX, e.clientY);
+            let newFrame = Math.round(Math.max(this.minX, Math.min(this.maxX, graph.x)));
+            
+            if (Sit.aFrame !== undefined) {
+                newFrame = Math.max(newFrame, Sit.aFrame + 1);
+            }
+            
+            Sit.bFrame = newFrame;
+            setRenderOne(true);
+        } else if (this.isDragging && this.isDraggingFrame) {
             e.preventDefault();
             e.stopPropagation();
             
@@ -263,10 +388,10 @@ export class CNodeCurveEditorView2 extends CNodeViewCanvas2D {
             if (this.onChange) {
                 this.onChange();
             }
-        } else if (this.isInsideGraphArea(x, y)) {
-            if (this.isNearFrameLine(x, y)) {
+        } else {
+            if (this.isNearAFrameLine(x, y) || this.isNearBFrameLine(x, y) || this.isNearFrameLine(x, y)) {
                 this.canvas.style.cursor = 'ew-resize';
-            } else {
+            } else if (this.isInsideGraphArea(x, y)) {
                 const pointIndex = this.findPointAt(x, y);
                 const lineIndex = this.findLineAt(x, y);
                 
@@ -275,6 +400,8 @@ export class CNodeCurveEditorView2 extends CNodeViewCanvas2D {
                 } else {
                     this.canvas.style.cursor = 'default';
                 }
+            } else {
+                this.canvas.style.cursor = 'move';
             }
         }
     }
@@ -284,7 +411,7 @@ export class CNodeCurveEditorView2 extends CNodeViewCanvas2D {
             e.preventDefault();
             e.stopPropagation();
             
-            if (!this.isDraggingFrame && this.stateBeforeDrag && UndoManager) {
+            if (!this.isDraggingFrame && !this.isDraggingAFrame && !this.isDraggingBFrame && this.stateBeforeDrag && UndoManager) {
                 const stateAfter = this.captureState();
                 
                 const hasChanged = JSON.stringify(this.stateBeforeDrag) !== JSON.stringify(stateAfter);
@@ -304,6 +431,9 @@ export class CNodeCurveEditorView2 extends CNodeViewCanvas2D {
             }
             
             this.stateBeforeDrag = null;
+            
+            document.removeEventListener('pointermove', this.documentMoveHandler);
+            document.removeEventListener('pointerup', this.documentUpHandler);
         }
         
         this.isDragging = false;
@@ -311,24 +441,26 @@ export class CNodeCurveEditorView2 extends CNodeViewCanvas2D {
         this.draggedLineIndex = null;
         this.isDraggingLine = false;
         this.isDraggingFrame = false;
+        this.isDraggingAFrame = false;
+        this.isDraggingBFrame = false;
         
         const rect = this.canvas.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
         
-        if (this.isInsideGraphArea(x, y)) {
-            if (this.isNearFrameLine(x, y)) {
-                this.canvas.style.cursor = 'ew-resize';
+        if (this.isNearAFrameLine(x, y) || this.isNearBFrameLine(x, y) || this.isNearFrameLine(x, y)) {
+            this.canvas.style.cursor = 'ew-resize';
+        } else if (this.isInsideGraphArea(x, y)) {
+            const pointIndex = this.findPointAt(x, y);
+            const lineIndex = this.findLineAt(x, y);
+            
+            if (pointIndex !== null || lineIndex !== null) {
+                this.canvas.style.cursor = 'grab';
             } else {
-                const pointIndex = this.findPointAt(x, y);
-                const lineIndex = this.findLineAt(x, y);
-                
-                if (pointIndex !== null || lineIndex !== null) {
-                    this.canvas.style.cursor = 'grab';
-                } else {
-                    this.canvas.style.cursor = 'default';
-                }
+                this.canvas.style.cursor = 'default';
             }
+        } else {
+            this.canvas.style.cursor = 'move';
         }
     }
     
@@ -506,6 +638,26 @@ export class CNodeCurveEditorView2 extends CNodeViewCanvas2D {
             ctx.beginPath();
             ctx.arc(screen.x, screen.y, 5, 0, Math.PI * 2);
             ctx.fill();
+        }
+        
+        if (Sit.aFrame !== undefined && Sit.aFrame >= this.minX && Sit.aFrame <= this.maxX) {
+            const frameScreen = this.graphToScreen(Sit.aFrame, this.minY);
+            ctx.strokeStyle = 'rgba(0, 255, 0, 0.5)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(frameScreen.x, margin);
+            ctx.lineTo(frameScreen.x, height - margin);
+            ctx.stroke();
+        }
+        
+        if (Sit.bFrame !== undefined && Sit.bFrame >= this.minX && Sit.bFrame <= this.maxX) {
+            const frameScreen = this.graphToScreen(Sit.bFrame, this.minY);
+            ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(frameScreen.x, margin);
+            ctx.lineTo(frameScreen.x, height - margin);
+            ctx.stroke();
         }
         
         if (par.frame >= this.minX && par.frame <= this.maxX) {
