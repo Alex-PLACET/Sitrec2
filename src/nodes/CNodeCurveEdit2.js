@@ -186,6 +186,31 @@ export class CNodeCurveEditorView2 extends CNodeViewCanvas2D {
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
         
+        this.draggedPointIndex = this.findPointAt(x, y);
+        if (this.draggedPointIndex !== null) {
+            e.preventDefault();
+            e.stopPropagation();
+            this.stateBeforeDrag = this.captureState();
+            this.isDragging = true;
+            document.addEventListener('pointermove', this.documentMoveHandler);
+            document.addEventListener('pointerup', this.documentUpHandler);
+            return;
+        }
+        
+        this.draggedLineIndex = this.findLineAt(x, y);
+        if (this.draggedLineIndex !== null) {
+            e.preventDefault();
+            e.stopPropagation();
+            this.stateBeforeDrag = this.captureState();
+            this.isDragging = true;
+            this.isDraggingLine = true;
+            this.lastMouseX = e.clientX;
+            this.lastMouseY = e.clientY;
+            document.addEventListener('pointermove', this.documentMoveHandler);
+            document.addEventListener('pointerup', this.documentUpHandler);
+            return;
+        }
+        
         const abDistance = (Sit.aFrame !== undefined && Sit.bFrame !== undefined) 
             ? (Sit.bFrame - Sit.aFrame) 
             : Infinity;
@@ -249,32 +274,6 @@ export class CNodeCurveEditorView2 extends CNodeViewCanvas2D {
                 document.addEventListener('pointermove', this.documentMoveHandler);
                 document.addEventListener('pointerup', this.documentUpHandler);
                 return;
-            }
-        }
-        
-        if (!this.isInsideGraphArea(x, y)) {
-            return;
-        }
-        
-        e.preventDefault();
-        e.stopPropagation();
-        
-        this.draggedPointIndex = this.findPointAt(x, y);
-        if (this.draggedPointIndex !== null) {
-            this.stateBeforeDrag = this.captureState();
-            this.isDragging = true;
-            document.addEventListener('pointermove', this.documentMoveHandler);
-            document.addEventListener('pointerup', this.documentUpHandler);
-        } else {
-            this.draggedLineIndex = this.findLineAt(x, y);
-            if (this.draggedLineIndex !== null) {
-                this.stateBeforeDrag = this.captureState();
-                this.isDragging = true;
-                this.isDraggingLine = true;
-                this.lastMouseX = e.clientX;
-                this.lastMouseY = e.clientY;
-                document.addEventListener('pointermove', this.documentMoveHandler);
-                document.addEventListener('pointerup', this.documentUpHandler);
             }
         }
     }
@@ -389,17 +388,15 @@ export class CNodeCurveEditorView2 extends CNodeViewCanvas2D {
                 this.onChange();
             }
         } else {
-            if (this.isNearAFrameLine(x, y) || this.isNearBFrameLine(x, y) || this.isNearFrameLine(x, y)) {
+            const pointIndex = this.findPointAt(x, y);
+            const lineIndex = this.findLineAt(x, y);
+            
+            if (pointIndex !== null || lineIndex !== null) {
+                this.canvas.style.cursor = 'grab';
+            } else if (this.isNearAFrameLine(x, y) || this.isNearBFrameLine(x, y) || this.isNearFrameLine(x, y)) {
                 this.canvas.style.cursor = 'ew-resize';
             } else if (this.isInsideGraphArea(x, y)) {
-                const pointIndex = this.findPointAt(x, y);
-                const lineIndex = this.findLineAt(x, y);
-                
-                if (pointIndex !== null || lineIndex !== null) {
-                    this.canvas.style.cursor = 'grab';
-                } else {
-                    this.canvas.style.cursor = 'default';
-                }
+                this.canvas.style.cursor = 'default';
             } else {
                 this.canvas.style.cursor = 'move';
             }
@@ -448,17 +445,15 @@ export class CNodeCurveEditorView2 extends CNodeViewCanvas2D {
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
         
-        if (this.isNearAFrameLine(x, y) || this.isNearBFrameLine(x, y) || this.isNearFrameLine(x, y)) {
+        const pointIndex = this.findPointAt(x, y);
+        const lineIndex = this.findLineAt(x, y);
+        
+        if (pointIndex !== null || lineIndex !== null) {
+            this.canvas.style.cursor = 'grab';
+        } else if (this.isNearAFrameLine(x, y) || this.isNearBFrameLine(x, y) || this.isNearFrameLine(x, y)) {
             this.canvas.style.cursor = 'ew-resize';
         } else if (this.isInsideGraphArea(x, y)) {
-            const pointIndex = this.findPointAt(x, y);
-            const lineIndex = this.findLineAt(x, y);
-            
-            if (pointIndex !== null || lineIndex !== null) {
-                this.canvas.style.cursor = 'grab';
-            } else {
-                this.canvas.style.cursor = 'default';
-            }
+            this.canvas.style.cursor = 'default';
         } else {
             this.canvas.style.cursor = 'move';
         }
