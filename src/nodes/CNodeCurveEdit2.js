@@ -1,6 +1,6 @@
 import {CNodeTrack} from "./CNodeTrack";
 import {CNodeViewCanvas2D} from "./CNodeViewCanvas";
-import {Sit} from "../Globals";
+import {setRenderOne, Sit, UndoManager} from "../Globals";
 
 export class CNodeCurveEditorView2 extends CNodeViewCanvas2D {
     constructor(v) {
@@ -30,8 +30,21 @@ export class CNodeCurveEditorView2 extends CNodeViewCanvas2D {
         this.isDraggingLine = false;
         this.lastMouseX = 0;
         this.lastMouseY = 0;
+        this.stateBeforeDrag = null;
         
         this.setupMouseHandlers();
+    }
+    
+    captureState() {
+        return this.points.map(p => ({x: p.x, y: p.y}));
+    }
+    
+    restoreState(state) {
+        this.points = state.map(p => ({x: p.x, y: p.y}));
+        if (this.onChange) {
+            this.onChange();
+        }
+        setRenderOne(true);
     }
     
     setupMouseHandlers() {
@@ -132,11 +145,13 @@ export class CNodeCurveEditorView2 extends CNodeViewCanvas2D {
         
         this.draggedPointIndex = this.findPointAt(x, y);
         if (this.draggedPointIndex !== null) {
+            this.stateBeforeDrag = this.captureState();
             this.isDragging = true;
             this.isDraggingLine = false;
         } else {
             this.draggedLineIndex = this.findLineAt(x, y);
             if (this.draggedLineIndex !== null) {
+                this.stateBeforeDrag = this.captureState();
                 this.isDragging = true;
                 this.isDraggingLine = true;
                 this.lastMouseX = e.clientX;
@@ -231,6 +246,27 @@ export class CNodeCurveEditorView2 extends CNodeViewCanvas2D {
         if (this.isDragging) {
             e.preventDefault();
             e.stopPropagation();
+            
+            if (this.stateBeforeDrag && UndoManager) {
+                const stateAfter = this.captureState();
+                
+                const hasChanged = JSON.stringify(this.stateBeforeDrag) !== JSON.stringify(stateAfter);
+                
+                if (hasChanged) {
+                    const stateBefore = this.stateBeforeDrag;
+                    UndoManager.add({
+                        undo: () => {
+                            this.restoreState(stateBefore);
+                        },
+                        redo: () => {
+                            this.restoreState(stateAfter);
+                        },
+                        description: "Edit curve points"
+                    });
+                }
+            }
+            
+            this.stateBeforeDrag = null;
         }
         
         this.isDragging = false;
