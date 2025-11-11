@@ -25,7 +25,11 @@ export class CNodeCurveEditorView2 extends CNodeViewCanvas2D {
         }
         
         this.draggedPointIndex = null;
+        this.draggedLineIndex = null;
         this.isDragging = false;
+        this.isDraggingLine = false;
+        this.lastMouseX = 0;
+        this.lastMouseY = 0;
         
         this.setupMouseHandlers();
     }
@@ -75,6 +79,36 @@ export class CNodeCurveEditorView2 extends CNodeViewCanvas2D {
         return null;
     }
     
+    findLineAt(screenX, screenY) {
+        const threshold = 8;
+        for (let i = 0; i < this.points.length - 1; i++) {
+            const p1 = this.graphToScreen(this.points[i].x, this.points[i].y);
+            const p2 = this.graphToScreen(this.points[i + 1].x, this.points[i + 1].y);
+            
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+            const length = Math.sqrt(dx * dx + dy * dy);
+            
+            if (length === 0) continue;
+            
+            const dot = ((screenX - p1.x) * dx + (screenY - p1.y) * dy) / (length * length);
+            
+            if (dot < 0 || dot > 1) continue;
+            
+            const projX = p1.x + dot * dx;
+            const projY = p1.y + dot * dy;
+            
+            const distX = screenX - projX;
+            const distY = screenY - projY;
+            const distance = Math.sqrt(distX * distX + distY * distY);
+            
+            if (distance < threshold) {
+                return i;
+            }
+        }
+        return null;
+    }
+    
     onMouseDown(e) {
         const rect = this.canvas.getBoundingClientRect();
         const x = e.clientX - rect.left;
@@ -83,11 +117,52 @@ export class CNodeCurveEditorView2 extends CNodeViewCanvas2D {
         this.draggedPointIndex = this.findPointAt(x, y);
         if (this.draggedPointIndex !== null) {
             this.isDragging = true;
+            this.isDraggingLine = false;
+        } else {
+            this.draggedLineIndex = this.findLineAt(x, y);
+            if (this.draggedLineIndex !== null) {
+                this.isDragging = true;
+                this.isDraggingLine = true;
+                this.lastMouseX = e.clientX;
+                this.lastMouseY = e.clientY;
+            }
         }
     }
     
     onMouseMove(e) {
-        if (this.isDragging && this.draggedPointIndex !== null) {
+        if (this.isDragging && this.isDraggingLine && this.draggedLineIndex !== null) {
+            const deltaGraph = this.screenToGraph(e.clientX, e.clientY);
+            const lastGraph = this.screenToGraph(this.lastMouseX, this.lastMouseY);
+            const dx = deltaGraph.x - lastGraph.x;
+            const dy = deltaGraph.y - lastGraph.y;
+            
+            this.lastMouseX = e.clientX;
+            this.lastMouseY = e.clientY;
+            
+            const p1 = this.draggedLineIndex;
+            const p2 = this.draggedLineIndex + 1;
+            
+            this.points[p1].x = Math.max(this.minX, Math.min(this.maxX, this.points[p1].x + dx));
+            this.points[p1].y = Math.max(this.minY, Math.min(this.maxY, this.points[p1].y + dy));
+            this.points[p2].x = Math.max(this.minX, Math.min(this.maxX, this.points[p2].x + dx));
+            this.points[p2].y = Math.max(this.minY, Math.min(this.maxY, this.points[p2].y + dy));
+            
+            for (let i = p1 - 1; i >= 0; i--) {
+                if (this.points[i].x >= this.points[i + 1].x - 1) {
+                    this.points[i].x = this.points[i + 1].x - 1;
+                }
+            }
+            
+            for (let i = p2 + 1; i < this.points.length; i++) {
+                if (this.points[i].x <= this.points[i - 1].x + 1) {
+                    this.points[i].x = this.points[i - 1].x + 1;
+                }
+            }
+            
+            if (this.onChange) {
+                this.onChange();
+            }
+        } else if (this.isDragging && this.draggedPointIndex !== null) {
             const graph = this.screenToGraph(e.clientX, e.clientY);
             const newX = Math.max(this.minX, Math.min(this.maxX, graph.x));
             const newY = Math.max(this.minY, Math.min(this.maxY, graph.y));
@@ -116,6 +191,8 @@ export class CNodeCurveEditorView2 extends CNodeViewCanvas2D {
     onMouseUp(e) {
         this.isDragging = false;
         this.draggedPointIndex = null;
+        this.draggedLineIndex = null;
+        this.isDraggingLine = false;
     }
     
     interpolateValue(frame, points) {
