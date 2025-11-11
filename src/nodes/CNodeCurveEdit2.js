@@ -35,9 +35,9 @@ export class CNodeCurveEditorView2 extends CNodeViewCanvas2D {
     }
     
     setupMouseHandlers() {
-        this.canvas.addEventListener('mousedown', (e) => this.onMouseDown(e));
-        this.canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
-        this.canvas.addEventListener('mouseup', (e) => this.onMouseUp(e));
+        this.canvas.addEventListener('pointerdown', (e) => this.onMouseDown(e));
+        this.canvas.addEventListener('pointermove', (e) => this.onMouseMove(e));
+        this.canvas.addEventListener('pointerup', (e) => this.onMouseUp(e));
     }
     
     screenToGraph(screenX, screenY) {
@@ -109,10 +109,26 @@ export class CNodeCurveEditorView2 extends CNodeViewCanvas2D {
         return null;
     }
     
+    isInsideGraphArea(x, y) {
+        const margin = 60;
+        const width = this.canvas.width;
+        const height = this.canvas.height;
+        
+        return x >= margin && x <= width - margin && 
+               y >= margin && y <= height - margin;
+    }
+    
     onMouseDown(e) {
         const rect = this.canvas.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
+        
+        if (!this.isInsideGraphArea(x, y)) {
+            return;
+        }
+        
+        e.preventDefault();
+        e.stopPropagation();
         
         this.draggedPointIndex = this.findPointAt(x, y);
         if (this.draggedPointIndex !== null) {
@@ -130,7 +146,16 @@ export class CNodeCurveEditorView2 extends CNodeViewCanvas2D {
     }
     
     onMouseMove(e) {
+        const rect = this.canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        
         if (this.isDragging && this.isDraggingLine && this.draggedLineIndex !== null) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            this.canvas.style.cursor = 'grabbing';
+            
             const deltaGraph = this.screenToGraph(e.clientX, e.clientY);
             const lastGraph = this.screenToGraph(this.lastMouseX, this.lastMouseY);
             const dx = deltaGraph.x - lastGraph.x;
@@ -163,6 +188,11 @@ export class CNodeCurveEditorView2 extends CNodeViewCanvas2D {
                 this.onChange();
             }
         } else if (this.isDragging && this.draggedPointIndex !== null) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            this.canvas.style.cursor = 'grabbing';
+            
             const graph = this.screenToGraph(e.clientX, e.clientY);
             const newX = Math.max(this.minX, Math.min(this.maxX, graph.x));
             const newY = Math.max(this.minY, Math.min(this.maxY, graph.y));
@@ -185,14 +215,43 @@ export class CNodeCurveEditorView2 extends CNodeViewCanvas2D {
             if (this.onChange) {
                 this.onChange();
             }
+        } else if (this.isInsideGraphArea(x, y)) {
+            const pointIndex = this.findPointAt(x, y);
+            const lineIndex = this.findLineAt(x, y);
+            
+            if (pointIndex !== null || lineIndex !== null) {
+                this.canvas.style.cursor = 'grab';
+            } else {
+                this.canvas.style.cursor = 'default';
+            }
         }
     }
     
     onMouseUp(e) {
+        if (this.isDragging) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        
         this.isDragging = false;
         this.draggedPointIndex = null;
         this.draggedLineIndex = null;
         this.isDraggingLine = false;
+        
+        const rect = this.canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        
+        if (this.isInsideGraphArea(x, y)) {
+            const pointIndex = this.findPointAt(x, y);
+            const lineIndex = this.findLineAt(x, y);
+            
+            if (pointIndex !== null || lineIndex !== null) {
+                this.canvas.style.cursor = 'grab';
+            } else {
+                this.canvas.style.cursor = 'default';
+            }
+        }
     }
     
     interpolateValue(frame, points) {
