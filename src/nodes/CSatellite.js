@@ -717,6 +717,10 @@ export class CSatellite {
 
             for (const [index, satData] of Object.entries(this.TLEData.satData)) {
                 if (satData.spriteText) {
+                    if (satData.spriteText.parent) {
+                        satData.spriteText.parent.remove(satData.spriteText);
+                        satData.spriteText.parent = null;
+                    }
                     satData.spriteText.dispose();
                     satData.spriteText = null;
                 }

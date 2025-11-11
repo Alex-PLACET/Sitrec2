@@ -22,14 +22,8 @@
 // SOFTWARE.
 
 
-
-import {
-    LinearFilter,
-    Sprite,
-    SpriteMaterial,
-    SRGBColorSpace,
-    Texture
-} from "three";
+import {LinearFilter, Sprite, SpriteMaterial, SRGBColorSpace, Texture} from "three";
+import {assert} from "../assert";
 
 const three = typeof window !== 'undefined' && window.THREE
     ? window.THREE // Prefer consumption from global THREE, if exists
@@ -247,6 +241,9 @@ export default class extends three.Sprite {
     }
 
     dispose() {
+
+        assert(!this.parent, "SpriteText: dispose() called while still in scene graph. Dispose after removing from scene.");
+
         if (this.material.map) {
             this.material.map.dispose();
         }
