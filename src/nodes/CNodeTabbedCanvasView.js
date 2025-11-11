@@ -79,11 +79,50 @@ class CNodeTabbedCanvasView extends CNodeViewCanvas2D {
             const currentLeft = parseInt(this.div.style.left || 0);
             const currentTop = parseInt(this.div.style.top || 0);
 
-            this.div.style.left = (currentLeft + deltaX) + 'px';
-            this.div.style.top = (currentTop + deltaY) + 'px';
+            let newLeft = currentLeft + deltaX;
+            let newTop = currentTop + deltaY;
+
+            const constrainedPos = this.constrainToScreen(newLeft, newTop);
+            this.div.style.left = constrainedPos.left + 'px';
+            this.div.style.top = constrainedPos.top + 'px';
 
             this.dragStartX = e.clientX;
             this.dragStartY = e.clientY;
+        }
+    }
+
+    constrainToScreen(left, top) {
+        const rect = this.div.getBoundingClientRect();
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+
+        const halfWidth = rect.width / 2;
+        const halfHeight = rect.height / 2;
+
+        if (left < -halfWidth) {
+            left = -halfWidth;
+        } else if (left + halfWidth > viewportWidth) {
+            left = viewportWidth - halfWidth;
+        }
+
+        if (top < -halfHeight) {
+            top = -halfHeight;
+        } else if (top + halfHeight > viewportHeight) {
+            top = viewportHeight - halfHeight;
+        }
+
+        return { left, top };
+    }
+
+    ensureOnScreen() {
+        const currentLeft = parseInt(this.div.style.left || 0);
+        const currentTop = parseInt(this.div.style.top || 0);
+
+        const constrainedPos = this.constrainToScreen(currentLeft, currentTop);
+        
+        if (constrainedPos.left !== currentLeft || constrainedPos.top !== currentTop) {
+            this.div.style.left = constrainedPos.left + 'px';
+            this.div.style.top = constrainedPos.top + 'px';
         }
     }
 
@@ -103,6 +142,14 @@ class CNodeTabbedCanvasView extends CNodeViewCanvas2D {
             this.tabMenu.open();
         } else {
             this.tabMenu.close();
+        }
+    }
+
+    renderCanvas(frame) {
+        super.renderCanvas(frame);
+        
+        if (this.visible) {
+            this.ensureOnScreen();
         }
     }
 

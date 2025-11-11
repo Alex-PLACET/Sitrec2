@@ -950,6 +950,21 @@ sitch = {
 
 
 
+    // fovEditor: {
+    //     kind: "CurveEditor2",
+    //     visible: true,
+    //     left: 0, top: 0.5, width: -1, height: 0.5,
+    //     draggable: true, resizable: true, freeAspect: true, shiftDrag: false,
+    //     editorConfig: {
+    //         useRegression: true,
+    //         minX: 0, maxX: "Sit.frames", minY: -0, maxY: 100,
+    //         xLabel: "Frame", xStep: 1, yLabel: "FOV", yStep: 5,
+    //         points: [0, 20,100,20, 152, 20, 255,20, 360, 40 , 510,40, 600,30]
+    //     },
+    //     frames: -1, // -1 will inherit from Sit.frames
+    // },
+
+
 //     verticalSpeedEditor: {
 //         kind: "CurveEditor",
 // //        left:0, top:0.5, width:-1,height:0.5,
