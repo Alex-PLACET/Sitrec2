@@ -1,14 +1,17 @@
 import GUI from "../js/lil-gui.esm";
 import {CNodeViewCanvas2D} from "./CNodeViewCanvas";
+import {makeDraggable, removeDraggable} from "../DragResizeUtils";
 
 class CNodeTabbedCanvasView extends CNodeViewCanvas2D {
     constructor(v) {
         super(v);
 
         this.menuName = v.menuName ?? 'Menu';
+        this._dragHandle = v.dragHandle;
 
         this.createTabMenu();
         this.setupTabDragging();
+        this.updateDraggableWithMenuExclude();
     }
 
     createTabMenu() {
@@ -146,6 +149,27 @@ class CNodeTabbedCanvasView extends CNodeViewCanvas2D {
         } else {
             this.tabMenu.close();
         }
+    }
+
+    updateDraggableWithMenuExclude() {
+        if (!this.draggable || !this.menuContainer) {
+            return;
+        }
+        
+        removeDraggable(this.div);
+        
+        makeDraggable(this.div, {
+            handle: this._dragHandle,
+            viewInstance: this,
+            shiftKey: this.shiftDrag,
+            excludeElements: [this.menuContainer],
+            onDrag: (event, data) => {
+                const view = data.viewInstance;
+                if (!view.draggable) return false;
+                if (view.shiftDrag && !event.shiftKey) return false;
+                return true;
+            }
+        });
     }
 
     renderCanvas(frame) {

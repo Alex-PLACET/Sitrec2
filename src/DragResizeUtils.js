@@ -27,6 +27,7 @@
  * @param {Function} [options.onDragStart] - Callback when drag starts
  * @param {Function} [options.onDragEnd] - Callback when drag ends
  * @param {boolean} [options.shiftKey] - Whether to require shift key for dragging
+ * @param {HTMLElement[]} [options.excludeElements] - Elements to exclude from triggering drag (like the tab menu)
  */
 export function makeDraggable(element, options = {}) {
     if (!element) return;
@@ -54,7 +55,28 @@ export function makeDraggable(element, options = {}) {
     // Add handle styling
     handleElement.style.cursor = 'move';
     
+    const isEventInExcludedElement = (e) => {
+        if (!options.excludeElements || options.excludeElements.length === 0) {
+            return false;
+        }
+        let target = e.target;
+        while (target) {
+            for (const excludedElement of options.excludeElements) {
+                if (target === excludedElement || excludedElement.contains(target)) {
+                    return true;
+                }
+            }
+            target = target.parentElement;
+        }
+        return false;
+    };
+    
     const onPointerDown = (e) => {
+        // Check if event target is in an excluded element
+        if (isEventInExcludedElement(e)) {
+            return;
+        }
+        
         // Check if shift key is required and pressed
         if (options.shiftKey && !e.shiftKey) return;
         

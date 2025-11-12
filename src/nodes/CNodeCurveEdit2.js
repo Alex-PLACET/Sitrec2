@@ -58,6 +58,19 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
         setRenderOne(true);
     }
     
+    isMenuInteraction(e) {
+        if (!this.menuContainer) return false;
+        
+        let target = e.target;
+        while (target) {
+            if (target === this.menuContainer) {
+                return true;
+            }
+            target = target.parentElement;
+        }
+        return false;
+    }
+    
     setupMouseHandlers() {
         this.canvas.addEventListener('pointerdown', (e) => this.onMouseDown(e));
         this.canvas.addEventListener('pointermove', (e) => this.onMouseMove(e));
@@ -78,6 +91,18 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
                 this.defaultSnap = value;
             })
         .tooltip("When enabled, points will snap to horizontal alignment by default while dragging.\nHold Shift (while dragging) to to the opposite");
+
+        // add a control for the yMax
+        const yMaxControl = {
+            yMax: this.maxY
+        };
+        this.tabMenu.add(yMaxControl, "yMax", 0.1,170,1)
+            .name((this.yLabel ?? 'Y') + ' Max')
+            .onChange((value) => {
+                this.maxY = value;
+            })
+            .tooltip("Set the maximum Y value for the curve editor.");
+
     }
     
     screenToGraph(screenX, screenY) {
@@ -207,6 +232,10 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
     }
     
     onMouseDown(e) {
+        if (this.isMenuInteraction(e)) {
+            return;
+        }
+        
         const rect = this.canvas.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
@@ -339,6 +368,10 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
     }
     
     onMouseMove(e) {
+        if (this.isMenuInteraction(e)) {
+            return;
+        }
+        
         const rect = this.canvas.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
