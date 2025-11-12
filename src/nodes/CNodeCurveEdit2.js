@@ -318,8 +318,40 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
             this.dragStartPoint = {x: graph.x, y: graph.y};
             const p1 = this.draggedLineIndex;
             const p2 = this.draggedLineIndex + 1;
-            this.dragStartLineP1 = {x: this.points[p1].x, y: this.points[p1].y};
-            this.dragStartLineP2 = {x: this.points[p2].x, y: this.points[p2].y};
+            
+            const aAndBHorizontal = this.points[p1].y === this.points[p2].y;
+            const hasHorizontalA = p1 > 0 && this.points[p1].y === this.points[p1 - 1].y;
+            const hasHorizontalB = p2 < this.points.length - 1 && this.points[p2].y === this.points[p2 + 1].y;
+            
+            let newP1 = p1;
+            let newP2 = p2;
+            
+            if (aAndBHorizontal && hasHorizontalA) {
+                const newX = this.points[p1].x + 1;
+                const newY = this.points[p1].y;
+                this.points.splice(p1 + 1, 0, {x: newX, y: newY});
+                newP1 = p1 + 1;
+                newP2 = p2 + 1;
+            }
+            
+            if (aAndBHorizontal && hasHorizontalB) {
+                const newX = this.points[newP2].x - 1;
+                const newY = this.points[newP2].y;
+                this.points.splice(newP2, 0, {x: newX, y: newY});
+            }
+            
+            if (aAndBHorizontal && (hasHorizontalA || hasHorizontalB)) {
+                this.dragStartLineP1 = {x: this.points[newP1].x, y: this.points[newP1].y};
+                this.dragStartLineP2 = {x: this.points[newP2].x, y: this.points[newP2].y};
+                this.draggedLineIndex = newP1;
+                if (this.onChange) {
+                    this.onChange();
+                }
+            } else {
+                this.dragStartLineP1 = {x: this.points[p1].x, y: this.points[p1].y};
+                this.dragStartLineP2 = {x: this.points[p2].x, y: this.points[p2].y};
+            }
+            
             this.lockAxis = null;
             this.isDragging = true;
             this.isDraggingLine = true;
