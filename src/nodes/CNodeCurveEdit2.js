@@ -40,7 +40,7 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
         this.dragStartLineP2 = null;
         this.lockAxis = null;
         this.snapToY = null;
-        this.defaultSnap = config.defaultSnap ?? true;
+        this.defaultSnap = config.defaultSnap ?? false;
         
         this.setupMouseHandlers();
         this.addMenuItems();
