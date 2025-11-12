@@ -39,6 +39,7 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
         this.dragStartLineP1 = null;
         this.dragStartLineP2 = null;
         this.lockAxis = null;
+        this.snapToY = null;
         
         this.setupMouseHandlers();
     }
@@ -376,7 +377,7 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
             let dx = currentGraph.x - this.dragStartPoint.x;
             let dy = currentGraph.y - this.dragStartPoint.y;
             
-            if (e.shiftKey && this.dragStartPoint) {
+            if (!e.shiftKey && this.dragStartPoint) {
                 const currentScreen = this.graphToScreen(currentGraph.x, currentGraph.y);
                 const startScreen = this.graphToScreen(this.dragStartPoint.x, this.dragStartPoint.y);
                 
@@ -429,7 +430,7 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
             let newX = Math.max(this.minX, Math.min(this.maxX, graph.x));
             let newY = Math.max(this.minY, Math.min(this.maxY, graph.y));
             
-            if (e.shiftKey && this.dragStartPoint) {
+            if (!e.shiftKey && this.dragStartPoint) {
 
                 const newScreen = this.graphToScreen(newX, newY);
                 const startScreen = this.graphToScreen(this.dragStartPoint.x, this.dragStartPoint.y);
@@ -448,6 +449,19 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
                 }
             } else {
                 this.lockAxis = null;
+            }
+            
+            this.snapToY = null;
+            const newScreen = this.graphToScreen(newX, newY);
+            for (let i = 0; i < this.points.length; i++) {
+                if (i !== this.draggedPointIndex) {
+                    const otherScreen = this.graphToScreen(this.points[i].x, this.points[i].y);
+                    if (Math.abs(newScreen.y - otherScreen.y) < 4) {
+                        newY = this.points[i].y;
+                        this.snapToY = newY;
+                        break;
+                    }
+                }
             }
             
             this.points[this.draggedPointIndex].x = newX;
@@ -514,6 +528,7 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
         this.dragStartLineP1 = null;
         this.dragStartLineP2 = null;
         this.lockAxis = null;
+        this.snapToY = null;
         
         const rect = this.canvas.getBoundingClientRect();
         const x = e.clientX - rect.left;
@@ -726,6 +741,18 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
             ctx.moveTo(frameScreen.x, margin);
             ctx.lineTo(frameScreen.x, height - margin);
             ctx.stroke();
+        }
+        
+        if (this.snapToY !== null) {
+            const snapScreen = this.graphToScreen(this.minX, this.snapToY);
+            ctx.strokeStyle = 'red';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(margin, snapScreen.y);
+            ctx.lineTo(width - margin, snapScreen.y);
+            ctx.stroke();
+            ctx.setLineDash([]);
         }
     }
     
