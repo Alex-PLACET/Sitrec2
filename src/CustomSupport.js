@@ -52,6 +52,7 @@ import {forceUpdateUIText} from "./nodes/CNodeViewUI";
 import {configParams} from "./login";
 import {showError} from "./showError";
 import {initializeSettings, SettingsSaver} from "./SettingsManager";
+import {CNodeCurveEditor2} from "./nodes/CNodeCurveEdit2";
 
 export class CCustomManager {
     constructor() {
@@ -239,8 +240,12 @@ export class CCustomManager {
         return false;
     }
 
+    // CustomManager.setup() is called whenever we are setting up a new sitch
+    // It's called from setupFunctions() in index.js AFTER the non-deferred run of SituationSetupFromData
+    // So at this point the sitch noded will be set up, and youcan add more
     async setup() {
         // Initialize settings first (after login check)
+        // this will only be done once per session
         if (!this.settingsInitialized) {
             await this.initializeSettings();
             this.settingsInitialized = true;
@@ -284,7 +289,7 @@ export class CCustomManager {
 
         if (Globals.showAllTracksInLook === undefined)
             Globals.showAllTracksInLook = false;
-            guiMenus.showhide.add(Globals, "showAllTracksInLook").name("Show All Tracks in Look View").onChange(() => {
+        guiMenus.showhide.add(Globals, "showAllTracksInLook").name("Show All Tracks in Look View").onChange(() => {
             this.refreshLookViewTracks();
 
         }).listen();
@@ -310,7 +315,7 @@ export class CCustomManager {
             .tooltip("Remove all tracks from the scene\nThis will not remove the objects, just the tracks\nYou can add them back later by dragging and dropping the files again")
 
 
-       // guiMenus.physics.add(this, "calculateBestPairs").name("Calculate Best Pairs");
+        // guiMenus.physics.add(this, "calculateBestPairs").name("Calculate Best Pairs");
 
 
         if (Globals.objectScale === undefined)
@@ -319,13 +324,13 @@ export class CCustomManager {
             .name("Global Scale")
             .listen()
             .onChange((value) => {
-            // iterate over all node, any CNode3DObject, and set the scale to this.objectScale
-            NodeMan.iterate((id, node) => {
-                if (node instanceof CNode3DObject) {
-                    node.recalculate();
-                }
+                // iterate over all node, any CNode3DObject, and set the scale to this.objectScale
+                NodeMan.iterate((id, node) => {
+                    if (node instanceof CNode3DObject) {
+                        node.recalculate();
+                    }
+                });
             });
-        });
 
         // configParmas.extraHelpFunctions has and object keyed on function name
         if (configParams.extraHelpFunctions) {
@@ -395,55 +400,55 @@ export class CCustomManager {
         });
 
         EventManager.addEventListener("videoLoaded", (data) => {
-           let width,height;
+            let width, height;
 
-           if (data.width !== undefined && data.height !== undefined) {
+            if (data.width !== undefined && data.height !== undefined) {
                 // this is a video loaded from a file, so we can use the width and height directly
-                width  = data.width;
+                width = data.width;
                 height = data.height;
-              } else if (data.videoData && data.videoData.config) {
+            } else if (data.videoData && data.videoData.config) {
                 // this is a video loaded from a CVideoMp4Data, so we can use the config
                 // codedWidth and codedHeight are the original video dimensions
-               width  = data.videoData.config.codedWidth;
-               height = data.videoData.config.codedHeight;
-           }
+                width = data.videoData.config.codedWidth;
+                height = data.videoData.config.codedHeight;
+            }
 
-           const videoView = NodeMan.get("video");
-           if (!videoView.visible) {
-              // decide what preset is needed
-               if (width == undefined || width > height) {
-                   this.currentViewPreset = "Default"; // wide video
-               } else {
-                   this.currentViewPreset = "ThreeWide"; // tall video
-               }
-               this.updateViewFromPreset();
+            const videoView = NodeMan.get("video");
+            if (!videoView.visible) {
+                // decide what preset is needed
+                if (width == undefined || width > height) {
+                    this.currentViewPreset = "Default"; // wide video
+                } else {
+                    this.currentViewPreset = "ThreeWide"; // tall video
+                }
+                this.updateViewFromPreset();
 
-           }
+            }
 
-           if (Sit.metadata && !Globals.sitchEstablished) {
-               const meta = Sit.metadata;
-               // got lat, lon, alt?
-               if (meta.latitude && meta.longitude && meta.altitude) {
-                   const camera = NodeMan.get("fixedCameraPosition");
-                   camera.gotoLLA(meta.latitude, meta.longitude, meta.altitude)
-                   // and set sitchEstablished to true
-                   setSitchEstablished(true);
-               }
+            if (Sit.metadata && !Globals.sitchEstablished) {
+                const meta = Sit.metadata;
+                // got lat, lon, alt?
+                if (meta.latitude && meta.longitude && meta.altitude) {
+                    const camera = NodeMan.get("fixedCameraPosition");
+                    camera.gotoLLA(meta.latitude, meta.longitude, meta.altitude)
+                    // and set sitchEstablished to true
+                    setSitchEstablished(true);
+                }
 
                 // got date and time?
-               if (meta.creationDate) {
-                   // parse the date and time
-                   // set the GlobalDateTimeNode to this date
-                   GlobalDateTimeNode.setStartDateTime(meta.creationDate);
-                   // and set sitchEstablished to true
-                   setSitchEstablished(true);
-               }
+                if (meta.creationDate) {
+                    // parse the date and time
+                    // set the GlobalDateTimeNode to this date
+                    GlobalDateTimeNode.setStartDateTime(meta.creationDate);
+                    // and set sitchEstablished to true
+                    setSitchEstablished(true);
+                }
 
 
 
-           }
+            }
 
-           NodeMan.recalculateAllRootFirst();
+            NodeMan.recalculateAllRootFirst();
 
 
 
@@ -479,14 +484,14 @@ export class CCustomManager {
             ThreeWide: {
                 keypress: "4",
                 mainView: {visible: true, left: 0.0, top: 0, width: 0.333, height: 1},
-                video:    {visible: true, left: 0.333, top: 0, width: 0.333, height: 1},
+                video: {visible: true, left: 0.333, top: 0, width: 0.333, height: 1},
                 lookView: {visible: true, left: 0.666, top: 0, width: 0.333, height: 1},
             },
 
             TallVideo: {
                 keypress: "5",
-                mainView: {visible: true, left: 0.0,  top: 0,   width: 0.50, height: 1},
-                video:    {visible: true, left: 0.5,  top: 0,   width: 0.25, height: 1},
+                mainView: {visible: true, left: 0.0, top: 0, width: 0.50, height: 1},
+                video: {visible: true, left: 0.5, top: 0, width: 0.25, height: 1},
                 lookView: {visible: true, left: 0.75, top: 0, width: 0.25, height: 1},
 
             },
@@ -556,7 +561,35 @@ export class CCustomManager {
         // // Example of mirroring the Flow Orbs menu (or effects menu if no Flow Orbs exist)
         // this.setupFlowOrbsMirrorExample();
 
-    }
+
+        // Set up the fovEditor and add it to fovSwitch
+        if (!NodeMan.exists("fovEditor")) {
+
+            const fovEditor = new CNodeCurveEditor2(
+                {
+                    id: "fovEditor",
+                    visible: true,
+                    left: 0, top: 0.5, width: -1, height: 0.5,
+                    draggable: true, resizable: true, freeAspect: true, shiftDrag: false,
+                    editorConfig: {
+                        useRegression: true,
+                        minX: 0, maxX: "Sit.frames", minY: 0.1, maxY: 100,
+                        xLabel: "Frame", xStep: 1, yLabel: "FOV", yStep: 5,
+                        points: [0, 30, 100, 30, 400, 30, 900, 30]
+                    },
+                    frames: -1, // -1 will inherit from Sit.frames
+                },
+            )
+
+            const fovSwitch = NodeMan.get("fovSwitch");
+            if (fovSwitch) {
+                fovSwitch.addOption("FOV Editor", fovEditor);
+            }
+        }
+
+
+    } // end of setup()
+
 
     setupStandaloneMenuExample() {
         // Create a standalone pop-up menu at position (300, 150)
