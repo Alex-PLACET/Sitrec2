@@ -41,6 +41,7 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
         this.lockAxis = null;
         this.snapToY = null;
         this.defaultSnap = config.defaultSnap ?? false;
+        this.pushPointsHorizontally = false;
         
         this.setupMouseHandlers();
         this.addMenuItems();
@@ -562,18 +563,29 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
                 }
             }
             
-            this.points[this.draggedPointIndex].x = newX;
-            this.points[this.draggedPointIndex].y = newY;
-            
-            for (let i = this.draggedPointIndex - 1; i >= 0; i--) {
-                if (this.points[i].x >= this.points[i + 1].x - 1) {
-                    this.points[i].x = this.points[i + 1].x - 1;
+            if (!this.pushPointsHorizontally) {
+                if (this.draggedPointIndex > 0 && newX <= this.points[this.draggedPointIndex - 1].x) {
+                    newX = Math.max(newX, this.points[this.draggedPointIndex - 1].x + 1);
+                }
+                if (this.draggedPointIndex < this.points.length - 1 && newX >= this.points[this.draggedPointIndex + 1].x) {
+                    newX = Math.min(newX, this.points[this.draggedPointIndex + 1].x - 1);
                 }
             }
             
-            for (let i = this.draggedPointIndex + 1; i < this.points.length; i++) {
-                if (this.points[i].x <= this.points[i - 1].x + 1) {
-                    this.points[i].x = this.points[i - 1].x + 1;
+            this.points[this.draggedPointIndex].x = newX;
+            this.points[this.draggedPointIndex].y = newY;
+            
+            if (this.pushPointsHorizontally) {
+                for (let i = this.draggedPointIndex - 1; i >= 0; i--) {
+                    if (this.points[i].x >= this.points[i + 1].x - 1) {
+                        this.points[i].x = this.points[i + 1].x - 1;
+                    }
+                }
+                
+                for (let i = this.draggedPointIndex + 1; i < this.points.length; i++) {
+                    if (this.points[i].x <= this.points[i - 1].x + 1) {
+                        this.points[i].x = this.points[i - 1].x + 1;
+                    }
                 }
             }
             
