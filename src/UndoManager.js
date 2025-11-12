@@ -39,7 +39,7 @@ class UndoManager {
         // Clear redo stack when new action is added
         this.redoStack = [];
         
-        console.log(`UndoManager: Added action "${action.description || 'unnamed'}". Undo stack: ${this.undoStack.length}`);
+//        console.log(`UndoManager: Added action "${action.description || 'unnamed'}". Undo stack: ${this.undoStack.length}`);
     }
     
     /**
