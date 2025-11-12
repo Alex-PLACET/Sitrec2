@@ -35,6 +35,7 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
         this.lastMouseX = 0;
         this.lastMouseY = 0;
         this.stateBeforeDrag = null;
+        this.dragStartPoint = null;
         
         this.setupMouseHandlers();
     }
@@ -222,6 +223,10 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
             e.preventDefault();
             e.stopPropagation();
             this.stateBeforeDrag = this.captureState();
+            this.dragStartPoint = {
+                x: this.points[this.draggedPointIndex].x,
+                y: this.points[this.draggedPointIndex].y
+            };
             this.isDragging = true;
             document.addEventListener('pointermove', this.documentMoveHandler);
             document.addEventListener('pointerup', this.documentUpHandler);
@@ -246,6 +251,7 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
             this.points.splice(insertIndex, 0, newPoint);
             
             this.draggedPointIndex = insertIndex;
+            this.dragStartPoint = {x: newPoint.x, y: newPoint.y};
             this.isDragging = true;
             document.addEventListener('pointermove', this.documentMoveHandler);
             document.addEventListener('pointerup', this.documentUpHandler);
@@ -392,8 +398,23 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
             this.canvas.style.cursor = 'grabbing';
             
             const graph = this.screenToGraph(e.clientX, e.clientY);
-            const newX = Math.max(this.minX, Math.min(this.maxX, graph.x));
-            const newY = Math.max(this.minY, Math.min(this.maxY, graph.y));
+            let newX = Math.max(this.minX, Math.min(this.maxX, graph.x));
+            let newY = Math.max(this.minY, Math.min(this.maxY, graph.y));
+            
+            if (e.shiftKey && this.dragStartPoint) {
+
+                const newScreen = this.graphToScreen(newX, newY);
+                const startScreen = this.graphToScreen(this.dragStartPoint.x, this.dragStartPoint.y);
+
+                const deltaX = Math.abs(newScreen.x - startScreen.x);
+                const deltaY = Math.abs(newScreen.y - startScreen.y);
+
+                if (deltaX > deltaY) {
+                    newY = this.dragStartPoint.y;
+                } else {
+                    newX = this.dragStartPoint.x;
+                }
+            }
             
             this.points[this.draggedPointIndex].x = newX;
             this.points[this.draggedPointIndex].y = newY;
@@ -455,6 +476,7 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
         this.isDraggingFrame = false;
         this.isDraggingAFrame = false;
         this.isDraggingBFrame = false;
+        this.dragStartPoint = null;
         
         const rect = this.canvas.getBoundingClientRect();
         const x = e.clientX - rect.left;
