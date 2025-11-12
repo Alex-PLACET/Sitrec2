@@ -193,12 +193,63 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
         
         this.draggedPointIndex = this.findPointAt(x, y);
         if (this.draggedPointIndex !== null) {
+            if (e.altKey && this.points.length > 1) {
+                e.preventDefault();
+                e.stopPropagation();
+                this.stateBeforeDrag = this.captureState();
+                this.points.splice(this.draggedPointIndex, 1);
+                if (this.onChange) {
+                    this.onChange();
+                }
+                const stateAfter = this.captureState();
+                if (UndoManager) {
+                    const stateBefore = this.stateBeforeDrag;
+                    UndoManager.add({
+                        undo: () => {
+                            this.restoreState(stateBefore);
+                        },
+                        redo: () => {
+                            this.restoreState(stateAfter);
+                        },
+                        description: "Delete curve point"
+                    });
+                }
+                this.stateBeforeDrag = null;
+                setRenderOne(true);
+                return;
+            }
+            
             e.preventDefault();
             e.stopPropagation();
             this.stateBeforeDrag = this.captureState();
             this.isDragging = true;
             document.addEventListener('pointermove', this.documentMoveHandler);
             document.addEventListener('pointerup', this.documentUpHandler);
+            return;
+        }
+        
+        if (e.shiftKey && this.isInsideGraphArea(x, y)) {
+            e.preventDefault();
+            e.stopPropagation();
+            this.stateBeforeDrag = this.captureState();
+            const graph = this.screenToGraph(e.clientX, e.clientY);
+            const newPoint = {x: graph.x, y: graph.y};
+            
+            let insertIndex = this.points.length;
+            for (let i = 0; i < this.points.length; i++) {
+                if (newPoint.x < this.points[i].x) {
+                    insertIndex = i;
+                    break;
+                }
+            }
+            
+            this.points.splice(insertIndex, 0, newPoint);
+            
+            this.draggedPointIndex = insertIndex;
+            this.isDragging = true;
+            document.addEventListener('pointermove', this.documentMoveHandler);
+            document.addEventListener('pointerup', this.documentUpHandler);
+            setRenderOne(true);
             return;
         }
         
