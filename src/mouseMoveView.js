@@ -2,8 +2,6 @@
 // Also handled 3D raycasting calculation based on mouse position and view
 //
 
-import {par} from "./par";
-
 import {V2} from "./threeUtils";
 import {ViewMan} from "./CViewManager";
 import {mouseInViewOnly} from "./ViewUtils";
@@ -28,9 +26,9 @@ var mouseY = 0;
 
 
 export function SetupMouseHandler() {
-    document.addEventListener( 'mousemove', onDocumentMouseMove, false );
-    document.addEventListener( 'mousedown', onDocumentMouseDown, false );
-    document.addEventListener( 'mouseup', onDocumentMouseUp, false );
+    document.addEventListener( 'pointermove', onDocumentMouseMove, false );
+    document.addEventListener( 'pointerdown', onDocumentMouseDown, false );
+    document.addEventListener( 'pointerup', onDocumentMouseUp, false );
     document.addEventListener( 'dblclick', onDocumentDoubleClick, false );
     document.addEventListener( 'wheel', onDocumentWheel, false );
 
