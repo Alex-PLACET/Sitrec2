@@ -219,11 +219,12 @@ export class PointEditor {
 
     setEnable(enable) {
         this.enable = enable;
-        for (let i = 0; i < this.numPoints; i++) {
-            const p = this.splineHelperObjects[i].visible = this.enable;
-        }
         if (!this.enable) {
             this.transformControl.detach()
+            // Hide all control cubes when exiting edit mode
+            for (let i = 0; i < this.numPoints; i++) {
+                this.splineHelperObjects[i].visible = false;
+            }
             // Hide the position indicator cone when edit mode is disabled
             if (this.positionIndicatorCone) {
                 this.positionIndicatorCone.visible = false;
@@ -233,8 +234,12 @@ export class PointEditor {
                 this.measureAltitude.group.visible = false;
             }
         } else {
+            // Show all control cubes when entering edit mode
+            for (let i = 0; i < this.numPoints; i++) {
+                this.splineHelperObjects[i].visible = true;
+            }
             // When enabling, attach to the first control point if we have any
-            // This ensures transform controls are always visible in edit mode
+            // This hides that point's cube, leaving others visible
             if (this.numPoints > 0) {
                 this.editingIndex = 0;
                 this.transformControl.attach(this.splineHelperObjects[0]);

@@ -135,8 +135,13 @@ export class PointEditorWidget extends EventDispatcher {
     attach(object) {
         if (this.object === object) return;
         
+        if (this.object) {
+            this.object.visible = true;
+        }
+        
         this.object = object;
         this.group.position.copy(object.position);
+        this.group.visible = true;
         this.updateOrientation();
         this.updateHandleScales();
         
@@ -159,6 +164,8 @@ export class PointEditorWidget extends EventDispatcher {
         if (wasDragging) {
             this.dispatchEvent({ type: 'dragging-changed', value: false });
         }
+        
+        this.group.visible = false;
     }
     
     updateOrientation() {
@@ -393,12 +400,20 @@ export class PointEditorWidget extends EventDispatcher {
             this.handles.disc.material.dispose();
         }
         if (this.handles.arrowUp) {
-            this.handles.arrowUp.geometry.dispose();
-            this.handles.arrowUp.material.dispose();
+            this.handles.arrowUp.traverse(child => {
+                if (child.isMesh) {
+                    child.geometry.dispose();
+                    child.material.dispose();
+                }
+            });
         }
         if (this.handles.arrowDown) {
-            this.handles.arrowDown.geometry.dispose();
-            this.handles.arrowDown.material.dispose();
+            this.handles.arrowDown.traverse(child => {
+                if (child.isMesh) {
+                    child.geometry.dispose();
+                    child.material.dispose();
+                }
+            });
         }
         
         this.group.clear();
