@@ -930,6 +930,13 @@ export class QuadTreeTile {
             return this.recalculateCurveWebMercator(radius);
         }
 
+        // if the map projection is different to the elevation map projection, fall back to old method
+        if (this.map.options.mapProjection.name !== this.map.elevationMap.options.mapProjection.name)
+            return this.recalculateCurveOld(radius);
+
+        // intermediate version wehre both at the same projection but not Web Mercator
+        // NOT WORKING YET
+
         var geometry = this.geometry;
         if (this.mesh !== undefined) {
             geometry = this.mesh.geometry;
