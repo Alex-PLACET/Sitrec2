@@ -465,7 +465,6 @@ export class PointEditor {
             strplace.push(`[${this.frameNumbers[i]}, ${p.x}, ${p.y}, ${p.z}]`);
         }
 //        console.log(strplace.join(',\n'));
-        console.log("LLA----------------------------------->");
         strplace = [];
         for (let i = 0; i < this.numPoints; i++) {
             const p = EUSToLLA(this.splineHelperObjects[i].position);

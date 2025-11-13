@@ -315,7 +315,6 @@ export class PointEditorWidget extends EventDispatcher {
         if (this.activeDragMode === 'horizontal') {
             this.handleHorizontalDrag();
         } else if (this.activeDragMode === 'vertical') {
-            console.log('onPointerMove: handling vertical drag');
             this.handleVerticalDrag();
         } else {
             console.log('onPointerMove: unknown activeDragMode:', this.activeDragMode);
@@ -352,8 +351,7 @@ export class PointEditorWidget extends EventDispatcher {
         
         const newPosition = new Vector3().copy(this.dragStartWorld).add(offset);
         
-        console.log('handleVerticalDrag: offset length:', offset.length());
-        
+
         this.object.position.copy(newPosition);
         this.group.position.copy(this.object.position);
         this.updateOrientation();
