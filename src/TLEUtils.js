@@ -339,7 +339,7 @@ export class CTLEData {
     // exists in the TLE database
     // return null if it doesn't exist
     getNORAD(s) {
-        if (s === undefined) {
+        if (s === undefined || s === null || s === "") {
             return null
         }
 

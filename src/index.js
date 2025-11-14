@@ -35,7 +35,7 @@ import {
     Sit,
     SitchMan,
 } from "./Globals";
-import {disableScroll, f2m, parseBoolean, stripComments, updateNewCustomFields} from './utils.js'
+import {disableScroll, f2m, parseBoolean, stripComments} from './utils.js'
 import {CSituation} from "./CSituation";
 import {par, resetPar} from "./par";
 
@@ -331,10 +331,6 @@ if (customSitch !== null) {
         Globals.sitchEstablished = true;
 
         let sitchObject = textSitchToObject(data);
-
-        if (sitchObject.isCustom) {
-            sitchObject = updateNewCustomFields(sitchObject);
-        }
 
         setSit(new CSituation(sitchObject))
 

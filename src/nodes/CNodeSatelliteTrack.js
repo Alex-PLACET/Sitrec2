@@ -1,9 +1,10 @@
 // A track node that can be used to track a satellite
 
 import {CNodeTrack} from "./CNodeTrack";
-import {GlobalDateTimeNode, guiMenus, NodeMan, Sit} from "../Globals";
+import {GlobalDateTimeNode, guiMenus, NodeMan, setRenderOne, Sit} from "../Globals";
 import {EventManager} from "../CEventManager";
 import {bestSat} from "../TLEUtils";
+import {CNodeDisplayTrack} from "./CNodeDisplayTrack";
 
 // TODO - consider flagging this as not smoothable for use as a camera track
 // the TLE calculation should give a smooth curve, and the smoothing will shift the position slightly
@@ -18,19 +19,30 @@ export class CNodeSatelliteTrack extends CNodeTrack {
 
          this.satellite = v.satellite ?? 25544
          this.satelliteText = "ISS (ZARYA)";
+         this.trackName = v.trackName ?? "Satellite";
 
          // adding time object as input for recalculation
          this.addInput("time", "dateTimeStart")
 
+         const name = v.name ?? "Satellite To Track";
 
-         guiMenus.satellites.add(this, "satelliteText").name("Satellite to Track").onFinishChange(v => {
+         guiMenus.satellites.add(this, "satelliteText").name(name).onFinishChange(v => {
              this.satellite = this.satelliteText;
              this.norad = null; // reset the norad number to force recalculation of the satellite data
-             this.recalculate();
+
+
+             this.checkSatelliteTrackValid();
 
              if (this.norad === null) {
-                 this.satelliteText = this.satellite + " not found";
+                 if (this.satellite) {
+                     this.satelliteText = this.satellite + " not found";
+                 } else {
+                     this.satelliteText = "";
+                 }
              }
+             this.updateUI();
+             this.recalculateCascade();
+             setRenderOne();
 
          }).listen().tooltip("Name or NORAD number of satellite to track. \nStart of name is ok (i.e. ISS)");
 
@@ -42,6 +54,7 @@ export class CNodeSatelliteTrack extends CNodeTrack {
          this.addSimpleSerial("satellite");
 
          this.recalculate()
+         this.updateUI();
 
      }
 
@@ -56,6 +69,8 @@ export class CNodeSatelliteTrack extends CNodeTrack {
          this.visible = true;
          this.getDisplayTrack()?.show()
          this.recalculateCascade();
+         this.updateUI();
+
      }
 
      // given a satellite name or number in s, convert it into a valid NORAD number that
@@ -128,9 +143,6 @@ export class CNodeSatelliteTrack extends CNodeTrack {
          if (!this.norad) {
              this.norad = this.getSatelliteNumber(this.satellite);
              if (!this.norad) {
-//                console.warn(`CNodeSatelliteTrack:recalculate no NORAD number found for ${this.satellite}`);
-                 this.getDisplayTrack()?.hide();
-                 this.getContentsFolder()?.hide();
                  return false;
              }
          }
@@ -138,15 +150,60 @@ export class CNodeSatelliteTrack extends CNodeTrack {
      }
 
 
-     // this utility functions are hard coded for now, but could be extended
      getDisplayTrack() {
-         return NodeMan.get("satelliteDisplayTrack", false);
+         // just find the output that's a display track, if any
+         for (let outNode of this.outputs) {
+             if (outNode instanceof CNodeDisplayTrack) {
+                 return outNode;
+             }
+         }
+         return null;
      }
 
      // and this assumes we use the id of the displaytrack in the contents menu
 
      getContentsFolder() {
          return guiMenus.contents.getFolder(this.getDisplayTrack()?.id);
+     }
+
+
+     updateUI() {
+         if (!this.checkSatelliteTrackValid()) {
+             this.getDisplayTrack()?.hide();
+             this.getContentsFolder()?.hide();
+             // make empty array for the track, so there's nothing to draw
+             this.array = new Array(this.frames);
+
+             console.log(`--- CNodeSatelliteTrack: updateUI: HIDING track and UI for invalid satellite ${this.satelliteText}`);
+
+             // remove as an option for camera and target tracking
+             const cameraTrackSwitch = NodeMan.get("cameraTrackSwitch", false);
+             if (cameraTrackSwitch) {
+                 cameraTrackSwitch.removeOption(this.trackName);
+             }
+
+             const targetTrackSwitch = NodeMan.get("targetTrackSwitch", false);
+             if (targetTrackSwitch) {
+                 targetTrackSwitch.removeOption(this.trackName);
+             }
+         } else {
+             console.log(`+++ CNodeSatelliteTrack: updateUI: SHOWING track and UI for valid satellite ${this.satelliteText}`);
+
+             // make sure track and GUI folder are visible
+             this.getDisplayTrack()?.show();
+             this.getContentsFolder()?.show();
+
+             // make sure it's in the switch
+             const cameraTrackSwitch = NodeMan.get("cameraTrackSwitch", false);
+             if (cameraTrackSwitch) {
+                 cameraTrackSwitch.replaceOption(this.trackName, this);
+             }
+
+             const targetTrackSwitch = NodeMan.get("targetTrackSwitch", false);
+             if (targetTrackSwitch) {
+                 targetTrackSwitch.replaceOption(this.trackName, this);
+             }
+         }
      }
 
      recalculate() {
@@ -173,9 +230,7 @@ export class CNodeSatelliteTrack extends CNodeTrack {
          // update GUI text when we have a valid satellite
          this.satelliteText = this.satData.name;
 
-         // make sure track and GUI folder are visible
-         this.getDisplayTrack()?.show();
-         this.getContentsFolder()?.show();
+
 
          // make empty array for the track
          this.array = new Array(this.frames);
@@ -198,15 +253,6 @@ export class CNodeSatelliteTrack extends CNodeTrack {
              };
          }
 
-         // make sure it's in the switch
-         const cameraTrackSwitch = NodeMan.get("cameraTrackSwitch", false);
-         if (cameraTrackSwitch) {
-             cameraTrackSwitch.replaceOption("Satellite", this);
-         }
 
-         const targetTrackSwitch = NodeMan.get("targetTrackSwitch", false);
-         if (targetTrackSwitch) {
-             targetTrackSwitch.replaceOption("Satellite", this);
-         }
      }
 }

@@ -386,7 +386,20 @@ sitch = {
     satelliteTrack: {
         kind: "SatelliteTrack",
         satellite: 25544, // NORAD 25544, ISS (International Space Station) default
+        name: "Satellite to Track",
+        trackName: "Satellite",
+        force: true,
     },
+
+    satelliteTrack2: {
+        kind: "SatelliteTrack",
+        satellite: 25544, // NORAD 25544, ISS (International Space Station) default
+        name: "Satellite to Track 2",
+        trackName: "Satellite 2",
+        force: true,
+    },
+
+
 
     // Switch between the posible camera tracks
     // as more tracks are added by the user, this switch will be updated
@@ -427,6 +440,16 @@ sitch = {
         width: 2,
         minWallStep: 20000,          // min distance in meters between wall segments
         trackDisplayStep: 300,      // number of frames between track points
+    },
+
+    satelliteDisplayTrack2: {
+        kind: "DisplayTrack",
+        track: "satelliteTrack2",
+        color: "#FFFF00",
+        width: 2,
+        minWallStep: 20000,          // min distance in meters between wall segments
+        trackDisplayStep: 300,      // number of frames between track points
+        force: true,
     },
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////

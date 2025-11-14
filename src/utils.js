@@ -966,7 +966,8 @@ function preventDefaultHandler(e) {
 }
 
 
-// If there is an entry "modding" then that is the name of another sitch
+// During development we may add new custom fields to the "custom" sitch
+// so we need to update any loaded sitchObject with those new fields
 export function updateNewCustomFields(sitchObject) {
     if (sitchObject.name === "custom") {
         const customObj = SitchMan.findFirstData(s => {
@@ -974,6 +975,7 @@ export function updateNewCustomFields(sitchObject) {
         })
         // iterate over all the k/v in the custom object
         // if they have value.kind === "GUIValue", and merge into the sitchObject
+        let lastKey = null;
         for (const [key, value] of Object.entries(customObj)) {
             if (value.kind === "GUIValue") {
                 // if the key doesn't exist in the sitchObject, then add it
@@ -992,9 +994,37 @@ export function updateNewCustomFields(sitchObject) {
 
             // "forced" node defs are only added if they don't already exist
             if (value.force) {
+                console.log("Custom sitch: forcing node def for key: "+key);
+                // if the key doesn't exist in the sitchObject, then add it
                 if (sitchObject[key] === undefined) {
-                    sitchObject[key] = {...value};
+                    console.log("  adding new forced node def for key: "+key);
+                    // we want to insert this new key, value in sitchObject just AFTER lastKey
+                    // so we add values one at a time until we reach lastKey, then add the new key, value
+                    // sitchObject[key] = {...value};
+
+                    // we want to insert this new key, value in sitchObject just AFTER lastKey
+                    // so we add values one at a time until we reach lastKey, then add the new key, value
+                    // then continue adding the rest
+                    // this maintains the order of the keys
+                    // like if we have newSitchObj A, B, C, F, G
+                    // and the customObj is A, B, C, D, F, G
+                    // and D is flagged "force"
+                    // then we want to end up with A, B, C, D, F, G
+
+
+                    const newSitchObject = {};
+                    for (const [k, v] of Object.entries(sitchObject)) {
+                        newSitchObject[k] = v;
+                        if (k === lastKey) {
+                            newSitchObject[key] = {...value};
+                        }
+                    }
+                    sitchObject = newSitchObject;
+                    console.log("  forced node def for key: "+key+" added after lastKey: "+lastKey);
+
+
                 } else {
+                    console.log("  updating existing forced node def for key: "+key);
                     // if the DO exist, we overwrite the whole thing
                     // EXCEPT for any "visible" property
                     // this allows us to update the node def without losing visibility settings
@@ -1006,6 +1036,13 @@ export function updateNewCustomFields(sitchObject) {
                         sitchObject[key].visible = oldVisible;
                     }
                 }
+            }
+
+            // if the key is now a valid entry in the sitchObject, then update lastKey
+            // (either it was an existing entry, or we just added it above)
+            // we are only updating lastKey to something that we can find later.
+            if (sitchObject[key] !== undefined) {
+                lastKey = key;
             }
 
         }
