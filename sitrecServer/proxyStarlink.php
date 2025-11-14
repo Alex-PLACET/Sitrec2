@@ -15,7 +15,7 @@ require_once __DIR__ . '/config_paths.php';
 //    exit("Not logged in");
 //}
 
-$zipIt = true;
+$zipIt = getenv('TLE_ZIP_ENABLED');
 
 $starlink_cache = $CACHE_PATH . "starlink/";
 
@@ -95,6 +95,9 @@ if ($type == "CUSTOM") {
     if ($year < 1900 || $year > 2100) {
         exit("Invalid year for CUSTOM TLE (must be 1900-2100)");
     }
+
+    // get a 2-digit year (unlikely to be used, but just in case)
+    $year2 = $year % 100;
     
     if ($month < 1 || $month > 12) {
         exit("Invalid month for CUSTOM TLE (must be 1-12)");
@@ -103,8 +106,8 @@ if ($type == "CUSTOM") {
     if ($day < 1 || $day > 31) {
         exit("Invalid day for CUSTOM TLE (must be 1-31)");
     }
-    
-    $url = sprintf($customTleUrl, $day, $month, $year);
+
+    $url = str_replace(['{DD}', '{MM}', '{YYYY}', '{YY}'], [sprintf("%02d", $day), sprintf("%02d", $month), sprintf("%04d", $year), sprintf("%02d", $year2)], $customTleUrl);
 }
 
 // if the getTLECustom function is defined, use that to get the URL
