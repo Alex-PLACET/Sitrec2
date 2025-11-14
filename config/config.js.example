@@ -72,7 +72,8 @@ export const _configParams = {
         osm: {
             name: "Open Streetmap",
             mapURL: (z,x,y) => {
-                return SITREC_SERVER+"cachemaps.php?url=" + encodeURIComponent(`https://c.tile.openstreetmap.org/${z}/${x}/${y}.png`)
+//                return SITREC_SERVER+"cachemaps.php?url=" + encodeURIComponent(`https://c.tile.openstreetmap.org/${z}/${x}/${y}.png`)
+                return `https://c.tile.openstreetmap.org/${z}/${x}/${y}.png`
             },
             maxZoom: 17,
             supportsOceanSurface: true, // OpenStreetMap can have ocean surface overlay
@@ -150,7 +151,9 @@ export const _configParams = {
             },
             maxZoom: 20,
             textureSubSize: 1500, // needs more detailed subdivision, as smaller textures,
-            // not there's a loading bug where the default map type should NOT have capabilities, as the loading of them will change execution order.
+
+            // ESRI only has one layer World_Imagery, so it's hardcoded, above
+            // the capabilities URL is provided for reference
           //  capabilities:"https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/WMTS/1.0.0/WMTSCapabilities.xml",
 
         },
@@ -235,14 +238,10 @@ export const _configParams = {
         //         return`https://api.mapbox.com/v4/mapbox.terrain-rgb/${z}/${x}/${y}.pngraw?access_token=pk.eyJ1IjoibWlja3dlc3QiLCJhIjoiY21nemoxbmpsMDBrbjJzb2lkdWQwdWhwdiJ9.QF7CdAKfsMp_HTsno8qCvw`;
         //     },
         //
-        //     // old pk.eyJ1IjoibWlja3dlc3QiLCJhIjoiY21ianEydHIwMGliaTJrcHB4cDgzbGZuaSJ9.J7jU9B_pz4Mo723klYpywQ
-        //     // new pk.eyJ1IjoibWlja3dlc3QiLCJhIjoiY21neml2bzBtMTRvaDJrcTFmaDVwbTltMyJ9.T8dfyOzBW6ft2UZHuI0mMQ
-        //
-        //
         //     maxZoom: 15,
         //     minZoom: 7,  // Mapbox gives 404 errors for 6 or lower zooms (big tiles)
         //     tileSize: 256,
-        //     attribution: "AWS Terrarium Elevation Data",
+        //     attribution: "Mapbox Terrain-RGB",
         // },
 
     },
