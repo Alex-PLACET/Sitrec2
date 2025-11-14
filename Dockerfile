@@ -55,6 +55,9 @@ RUN npm run deploy
 # We're copying the built app from the first stage to this image
 FROM php:8.4-apache
 
+RUN apt-get update && apt-get install -y libzip-dev && docker-php-ext-install zip && rm -rf /var/lib/apt/lists/*
+
+
 USER www-data
 
 COPY --from=build /build/dist /var/www/html
