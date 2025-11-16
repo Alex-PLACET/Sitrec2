@@ -1,5 +1,3 @@
-import {showError} from "./showError";
-
 export class CAudioMp4Data {
     constructor(videoData) {
         this.videoData = videoData;
@@ -59,23 +57,47 @@ export class CAudioMp4Data {
 
             console.log("Audio config:", audioConfig);
 
+            // Check if the codec is supported
+            if (!audioConfig.codec) {
+                console.warn("No codec specified in audio config");
+                return;
+            }
+
+            // Check codec support before trying to configure
+            try {
+                const support = await AudioDecoder.isConfigSupported(audioConfig);
+                if (!support.supported) {
+                    console.warn("Audio codec not supported:", audioConfig.codec);
+                    console.warn("Config details:", audioConfig);
+                    return;
+                }
+            } catch (e) {
+                console.warn("Error checking audio codec support:", e);
+                return;
+            }
+
             this.audioDecoder = new AudioDecoder({
                 output: audioData => {
                     console.log("Audio frame decoded, numberOfFrames:", audioData.numberOfFrames);
                     this.handleDecodedAudio(audioData);
                 },
-                error: e => showError("Audio decoder error:", e)
+                error: e => {
+                    console.error("Audio decoder error:", e);
+                    // Don't show error dialog for audio issues, just log them
+                    // This allows video to continue playing even if audio fails
+                }
             });
 
             this.audioDecoder.configure(audioConfig);
-            console.log("Audio decoder configured");
+            console.log("Audio decoder configured successfully with codec:", audioConfig.codec);
 
             this.setupAudioNodes();
 
             this.isInitialized = true;
             console.log("Audio initialized successfully");
         } catch (e) {
-            showError("Error initializing audio:", e);
+            console.error("Error initializing audio:", e);
+            // Don't show error dialog, allow video to continue without audio
         }
     }
 

@@ -105,12 +105,37 @@ export class MP4Source {
         }
     }
 
-    var audioTrack = info.tracks.find(track => track.type === 'audio');
-    if (audioTrack) {
-      console.log('Audio track found:', audioTrack);
-      this.audioTrack = audioTrack;
-      this._expectedAudioSamples = audioTrack.nb_samples;
+    // Find all audio tracks
+    var audioTracks = info.tracks.filter(track => track.type === 'audio');
+    
+    if (audioTracks.length > 0) {
+      console.log('Found', audioTracks.length, 'audio track(s)');
+      
+      // Prefer AAC/MP4A audio tracks over others (APAC, MEBX, etc.)
+      // iPhone MOV files often have multiple audio tracks
+      var preferredTrack = audioTracks.find(track => {
+        const codec = track.codec ? track.codec.toLowerCase() : '';
+        return codec.includes('mp4a') || codec.includes('aac');
+      });
+      
+      // If no AAC track found, try to find any supported audio track
+      if (!preferredTrack) {
+        preferredTrack = audioTracks.find(track => {
+          const codec = track.codec ? track.codec.toLowerCase() : '';
+          // Exclude known problematic codecs
+          return !codec.includes('apac') && !codec.includes('mebx') && !codec.includes('opus');
+        });
+      }
+      
+      // Fall back to first audio track if no preferred track found
+      this.audioTrack = preferredTrack || audioTracks[0];
+      
+      console.log('Selected audio track:', this.audioTrack);
+      console.log('Audio codec:', this.audioTrack.codec);
+      this._expectedAudioSamples = this.audioTrack.nb_samples;
       console.log('Expected audio samples:', this._expectedAudioSamples);
+    } else {
+      console.log('No audio tracks found');
     }
 
     if (this._info_resolver) {
@@ -371,11 +396,27 @@ export class MP4Demuxer {
       return null;
     }
     
+    // Ensure codec string is properly formatted
+    let codec = this.audioTrack.codec;
+    if (!codec) {
+      console.warn("No codec specified for audio track");
+      return null;
+    }
+    
+    // Handle codec string format (e.g., "mp4a.40.2" for AAC-LC)
+    // Some files might have different formats that need normalization
+    if (codec.toLowerCase().includes('mp4a') && !codec.includes('.')) {
+      // If it's mp4a without dots, try to format it properly
+      codec = 'mp4a.40.2'; // Default to AAC-LC
+    }
+    
     let config = {
-      codec: this.audioTrack.codec,
+      codec: codec,
       numberOfChannels: this.audioTrack.audio.channel_count,
       sampleRate: this.audioTrack.audio.sample_rate,
     };
+    
+    console.log("Audio config prepared:", config);
 
     return config;
   }
