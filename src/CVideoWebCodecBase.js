@@ -9,6 +9,31 @@ import {showError} from "./showError";
 /**
  * Base class for WebCodec-based video data handlers
  * Provides common frame caching, group management, and decoder functionality
+ * 
+ * Key responsibilities:
+ * - Manages VideoDecoder instance and configuration
+ * - Implements frame group system for efficient memory usage
+ * - Handles on-demand decoding of frame groups (keyframe + deltas)
+ * - Manages ImageBitmap cache with automatic purging
+ * - Provides frame resizing based on videoMaxSize setting
+ * - Handles decoder errors and recreation
+ * 
+ * Frame group system:
+ * - Groups start with keyframes and include following delta frames
+ * - Only decodes groups when needed (on-demand)
+ * - Keeps configurable cache window around current frame
+ * - Automatically purges distant groups to save GPU memory
+ * 
+ * Memory management:
+ * - Converts VideoFrames to ImageBitmaps for GPU efficiency
+ * - Properly closes ImageBitmaps when purging
+ * - Tracks GPU memory usage estimates
+ * - Implements cache window based on available device memory
+ * 
+ * Subclass responsibilities:
+ * - MP4: Handles demuxed chunks from MP4Demuxer
+ * - H264: Processes raw H.264 elementary streams
+ * - Both override specific methods for their format
  */
 export class CVideoWebCodecBase extends CVideoData {
 
@@ -192,6 +217,10 @@ export class CVideoWebCodecBase extends CVideoData {
 
     /**
      * Process a decoded video frame and convert it to ImageBitmap
+     * Handles frame resizing, caching, and group completion tracking
+     * @param {number} frameNumber - Frame index in the video
+     * @param {VideoFrame} videoFrame - Decoded frame from VideoDecoder
+     * @param {Object} group - Frame group this frame belongs to
      */
     processDecodedFrame(frameNumber, videoFrame, group) {
         // Check if imageCache is still valid (video might have been disposed)
@@ -399,7 +428,11 @@ export class CVideoWebCodecBase extends CVideoData {
         return groups;
     }
 
-    // request that a frame be loaded
+    /**
+     * Request that a specific frame be loaded into cache
+     * Finds the appropriate group and requests its decoding
+     * @param {number} frame - Frame number to request
+     */
     requestFrame(frame) {
         if (!this.groups || this.groups.length === 0 || !this.chunks) {
             return; // Not initialized yet
@@ -415,6 +448,11 @@ export class CVideoWebCodecBase extends CVideoData {
         this.requestGroup(group);
     }
 
+    /**
+     * Request decoding of a specific frame group
+     * Checks decoder availability and queues if busy
+     * @param {Object} group - Group object containing frame range and state
+     */
     requestGroup(group) {
         if (!group || typeof group !== "object") {
             console.warn("requestGroup: invalid group", group);
@@ -519,6 +557,13 @@ export class CVideoWebCodecBase extends CVideoData {
         }
     }
 
+    /**
+     * Get the image for a specific frame, loading it if necessary
+     * Implements intelligent caching with lookahead/behind windows
+     * Returns closest available frame if exact frame not ready
+     * @param {number} frame - Frame number to retrieve
+     * @returns {ImageBitmap|Canvas|null} The frame image or blank frame
+     */
     getImage(frame) {
         frame = Math.floor(frame / this.videoSpeed);
 
@@ -917,33 +962,38 @@ export class CVideoWebCodecBase extends CVideoData {
         }
     }
 
+    /**
+     * Clean up all resources and cancel pending operations
+     * Properly resets decoder, clears callbacks, and releases memory
+     * Critical for preventing decoder operations after disposal
+     */
     dispose() {
+        // Clear callbacks to prevent them from firing after disposal
+        this.loadedCallback = null;
+        this.errorCallback = null;
+        
         // Stop any pending operations
         this.groupsPending = 0;
         this.nextRequest = null;
         this.requestQueue = [];
         
-        // Flush and close decoder
+        // Close decoder immediately
         if (this.decoder) {
-            // flush is asynchronous, so we need to wait for it to finish
-            // before we close the decoder
             const decoder = this.decoder;
-            // Check decoder state before flushing
+            this.decoder = null; // Clear reference immediately
+            
+            // Try to close immediately if possible
             if (decoder.state !== 'closed') {
-                decoder.flush()
-                    .catch(() => {})   // swallow any flush errors we don't care about
-                    .finally(() => {
-                        try {
-                            if (decoder.state !== 'closed') {
-                                decoder.close();
-                                console.log("VideoDecoder closed successfully");
-                            }
-                        } catch (e) {
-                            console.warn("Error closing decoder:", e);
-                        }
-                    });
+                try {
+                    // Reset the decoder to cancel all pending operations
+                    decoder.reset();
+                    // Then close it
+                    decoder.close();
+                    console.log("VideoDecoder closed successfully");
+                } catch (e) {
+                    console.warn("Error closing decoder:", e);
+                }
             }
-            this.decoder = null;
         }
         
         // Flush all caches before calling parent dispose

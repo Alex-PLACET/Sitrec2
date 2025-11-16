@@ -413,16 +413,19 @@ export class CCustomManager {
                 height = data.videoData.config.codedHeight;
             }
 
-            const videoView = NodeMan.get("video");
-            if (!videoView.visible) {
-                // decide what preset is needed
-                if (width == undefined || width > height) {
-                    this.currentViewPreset = "Default"; // wide video
-                } else {
-                    this.currentViewPreset = "ThreeWide"; // tall video
+            if (NodeMan.exists("video")) {
+                const videoView = NodeMan.get("video");
+                // if it's NOT visible, then we can decide what preset to use
+                // if it IS visible, then we assume the user has set it up how they want
+                if (!videoView.visible) {
+                    // decide what preset is needed
+                    if (width == undefined || width > height) {
+                        this.currentViewPreset = "Default"; // wide video
+                    } else {
+                        this.currentViewPreset = "ThreeWide"; // tall video
+                    }
+                    this.updateViewFromPreset();
                 }
-                this.updateViewFromPreset();
-
             }
 
             if (Sit.metadata && !Globals.sitchEstablished) {

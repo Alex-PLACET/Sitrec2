@@ -7,8 +7,23 @@ import {EventManager} from "./CEventManager";
 import {showError} from "./showError";
 import {CAudioMp4Data} from "./CAudioMp4Data";
 
-// MP4 video data handler using WebCodec API
-// Handles MP4/MOV files with demuxing and frame caching
+/**
+ * MP4 video data handler using WebCodec API
+ * Handles MP4/MOV files with demuxing and frame caching
+ * 
+ * Key responsibilities:
+ * - Demuxes MP4/MOV containers using MP4Demuxer
+ * - Manages video decoding through WebCodec VideoDecoder
+ * - Handles audio extraction and synchronization via CAudioMp4Data
+ * - Implements on-demand frame group decoding for memory efficiency
+ * - Supports drag-and-drop file loading
+ * 
+ * Async operation management:
+ * - Tracks promises in _pendingPromises array with proper error handling
+ * - Manages audio wait timeout with _audioWaitTimeout
+ * - Properly cancels demuxer operations on disposal
+ * - Clears callbacks to prevent post-disposal execution
+ */
 export class CVideoMp4Data extends CVideoWebCodecBase {
 
 
@@ -20,6 +35,9 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
         }
 
         this.audioHandler = null;
+        this._audioWaitTimeout = null;
+        this._pendingPromises = [];
+        this.demuxer = null;
 
         let source = new MP4Source()
 
@@ -34,7 +52,7 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
         // ANSWER The file manager does some parsing of the path???
 
         if (v.file !== undefined ) {
-            FileManager.loadAsset(v.file, "video").then(result => {
+            const loadPromise = FileManager.loadAsset(v.file, "video").then(result => {
                 // the file.appendBuffer expects an ArrayBuffer with a fileStart value (a byte offset) and
                 // and byteLength (total byte length)
                 result.parsed.fileStart = 0;        // patch in the fileStart of 0, as this is the whole thing
@@ -45,7 +63,14 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
                 // Remove it from the file manager
                 // as we only need it for the initial load
                 FileManager.disposeRemove("video");
-            })
+            }).catch(err => {
+                // Error will be ignored if callbacks are cleared
+                if (this.errorCallback) {
+                    console.error("Error loading video file:", err);
+                    this.errorCallback(err);
+                }
+            });
+            this._pendingPromises.push(loadPromise);
         } else {
 
             // Handle drag and drop files
@@ -115,6 +140,11 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
         this.nextRequest = group;
     }
 
+    /**
+     * Initialize video processing with demuxer
+     * Sets up decoder, processes video/audio tracks, and manages loading callbacks
+     * @param {MP4Demuxer} demuxer - The MP4 demuxer instance
+     */
     startWithDemuxer(demuxer) {
         // Reset common variables (base class handles initialization)
         this.initializeCommonVariables();
@@ -124,7 +154,7 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
 
         this.demuxFrame = 0;
 
-        demuxer.getConfig().then((config) => {
+        const configPromise = demuxer.getConfig().then((config) => {
 //            offscreen.height = config.codedHeight;
 //            offscreen.width = config.codedWidth;
 
@@ -141,6 +171,11 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
             // NOT HANDLED YET - get the rotation angle from the video matrix
             this.angle = getRotationAngleFromVideoMatrix(demuxer.videoTrack.matrix);
 
+            // Dispatch videoLoaded event early with video dimensions for view setup
+            // This allows the view presets to be configured immediately
+            console.log("🍿🍿🍿Dispatching videoLoaded event early for view setup")
+            EventManager.dispatchEvent("videoLoaded", {videoData: this, width: config.codedWidth, height: config.codedHeight});
+
             // Initialize audio handler
             console.log("Creating audio handler");
             this.audioHandler = new CAudioMp4Data(this);
@@ -154,7 +189,7 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
                     } else if (this.audioHandler && this.audioHandler.expectedAudioSamples > 0) {
                         // Still waiting for audio decoding, check again in 50ms
                         console.log("Waiting for audio decoding... received", this.audioHandler.receivedEncodedSamples, "/", this.audioHandler.expectedAudioSamples, "encoded, decoded", this.audioHandler.decodedAudioData.length);
-                        setTimeout(waitForAudioDecoding, 50);
+                        this._audioWaitTimeout = setTimeout(waitForAudioDecoding, 50);
                     } else {
                         // No audio, proceed immediately
                         console.log("No audio or audio not initialized, proceeding with video load");
@@ -178,10 +213,12 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
 
                     updateSitFrames()
 
-                    this.loadedCallback();
+                    // Only call the callback if it hasn't been cleared (disposed)
+                    if (this.loadedCallback) {
+                        this.loadedCallback();
+                    }
 
-                    // console.log("🍿🍿🍿Dispatching videoLoaded event")
-                    EventManager.dispatchEvent("videoLoaded", {videoData: this, width: config.codedWidth, height: config.codedHeight});
+                    // videoLoaded event already dispatched earlier for view setup
                 };
                 
                 waitForAudioDecoding();
@@ -263,9 +300,23 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
                     this.frames++;
                     Sit.videoFrames = this.frames * this.videoSpeed;
                 }, null, completeExtraction);
+            }).catch(err => {
+                // Error will be ignored if callbacks are cleared
+                if (this.errorCallback) {
+                    console.error("Error initializing audio:", err);
+                    this.errorCallback(err);
+                }
             });
 
+        }).catch(err => {
+            // Error will be ignored if callbacks are cleared
+            if (this.errorCallback) {
+                console.error("Error getting config:", err);
+                this.errorCallback(err);
+            }
         });
+        
+        this._pendingPromises.push(configPromise);
 
     }
 
@@ -291,11 +342,47 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
             + (group.pending ? "pending = " + group.pending : "");
     }
 
+    /**
+     * Clean up all resources and cancel pending operations
+     * Critical for preventing audio playback and callbacks after switching videos
+     * Implements proper async cancellation rather than flag-checking
+     */
     dispose() {
+        // Clear any pending audio wait timeout
+        if (this._audioWaitTimeout) {
+            clearTimeout(this._audioWaitTimeout);
+            this._audioWaitTimeout = null;
+        }
+        
+        // Clear callbacks to prevent them from firing after disposal
+        this.loadedCallback = null;
+        this.errorCallback = null;
+        
+        // Stop the demuxer if it exists
+        if (this.demuxer) {
+            // Stop extraction if in progress
+            if (this.demuxer.source && this.demuxer.source.file) {
+                try {
+                    // Stop any ongoing operations
+                    this.demuxer.source.file.stop();
+                } catch (e) {
+                    // Ignore errors during cleanup
+                }
+            }
+            this.demuxer = null;
+        }
+        
+        // Clear all pending promises (they will handle errors in their catch blocks)
+        this._pendingPromises = [];
+        
         if (this.audioHandler) {
+            // First stop the audio to ensure playback is halted
+            this.audioHandler.stop();
+            // Then dispose of all resources
             this.audioHandler.dispose();
             this.audioHandler = null;
         }
+        
         super.dispose();
     }
 

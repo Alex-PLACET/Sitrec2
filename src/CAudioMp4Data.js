@@ -1,3 +1,26 @@
+/**
+ * Audio handler for MP4 video files using WebCodec AudioDecoder
+ * Manages audio extraction, decoding, and synchronized playback
+ * 
+ * Key responsibilities:
+ * - Decodes audio samples from MP4 demuxer using AudioDecoder
+ * - Creates and manages Web Audio API context and nodes
+ * - Synchronizes audio playback with video frame position
+ * - Handles volume control and muting
+ * - Manages audio buffer creation and playback timing
+ * 
+ * Synchronization approach:
+ * - Waits for all audio samples to be decoded before playback
+ * - Creates single AudioBuffer from all decoded chunks
+ * - Uses AudioBufferSourceNode for precise timing control
+ * - Restarts playback when frame position jumps
+ * 
+ * Disposal strategy:
+ * - Immediately stops audio playback with stop(0)
+ * - Disconnects audio nodes from graph
+ * - Suspends AudioContext before closing
+ * - Clears all timeouts and resources
+ */
 export class CAudioMp4Data {
     constructor(videoData) {
         this.videoData = videoData;
@@ -151,6 +174,14 @@ export class CAudioMp4Data {
         console.log("Expected audio samples set to:", count);
     }
     
+    /**
+     * Check if all audio samples have been decoded and are ready for playback
+     * Uses multiple conditions to ensure decoding is truly complete:
+     * - All expected samples received
+     * - Decoder queue is empty
+     * - Small time buffer to handle async operations
+     * @returns {boolean} True when audio is fully decoded and ready
+     */
     checkDecodingComplete() {
         if (this.decodingComplete) return true;
         
@@ -176,6 +207,11 @@ export class CAudioMp4Data {
         return false;
     }
 
+    /**
+     * Start or resume audio playback synchronized with video frame
+     * @param {number} startFrame - Current video frame number
+     * @param {number} fps - Video frame rate for timing calculations
+     */
     play(startFrame, fps) {
         if (!this.isInitialized || !this.audioContext) {
             console.warn("Audio not initialized or no context");
@@ -207,6 +243,10 @@ export class CAudioMp4Data {
         }
     }
 
+    /**
+     * Immediately stop audio playback and disconnect from audio graph
+     * Critical for instant audio stopping when switching videos
+     */
     stopAudioSource() {
         if (this._playbackRetryTimeout) {
             clearTimeout(this._playbackRetryTimeout);
@@ -214,7 +254,10 @@ export class CAudioMp4Data {
         }
         if (this.audioBufferSource) {
             try {
-                this.audioBufferSource.stop();
+                // Immediately stop the audio source
+                this.audioBufferSource.stop(0);
+                // Disconnect it from the audio graph to ensure no more audio is processed
+                this.audioBufferSource.disconnect();
             } catch (e) {
                 console.warn("Error stopping audio source:", e);
             }
@@ -363,12 +406,51 @@ export class CAudioMp4Data {
         return this.volume;
     }
 
+    /**
+     * Complete cleanup of all audio resources
+     * Ensures immediate audio stopping and proper resource release
+     * Key steps:
+     * 1. Stop playback immediately with stop(0)
+     * 2. Disconnect all audio nodes
+     * 3. Suspend AudioContext to halt processing
+     * 4. Close AudioContext and decoder
+     * 5. Clear all data and state
+     */
     dispose() {
         if (this._playbackRetryTimeout) {
             clearTimeout(this._playbackRetryTimeout);
             this._playbackRetryTimeout = null;
         }
+        
+        // Immediately stop any playing audio source
         this.stopAudioSource();
+        
+        // Disconnect the gain node from the audio graph
+        if (this.gainNode) {
+            try {
+                this.gainNode.disconnect();
+            } catch (e) {
+                // Ignore errors if already disconnected
+            }
+            this.gainNode = null;
+        }
+        
+        // Suspend and close the audio context immediately to stop all audio processing
+        if (this.audioContext) {
+            try {
+                // Set the state to closed immediately by suspending first
+                if (this.audioContext.state !== 'closed') {
+                    // Suspend immediately stops all audio processing
+                    this.audioContext.suspend();
+                }
+                // Then close the context to release resources
+                this.audioContext.close();
+            } catch (e) {
+                console.warn("Error closing audio context:", e);
+            }
+            this.audioContext = null;
+        }
+        
         if (this.audioDecoder) {
             try {
                 this.audioDecoder.close();
@@ -377,14 +459,9 @@ export class CAudioMp4Data {
             }
             this.audioDecoder = null;
         }
-        if (this.audioContext) {
-            try {
-                this.audioContext.close();
-            } catch (e) {
-                console.warn("Error closing audio context:", e);
-            }
-            this.audioContext = null;
-        }
+        
+        // Clear all audio data
+        this.audioBuffer = null;
         this.decodedAudioData = [];
         this.isInitialized = false;
         this.isPlaying = false;

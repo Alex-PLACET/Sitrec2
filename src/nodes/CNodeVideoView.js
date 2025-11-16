@@ -1,4 +1,33 @@
-// loading and storing video frames
+/**
+ * Video view node for displaying and interacting with video content
+ * Extends CNodeViewCanvas2D to provide video-specific rendering and controls
+ * 
+ * Key responsibilities:
+ * - Manages video data objects (CVideoMp4Data, CVideoImageData, etc.)
+ * - Handles video rendering with effects and filters
+ * - Provides mouse-based zoom, pan, and scrubbing controls
+ * - Synchronizes audio playback with video frames
+ * - Manages video loading states and error display
+ * - Supports drag-and-drop video file loading
+ * 
+ * Mouse controls:
+ * - Wheel: Zoom in/out
+ * - Left drag: Pan video
+ * - Right drag: Scrub through frames
+ * - Middle drag: Zoom
+ * - Double click: Reset to default position
+ * 
+ * Video effects (optional inputs):
+ * - brightness, contrast, blur, greyscale
+ * - hue, invert, saturate
+ * - convolutionFilter (sharpen, edge detect, emboss)
+ * 
+ * Audio synchronization:
+ * - Calls audioHandler.play() when playing
+ * - Calls audioHandler.pause() when paused
+ * - Restarts audio on frame jumps
+ */
+
 import {CNodeViewCanvas2D} from "./CNodeViewCanvas";
 import {par} from "../par";
 import {quickToggle} from "../KeyBoardHandler";
@@ -256,6 +285,11 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         this.staticURL = undefined; // clear the static URL, so we will rehost any dropped file
     }
 
+    /**
+     * Synchronize audio playback with current video frame
+     * Handles play/pause state changes and frame position jumps
+     * @param {number} frame - Current video frame number
+     */
     syncAudioWithVideo(frame) {
         if (!this.videoData || !this.videoData.audioHandler) {
             return;
@@ -276,6 +310,16 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         }
     }
 
+    /**
+     * Clean up video view resources including video data and audio
+     * Critical for stopping audio playback when switching views
+     */
+    dispose() {
+        // Dispose of video data including audio
+        this.disposeVideoData();
+        // Call parent dispose
+        super.dispose();
+    }
 
     makeImageVideo(filename, img, deleteAfterUsing = false) {
 

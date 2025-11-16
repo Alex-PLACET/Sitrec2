@@ -12,6 +12,25 @@ import {showError} from "./showError";
  * These are typically extracted from TS files and lack MP4 container structure
  * Now implements on-demand frame decoding similar to CVideoMp4Data
  * 
+ * Key responsibilities:
+ * - Parses raw H.264 NAL units from elementary streams
+ * - Extracts SPS/PPS for decoder configuration
+ * - Creates EncodedVideoChunks from NAL units
+ * - Handles orphaned delta frames before first keyframe
+ * - Implements fallback strategies for incompatible streams
+ * - Attempts VUI timing info extraction for FPS detection
+ * 
+ * H.264 stream requirements:
+ * - Must contain SPS (Sequence Parameter Set) and PPS (Picture Parameter Set)
+ * - Should start with keyframe (IDR) for proper decoding
+ * - Orphaned delta frames before first keyframe are skipped
+ * 
+ * Decoder configuration strategy:
+ * 1. Try exact codec string from SPS profile/level
+ * 2. Fallback to common profiles (Main@3.1, Baseline@3.0)
+ * 3. Attempt Annex-B format if AVCC fails
+ * 4. Show informative error if all strategies fail
+ * 
  * Constructor options:
  * - fps: Frame rate (optional, defaults to 30 if not detected from stream)
  * - dropFile: File object for dropped files
@@ -414,7 +433,11 @@ export class CVideoH264Data extends CVideoWebCodecBase {
             updateSitFrames();
 
             this.loaded = true;
-            this.loadedCallback();
+            
+            // Only call the callback if it hasn't been cleared (disposed)
+            if (this.loadedCallback) {
+                this.loadedCallback();
+            }
 
             EventManager.dispatchEvent("videoLoaded", {
                 videoData: this,
@@ -434,6 +457,11 @@ export class CVideoH264Data extends CVideoWebCodecBase {
         }
     }
 
+    /**
+     * Diagnostic function to check H.264 stream structure validity
+     * Identifies orphaned frames and validates keyframe placement
+     * @param {Array} encodedChunks - Array of EncodedVideoChunk objects
+     */
     diagnosticCheckFrameStructure(encodedChunks) {
         if (encodedChunks.length === 0) {
             console.warn("⚠️ No encoded chunks found!");
@@ -492,6 +520,12 @@ export class CVideoH264Data extends CVideoWebCodecBase {
         console.log(`📊 Frame breakdown: ${keyframeCount} keyframes, ${deltaCount} delta frames (${((keyframeCount/encodedChunks.length)*100).toFixed(1)}% key)`);
     }
 
+    /**
+     * Process encoded chunks into frame groups for efficient decoding
+     * Groups start at keyframes and include following delta frames
+     * Handles orphaned delta frames that appear before first keyframe
+     * @param {Array} encodedChunks - Array of EncodedVideoChunk objects
+     */
     processChunksIntoGroups(encodedChunks) {
         // Process chunks similar to how MP4Demuxer does it
         let orphanedDeltaFrames = 0;
@@ -777,5 +811,14 @@ export class CVideoH264Data extends CVideoWebCodecBase {
             wasProvided: !!this.v?.fps,
             providedFps: this.v?.fps
         };
+    }
+    
+    dispose() {
+        // Clear callbacks to prevent them from firing after disposal
+        this.loadedCallback = null;
+        this.errorCallback = null;
+        
+        // Call parent dispose
+        super.dispose();
     }
 }
