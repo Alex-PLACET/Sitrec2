@@ -171,6 +171,9 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
             // NOT HANDLED YET - get the rotation angle from the video matrix
             this.angle = getRotationAngleFromVideoMatrix(demuxer.videoTrack.matrix);
 
+            // Store the original fps from the video (will be needed for audio sync)
+            this.originalFps = demuxer.source.fps;
+
             // Dispatch videoLoaded event early with video dimensions for view setup
             // This allows the view presets to be configured immediately
             console.log("🍿🍿🍿Dispatching videoLoaded event early for view setup")
@@ -179,6 +182,7 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
             // Initialize audio handler
             console.log("Creating audio handler");
             this.audioHandler = new CAudioMp4Data(this);
+            this.audioHandler.originalFps = this.originalFps;
             
             const completeExtraction = () => {
                 const waitForAudioDecoding = () => {
@@ -208,8 +212,8 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
                     // use the demuxer frame count, as it's more accurate
                     Sit.videoFrames = demuxer.source.totalFrames * this.videoSpeed;
 
-                    // also update the fps
-                    Sit.fps = demuxer.source.fps;
+                    // also update the fps (use the stored original fps)
+                    Sit.fps = this.originalFps;
 
                     updateSitFrames()
 

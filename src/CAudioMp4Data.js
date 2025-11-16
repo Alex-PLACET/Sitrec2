@@ -373,8 +373,14 @@ export class CAudioMp4Data {
             this.audioBufferSource.buffer = this.audioBuffer;
             this.audioBufferSource.connect(this.gainNode);
 
-            const offsetTime = Math.max(0, startFrame / fps);
-            console.log("Starting audio playback at offsetTime=", offsetTime, "seconds, fps=", fps);
+            // Calculate offset time using original fps, then set playback rate based on fps ratio
+            const originalFps = this.originalFps || fps; // fallback to fps if originalFps not set
+            const offsetTime = Math.max(0, startFrame / originalFps);
+            const playbackRate = fps / originalFps;
+            
+            this.audioBufferSource.playbackRate.value = playbackRate;
+            
+            console.log("Starting audio playback at offsetTime=", offsetTime, "seconds, originalFps=", originalFps, "playbackFps=", fps, "playbackRate=", playbackRate);
             this.audioBufferSource.start(this.audioContext.currentTime, offsetTime);
             this.isBufferSourceStarted = true;
         } catch (e) {
