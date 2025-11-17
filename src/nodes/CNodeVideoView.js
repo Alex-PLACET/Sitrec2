@@ -39,6 +39,7 @@ import {CNodeViewUI} from "./CNodeViewUI";
 import {CVideoMp4Data} from "../CVideoMp4Data";
 import {CVideoAudioOnly} from "../CVideoAudioOnly";
 import {CVideoImageData} from "../CVideoImageData";
+import {isAudioOnlyFormat} from "../AudioFormats";
 import {assert} from "../assert";
 import {EventManager} from "../CEventManager";
 
@@ -105,8 +106,7 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         this.disposeVideoData()
         
         // Check if it's an audio-only file based on extension
-        const lowerFileName = fileName.toLowerCase();
-        if (lowerFileName.endsWith('.m4a') || lowerFileName.endsWith('.mp3')) {
+        if (isAudioOnlyFormat(fileName)) {
             console.log("Loading audio-only file: " + fileName);
             this.videoData = new CVideoAudioOnly({id: this.id + "_data", filename: fileName, videoSpeed: this.videoSpeed},
                 this.loadedCallback.bind(this), this.errorCallback.bind(this))

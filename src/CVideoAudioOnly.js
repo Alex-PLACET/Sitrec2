@@ -75,6 +75,7 @@ export class CVideoAudioOnly extends CVideoAndAudio {
                 console.log(`[CVideoAudioOnly.loadFromFile] FileReader onloadend: buffer size=${buffer.byteLength}`);
                 this.videoDroppedData = buffer;
                 this.videoDroppedURL = null;
+                console.log(`[CVideoAudioOnly.loadFromFile] Stored videoDroppedData, size=${this.videoDroppedData.byteLength}`);
                 buffer.fileStart = 0;
         console.log(`[CVideoAudioOnly.loadFromFile] Appending buffer to MP4Source...`);
                 source.file.appendBuffer(buffer);
@@ -142,6 +143,7 @@ export class CVideoAudioOnly extends CVideoAndAudio {
             console.log(`[CVideoAudioOnly.loadMP3File] File read complete, buffer size=${arrayBuffer.byteLength}`);
             this.videoDroppedData = arrayBuffer;
             this.videoDroppedURL = null;
+            console.log(`[CVideoAudioOnly.loadMP3File] Stored videoDroppedData, size=${this.videoDroppedData.byteLength}`);
             this.decodeMP3Audio(arrayBuffer);
         };
         reader.onerror = (error) => {
@@ -178,10 +180,14 @@ export class CVideoAudioOnly extends CVideoAndAudio {
      */
     async decodeMP3Audio(arrayBuffer) {
         console.log(`[CVideoAudioOnly.decodeMP3Audio] Starting decode...`);
+        console.log(`[CVideoAudioOnly.decodeMP3Audio] Input arrayBuffer size=${arrayBuffer.byteLength}`);
+        console.log(`[CVideoAudioOnly.decodeMP3Audio] this.videoDroppedData BEFORE decode:`, this.videoDroppedData ? `size=${this.videoDroppedData.byteLength}` : 'UNDEFINED');
         
         try {
             const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+            const bufferCopy = arrayBuffer.slice(0);
+            const audioBuffer = await audioContext.decodeAudioData(bufferCopy);
+            console.log(`[CVideoAudioOnly.decodeMP3Audio] this.videoDroppedData AFTER decode:`, this.videoDroppedData ? `size=${this.videoDroppedData.byteLength}` : 'UNDEFINED');
             
             console.log(`[CVideoAudioOnly.decodeMP3Audio] Decode complete: duration=${audioBuffer.duration}s, sampleRate=${audioBuffer.sampleRate}, channels=${audioBuffer.numberOfChannels}`);
             
