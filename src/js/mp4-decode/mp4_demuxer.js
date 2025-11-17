@@ -72,14 +72,21 @@ export class MP4Source {
     this.info = info;
     //console.log("MP4Source onReady info = ", info)
     var videoTrack = info.tracks.find(track => track.type === 'video');
-    if (videoTrack) {
-      var duration = videoTrack.movie_duration; // Duration in timescale units
-      var timescale = videoTrack.movie_timescale; // Timescale (units per second)
+    
+    // Get duration from video or audio track
+    var durationTrack = videoTrack || info.tracks.find(track => track.type === 'audio');
+    
+    if (durationTrack) {
+      var duration = durationTrack.movie_duration; // Duration in timescale units
+      var timescale = durationTrack.movie_timescale; // Timescale (units per second)
       this.durationInSeconds = duration / timescale;
+      this.duration = (duration / timescale) * 1000000; // Convert to microseconds for audio-only duration calculation
 
       console.log('Duration: ', duration, 'Timescale: ', timescale);
       console.log('Duration in seconds = ' + this.durationInSeconds);
-
+    }
+    
+    if (videoTrack) {
       // var frameRate = videoTrack.video.sample_entries[0].sample_rate || calculateFrameRate(videoTrack);
       //
       // var totalFrames = (frameRate * duration) / timescale;
@@ -138,17 +145,28 @@ export class MP4Source {
       console.log('No audio tracks found');
     }
 
+    console.log('[MP4Source.onReady] About to resolve: this._info_resolver=', typeof this._info_resolver, 'this.info=', this.info ? 'SET' : 'NULL');
     if (this._info_resolver) {
+      console.log('[MP4Source.onReady] Resolving with info:', this.info ? 'yes' : 'no');
       this._info_resolver(info);
       this._info_resolver = null;
+    } else {
+      console.warn('[MP4Source.onReady] WARNING: No resolver set when onReady fired!');
     }
+    console.log('[MP4Source.onReady] Done');
   }
 
   getInfo() {
-    if (this.info)
+    if (this.info) {
+      console.log('[MP4Source.getInfo] Info already set, returning resolved promise');
       return Promise.resolve(this.info);
+    }
 
-    return new Promise((resolver) => { this._info_resolver = resolver; });
+    console.log('[MP4Source.getInfo] Info not ready, creating new promise and setting resolver');
+    return new Promise((resolver) => { 
+      this._info_resolver = resolver; 
+      console.log('[MP4Source.getInfo] Promise created and resolver stored');
+    });
   }
 
   getAvccBox() {
@@ -239,7 +257,7 @@ export class MP4Source {
   _checkExtractionComplete() {
     if (!this._extractionCompleteCallback) return;
     
-    const videoComplete = this._expectedVideoSamples > 0 && this._receivedVideoSamples >= this._expectedVideoSamples;
+    const videoComplete = this._expectedVideoSamples === 0 || (this._expectedVideoSamples > 0 && this._receivedVideoSamples >= this._expectedVideoSamples);
     const audioComplete = this._expectedAudioSamples === 0 || this._receivedAudioSamples >= this._expectedAudioSamples;
     
     if (videoComplete && audioComplete) {
@@ -373,7 +391,18 @@ export class MP4Demuxer {
 
   start(onChunk, onAudioSamples, onComplete) {
     this._pendingAudioCallback = onAudioSamples;
-    this.source.startWithAudio(this.videoTrack, this.audioTrack, onChunk, onAudioSamples);
+    
+    // For audio-only files, use startAudio instead of startWithAudio
+    if (!this.videoTrack && this.audioTrack) {
+      console.log("Starting audio-only extraction");
+      this.source.startAudio(this.audioTrack, onChunk, onAudioSamples);
+    } else if (this.videoTrack) {
+      // For video files with optional audio
+      this.source.startWithAudio(this.videoTrack, this.audioTrack, onChunk, onAudioSamples);
+    } else {
+      console.warn("No video or audio track available for extraction");
+      return;
+    }
     
     if (onComplete) {
       this.source.onExtractionComplete(onComplete);

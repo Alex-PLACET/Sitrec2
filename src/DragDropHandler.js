@@ -144,16 +144,17 @@ class CDragDropHandler {
         EventManager.dispatchEvent("fileDropped", {})
 
 
-        // if it's a video file, that's handled differently
+        // if it's a video or audio file, that's handled differently
         // as we might (in the future) want to stream it
         // NOTE: .ts files (MPEG Transport Stream) are NOT treated as video here
         // because they need special parsing in FileManager to extract multiple streams
         const isTSFile = /\.(ts|m2ts|mts)$/i.test(file.name);
+        const isAudioFile = /\.(mp3|m4a)$/i.test(file.name) || file.type.startsWith("audio");
 
-        if (!isTSFile && file.type.startsWith("video")) {
-            console.log("Loading dropped video file: " + file.name);
+        if (!isTSFile && (file.type.startsWith("video") || isAudioFile)) {
+            console.log("Loading dropped " + (isAudioFile ? "audio" : "video") + " file: " + file.name);
             if (!NodeMan.exists("video")) {
-                console.warn("No video node found to load video file");
+                console.warn("No video node found to load " + (isAudioFile ? "audio" : "video") + " file");
                 return;
             }
             NodeMan.get("video").uploadFile(file);
@@ -609,7 +610,26 @@ class CDragDropHandler {
                     const blob = new Blob([parsedFile], { type: 'video/h264' });
                     const file = new File([blob], filename, { type: 'video/h264' });
                     NodeMan.get("video").uploadFile(file);
-                } else {
+                } 
+                // Check if it's an audio file (M4A, MP3, etc.)
+                else if (fileExt === "m4a" || fileExt === "mp3") {
+                    console.log("Audio file detected: " + filename);
+                    // Create a File-like object from the buffer for the video node
+                    const mimeType = fileExt === "mp3" ? 'audio/mpeg' : 'audio/mp4';
+                    const blob = new Blob([parsedFile], { type: mimeType });
+                    const file = new File([blob], filename, { type: mimeType });
+                    NodeMan.get("video").uploadFile(file);
+                }
+                // Check if it's a regular video file (MP4, MOV, WEBM, AVI)
+                else if (fileExt === "mp4" || fileExt === "mov" || fileExt === "webm" || fileExt === "avi") {
+                    console.log("Video file detected: " + filename);
+                    // Create a File-like object from the buffer for the video node
+                    const mimeType = `video/${fileExt === "mov" ? "quicktime" : fileExt}`;
+                    const blob = new Blob([parsedFile], { type: mimeType });
+                    const file = new File([blob], filename, { type: mimeType });
+                    NodeMan.get("video").uploadFile(file);
+                }
+                else {
                     console.warn("Unknown video format for: " + filename);
                 }
                 return;

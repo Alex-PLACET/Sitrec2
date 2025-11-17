@@ -744,8 +744,8 @@ export class CFileManager extends CManager {
         // Set its type to 'file'
         inputElement.type = 'file';
         
-        // Allow multiple file types including videos and images for better mobile support
-        inputElement.accept = 'video/*,image/*,.kml,.kmz,.csv,.json,.geojson,.sitch,.txt,.xml,.srt,.ts,.m2ts,.mts,.zip';
+        // Allow multiple file types including videos, audio and images for better mobile support
+        inputElement.accept = 'video/*,audio/*,image/*,.kml,.kmz,.csv,.json,.geojson,.sitch,.txt,.xml,.srt,.ts,.m2ts,.mts,.zip,.mp3,.m4a';
         
         // Allow multiple files
         inputElement.multiple = true;
@@ -1347,6 +1347,30 @@ export class CFileManager extends CManager {
                     } else {
                         console.log("Parsed MPEG-2 stream: " + filename + " (" + buffer.byteLength + " bytes)");
                     }
+                    break;
+
+                case "mp3":
+                    // MP3 audio file - treat as video so it can be handled by CVideoAudioOnly
+                    dataType = "video";
+                    parsed = buffer;
+                    console.log("Parsed MP3 audio: " + filename + " (" + buffer.byteLength + " bytes)");
+                    break;
+
+                case "m4a":
+                    // M4A audio file - treat as video so it can be handled by CVideoAudioOnly
+                    dataType = "video";
+                    parsed = buffer;
+                    console.log("Parsed M4A audio: " + filename + " (" + buffer.byteLength + " bytes)");
+                    break;
+
+                case "mp4":
+                case "mov":
+                case "webm":
+                case "avi":
+                    // Video files - treat as video
+                    dataType = "video";
+                    parsed = buffer;
+                    console.log("Parsed video: " + filename + " (" + buffer.byteLength + " bytes)");
                     break;
 
                 default:

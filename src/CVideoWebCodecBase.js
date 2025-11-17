@@ -1,7 +1,7 @@
 import {Globals, infoDiv, setRenderOne, Sit} from "./Globals";
 import {assert} from "./assert";
 import {loadImage} from "./utils";
-import {CVideoData} from "./CVideoData";
+import {CVideoAndAudio} from "./CVideoAndAudio";
 import {par} from "./par";
 import {isLocal} from "./configUtils";
 import {showError} from "./showError";
@@ -35,7 +35,7 @@ import {showError} from "./showError";
  * - H264: Processes raw H.264 elementary streams
  * - Both override specific methods for their format
  */
-export class CVideoWebCodecBase extends CVideoData {
+export class CVideoWebCodecBase extends CVideoAndAudio {
 
     constructor(v, loadedCallback, errorCallback) {
         super(v);
@@ -89,7 +89,6 @@ export class CVideoWebCodecBase extends CVideoData {
         this.decodeFrameIndex = 0; // Simple counter for decode order
         this.c_tmp = null; // Temporary canvas (if used)
         this.ctx_tmp = null; // Temporary canvas context (if used)
-        this.audioHandler = null; // Reference to audio handler (set by subclasses)
     }
 
     /**
@@ -467,9 +466,9 @@ export class CVideoWebCodecBase extends CVideoData {
             return;
 
         // Check if audio is playing and not muted - if so, defer video decoding
-        if (this.audioHandler && this.audioHandler.isPlaying && !this.audioHandler.isMuted) {
+        if (this.isAudioActive()) {
             // Check if audio buffer is ready
-            if (!this.audioHandler._bufferCreatedSuccessfully || !this.audioHandler.audioBuffer) {
+            if (!this.isAudioReady()) {
                 // Audio is still being prepared, defer video decoding
                 this.handleBusyDecoder(group);
                 return;

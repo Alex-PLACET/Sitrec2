@@ -37,6 +37,7 @@ import {guiTweaks, NodeMan, setRenderOne, Sit} from "../Globals";
 import {CMouseHandler} from "../CMouseHandler";
 import {CNodeViewUI} from "./CNodeViewUI";
 import {CVideoMp4Data} from "../CVideoMp4Data";
+import {CVideoAudioOnly} from "../CVideoAudioOnly";
 import {CVideoImageData} from "../CVideoImageData";
 import {assert} from "../assert";
 import {EventManager} from "../CEventManager";
@@ -102,8 +103,17 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         }
         this.fileName = fileName;
         this.disposeVideoData()
-        this.videoData = new CVideoMp4Data({id: this.id + "_data", file: fileName, videoSpeed: this.videoSpeed},
-            this.loadedCallback.bind(this), this.errorCallback.bind(this))
+        
+        // Check if it's an audio-only file based on extension
+        const lowerFileName = fileName.toLowerCase();
+        if (lowerFileName.endsWith('.m4a') || lowerFileName.endsWith('.mp3')) {
+            console.log("Loading audio-only file: " + fileName);
+            this.videoData = new CVideoAudioOnly({id: this.id + "_data", filename: fileName, videoSpeed: this.videoSpeed},
+                this.loadedCallback.bind(this), this.errorCallback.bind(this))
+        } else {
+            this.videoData = new CVideoMp4Data({id: this.id + "_data", file: fileName, videoSpeed: this.videoSpeed},
+                this.loadedCallback.bind(this), this.errorCallback.bind(this))
+        }
 
         // loaded from a URL, so we can set the staticURL
         this.staticURL = this.fileName;

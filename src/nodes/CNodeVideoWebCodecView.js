@@ -5,6 +5,7 @@ import {FileManager, Globals} from "../Globals";
 import {SITREC_APP} from "../configUtils";
 import {CVideoMp4Data} from "../CVideoMp4Data";
 import {CVideoH264Data} from "../CVideoH264Data";
+import {CVideoAudioOnly} from "../CVideoAudioOnly";
 
 export class CNodeVideoWebCodecView extends CNodeVideoView {
     constructor(v) {
@@ -126,8 +127,16 @@ export class CNodeVideoWebCodecView extends CNodeVideoView {
         
         const fileName = file.name.toLowerCase();
         
+        // Check if it's an audio-only file (m4a, mp3, or audio-only mp4)
+        if (fileName.endsWith('.m4a') || 
+            fileName.endsWith('.mp3') ||
+            (fileName.endsWith('.mp4') && file.type && file.type.startsWith('audio/'))) {
+            console.log("Using audio-only handler for: " + file.name);
+            this.videoData = new CVideoAudioOnly({id: this.id + "_data", dropFile: file},
+                this.loadedCallback.bind(this), this.errorCallback.bind(this));
+        }
         // Check if it's an H.264 file and use specialized handler
-        if (fileName.endsWith('.h264') || file.type === 'video/h264') {
+        else if (fileName.endsWith('.h264') || file.type === 'video/h264') {
             console.log("Using H.264 specialized handler for: " + file.name);
             this.videoData = new CVideoH264Data({id: this.id + "_data", dropFile: file},
                 this.loadedCallback.bind(this), this.errorCallback.bind(this));

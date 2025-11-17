@@ -5,7 +5,6 @@ import {CVideoWebCodecBase} from "./CVideoWebCodecBase";
 import {updateSitFrames} from "./UpdateSitFrames";
 import {EventManager} from "./CEventManager";
 import {showError} from "./showError";
-import {CAudioMp4Data} from "./CAudioMp4Data";
 
 /**
  * MP4 video data handler using WebCodec API
@@ -31,12 +30,10 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
         super(v, loadedCallback, errorCallback);
 
         if (this.incompatible) {
+            console.warn(`[CVideoMp4Data] Incompatible, returning early`);
             return;
         }
 
-        this.audioHandler = null;
-        this._audioWaitTimeout = null;
-        this._pendingPromises = [];
         this.demuxer = null;
 
         let source = new MP4Source()
@@ -181,22 +178,24 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
 
             // Initialize audio handler
             console.log("Creating audio handler");
-            this.audioHandler = new CAudioMp4Data(this);
-            this.audioHandler.originalFps = this.originalFps;
+            this.initializeAudioHandler(this);
+            if (this.audioHandler) {
+                this.audioHandler.originalFps = this.originalFps;
+            }
             
             const completeExtraction = () => {
                 const waitForAudioDecoding = () => {
                     // Check if audio decoding is complete
                     if (this.audioHandler && this.audioHandler.checkDecodingComplete()) {
-                        console.log("Audio decoding confirmed complete, proceeding with video load");
+                        console.log(`[CVideoMp4Data] Audio decoding confirmed complete, proceeding with video load`);
                         finishLoading();
                     } else if (this.audioHandler && this.audioHandler.expectedAudioSamples > 0) {
                         // Still waiting for audio decoding, check again in 50ms
-                        console.log("Waiting for audio decoding... received", this.audioHandler.receivedEncodedSamples, "/", this.audioHandler.expectedAudioSamples, "encoded, decoded", this.audioHandler.decodedAudioData.length);
+                        console.log(`[CVideoMp4Data] Waiting for audio decoding... received`, this.audioHandler.receivedEncodedSamples, "/", this.audioHandler.expectedAudioSamples, "encoded, decoded", this.audioHandler.decodedAudioData.length);
                         this._audioWaitTimeout = setTimeout(waitForAudioDecoding, 50);
                     } else {
                         // No audio, proceed immediately
-                        console.log("No audio or audio not initialized, proceeding with video load");
+                        console.log(`[CVideoMp4Data] No audio or audio not initialized, proceeding with video load`);
                         finishLoading();
                     }
                 };
@@ -205,8 +204,8 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
                     // at this point demuxing should be done, so we should have an accurate frame count
                     // note, that's only true if we are not loading the video async
                     // (i.e. the entire video is loaded before we start decoding)
-                    console.log("Demuxing done (assuming not async loading), frames = " + this.frames + ", Sit.videoFrames = " + Sit.videoFrames)
-                    console.log("Demuxer calculated frames as " + demuxer.source.totalFrames)
+                    console.log(`[CVideoMp4Data] Demuxing done (assuming not async loading), frames = ` + this.frames + `, Sit.videoFrames = ` + Sit.videoFrames)
+                    console.log(`[CVideoMp4Data] Demuxer calculated frames as ` + demuxer.source.totalFrames)
                     //assert(this.frames === demuxer.source.totalFrames, "Frames mismatch between demuxer and decoder"+this.frames+"!="+demuxer.source.totalFrames)
 
                     // use the demuxer frame count, as it's more accurate
@@ -227,9 +226,9 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
                 
                 waitForAudioDecoding();
             };
-            
+
             this.audioHandler.initializeAudio(demuxer).then(() => {
-                console.log("Audio handler initialized, starting extraction with both video and audio");
+                console.log(`[CVideoMp4Data] Audio handler initialized, starting extraction with both video and audio`);
                 
                 // Set expected audio sample count for the audio handler
                 if (demuxer.audioTrack) {
@@ -281,7 +280,8 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
                     completeExtraction
                 );
             }).catch(e => {
-                console.warn("Audio initialization failed:", e);
+                console.warn(`[CVideoMp4Data] Audio initialization failed:`, e);
+                console.log(`[CVideoMp4Data] Proceeding with video-only extraction...`);
                 // Still start video extraction if audio fails
                 demuxer.start((chunk) => {
                     chunk.frameNumber = this.demuxFrame++
@@ -352,12 +352,6 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
      * Implements proper async cancellation rather than flag-checking
      */
     dispose() {
-        // Clear any pending audio wait timeout
-        if (this._audioWaitTimeout) {
-            clearTimeout(this._audioWaitTimeout);
-            this._audioWaitTimeout = null;
-        }
-        
         // Clear callbacks to prevent them from firing after disposal
         this.loadedCallback = null;
         this.errorCallback = null;
@@ -374,17 +368,6 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
                 }
             }
             this.demuxer = null;
-        }
-        
-        // Clear all pending promises (they will handle errors in their catch blocks)
-        this._pendingPromises = [];
-        
-        if (this.audioHandler) {
-            // First stop the audio to ensure playback is halted
-            this.audioHandler.stop();
-            // Then dispose of all resources
-            this.audioHandler.dispose();
-            this.audioHandler = null;
         }
         
         super.dispose();
