@@ -72,7 +72,7 @@ export class CVideoAudioOnly extends CVideoAndAudio {
                 const buffer = reader.result;
                 console.log(`[CVideoAudioOnly.loadFromFile] FileReader onloadend: buffer size=${buffer.byteLength}`);
                 buffer.fileStart = 0;
-                console.log(`[CVideoAudioOnly.loadFromFile] Appending buffer to MP4Source...`);
+        console.log(`[CVideoAudioOnly.loadFromFile] Appending buffer to MP4Source...`);
                 source.file.appendBuffer(buffer);
                 console.log(`[CVideoAudioOnly.loadFromFile] Flushing MP4Source...`);
                 source.file.flush();
@@ -396,25 +396,106 @@ export class CVideoAudioOnly extends CVideoAndAudio {
      * @returns {HTMLCanvasElement} A black canvas
      */
     createBlackFrame() {
-        if (!this.blackFrame) {
-            this.blackFrame = document.createElement('canvas');
-            this.blackFrame.width = this.videoWidth;
-            this.blackFrame.height = this.videoHeight;
-            const ctx = this.blackFrame.getContext('2d');
-            ctx.fillStyle = 'black';
-            ctx.fillRect(0, 0, this.videoWidth, this.videoHeight);
+        const canvas = document.createElement('canvas');
+        canvas.width = this.videoWidth;
+        canvas.height = this.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = 'black';
+        ctx.fillRect(0, 0, this.videoWidth, this.videoHeight);
+        return canvas;
+    }
+    
+    /**
+     * Draw waveform visualization for current frame
+     * @param {CanvasRenderingContext2D} ctx - Canvas context
+     * @param {number} frame - Current frame number
+     */
+    drawWaveform(ctx, frame) {
+        if (!this.audioHandler) return;
+        
+        const decodedAudioData = this.audioHandler.decodedAudioData;
+        if (!decodedAudioData || decodedAudioData.length === 0) return;
+        
+        if (decodedAudioData.length === 0) return;
+        const firstAudioData = decodedAudioData[0].data;
+        const sampleRate = firstAudioData.sampleRate;
+        
+        const canvas = ctx.canvas;
+        const waveformWidth = canvas.width * 0.25;
+        const waveformHeight = canvas.height * 0.5;
+        
+        const fps = Sit.fps || this.originalFps || 30;
+        const frameTimeSeconds = frame / fps;
+        const centerSampleIndex = Math.floor(frameTimeSeconds * sampleRate);
+        
+        const windowSamples = Math.floor(waveformWidth * 2);
+        const startSampleIndex = Math.max(0, centerSampleIndex - windowSamples / 2);
+        const endSampleIndex = startSampleIndex + windowSamples;
+        
+        const windowAudio = new Float32Array(windowSamples);
+        let windowOffset = 0;
+        
+        for (const item of decodedAudioData) {
+            const audioData = item.data;
+            const chunkStart = Math.floor((item.timestamp / 1000000) * sampleRate);
+            const chunkEnd = chunkStart + audioData.numberOfFrames;
+            
+            const overlapStart = Math.max(startSampleIndex, chunkStart);
+            const overlapEnd = Math.min(endSampleIndex, chunkEnd);
+            
+            if (overlapStart >= overlapEnd) continue;
+            
+            const chunkOffset = overlapStart - chunkStart;
+            const windowStart = Math.max(0, overlapStart - startSampleIndex);
+            const sampleCount = overlapEnd - overlapStart;
+            
+            const chunkSamples = new Float32Array(audioData.numberOfFrames);
+            audioData.copyTo(chunkSamples, { planeIndex: 0 });
+            
+            windowAudio.set(chunkSamples.slice(chunkOffset, chunkOffset + sampleCount), windowStart);
         }
-        return this.blackFrame;
+        
+        const centerX = (canvas.width - waveformWidth) / 2;
+        const centerY = (canvas.height - waveformHeight) / 2;
+        
+        ctx.strokeStyle = '#00ff00';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        
+        const samplesPerPixel = Math.max(1, Math.floor(windowSamples / waveformWidth));
+        let firstPoint = true;
+        
+        for (let px = 0; px < waveformWidth; px++) {
+            const sampleIndex = Math.floor(px * samplesPerPixel);
+            if (sampleIndex >= windowSamples) break;
+            
+            const sample = windowAudio[sampleIndex];
+            const amplitude = Math.abs(sample) * waveformHeight;
+            const y = centerY + waveformHeight / 2 - amplitude;
+            const x = centerX + px;
+            
+            if (firstPoint) {
+                ctx.moveTo(x, y);
+                firstPoint = false;
+            } else {
+                ctx.lineTo(x, y);
+            }
+        }
+        
+        ctx.stroke();
     }
     
     /**
      * Get the image for a specific frame
-     * Always returns a black frame for audio-only files
-     * @param {number} frame - Frame number (ignored)
-     * @returns {HTMLCanvasElement} A black canvas
+     * Returns a black frame with waveform visualization for audio-only files
+     * @param {number} frame - Frame number
+     * @returns {HTMLCanvasElement} A canvas with black background and waveform
      */
     getImage(frame) {
-        return this.createBlackFrame();
+        const canvas = this.createBlackFrame();
+        const ctx = canvas.getContext('2d');
+        this.drawWaveform(ctx, frame);
+        return canvas;
     }
     
     /**
