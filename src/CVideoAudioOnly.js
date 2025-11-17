@@ -3,14 +3,17 @@ import {MP4Demuxer, MP4Source} from "./js/mp4-decode/mp4_demuxer";
 import {Sit} from "./Globals.js";
 import {EventManager} from "./CEventManager.js";
 import {updateSitFrames} from "./UpdateSitFrames";
+import {isWebAudioFormat} from "./AudioFormats.js";
 
 /**
- * Audio-only video class that plays audio files (mp4, m4a, mp3, wav) with a black video frame
+ * Audio-only video class that plays audio files with a black video frame
  * Extends CVideoAndAudio to provide audio playback with minimal video overhead
  * 
  * Key features:
- * - Supports MP4, M4A, MP3, and WAV audio files
- * - MP3/WAV files decoded using WebAudio API decodeAudioData for smooth playback
+ * - Supports multiple audio formats:
+ *   - WebAudio API: MP3, WAV, OGG, FLAC, WebM, AAC, AIFF, CAF (browser-dependent)
+ *   - MP4 Demuxer: M4A, MP4
+ * - WebAudio formats decoded using decodeAudioData for smooth playback
  * - M4A/MP4 files decoded using WebCodec AudioDecoder
  * - Returns black frames with waveform visualization
  * - Full audio playback functionality with precise synchronization
@@ -54,16 +57,13 @@ export class CVideoAudioOnly extends CVideoAndAudio {
      * @param {File} file - The audio file to load
      */
     loadFromFile(file) {
-        const fileName = file.name.toLowerCase();
         console.log(`[CVideoAudioOnly.loadFromFile] Starting: ${file.name}, size=${file.size}`);
         
-        // Check if it's an MP3 or WAV file
-        if (fileName.endsWith('.mp3') || fileName.endsWith('.wav')) {
-            console.log(`[CVideoAudioOnly.loadFromFile] MP3/WAV file detected, using WebAudio API decodeAudioData`);
+        if (isWebAudioFormat(file.name)) {
+            console.log(`[CVideoAudioOnly.loadFromFile] WebAudio format detected, using decodeAudioData`);
             this.loadMP3File(file);
         } else {
-            console.log(`[CVideoAudioOnly.loadFromFile] MP4/M4A file detected, using MP4 demuxer`);
-            // Use MP4 demuxer for M4A and MP4 audio files
+            console.log(`[CVideoAudioOnly.loadFromFile] MP4/M4A format detected, using MP4 demuxer`);
             const source = new MP4Source();
             
             console.log(`[CVideoAudioOnly.loadFromFile] Creating FileReader for: ${file.name}`);
@@ -110,14 +110,10 @@ export class CVideoAudioOnly extends CVideoAndAudio {
      * @param {string} url - The URL of the audio file
      */
     loadFromURL(url) {
-        const urlLower = url.toLowerCase();
-        
-        // Check if it's an MP3 or WAV file
-        if (urlLower.endsWith('.mp3') || urlLower.endsWith('.wav')) {
-            console.log("MP3/WAV URL detected, using WebAudio API decodeAudioData");
+        if (isWebAudioFormat(url)) {
+            console.log("WebAudio format URL detected, using decodeAudioData");
             this.loadMP3URL(url);
         } else {
-            // Use MP4 demuxer for M4A and MP4 audio files
             const source = new MP4Source();
             source.onReady = (info) => {
                 console.log("Audio file ready from URL:", info);

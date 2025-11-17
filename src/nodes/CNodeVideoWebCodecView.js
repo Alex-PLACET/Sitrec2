@@ -6,6 +6,7 @@ import {SITREC_APP} from "../configUtils";
 import {CVideoMp4Data} from "../CVideoMp4Data";
 import {CVideoH264Data} from "../CVideoH264Data";
 import {CVideoAudioOnly} from "../CVideoAudioOnly";
+import {isAudioOnlyFormat} from "../AudioFormats";
 
 export class CNodeVideoWebCodecView extends CNodeVideoView {
     constructor(v) {
@@ -127,10 +128,7 @@ export class CNodeVideoWebCodecView extends CNodeVideoView {
         
         const fileName = file.name.toLowerCase();
         
-        // Check if it's an audio-only file (m4a, mp3, wav, or audio-only mp4)
-        if (fileName.endsWith('.m4a') || 
-            fileName.endsWith('.mp3') ||
-            fileName.endsWith('.wav') ||
+        if (isAudioOnlyFormat(fileName) || 
             (fileName.endsWith('.mp4') && file.type && file.type.startsWith('audio/'))) {
             console.log("Using audio-only handler for: " + file.name);
             this.videoData = new CVideoAudioOnly({id: this.id + "_data", dropFile: file},

@@ -13,6 +13,7 @@ import {findColumn} from "./ParseUtils";
 import {EventManager} from "./CEventManager";
 import {CNodeArray} from "./nodes/CNodeArray";
 import {FeatureManager} from "./CFeatureManager";
+import {MP4_DEMUXER_EXTENSIONS, WEBAUDIO_SUPPORTED_EXTENSIONS} from "./AudioFormats";
 
 // The DragDropHandler is more like the local client file handler, with rehosting, and parsing
 class CDragDropHandler {
@@ -149,7 +150,9 @@ class CDragDropHandler {
         // NOTE: .ts files (MPEG Transport Stream) are NOT treated as video here
         // because they need special parsing in FileManager to extract multiple streams
         const isTSFile = /\.(ts|m2ts|mts)$/i.test(file.name);
-        const isAudioFile = /\.(mp3|m4a|wav)$/i.test(file.name) || file.type.startsWith("audio");
+        const allAudioExtensions = [...WEBAUDIO_SUPPORTED_EXTENSIONS, ...MP4_DEMUXER_EXTENSIONS];
+        const audioExtPattern = new RegExp(`\\.(${allAudioExtensions.join('|')})$`, 'i');
+        const isAudioFile = audioExtPattern.test(file.name) || file.type.startsWith("audio");
 
         if (!isTSFile && (file.type.startsWith("video") || isAudioFile)) {
             console.log("Loading dropped " + (isAudioFile ? "audio" : "video") + " file: " + file.name);
