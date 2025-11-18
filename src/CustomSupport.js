@@ -402,6 +402,11 @@ export class CCustomManager {
         EventManager.addEventListener("videoLoaded", (data) => {
             let width, height;
 
+            if (Sit.name !== "custom") {
+                console.warn("videoLoaded event received for non-custom sitch: " + Sit.name);
+                return;
+            }
+
             if (data.width !== undefined && data.height !== undefined) {
                 // this is a video loaded from a file, so we can use the width and height directly
                 width = data.width;

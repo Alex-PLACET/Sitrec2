@@ -176,6 +176,14 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         }
 
 
+        // if we don't have a zoom input, then we are using the mouse zooming and panning
+        // i.e. zoomView()
+        // So we need to set the default position to get the right aspect ratio
+        // this may not responde well to dynamic resizing, but that's a more complex problem to solve.
+        if (!this.in.zoom) {
+            this.defaultPosition();
+        }
+
     }
 
     errorCallback() {
