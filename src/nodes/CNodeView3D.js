@@ -1,7 +1,9 @@
 import {par} from "../par";
 import {XYZ2EA, XYZJ2PR} from "../SphericalMath";
+import {raDec2Celestial} from "../CelestialMath";
 import {
     CustomManager,
+    GlobalDateTimeNode,
     Globals,
     guiMenus,
     guiTweaks,
@@ -1608,15 +1610,19 @@ export class CNodeView3D extends CNodeViewCanvas {
             }
         }
         
-        // Add angle information (how close to the click)
-        standaloneMenu.add({angle: celestialObject.angle.toFixed(3)}, 'angle').name('Angle (degrees)').listen().disable();
+        // Add distance information (how close to the click)
+        if (celestialObject.type === 'star') {
+            standaloneMenu.add({distance: celestialObject.pixelDistance.toFixed(1)}, 'distance').name('Distance (pixels)').listen().disable();
+        } else {
+            standaloneMenu.add({angle: celestialObject.angle.toFixed(3)}, 'angle').name('Angle (degrees)').listen().disable();
+        }
         
         // Open the menu
         standaloneMenu.open();
     }
 
     // Find the closest celestial object (star, planet, or satellite) to a ray
-    findClosestCelestialObject(mouseRay, maxAngleDegrees = 5) {
+    findClosestCelestialObject(mouseRay, mouseX, mouseY, maxAngleDegrees = 5) {
         const nightSkyNode = NodeMan.get("NightSkyNode", false);
         if (!nightSkyNode) {
             console.log("NightSkyNode not found");
@@ -1638,10 +1644,6 @@ export class CNodeView3D extends CNodeViewCanvas {
         
         this.raycaster.setFromCamera(mouseRay, this.camera);
         const rayDirection = this.raycaster.ray.direction.clone();
-        
-        // Restore the camera's actual position
-        this.camera.position.copy(savedCameraPos);
-        this.camera.updateMatrixWorld();
         
         console.log(`Checking celestial objects:`);
         console.log(`  Ray direction (from origin): (${rayDirection.x.toFixed(4)}, ${rayDirection.y.toFixed(4)}, ${rayDirection.z.toFixed(4)})`);
@@ -1714,10 +1716,63 @@ export class CNodeView3D extends CNodeViewCanvas {
             }
         }
 
+        // Check stars (using pixel-based distance)
+        if (nightSkyNode.starField && nightSkyNode.starField.commonNames) {
+            const date = GlobalDateTimeNode.dateNow;
+            const maxPixelDistance = 15;
+            let closestStarDistance = maxPixelDistance;
+            
+            console.log(`Checking ${Object.keys(nightSkyNode.starField.commonNames).length} named stars (pixel threshold: ${maxPixelDistance}px)`);
+            
+            for (const HR in nightSkyNode.starField.commonNames) {
+                const n = HR - 1;
+                const starName = nightSkyNode.starField.commonNames[HR];
+                
+                const ra = nightSkyNode.starField.getStarRA(n);
+                const dec = nightSkyNode.starField.getStarDEC(n);
+                const mag = nightSkyNode.starField.getStarMagnitude(n);
+                
+                const pos = raDec2Celestial(ra, dec, 100);
+                pos.applyMatrix4(nightSkyNode.celestialSphere.matrix);
+                pos.project(this.camera);
+                
+                if (pos.z > -1 && pos.z < 1 && pos.x >= -1 && pos.x <= 1 && pos.y >= -1 && pos.y <= 1) {
+                    const screenX = (pos.x + 1) * this.widthPx / 2 + this.leftPx;
+                    const screenY = (-pos.y + 1) * this.heightPx / 2 + this.topPx;
+                    
+                    const dx = screenX - mouseX;
+                    const dy = screenY - mouseY;
+                    const pixelDistance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (pixelDistance < closestStarDistance) {
+                        closestStarDistance = pixelDistance;
+                        closestObject = {
+                            type: 'star',
+                            name: starName,
+                            ra: ra,
+                            dec: dec,
+                            magnitude: mag,
+                            pixelDistance: pixelDistance,
+                            angle: pixelDistance
+                        };
+                        console.log(`    -> New closest star: ${starName} at ${pixelDistance.toFixed(1)}px (mag ${mag.toFixed(2)})`);
+                    }
+                }
+            }
+        }
+        
+        // Restore the camera's actual position
+        this.camera.position.copy(savedCameraPos);
+        this.camera.updateMatrixWorld();
+
         if (closestObject) {
-            console.log(`Found closest celestial object: ${closestObject.type} - ${closestObject.name} at ${closestObject.angle.toFixed(2)}°`);
+            if (closestObject.type === 'star') {
+                console.log(`Found closest celestial object: ${closestObject.type} - ${closestObject.name} at ${closestObject.pixelDistance.toFixed(1)}px`);
+            } else {
+                console.log(`Found closest celestial object: ${closestObject.type} - ${closestObject.name} at ${closestObject.angle.toFixed(2)}°`);
+            }
         } else {
-            console.log(`No celestial objects found within ${maxAngleDegrees}°`);
+            console.log(`No celestial objects found within thresholds`);
         }
 
         return closestObject;
@@ -1897,7 +1952,7 @@ export class CNodeView3D extends CNodeViewCanvas {
             }
             
             // No tracks found, check for celestial objects (stars, planets, satellites)
-            const celestialObject = this.findClosestCelestialObject(mouseRay);
+            const celestialObject = this.findClosestCelestialObject(mouseRay, mouseX, mouseY);
             
             if (celestialObject) {
                 this.showCelestialObjectMenu(celestialObject, event.clientX, event.clientY);
