@@ -2,7 +2,10 @@
 // and displays star names on an overlay
 import {CNodeViewUI} from "./CNodeViewUI";
 import {GlobalDateTimeNode, guiShowHide, setRenderOne} from "../Globals";
-import {raDec2Celestial} from "../CelestialMath";
+import {getCelestialDirectionFromRaDec, raDec2Celestial} from "../CelestialMath";
+import {wgs84} from "../LLA-ECEF-ENU";
+import {intersectSphere2, V3} from "../threeUtils";
+import {Ray, Sphere} from "three";
 
 export class CNodeDisplaySkyOverlay extends CNodeViewUI {
 
@@ -63,14 +66,33 @@ export class CNodeDisplaySkyOverlay extends CNodeViewUI {
         this.ctx.textAlign = 'left';
 
         if (this.showStarNames) {
+            const earthSphere = new Sphere(V3(0, -wgs84.RADIUS, 0), wgs84.RADIUS)
+            const actualCameraPosition = this.camera.position
+            const date = this.in.startTime.dateNow
+
             for (var HR in this.nightSky.starField.commonNames) {
 
                 // HR is the HR number, i.e. the index into the BSC + 1
                 // So we sub 1 to get the actual index.
                 const n = HR - 1
 
+                const mag = this.nightSky.starField.getStarMagnitude(n)
+                if (mag > Sit.starLimit) {
+                    continue
+                }
+
                 const ra = this.nightSky.starField.getStarRA(n)
                 const dec = this.nightSky.starField.getStarDEC(n)
+                
+                const starDirection = getCelestialDirectionFromRaDec(ra, dec, date)
+                
+                const ray = new Ray(actualCameraPosition, starDirection)
+                const target0 = V3()
+                const target1 = V3()
+                if (intersectSphere2(ray, earthSphere, target0, target1)) {
+                    continue
+                }
+
                 const pos = raDec2Celestial(ra, dec, 100) // get equatorial
                 pos.applyMatrix4(this.nightSky.celestialSphere.matrix) // convert equatorial to EUS
                 pos.project(camera) // project using the EUS camera
@@ -84,7 +106,7 @@ export class CNodeDisplaySkyOverlay extends CNodeViewUI {
                     var y = (-zoomedY + 1) * this.heightPx / 2
                     x += 5
                     y -= 5
-                    this.ctx.fillText(this.nightSky.starField.commonNames[HR], x, y)
+                   this.ctx.fillText(this.nightSky.starField.commonNames[HR], x, y)
                 }
             }
 
