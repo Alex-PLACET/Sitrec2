@@ -2,7 +2,7 @@ import {LLAToEUS} from "./LLA-ECEF-ENU";
 import {QuadTreeTile} from "./QuadTreeTile";
 import {QuadTreeMap} from "./QuadTreeMap";
 import {setRenderOne} from "./Globals";
-import {showError} from "./showError";
+import {showError, showErrorOnce} from "./showError";
 import {CanvasTexture} from "three/src/textures/CanvasTexture";
 import {NearestFilter} from "three/src/constants";
 import {createTerrainDayNightMaterial} from "./js/map33/material/TerrainDayNightMaterial";
@@ -368,7 +368,7 @@ class QuadTreeMapTexture extends QuadTreeMap {
                 const materialPromise = tile.applyMaterial().catch(error => {
                     // Don't log abort errors or cancellation errors - they're expected when tiles are cancelled
                     if (error.message !== 'Aborted' && error.message !== 'Tile is being cancelled') {
-                        showError(`Failed to load texture for reactivated tile ${key}:`, error);
+                        showErrorOnce("TILE_LOADING_ERROR", `Failed to load texture for reactivated tile ${key}:`, error);
                     }
                 });
                 this.trackTileLoading(`${key}-reactivated`, materialPromise);
@@ -638,7 +638,9 @@ class QuadTreeMapTexture extends QuadTreeMap {
         const materialPromise = tile.applyMaterial().catch(error => {
             // Don't log abort errors or cancellation errors - they're expected when tiles are cancelled
             if (error.message !== 'Aborted' && error.message !== 'Tile is being cancelled') {
-                showError(`Failed to load texture for tile ${key}:`, error);
+
+                showErrorOnce("TILE_LOADING_ERROR", `Failed to load texture for tile ${key}:`, error);
+
             } else if (error.message === 'Aborted') {
                 // Check if the tile is active again - this should now be rare since we prevent reactivation during cancellation
                 if (tile.tileLayers > 0) {

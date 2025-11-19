@@ -146,3 +146,19 @@ export function showError(message, error=null) {
 
     console.error(message);
 }
+
+const shownErrors = new Set();
+
+/**
+ * Show an error dialog only once per unique ID
+ * @param {string} ID - Unique identifier for the error
+ * @param {string} message - Error message
+ */
+export function showErrorOnce(ID, message, error=null) {
+    if (shownErrors.has(ID)) {
+        return;
+    }
+    shownErrors.add(ID);
+    showError(message, error);
+
+}

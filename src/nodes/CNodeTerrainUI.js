@@ -136,7 +136,24 @@ export class CNodeTerrainUI extends CNode {
                     tileSize: 256,
                     attribution: "",
                     textureSubSize: 500,
-                }
+                },
+
+                osm_buggy: {
+                    name: "Open Streetmap BUGGY for testing",
+                    mapURL: (z,x,y) => {
+
+                        if (z >= 4 && Math.random() < 0.05) {
+                            // simulate a failed tile load 5% of the time at zoom 4 and above
+                            return "https://invalid.url/doesnotexist.png";
+                        }
+
+//                return SITREC_SERVER+"cachemaps.php?url=" + encodeURIComponent(`https://c.tile.openstreetmap.org/${z}/${x}/${y}.png`)
+                        return `https://c.tile.openstreetmap.org/${z}/${x}/${y}.png`
+                    },
+                    maxZoom: 17,
+                    supportsOceanSurface: true, // OpenStreetMap can have ocean surface overlay
+
+                },
 
 
 
