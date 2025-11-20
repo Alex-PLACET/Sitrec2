@@ -7,12 +7,12 @@ import {
     Globals,
     guiMenus,
     guiTweaks,
-    keyHeld,
     NodeMan,
     setGPUMemoryMonitor,
     setRenderOne,
     Synth3DManager
 } from "../Globals";
+import {isKeyHeld} from "../KeyBoardHandler";
 import {GlobalDaySkyScene, GlobalNightSkyScene, GlobalScene, GlobalSunSkyScene} from "../LocalFrame";
 import {DRAG, makeMouseRay} from "../mouseMoveView";
 import {TrackManager} from "../TrackManager";
@@ -1359,7 +1359,7 @@ export class CNodeView3D extends CNodeViewCanvas {
                 this.camera.lookAt(target);
 
                 // holding down command/Window let's you scrub along the track
-                if (keyHeld['meta']) {
+                if (isKeyHeld('meta')) {
                     par.frame = closestFrame
                     setRenderOne(true);
                 }

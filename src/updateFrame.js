@@ -1,15 +1,34 @@
 import {par} from "./par";
 import {GlobalDateTimeNode, Sit} from "./Globals";
-import {isKeyHeld} from "./KeyBoardHandler";
+import {isKeyHeld, keyHeldTime, KeyMan} from "./KeyBoardHandler";
 import {updateFrameSlider} from "./nodes/CNodeFrameSlider";
 import {UpdatePRFromEA} from "./JetStuff";
 import {Frame2Az, Frame2El} from "./JetUtils";
 
 
+let hookedKeys = false;
+
 // given the elapsed time since this was last called,
 // update the frame number and time based on the current state of the controls
 export function updateFrame(elapsed) {
 
+    if (!hookedKeys) {
+        if (KeyMan) {
+            KeyMan.key('arrowright').onDown(() => {
+                par.frame  = Math.floor(par.frame) + 1;
+                if (par.frame > Sit.frames - 1) par.frame = Sit.frames - 1;
+
+            });
+
+            KeyMan.key('arrowleft').onDown(() => {
+                par.frame = Math.floor(par.frame) - 1;
+                if (par.frame < 0) par.frame = 0;
+
+            });
+
+            hookedKeys = true;
+        }
+    }
 
 
     const dt = elapsed;
@@ -30,11 +49,12 @@ export function updateFrame(elapsed) {
         par.frame += 10 * frameStep;
         par.paused = true;
         GlobalDateTimeNode.liveMode = false;
-    } else if (isKeyHeld('arrowleft')) {
+    } else if (keyHeldTime('arrowleft')>100) {
         par.frame -= frameStep
         par.paused = true;
         GlobalDateTimeNode.liveMode = false;
-    } else if (isKeyHeld('arrowright')) {
+    } else if (keyHeldTime('arrowright')>100) {
+        console.log("keyHeldTime arrowright is " + keyHeldTime('arrowright'));
         par.frame += frameStep
         par.paused = true;
         GlobalDateTimeNode.liveMode = false;

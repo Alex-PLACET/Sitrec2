@@ -1,38 +1,42 @@
-import {
-    Globals,
-    gui,
-    guiShowHide,
-    keyCodeHeld,
-    keyHeld,
-    mouseOverGUI,
-    NodeMan,
-    setRenderOne,
-    Sit,
-    UndoManager
-} from "./Globals";
+import {Globals, gui, guiShowHide, mouseOverGUI, NodeMan, setRenderOne, Sit, UndoManager} from "./Globals";
 import {par} from "./par";
 import {closeFullscreen, openFullscreen} from "./utils";
 import {Vector3} from "three";
 import {EventManager} from "./CEventManager";
 
+/* Usage examples
+
+KeyMan.key("space").onDown((e, keyInfo) => console.log("Space pressed!"))
+KeyMan.key("w").onUp(() => console.log("W released!"))
+if (KeyMan.key("shift").held) { ... }
+console.log(KeyMan.key("a").heldTime)
+
+ */
+
+
 
 class CKeyInfo {
-    constructor(props) {
-
+    constructor(props = {}) {
         this.held = false
         this.triggered = false;
         this.downStartTime = this.timer()
         this.pressDuration = 0;
         this.allowRepeats = props.allowRepeats ?? false;
         this.callbackDown = null;
-
+        this.callbackUp = null;
+        this.repeatCount = 0;
     }
 
-    onDown(c) {
-        this.callbackDown = c
+    onDown(callback) {
+        this.callbackDown = callback
+        return this;
     }
 
-    // have a member function for the ms timer, so can override it later if needed, probably not.
+    onUp(callback) {
+        this.callbackUp = callback
+        return this;
+    }
+
     timer() {
         return Date.now()
     }
@@ -41,55 +45,110 @@ class CKeyInfo {
         if (!this.held) {
             this.held = true;
             this.triggered = true;
-            // this is so if we instantiate the key while it is being held, then we will still get a sensible time
-            // if we want to calculate the last keystroke duration, for whatever reason
             this.downStartTime = this.timer()
+            this.repeatCount = 0;
+            if (this.callbackDown) {
+                this.callbackDown(e, this);
+            }
+        } else if (this.allowRepeats) {
+            this.repeatCount++;
+            if (this.callbackDown) {
+                this.callbackDown(e, this);
+            }
         }
-
     }
 
     up(e) {
-        this.held = false;
-        this.pressDuration = this.timer() - this.downStartTime
-
+        if (this.held) {
+            this.held = false;
+            this.pressDuration = this.timer() - this.downStartTime
+            if (this.callbackUp) {
+                this.callbackUp(e, this);
+            }
+        }
     }
 
     get heldTime() {
-        return this.timer() - this.downStartTime
+        if (this.held) {
+            return this.timer() - this.downStartTime
+        }
+        return 0;
     }
-
-
 }
 
 
 class CKeyBoardManager {
-    constructor(props) {
+    constructor(props = {}) {
         this.keys = {}
+        this.keyCodes = {}
     }
 
-    key(keyCode) {
-        if (this.keys[keyCode] === undefined) {
-            this.keys[keyCode] = new CKeyInfo()
+    key(key) {
+        if (this.keys[key] === undefined) {
+            this.keys[key] = new CKeyInfo()
         }
-        return this.keys[keyCode]
+        return this.keys[key]
+    }
+
+    keyCode(keyCode) {
+        if (this.keyCodes[keyCode] === undefined) {
+            this.keyCodes[keyCode] = new CKeyInfo()
+        }
+        return this.keyCodes[keyCode]
+    }
+
+    isKeyHeld(key) {
+        return this.keys[key]?.held ?? false;
+    }
+
+    isKeyCodeHeld(keyCode) {
+        return this.keyCodes[keyCode]?.held ?? false;
+    }
+
+    handleKeyDown(e) {
+        const key = e.key.toLowerCase();
+        const keyCode = e.code;
+
+        this.key(key).down(e);
+        this.keyCode(keyCode).down(e);
+    }
+
+    handleKeyUp(e) {
+        const key = e.key.toLowerCase();
+        const keyCode = e.code;
+
+        this.key(key).up(e);
+        this.keyCode(keyCode).up(e);
+    }
+
+    clearAll() {
+        for (const key in this.keys) {
+            if (this.keys[key].held) {
+                this.keys[key].up();
+            }
+        }
+        for (const keyCode in this.keyCodes) {
+            if (this.keyCodes[keyCode].held) {
+                this.keyCodes[keyCode].up();
+            }
+        }
     }
 }
 
 const KeyMan = new CKeyBoardManager()
 
-// So, e.g.
-// if (KeyMan.key("space").heldTime > 10)
+export { KeyMan }
 
 export function isKeyHeld(key) {
-    var lowercaseKey = key.toLowerCase();
-    if (keyHeld[lowercaseKey] != undefined)
-        return keyHeld[lowercaseKey]
-    else
-        return false;
+    return KeyMan.isKeyHeld(key.toLowerCase());
+}
+
+export function keyHeldTime(key) {
+    return KeyMan.key(key.toLowerCase()).heldTime;
 }
 
 export function isKeyCodeHeld(code) {
-   return keyCodeHeld[code]
+    return KeyMan.isKeyCodeHeld(code);
 }
 
 export function wut() {
@@ -198,19 +257,14 @@ export function initKeyboard() {
             return;
         }
 
-        if (e.repeat && e.code !== 'Comma' && e.code !== 'Period') return; // ignore repeating keys, except for frame advance
+        if (e.repeat && e.code !== 'Comma' && e.code !== 'Period') return;
 
-        // since there's a variety of things the keys might do, have them all render a frame
-        // so that changes are reflected in the display (e.g. 'J' = toggle jet
         setRenderOne(true);
 
-//        console.log ("Key Down: ")
+        const keyCode = e.code
+        const key = e.key.toLowerCase()
 
-        var keyCode = e.code
-        var key = e.key.toLowerCase()
-        keyHeld[key] = true
-        keyCodeHeld[keyCode] = true
-//        console.log("Key: " + key + " keyCode: " + keyCode)
+        KeyMan.handleKeyDown(e);
 
         EventManager.dispatchEvent("keydown", {key: key, keyCode: keyCode, event: e});
 
@@ -321,7 +375,7 @@ export function initKeyboard() {
 
             // single step
             case 'Comma':
-                par.frame--;
+                par.frame = Math.floor(par.frame-1);
                 if (par.frame < 0) par.frame = 0;
              //   UIChangedFrame();
                 par.paused = true;
@@ -329,7 +383,7 @@ export function initKeyboard() {
                 break;
 
             case 'Period':
-                par.frame++;
+                par.frame = Math.floor(par.frame+1);
                 if (par.frame > Sit.frames - 1) par.frame = Sit.frames - 1;
                 par.paused = true;
                 setRenderOne(2);
@@ -360,22 +414,11 @@ export function initKeyboard() {
     }
 
     document.onkeyup = function (e) {
-
-        keyCodeHeld[e.code] = false
-
-        var key = e.key.toLowerCase()
-        keyHeld[key] = false
-
+        KeyMan.handleKeyUp(e);
     }
 
     window.onfocus = () => {
-        //keyHeld = {}
-        //keyCodeHeld = {}
-
-        // clear them without making a new object
-        for (var k in keyHeld) delete keyHeld[k];
-        for (var k in keyCodeHeld) delete keyCodeHeld[k];
-
+        KeyMan.clearAll();
     }
 
 
