@@ -172,47 +172,45 @@ class QuadTreeMapTexture extends QuadTreeMap {
 
         // for each child, check if it is loaded and visible OR has all visible children
         for (let child of tile.children) {
-            if (!child.loaded
-                || !child.added
-                || !child.mesh.visible
-                || !(child.mesh.layers.mask & tileLayerMask)
-                || !child.mesh.material
-                || !child.mesh.material.uniforms?.map           // No texture
-                || child.mesh.material.wireframe      // Still wireframe
-                // || child.isLoading                    // Currently loading
-                // || child.pendingAncestorLoad          // Waiting for parent
-                || !child.mesh.parent                 // Not in scene
-            ) {
-                // if it has no children, then log which of the above failed
-                if (!child.children) {
-//                     console.warn(`Child tile ${child.key()} missing: loaded=${child.loaded}, added=${child.added}, visible=${child.mesh.visible}, layerMask=${child.mesh.layers.mask & tileLayerMask}, hasMaterial=${!!child.mesh.material}, hasTexture=${!!child.mesh.material.map}, wireframe=${child.mesh.material.wireframe}, inScene=${!!child.mesh.parent}`);
-                }
+            if (child) {
+                if (!child.loaded
+                    || !child.added
+                    || !child.mesh.visible
+                    || !(child.mesh.layers.mask & tileLayerMask)
+                    || !child.mesh.material
+                    || !child.mesh.material.uniforms?.map           // No texture
+                    || child.mesh.material.wireframe      // Still wireframe
+                    // || child.isLoading                    // Currently loading
+                    // || child.pendingAncestorLoad          // Waiting for parent
+                    || !child.mesh.parent                 // Not in scene
+                ) {
 
 
-                // child is not loaded or not visible
-                // but maybe all its children are?
-                if (!this.areaCoveredByDescendants(child, tileLayerMask)) {
-                    return false;
+                    // child is not loaded or not visible
+                    // but maybe all its children are?
+                    if (!this.areaCoveredByDescendants(child, tileLayerMask)) {
+                        return false;
+                    }
                 }
+
+                // tile flags look good, check the center is good
+
+                // calculate the LLA position of the center of the tile
+                const lat1 = this.options.mapProjection.getNorthLatitude(child.y, child.z);
+                const lon1 = this.options.mapProjection.getLeftLongitude(child.x, child.z);
+                const lat2 = this.options.mapProjection.getNorthLatitude(child.y + 1, child.z);
+                const lon2 = this.options.mapProjection.getLeftLongitude(child.x + 1, child.z);
+                const lat = (lat1 + lat2) / 2;
+                const lon = (lon1 + lon2) / 2;
+                const center = LLAToEUS(lat, lon, 0);
+
+                assert(center.x === child.mesh.position.x
+                    && center.y === child.mesh.position.y
+                    && center.z === child.mesh.position.z,
+                    `Child tile ${child.key()} center position mismatch: expected (${center.x}, ${center.y}, ${center.z}), got (${child.mesh.position.x}, ${child.mesh.position.y}, ${child.mesh.position.z}), `
+                );
+
             }
-
-            // tile flags look good, check the center is good
-
-            // calculate the LLA position of the center of the tile
-            const lat1 = this.options.mapProjection.getNorthLatitude(child.y, child.z);
-            const lon1 = this.options.mapProjection.getLeftLongitude(child.x, child.z);
-            const lat2 = this.options.mapProjection.getNorthLatitude(child.y + 1, child.z);
-            const lon2 = this.options.mapProjection.getLeftLongitude(child.x + 1, child.z);
-            const lat = (lat1 + lat2) / 2;
-            const lon = (lon1 + lon2) / 2;
-            const center = LLAToEUS(lat, lon, 0);
-
-            assert(center.x === child.mesh.position.x
-                && center.y === child.mesh.position.y
-                && center.z === child.mesh.position.z,
-                `Child tile ${child.key()} center position mismatch: expected (${center.x}, ${center.y}, ${center.z}), got (${child.mesh.position.x}, ${child.mesh.position.y}, ${child.mesh.position.z}), `
-            );
-
 
         }
         return true;

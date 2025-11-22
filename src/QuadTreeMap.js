@@ -718,12 +718,24 @@ export class QuadTreeMap {
         
         // Create 4 child tiles (standard quadtree subdivision)
         // note activateTile will set the parent tile automatically
-        const child1 = this.activateTile(tile.x * 2, tile.y * 2, tile.z + 1, tileLayers, useParentData);
-        const child2 = this.activateTile(tile.x * 2, tile.y * 2 + 1, tile.z + 1, tileLayers, useParentData);
-        const child3 = this.activateTile(tile.x * 2 + 1, tile.y * 2, tile.z + 1, tileLayers, useParentData);
-        const child4 = this.activateTile(tile.x * 2 + 1, tile.y * 2 + 1, tile.z + 1, tileLayers, useParentData);
+        const child1 = this.activateTile(tile.x * 2,     tile.y * 2, tile.z + 1, tileLayers, useParentData);
+        const child2 = this.activateTile(tile.x * 2 + 1, tile.y * 2, tile.z + 1, tileLayers, useParentData);
 
-        tile.children = [child1, child2, child3, child4];
+        let child3, child4;
+
+        // normally we create all 4 children
+        // but for zoom level 0 on GoogleCRS84Quad tiles, only use the 2 children above (both with y=0)
+        const z = tile.z;
+        if (z>0 || (tile.map && tile.map.options.mapProjection.name === "GoogleMapsCompatible")) {
+            child3 = this.activateTile(tile.x * 2,     tile.y * 2 + 1, tile.z + 1, tileLayers, useParentData);
+            child4 = this.activateTile(tile.x * 2 + 1, tile.y * 2 + 1, tile.z + 1, tileLayers, useParentData);
+            tile.children = [child1, child2, child3, child4];
+        } else {
+            // GoogleCRS84Quad tile 0,0,0 only has 2 children, the y=1 (bottom half) is nulled
+            tile.children = [child1, child2, null, null];
+        }
+
+
         // Track this tile as a parent for efficient iteration
         this.parentTiles.add(tile);
 
