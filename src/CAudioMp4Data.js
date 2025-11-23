@@ -20,6 +20,10 @@
  * - Disconnects audio nodes from graph
  * - Suspends AudioContext before closing
  * - Clears all timeouts and resources
+ * 
+ * Debug mode:
+ * To enable debugging: videoNode.audioHandler.enableDebug()
+ * This will log timestamp gaps and sample discontinuities at chunk boundaries
  */
 export class CAudioMp4Data {
     constructor(videoData) {
@@ -49,9 +53,14 @@ export class CAudioMp4Data {
         this._bufferCreatedSuccessfully = false;
         this.playbackStartTime = 0;
         this.playbackStartFrame = 0;
-        this.debug = false;
+        this.debug = true;
 
         this.checkAudioSupport();
+    }
+    
+    enableDebug() {
+        this.debug = true;
+        console.log("[Audio] Debug mode enabled");
     }
 
     checkAudioSupport() {
@@ -136,9 +145,22 @@ export class CAudioMp4Data {
     }
 
     handleDecodedAudio(audioData) {
+        if (this.debug && this.decodedAudioData.length > 0) {
+            const prev = this.decodedAudioData[this.decodedAudioData.length - 1];
+            const prevDuration = prev.data.duration || (prev.data.numberOfFrames / prev.data.sampleRate * 1000000);
+            const expectedNextTimestamp = prev.timestamp + prevDuration;
+            const gap = audioData.timestamp - expectedNextTimestamp;
+            if (Math.abs(gap) > 100) {
+                console.warn(`[Audio] Timestamp gap: ${gap.toFixed(0)}μs between chunks ${this.decodedAudioData.length - 1} and ${this.decodedAudioData.length}`);
+            }
+        }
+        
+        const duration = audioData.duration || (audioData.numberOfFrames / audioData.sampleRate * 1000000);
+        
         this.decodedAudioData.push({
             data: audioData,
-            timestamp: audioData.timestamp
+            timestamp: audioData.timestamp,
+            duration: duration
         });
     }
 
@@ -292,10 +314,14 @@ export class CAudioMp4Data {
             let totalLength = 0;
             const audioBuffers = [];
 
+            const firstBuffer = this.decodedAudioData[0].data;
+            const sampleRate = firstBuffer.sampleRate || this.audioContext.sampleRate;
+
             for (const item of this.decodedAudioData) {
                 const audioData = item.data;
-                totalLength += audioData.numberOfFrames;
-                audioBuffers.push(audioData);
+                const framesToCopy = Math.floor(item.duration / 1000000 * sampleRate);
+                totalLength += framesToCopy;
+                audioBuffers.push({ data: audioData, framesToCopy: framesToCopy });
             }
 
             if (this.debug) console.log("Creating audio buffer with", audioBuffers.length, "chunks, totalLength=", totalLength, "frames");
@@ -304,8 +330,6 @@ export class CAudioMp4Data {
                 return false;
             }
 
-            const firstBuffer = audioBuffers[0];
-            const sampleRate = firstBuffer.sampleRate || this.audioContext.sampleRate;
             const numberOfChannels = firstBuffer.numberOfChannels;
 
             if (this.debug) console.log("Audio buffer config: channels=", numberOfChannels, "sampleRate=", sampleRate, "totalFrames=", totalLength);
@@ -316,15 +340,53 @@ export class CAudioMp4Data {
                 sampleRate
             );
 
+            const discontinuityStats = {
+                count: 0,
+                maxJump: 0,
+                avgJump: 0,
+                boundaries: []
+            };
+
             let offset = 0;
-            for (const audioData of audioBuffers) {
+            for (let i = 0; i < audioBuffers.length; i++) {
+                const { data: audioData, framesToCopy } = audioBuffers[i];
                 for (let ch = 0; ch < numberOfChannels; ch++) {
                     const srcBuffer = new Float32Array(audioData.numberOfFrames);
                     audioData.copyTo(srcBuffer, { planeIndex: ch });
                     const dstBuffer = this.audioBuffer.getChannelData(ch);
-                    dstBuffer.set(srcBuffer, offset);
+                    
+                    if (i > 0 && ch === 0 && this.debug) {
+                        const prevSample = dstBuffer[offset - 1];
+                        const currSample = srcBuffer[0];
+                        const jump = Math.abs(currSample - prevSample);
+                        
+                        if (jump > 0.01) {
+                            discontinuityStats.count++;
+                            discontinuityStats.maxJump = Math.max(discontinuityStats.maxJump, jump);
+                            discontinuityStats.avgJump += jump;
+                            discontinuityStats.boundaries.push({
+                                chunk: i,
+                                offset: offset,
+                                prevSample: prevSample,
+                                currSample: currSample,
+                                jump: jump
+                            });
+                        }
+                    }
+                    
+                    dstBuffer.set(srcBuffer.subarray(0, framesToCopy), offset);
                 }
-                offset += audioData.numberOfFrames;
+                offset += framesToCopy;
+            }
+
+            if (this.debug && discontinuityStats.count > 0) {
+                discontinuityStats.avgJump = discontinuityStats.avgJump / discontinuityStats.count;
+                console.warn(`[Audio] Found ${discontinuityStats.count} discontinuities at chunk boundaries:`);
+                console.warn(`  Max jump: ${discontinuityStats.maxJump.toFixed(6)}`);
+                console.warn(`  Avg jump: ${discontinuityStats.avgJump.toFixed(6)}`);
+                console.warn(`  Details:`, discontinuityStats.boundaries.slice(0, 5));
+            } else if (this.debug) {
+                console.log(`[Audio] No significant discontinuities detected (${audioBuffers.length - 1} boundaries checked)`);
             }
 
             this._lastBufferDecodedCount = this.decodedAudioData.length;
