@@ -49,6 +49,7 @@ export class CAudioMp4Data {
         this._bufferCreatedSuccessfully = false;
         this.playbackStartTime = 0;
         this.playbackStartFrame = 0;
+        this.debug = false;
 
         this.checkAudioSupport();
     }
@@ -56,35 +57,35 @@ export class CAudioMp4Data {
     checkAudioSupport() {
         try {
             if (AudioDecoder === undefined) {
-                console.warn("AudioDecoder not supported");
+                if (this.debug) console.warn("AudioDecoder not supported");
                 return false;
             }
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
             return true;
         } catch (e) {
-            console.warn("Audio not supported:", e);
+            if (this.debug) console.warn("Audio not supported:", e);
             return false;
         }
     }
 
     async initializeAudio(demuxer) {
         if (!this.audioContext || this.isInitialized) {
-            console.log("Audio already initialized or no context");
+            if (this.debug) console.log("Audio already initialized or no context");
             return;
         }
 
         try {
             const audioConfig = await demuxer.getAudioConfig();
             if (!audioConfig) {
-                console.log("No audio track found in video");
+                if (this.debug) console.log("No audio track found in video");
                 return;
             }
 
-            console.log("Audio config:", audioConfig);
+            if (this.debug) console.log("Audio config:", audioConfig);
 
             // Check if the codec is supported
             if (!audioConfig.codec) {
-                console.warn("No codec specified in audio config");
+                if (this.debug) console.warn("No codec specified in audio config");
                 return;
             }
 
@@ -92,36 +93,36 @@ export class CAudioMp4Data {
             try {
                 const support = await AudioDecoder.isConfigSupported(audioConfig);
                 if (!support.supported) {
-                    console.warn("Audio codec not supported:", audioConfig.codec);
-                    console.warn("Config details:", audioConfig);
+                    if (this.debug) console.warn("Audio codec not supported:", audioConfig.codec);
+                    if (this.debug) console.warn("Config details:", audioConfig);
                     return;
                 }
             } catch (e) {
-                console.warn("Error checking audio codec support:", e);
+                if (this.debug) console.warn("Error checking audio codec support:", e);
                 return;
             }
 
             this.audioDecoder = new AudioDecoder({
                 output: audioData => {
-                    console.log("Audio frame decoded, numberOfFrames:", audioData.numberOfFrames);
+                    if (this.debug) console.log("Audio frame decoded, numberOfFrames:", audioData.numberOfFrames);
                     this.handleDecodedAudio(audioData);
                 },
                 error: e => {
-                    console.error("Audio decoder error:", e);
+                    if (this.debug) console.error("Audio decoder error:", e);
                     // Don't show error dialog for audio issues, just log them
                     // This allows video to continue playing even if audio fails
                 }
             });
 
             this.audioDecoder.configure(audioConfig);
-            console.log("Audio decoder configured successfully with codec:", audioConfig.codec);
+            if (this.debug) console.log("Audio decoder configured successfully with codec:", audioConfig.codec);
 
             this.setupAudioNodes();
 
             this.isInitialized = true;
-            console.log("Audio initialized successfully");
+            if (this.debug) console.log("Audio initialized successfully");
         } catch (e) {
-            console.error("Error initializing audio:", e);
+            if (this.debug) console.error("Error initializing audio:", e);
             // Don't show error dialog, allow video to continue without audio
         }
     }
@@ -143,16 +144,16 @@ export class CAudioMp4Data {
 
     decodeAudioSamples(samples, demuxer) {
         if (!this.audioDecoder) {
-            console.warn("Audio decoder not initialized");
+            if (this.debug) console.warn("Audio decoder not initialized");
             return;
         }
 
         if (this.audioDecoder.state !== "configured") {
-            console.warn("Audio decoder state:", this.audioDecoder.state);
+            if (this.debug) console.warn("Audio decoder state:", this.audioDecoder.state);
             return;
         }
 
-        console.log("Decoding", samples.length, "audio samples");
+        if (this.debug) console.log("Decoding", samples.length, "audio samples");
         this.receivedEncodedSamples += samples.length;
 
         for (const sample of samples) {
@@ -166,14 +167,14 @@ export class CAudioMp4Data {
             try {
                 this.audioDecoder.decode(chunk);
             } catch (e) {
-                console.warn("Error decoding audio chunk:", e);
+                if (this.debug) console.warn("Error decoding audio chunk:", e);
             }
         }
     }
     
     setExpectedAudioSamples(count) {
         this.expectedAudioSamples = count;
-        console.log("Expected audio samples set to:", count);
+        if (this.debug) console.log("Expected audio samples set to:", count);
     }
     
     /**
@@ -202,7 +203,7 @@ export class CAudioMp4Data {
             // Wait 100ms to ensure all audio chunks are decoded
             if (Date.now() - this._decodingCompleteCheckTime > 100) {
                 this.decodingComplete = true;
-                console.log("Audio decoding complete: received", this.receivedEncodedSamples, "samples, decoded", this.decodedAudioData.length, "chunks");
+                if (this.debug) console.log("Audio decoding complete: received", this.receivedEncodedSamples, "samples, decoded", this.decodedAudioData.length, "chunks");
                 return true;
             }
         }
@@ -220,6 +221,10 @@ export class CAudioMp4Data {
             return;
         }
 
+        if (this.isMuted) {
+            return;
+        }
+
         try {
             if (this.audioContext.state === 'suspended') {
                 this.audioContext.resume();
@@ -228,13 +233,13 @@ export class CAudioMp4Data {
             const wasPlaying = this.isPlaying;
             const frameJumped = Math.abs(startFrame - this.startFrame) > 1;
 
-            console.log("Play called: wasPlaying=", wasPlaying, "frameJumped=", frameJumped, "decoded samples=", this.decodedAudioData.length);
 
             this.isPlaying = true;
             this.fps = fps;
             const needsRestart = !wasPlaying || frameJumped;
 
             if (needsRestart) {
+                if (this.debug) console.log("Restart needed Play called: wasPlaying=", wasPlaying, "frameJumped=", frameJumped, "decoded samples=", this.decodedAudioData.length);
                 this.stopAudioSource();
                 this.playbackStartTime = this.audioContext.currentTime;
                 this.playbackStartFrame = startFrame;
@@ -243,7 +248,7 @@ export class CAudioMp4Data {
 
             this.startFrame = startFrame;
         } catch (e) {
-            console.warn("Error playing audio:", e);
+            if (this.debug) console.warn("Error playing audio:", e);
         }
     }
 
@@ -263,7 +268,7 @@ export class CAudioMp4Data {
                 // Disconnect it from the audio graph to ensure no more audio is processed
                 this.audioBufferSource.disconnect();
             } catch (e) {
-                console.warn("Error stopping audio source:", e);
+                if (this.debug) console.warn("Error stopping audio source:", e);
             }
             this.audioBufferSource = null;
         }
@@ -272,12 +277,12 @@ export class CAudioMp4Data {
 
     createAudioBuffer() {
         if (this._bufferCreationInProgress) {
-            console.log("Buffer creation already in progress");
+            if (this.debug) console.log("Buffer creation already in progress");
             return false;
         }
 
         if (!this.decodedAudioData.length) {
-            console.log("No decoded audio data to create buffer from");
+            if (this.debug) console.log("No decoded audio data to create buffer from");
             return false;
         }
 
@@ -293,7 +298,7 @@ export class CAudioMp4Data {
                 audioBuffers.push(audioData);
             }
 
-            console.log("Creating audio buffer with", audioBuffers.length, "chunks, totalLength=", totalLength, "frames");
+            if (this.debug) console.log("Creating audio buffer with", audioBuffers.length, "chunks, totalLength=", totalLength, "frames");
 
             if (audioBuffers.length === 0) {
                 return false;
@@ -303,7 +308,7 @@ export class CAudioMp4Data {
             const sampleRate = firstBuffer.sampleRate || this.audioContext.sampleRate;
             const numberOfChannels = firstBuffer.numberOfChannels;
 
-            console.log("Audio buffer config: channels=", numberOfChannels, "sampleRate=", sampleRate, "totalFrames=", totalLength);
+            if (this.debug) console.log("Audio buffer config: channels=", numberOfChannels, "sampleRate=", sampleRate, "totalFrames=", totalLength);
 
             this.audioBuffer = this.audioContext.createBuffer(
                 numberOfChannels,
@@ -323,10 +328,10 @@ export class CAudioMp4Data {
             }
 
             this._lastBufferDecodedCount = this.decodedAudioData.length;
-            console.log("Audio buffer created successfully");
+            if (this.debug) console.log("Audio buffer created successfully");
             return true;
         } catch (e) {
-            console.warn("Error creating audio buffer:", e);
+            if (this.debug) console.warn("Error creating audio buffer:", e);
             return false;
         } finally {
             this._bufferCreationInProgress = false;
@@ -335,12 +340,12 @@ export class CAudioMp4Data {
 
     playAudioBuffer(startFrame, fps) {
         if (!this.isPlaying) {
-            console.log("Not playing");
+            if (this.debug) console.log("Not playing");
             return;
         }
 
         if (!this.audioContext) {
-            console.log("No audio context");
+            if (this.debug) console.log("No audio context");
             return;
         }
         
@@ -353,7 +358,7 @@ export class CAudioMp4Data {
         if (!this.checkDecodingComplete()) {
             // Audio not yet fully decoded, retry in 50ms
             if (!this._playbackRetryTimeout) {
-                console.log("Waiting for audio decoding to complete. (received", this.receivedEncodedSamples, "/", this.expectedAudioSamples, ", decoded", this.decodedAudioData.length, "chunks)");
+                if (this.debug) console.log("Waiting for audio decoding to complete. (received", this.receivedEncodedSamples, "/", this.expectedAudioSamples, ", decoded", this.decodedAudioData.length, "chunks)");
                 this._playbackRetryTimeout = setTimeout(() => {
                     this._playbackRetryTimeout = null;
                     this.playAudioBuffer(startFrame, fps);
@@ -363,7 +368,7 @@ export class CAudioMp4Data {
         }
         
         if (!this.decodedAudioData.length) {
-            console.log("No decoded audio data");
+            if (this.debug) console.log("No decoded audio data");
             return;
         }
 
@@ -395,11 +400,11 @@ export class CAudioMp4Data {
             
             this.audioBufferSource.playbackRate.value = playbackRate;
             
-            console.log("Starting audio playback: currentFrame=", currentFrame, "offsetTime=", offsetTime.toFixed(3), "seconds, timeElapsed=", timeElapsed.toFixed(3), "originalFps=", originalFps, "playbackRate=", playbackRate);
+            if (this.debug) console.log("Starting audio playback: currentFrame=", currentFrame, "offsetTime=", offsetTime.toFixed(3), "seconds, timeElapsed=", timeElapsed.toFixed(3), "originalFps=", originalFps, "playbackRate=", playbackRate);
             this.audioBufferSource.start(this.audioContext.currentTime, offsetTime);
             this.isBufferSourceStarted = true;
         } catch (e) {
-            console.warn("Error playing audio buffer:", e);
+            if (this.debug) console.warn("Error playing audio buffer:", e);
             this.isPlaying = false;
         }
     }
@@ -425,6 +430,20 @@ export class CAudioMp4Data {
 
     getVolume() {
         return this.volume;
+    }
+
+    setMuted(muted) {
+        this.isMuted = muted;
+        if (this.gainNode) {
+            this.gainNode.gain.value = muted ? 0 : this.volume;
+        }
+        if (muted) {
+            this.stopAudioSource();
+        }
+    }
+
+    getMuted() {
+        return this.isMuted;
     }
 
     /**
@@ -467,7 +486,7 @@ export class CAudioMp4Data {
                 // Then close the context to release resources
                 this.audioContext.close();
             } catch (e) {
-                console.warn("Error closing audio context:", e);
+                if (this.debug) console.warn("Error closing audio context:", e);
             }
             this.audioContext = null;
         }
@@ -476,7 +495,7 @@ export class CAudioMp4Data {
             try {
                 this.audioDecoder.close();
             } catch (e) {
-                console.warn("Error closing decoder:", e);
+                if (this.debug) console.warn("Error closing decoder:", e);
             }
             this.audioDecoder = null;
         }

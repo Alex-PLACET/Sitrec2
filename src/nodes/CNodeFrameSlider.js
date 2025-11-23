@@ -17,6 +17,7 @@ export class CNodeFrameSlider extends CNode {
         this.fastForwardButton = null;
         this.fastRewindButton = null;
         this.pinButton = null;
+        this.audioButton = null;
         this.frameDisplayBox = null;
 
         this.pinned = false;
@@ -77,7 +78,7 @@ export class CNodeFrameSlider extends CNode {
         this.controlContainer.style.marginTop = '2px'; // Move buttons down 2px
         // Responsive width: larger on mobile for bigger buttons
         const isMobile = window.innerWidth <= 768 || window.matchMedia('(hover: none) and (pointer: coarse)').matches;
-        const containerWidth = isMobile ? '352px' : '280px'; // 8 buttons * 44px + gaps for mobile, 280px for desktop
+        const containerWidth = isMobile ? '396px' : '315px'; // 9 buttons * 44px + gaps for mobile, 315px for desktop
         this.controlContainer.style.width = containerWidth;
 
         // Create Buttons
@@ -179,6 +180,15 @@ export class CNodeFrameSlider extends CNode {
             () => this.setFrame(parseInt(this.sliderInput.max, 10)),
             'Jump to End'
         );
+
+        this.audioButton = this.createButton(
+            this.controlContainer,
+            spriteLocations.audio.row,
+            spriteLocations.audio.col,
+            this.toggleAudioMute.bind(this),
+            'Audio/Mute'
+        );
+        this.audioButton.style.display = 'none';
 
         this.controlContainer.style.opacity = "0"; // Initially hidden
         this.sliderContainer.appendChild(this.controlContainer);
@@ -839,6 +849,9 @@ export class CNodeFrameSlider extends CNode {
     }
 
     update(frame) {
+        // Update audio button visibility and state
+        this.updateAudioButton();
+
         // If pinned, ensure the bar stays visible
         if (this.pinned) {
             this.sliderDiv.style.opacity = "1";
@@ -1019,7 +1032,7 @@ export class CNodeFrameSlider extends CNode {
         
         div.style.width = buttonSize + 'px';
         div.style.height = buttonSize + 'px';
-        div.style.backgroundImage = 'url(./data/images/video-sprites-40px-5x3-dark.png?v=1)';
+        div.style.backgroundImage = 'url(./data/images/video-sprites-40px-5x3-dark.png?v=2)';
         div.style.backgroundSize = `${200 * scaleFactor}px ${120 * scaleFactor}px`; // Scale sprite sheet
         div.style.backgroundPosition = `-${column * spriteSize * scaleFactor}px -${row * spriteSize * scaleFactor}px`;
         div.style.backgroundRepeat = 'no-repeat';
@@ -1078,6 +1091,43 @@ export class CNodeFrameSlider extends CNode {
         this.pinButton.style.backgroundPosition = this.pinned ? 
             `-${spriteLocations.unpin.col * spriteSize * scaleFactor}px -${spriteLocations.unpin.row * spriteSize * scaleFactor}px` : 
             `-${spriteLocations.pin.col * spriteSize * scaleFactor}px -${spriteLocations.pin.row * spriteSize * scaleFactor}px`;
+    }
+
+    toggleAudioMute() {
+        const videoNode = NodeMan.get("video", false);
+        if (videoNode && videoNode.videoData && videoNode.videoData.audioHandler) {
+            const audioHandler = videoNode.videoData.audioHandler;
+            const newMutedState = !audioHandler.getMuted();
+            audioHandler.setMuted(newMutedState);
+            this.updateAudioButton();
+        }
+    }
+
+    updateAudioButton() {
+        const videoNode = NodeMan.get("video", false);
+        if (!videoNode || !videoNode.videoData || !videoNode.videoData.audioHandler) {
+            this.audioButton.style.display = 'none';
+            return;
+        }
+
+        const audioHandler = videoNode.videoData.audioHandler;
+        if (!audioHandler.isInitialized) {
+            this.audioButton.style.display = 'none';
+            return;
+        }
+
+        this.audioButton.style.display = '';
+
+        const isMobile = window.innerWidth <= 768 || window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+        const buttonSize = isMobile ? 44 : 28;
+        const spriteSize = 40;
+        const scaleFactor = buttonSize / spriteSize;
+
+        const isMuted = audioHandler.getMuted();
+        const location = isMuted ? spriteLocations.muted : spriteLocations.audio;
+        this.audioButton.style.backgroundPosition = 
+            `-${location.col * spriteSize * scaleFactor}px -${location.row * spriteSize * scaleFactor}px`;
+        this.audioButton.title = isMuted ? 'Unmute Audio' : 'Mute Audio';
     }
 
     // Advance a single frame function
@@ -1212,7 +1262,9 @@ const spriteLocations = {
     fastRewind: { row: 2, col: 1 }, // Fast rewind
     fastForward: { row: 2, col: 0 }, // Fast forward
     pin: { row: 2, col: 2 }, // Pin button
-    unpin: { row: 2, col: 3 } // Unpin button
+    unpin: { row: 2, col: 3 }, // Unpin button
+    audio: { row: 0, col: 4 }, // Audio button
+    muted: { row: 1, col: 4 }, // Muted button
 };
 
 // Exported function to create an instance of CNodeFrameSlider
