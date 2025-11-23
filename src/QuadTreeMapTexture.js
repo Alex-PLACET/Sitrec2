@@ -178,6 +178,7 @@ class QuadTreeMapTexture extends QuadTreeMap {
                     || !child.mesh.material
                     || !child.mesh.material.uniforms?.map           // No texture
                     || child.mesh.material.wireframe      // Still wireframe
+                    || !child.geometryReady               // Geometry not ready
                     // || child.isLoading                    // Currently loading
                     // || child.pendingAncestorLoad          // Waiting for parent
                     || !child.mesh.parent                 // Not in scene
@@ -338,11 +339,26 @@ class QuadTreeMapTexture extends QuadTreeMap {
                 
                 // If tile was deactivated (tileLayers was 0), re-add to scene
                 if (!tile.added) {
-                    this.scene.add(tile.mesh); // add the mesh to the scene
-                    if (tile.skirtMesh) {
-                        this.scene.add(tile.skirtMesh); // add the skirt mesh to the scene
+                    // Wait for geometry if it's not ready yet
+                    if (tile.geometryReady) {
+                        this.scene.add(tile.mesh); // add the mesh to the scene
+                        if (tile.skirtMesh) {
+                            this.scene.add(tile.skirtMesh); // add the skirt mesh to the scene
+                        }
+                        tile.added = true; // mark the tile as added to the scene
+                    } else if (tile.curvePromise) {
+                        tile.curvePromise.then(() => {
+                            if (tile.tileLayers > 0) {
+                                this.scene.add(tile.mesh);
+                                if (tile.skirtMesh) {
+                                    this.scene.add(tile.skirtMesh);
+                                }
+                                tile.added = true;
+                            }
+                        }).catch(error => {
+                            console.warn(`Failed to wait for geometry for reactivated tile ${tile.key()}:`, error);
+                        });
                     }
-                    tile.added = true; // mark the tile as added to the scene
                 }
             } else {
                 // layerMask=0 means load tile data but don't make it visible (e.g., for ancestor tiles)
@@ -409,10 +425,13 @@ class QuadTreeMapTexture extends QuadTreeMap {
         const lon = (lon1 + lon2) / 2;
         const center = LLAToEUS(lat, lon, 0);
 
-        tile.setPosition(center); // ???
-        // Fire off normal calculation in background (non-blocking)
-        tile.recalculateCurve().catch(error => {
+        tile.setPosition(center);
+        tile.geometryReady = false;
+        tile.curvePromise = tile.recalculateCurve().then(() => {
+            tile.geometryReady = true;
+        }).catch(error => {
             console.warn(`Failed to recalculate curve for tile ${z}/${x}/${y}:`, error);
+            tile.geometryReady = true;
         });
         this.setTile(x, y, z, tile);
         
@@ -446,15 +465,19 @@ class QuadTreeMapTexture extends QuadTreeMap {
             tile.updateSkirtMaterial();
             tile.loaded = true;
             
-            // Add to scene immediately
-            this.scene.add(tile.mesh);
-            if (tile.skirtMesh) {
-                this.scene.add(tile.skirtMesh);
-            }
-            tile.added = true;
+            // Wait for geometry to be ready before adding to scene
+            tile.curvePromise.then(() => {
+                this.scene.add(tile.mesh);
+                if (tile.skirtMesh) {
+                    this.scene.add(tile.skirtMesh);
+                }
+                tile.added = true;
+                this.refreshDebugGeometry(tile);
+                setRenderOne(true);
+            }).catch(error => {
+                console.warn(`Failed to wait for geometry for black texture tile ${key}:`, error);
+            });
             
-            this.refreshDebugGeometry(tile);
-            setRenderOne(true);
             return tile;
         }
 
@@ -540,14 +563,19 @@ class QuadTreeMapTexture extends QuadTreeMap {
                     tile.updateWireframeMaterial();
                     tile.loaded = false; // Mark as not fully loaded
                     
-                    this.scene.add(tile.mesh);
-                    if (tile.skirtMesh) {
-                        this.scene.add(tile.skirtMesh);
-                    }
-                    tile.added = true;
+                    // Wait for geometry to be ready before adding to scene
+                    tile.curvePromise.then(() => {
+                        this.scene.add(tile.mesh);
+                        if (tile.skirtMesh) {
+                            this.scene.add(tile.skirtMesh);
+                        }
+                        tile.added = true;
+                        this.refreshDebugGeometry(tile);
+                        setRenderOne(true);
+                    }).catch(error => {
+                        console.warn(`Failed to wait for geometry for pending ancestor tile ${key}:`, error);
+                    });
                     
-                    this.refreshDebugGeometry(tile);
-                    setRenderOne(true);
                     return tile;
                 }
             }
@@ -563,15 +591,19 @@ class QuadTreeMapTexture extends QuadTreeMap {
                     tile.usingParentData = true; // Mark as using ancestor data
                     tile.loaded = true;
                     
-                    // Add to scene immediately
-                    this.scene.add(tile.mesh);
-                    if (tile.skirtMesh) {
-                        this.scene.add(tile.skirtMesh);
-                    }
-                    tile.added = true;
+                    // Wait for geometry to be ready before adding to scene
+                    tile.curvePromise.then(() => {
+                        this.scene.add(tile.mesh);
+                        if (tile.skirtMesh) {
+                            this.scene.add(tile.skirtMesh);
+                        }
+                        tile.added = true;
+                        this.refreshDebugGeometry(tile);
+                        setRenderOne(true);
+                    }).catch(error => {
+                        console.warn(`Failed to wait for geometry for ancestor tile ${key}:`, error);
+                    });
                     
-                    this.refreshDebugGeometry(tile);
-                    setRenderOne(true);
                     return tile;
                 }
             }
@@ -582,14 +614,19 @@ class QuadTreeMapTexture extends QuadTreeMap {
             tile.updateWireframeMaterial();
             tile.loaded = false;
             
-            this.scene.add(tile.mesh);
-            if (tile.skirtMesh) {
-                this.scene.add(tile.skirtMesh);
-            }
-            tile.added = true;
+            // Wait for geometry to be ready before adding to scene
+            tile.curvePromise.then(() => {
+                this.scene.add(tile.mesh);
+                if (tile.skirtMesh) {
+                    this.scene.add(tile.skirtMesh);
+                }
+                tile.added = true;
+                this.refreshDebugGeometry(tile);
+                setRenderOne(true);
+            }).catch(error => {
+                console.warn(`Failed to wait for geometry for wireframe tile ${key}:`, error);
+            });
             
-            this.refreshDebugGeometry(tile);
-            setRenderOne(true);
             return tile;
         }
 
@@ -619,15 +656,19 @@ class QuadTreeMapTexture extends QuadTreeMap {
                     tile.needsHighResLoad = true; // Mark for high-res loading when visible
                     tile.loaded = true; // Consider it "loaded" with parent data
                     
-                    // Add to scene immediately - no waiting for texture load!
-                    this.scene.add(tile.mesh);
-                    if (tile.skirtMesh) {
-                        this.scene.add(tile.skirtMesh);
-                    }
-                    tile.added = true;
+                    // Wait for geometry to be ready before adding to scene
+                    tile.curvePromise.then(() => {
+                        this.scene.add(tile.mesh);
+                        if (tile.skirtMesh) {
+                            this.scene.add(tile.skirtMesh);
+                        }
+                        tile.added = true;
+                        this.refreshDebugGeometry(tile);
+                        setRenderOne(true);
+                    }).catch(error => {
+                        console.warn(`Failed to wait for geometry for parent data tile ${key}:`, error);
+                    });
                     
-                    this.refreshDebugGeometry(tile);
-                    setRenderOne(true);
                     return tile;
                 }
             }

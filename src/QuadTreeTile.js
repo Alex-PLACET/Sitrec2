@@ -2597,15 +2597,35 @@ export class QuadTreeTile {
 
                     // Only add to scene if not already added (parent data tiles are already in scene)
                     if (!this.added) {
-                        this.addAfterLoaded();
+                        // Wait for geometry to be ready before adding to scene
+                        if (this.curvePromise) {
+                            this.curvePromise.then(() => {
+                                if (this.map.scene) {
+                                    this.addAfterLoaded();
+                                    this.isLoading = false;
+                                    this.isCancelling = false;
+                                    this.updateDebugGeometry();
+                                }
+                            }).catch(() => {
+                                this.addAfterLoaded();
+                                this.isLoading = false;
+                                this.isCancelling = false;
+                                this.updateDebugGeometry();
+                            });
+                        } else {
+                            this.addAfterLoaded();
+                            this.isLoading = false;
+                            this.isCancelling = false;
+                            this.updateDebugGeometry();
+                        }
                     } else {
                         // Already in scene, just mark as loaded with high-res data
                         this.loaded = true;
+                        this.isLoading = false;
+                        this.isCancelling = false;
+                        this.updateDebugGeometry();
                     }
 
-                    this.isLoading = false; // Clear loading state
-                    this.isCancelling = false; // Clear cancelling state
-                    this.updateDebugGeometry(); // Update debug geometry to remove loading indicator
                     resolve(material)
                 }).catch((error) => {
                     // Even if material loading fails, mark tile as "loaded" to prevent infinite pending state
