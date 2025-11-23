@@ -296,6 +296,14 @@ export class CVideoAudioOnly extends CVideoAndAudio {
                             console.log(`[Audio] Restarting playback at offset=${offset.toFixed(4)}s (frame ${startFrame})`);
                         }
                         
+                        const currentTime = audioContext.currentTime;
+                        const fadeTime = 0.005;
+                        const targetGain = this.isMuted ? 0 : this.volume;
+                        
+                        gainNode.gain.cancelScheduledValues(currentTime);
+                        gainNode.gain.setValueAtTime(0.0001, currentTime);
+                        gainNode.gain.linearRampToValueAtTime(targetGain, currentTime + fadeTime);
+                        
                         bufferSource.start(0, offset);
                         
                         isPlaying = true;

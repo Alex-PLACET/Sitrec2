@@ -483,7 +483,16 @@ export class CAudioMp4Data {
             this.audioBufferSource.playbackRate.value = playbackRate;
             
             if (this.debug) console.log("Starting audio playback: currentFrame=", currentFrame, "offsetTime=", offsetTime.toFixed(3), "seconds, timeElapsed=", timeElapsed.toFixed(3), "originalFps=", originalFps, "playbackRate=", playbackRate);
-            this.audioBufferSource.start(this.audioContext.currentTime, offsetTime);
+            
+            const currentTime = this.audioContext.currentTime;
+            const fadeTime = 0.005;
+            const targetGain = this.isMuted ? 0 : this.volume;
+            
+            this.gainNode.gain.cancelScheduledValues(currentTime);
+            this.gainNode.gain.setValueAtTime(0.0001, currentTime);
+            this.gainNode.gain.linearRampToValueAtTime(targetGain, currentTime + fadeTime);
+            
+            this.audioBufferSource.start(currentTime, offsetTime);
             this.isBufferSourceStarted = true;
         } catch (e) {
             if (this.debug) console.warn("Error playing audio buffer:", e);
