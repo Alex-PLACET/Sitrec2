@@ -2597,29 +2597,12 @@ export class QuadTreeTile {
 
                     // Only add to scene if not already added (parent data tiles are already in scene)
                     if (!this.added) {
-                        // Wait for geometry to be ready before adding to scene
-                        if (this.curvePromise) {
-                            this.curvePromise.then(() => {
-                                if (this.map.scene) {
-                                    this.addAfterLoaded();
-                                    this.isLoading = false;
-                                    this.isCancelling = false;
-                                    this.updateDebugGeometry();
-                                }
-                            }).catch(() => {
-                                this.addAfterLoaded();
-                                this.isLoading = false;
-                                this.isCancelling = false;
-                                this.updateDebugGeometry();
-                            });
-                        } else {
-                            this.addAfterLoaded();
+                        this.addAfterLoadedWhenReady(() => {
                             this.isLoading = false;
                             this.isCancelling = false;
                             this.updateDebugGeometry();
-                        }
+                        });
                     } else {
-                        // Already in scene, just mark as loaded with high-res data
                         this.loaded = true;
                         this.isLoading = false;
                         this.isCancelling = false;
@@ -2647,25 +2630,38 @@ export class QuadTreeTile {
     }
 
     addAfterLoaded() {
-//        console.log(`addAfterLoaded: ${this.key()} - BEFORE: mesh.layers.mask=${this.mesh.layers.mask.toString(2)} (${this.mesh.layers.mask}), tileLayers=${this.tileLayers ? this.tileLayers.toString(2) : 'undefined'} (${this.tileLayers})`);
+        this.loaded = true;
 
-        this.loaded = true; // mark the tile as loaded
-
-        // Only add to scene if tileLayers > 0 (tile should be visible)
-        // tileLayers=0 means tile is loaded for data only (e.g., ancestor tiles for resampling)
         if (this.tileLayers > 0) {
-            this.map.scene.add(this.mesh); // add the mesh to the scene
+            this.map.scene.add(this.mesh);
             if (this.skirtMesh) {
-                this.map.scene.add(this.skirtMesh); // add the skirt mesh to the scene
+                this.map.scene.add(this.skirtMesh);
             }
-            this.added = true; // mark the tile as added to the scene
+            this.added = true;
 
-//            console.log(`addAfterLoaded: ${this.key()} - AFTER scene.add: mesh.layers.mask=${this.mesh.layers.mask.toString(2)} (${this.mesh.layers.mask}), tileLayers=${this.tileLayers ? this.tileLayers.toString(2) : 'undefined'} (${this.tileLayers})`);
-
-            // Apply current layer mask (use tileLayers which may have been combined from multiple views)
             this.map.setTileLayerMask(this, this.tileLayers);
+        }
+    }
 
-//            console.log(`addAfterLoaded: ${this.key()} - FINAL: mesh.layers.mask=${this.mesh.layers.mask.toString(2)} (${this.mesh.layers.mask}), tileLayers=${this.tileLayers ? this.tileLayers.toString(2) : 'undefined'} (${this.tileLayers})`);
+    addAfterLoadedWhenReady(callback) {
+        const addToScene = () => {
+            if (this.map.scene) {
+                this.addAfterLoaded();
+                if (callback) callback();
+            }
+        };
+
+        if (this.geometryReady) {
+            addToScene();
+        } else if (this.curvePromise) {
+            this.curvePromise.then(() => {
+                addToScene();
+            }).catch(() => {
+                this.addAfterLoaded();
+                if (callback) callback();
+            });
+        } else {
+            addToScene();
         }
     }
 
