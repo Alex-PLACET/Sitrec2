@@ -60,7 +60,6 @@ export class CAudioMp4Data {
                 if (this.debug) console.warn("AudioDecoder not supported");
                 return false;
             }
-            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
             return true;
         } catch (e) {
             if (this.debug) console.warn("Audio not supported:", e);
@@ -69,8 +68,8 @@ export class CAudioMp4Data {
     }
 
     async initializeAudio(demuxer) {
-        if (!this.audioContext || this.isInitialized) {
-            if (this.debug) console.log("Audio already initialized or no context");
+        if (this.isInitialized) {
+            if (this.debug) console.log("Audio already initialized");
             return;
         }
 
@@ -83,13 +82,11 @@ export class CAudioMp4Data {
 
             if (this.debug) console.log("Audio config:", audioConfig);
 
-            // Check if the codec is supported
             if (!audioConfig.codec) {
                 if (this.debug) console.warn("No codec specified in audio config");
                 return;
             }
 
-            // Check codec support before trying to configure
             try {
                 const support = await AudioDecoder.isConfigSupported(audioConfig);
                 if (!support.supported) {
@@ -102,6 +99,12 @@ export class CAudioMp4Data {
                 return;
             }
 
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            this.audioContext = new AudioContextClass({
+                sampleRate: audioConfig.sampleRate
+            });
+            if (this.debug) console.log("AudioContext created with sampleRate:", audioConfig.sampleRate);
+
             this.audioDecoder = new AudioDecoder({
                 output: audioData => {
                     if (this.debug) console.log("Audio frame decoded, numberOfFrames:", audioData.numberOfFrames);
@@ -109,8 +112,6 @@ export class CAudioMp4Data {
                 },
                 error: e => {
                     if (this.debug) console.error("Audio decoder error:", e);
-                    // Don't show error dialog for audio issues, just log them
-                    // This allows video to continue playing even if audio fails
                 }
             });
 
@@ -123,7 +124,6 @@ export class CAudioMp4Data {
             if (this.debug) console.log("Audio initialized successfully");
         } catch (e) {
             if (this.debug) console.error("Error initializing audio:", e);
-            // Don't show error dialog, allow video to continue without audio
         }
     }
 
