@@ -2,10 +2,8 @@
 // base on an input camera node
 
 import {CNodeViewUI} from "./CNodeViewUI";
-import {getCompassHeading, getLocalNorthVector, getLocalUpVector} from "../SphericalMath";
-import {Vector3} from "three";
+import {getCompassHeading} from "../SphericalMath";
 import {MV3} from "../threeUtils";
-import {NodeMan} from "../Globals";
 
 export class   CNodeMQ9UI extends CNodeViewUI {
 
@@ -49,8 +47,8 @@ export class   CNodeMQ9UI extends CNodeViewUI {
         c.textAlign = 'center';
         c.textBaseline = 'middle';
 
-        const x = this.rx_square(this.cx,this.cy-27,heading);
-        const y = this.ry(this.cx,this.cy-27,heading);
+        const x = this.rx_square(this.cx,this.cy+27,heading);
+        const y = this.ry(this.cx,this.cy+27,heading);
 
         c.fillText('N', x, y);
 
