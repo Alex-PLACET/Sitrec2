@@ -49,6 +49,76 @@ if ($user_id == 0 /*|| !in_array(9,$user->secondary_group_ids)*/) {
     exit("Internal Server Error");
 }
 
+if (isset($_GET['action']) && $_GET['action'] === 'getPresignedUrl') {
+    header('Content-Type: application/json');
+    
+    $input = file_get_contents('php://input');
+    $requestData = json_decode($input, true);
+    
+    if (!isset($requestData['filename'])) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Filename not provided']);
+        exit();
+    }
+    
+    $fileName = basename($requestData['filename']);
+    $version = isset($requestData['version']) ? basename($requestData['version']) : null;
+    
+    $fileName = preg_replace('/[^\w\s\.\-\(\)]/', '_', $fileName);
+    
+    if (!isSafeName($fileName) || ($version && !isSafeName($version))) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Invalid filename or version']);
+        exit();
+    }
+    
+    if (!$useAWS) {
+        http_response_code(400);
+        echo json_encode(['error' => 'S3 not enabled']);
+        exit();
+    }
+    
+    $s3 = startS3();
+    
+    $extension = pathinfo($fileName, PATHINFO_EXTENSION);
+    $baseName = pathinfo($fileName, PATHINFO_FILENAME);
+    
+    if ($version) {
+        $newFileName = $version;
+    } else {
+        $newFileName = $baseName . '-' . uniqid() . '.' . $extension;
+    }
+    
+    $s3Path = $user_id . '/' . $newFileName;
+    if ($version) {
+        $s3Path = $user_id . '/' . $fileName . '/' . $newFileName;
+    }
+    
+    try {
+        $cmd = $s3->getCommand('PutObject', [
+            'Bucket' => $aws['bucket'],
+            'Key' => $s3Path,
+            'ACL' => $aws['acl']
+        ]);
+        
+        $request = $s3->createPresignedRequest($cmd, '+15 minutes');
+        
+        $presignedUrl = (string) $request->getUri();
+        
+        $objectUrl = 'https://' . $aws['bucket'] . '.s3.' . $aws['region'] . '.amazonaws.com/' . $s3Path;
+        
+        echo json_encode([
+            'presignedUrl' => $presignedUrl,
+            'objectUrl' => $objectUrl
+        ]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['error' => 'Failed to generate presigned URL: ' . $e->getMessage()]);
+    }
+    
+    exit();
+}
+
 $isLocal = false;
 
 //if ($_SERVER['HTTP_HOST'] === 'localhost' || $_SERVER['SERVER_NAME'] === 'localhost') {

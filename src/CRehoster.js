@@ -1,6 +1,7 @@
 import {assert} from "./assert.js";
 import {SITREC_SERVER} from "./configUtils";
 import {showError} from "./showError";
+import {parseBoolean} from "./utils";
 
 
 export class CRehoster {
@@ -14,64 +15,128 @@ export class CRehoster {
     //
     async rehostFilePromise(filename, data, version) {
         assert(filename !== undefined, "rehostFile needs a filename")
-        try {
-            let formData = new FormData();
-            formData.append('fileContent', new Blob([data]));
-            formData.append('filename', filename);
-            if (version !== undefined) {
-                // if we pass in a version number, then the backend (rehost.php) will save the file to
-                // a folder with the file name, and the version within that folder
-                // it will use the extension of the filename for the version
-                formData.append('version', version);
+
+        const PRESIGNED_SIZE_LIMIT = 100 * 1024 * 1024;
+        const usePresignedUrl = parseBoolean(process.env.SAVE_TO_S3) && 
+                                parseBoolean(process.env.USE_S3_PRESIGNED_URLS) &&
+                                data.byteLength <= PRESIGNED_SIZE_LIMIT;
+
+        if (usePresignedUrl) {
+            try {
+                let requestData = {
+                    filename: filename,
+                };
+                if (version !== undefined) {
+                    requestData.version = version;
+                }
+
+                const serverURL = SITREC_SERVER + 'rehost.php?action=getPresignedUrl&unique=' + Date.now();
+
+                let response = await fetch(serverURL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestData),
+                    cache: 'no-store'
+                });
+
+                if (!response.ok) {
+                    throw new Error('Server responded with ' + response.status);
+                }
+
+                let presignedData = await response.json();
+                const { presignedUrl, objectUrl } = presignedData;
+
+                const uploadResponse = await fetch(presignedUrl, {
+                    method: 'PUT',
+                    body: data,
+                    headers: {
+                        'Content-Type': 'application/octet-stream',
+                    },
+                    cache: 'no-store'
+                });
+
+                if (!uploadResponse.ok) {
+                    throw new Error('S3 upload failed with ' + uploadResponse.status);
+                }
+
+                console.log('File uploaded to S3:', objectUrl);
+
+                const resultUrl = objectUrl.replace(/ /g, "%20");
+
+                console.log(`  Sent: ${filename} (version: ${version || 'none'})`);
+                console.log(`  Received: ${resultUrl}`);
+
+                return resultUrl;
+            } catch (error) {
+                showError('Error uploading file to S3:', error);
+                throw new Error("S3 upload problem, maybe not logged in?");
+            }
+        } else {
+
+
+            try {
+                let formData = new FormData();
+                formData.append('fileContent', new Blob([data]));
+                formData.append('filename', filename);
+                if (version !== undefined) {
+                    // if we pass in a version number, then the backend (rehost.php) will save the file to
+                    // a folder with the file name, and the version within that folder
+                    // it will use the extension of the filename for the version
+                    formData.append('version', version);
+                }
+
+                const serverURL = SITREC_SERVER + 'rehost.php?unique=' + Date.now();
+
+                let response = await fetch(serverURL, {
+                    method: 'POST',
+                    body: formData,  // Send FormData with file and filename
+                    cache: 'no-store'  // Ensure we never cache POST responses
+                });
+
+                if (!response.ok) {
+                    throw new Error('Server responded with ' + response.status);
+                }
+
+                let resultUrl = await response.text();
+
+                // // Remove existing instance of resultUrl, if present
+                // // this will ensure we load the files in the same order, but each file just once (the most recent)
+                // // e.g. A,B,C,A will be B,C,A
+                //
+                // const index = this.rehostedFiles.indexOf(resultUrl);
+                // if (index > -1) {
+                //     this.rehostedFiles.splice(index, 1);
+                // }
+                //
+                // // Push the new resultUrl
+                // this.rehostedFiles.push(resultUrl);
+
+
+                console.log('File uploaded:', resultUrl);
+
+                // // copy the URL to the clipboard
+                // navigator.clipboard.writeText(resultUrl).then(() => {
+                //     console.log('URL copied to clipboard:', resultUrl);
+                // })
+
+                // make resultUrl more shareable by escaping any space with %20
+                resultUrl = resultUrl.replace(/ /g, "%20");
+
+                // Diagnostic check: log the returned URL vs what was sent to detect caching issues
+                console.log(`  Sent: ${filename} (version: ${version || 'none'})`);
+                console.log(`  Received: ${resultUrl}`);
+
+                return resultUrl
+            } catch (error) {
+                showError('Error uploading file:', error);
+
+                throw new Error("Upload problem, maybe not logged in?");
             }
 
-            const serverURL = SITREC_SERVER +'rehost.php?unique=' + Date.now();
-
-            let response = await fetch(serverURL, {
-                method: 'POST',
-                body: formData,  // Send FormData with file and filename
-                cache: 'no-store'  // Ensure we never cache POST responses
-            });
-
-            if (!response.ok) {
-                throw new Error('Server responded with ' + response.status);
-            }
-
-            let resultUrl = await response.text();
-
-            // // Remove existing instance of resultUrl, if present
-            // // this will ensure we load the files in the same order, but each file just once (the most recent)
-            // // e.g. A,B,C,A will be B,C,A
-            //
-            // const index = this.rehostedFiles.indexOf(resultUrl);
-            // if (index > -1) {
-            //     this.rehostedFiles.splice(index, 1);
-            // }
-            //
-            // // Push the new resultUrl
-            // this.rehostedFiles.push(resultUrl);
-
-
-            console.log('File uploaded:', resultUrl);
-
-            // // copy the URL to the clipboard
-            // navigator.clipboard.writeText(resultUrl).then(() => {
-            //     console.log('URL copied to clipboard:', resultUrl);
-            // })
-
-            // make resultUrl more shareable by escaping any space with %20
-            resultUrl = resultUrl.replace(/ /g, "%20");
-            
-            // Diagnostic check: log the returned URL vs what was sent to detect caching issues
-            console.log(`  Sent: ${filename} (version: ${version || 'none'})`);
-            console.log(`  Received: ${resultUrl}`);
-
-            return resultUrl
-        } catch (error) {
-            showError('Error uploading file:', error);
-
-            throw new Error("Upload problem, maybe not logged in?");
         }
+
     }
 
     async deleteFilePromise(filename) {
