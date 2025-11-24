@@ -914,7 +914,6 @@ export function findStep(range, maxSteps = 10, steps = [1,2,3,4, 5]) {
 
 // Function to globally disable all input
 export function disableAllInput(message) {
-    // Create an overlay if it doesn't exist
     if (!document.getElementById('input-blocker')) {
         const overlay = document.createElement('div');
         overlay.id = 'input-blocker';
@@ -924,24 +923,90 @@ export function disableAllInput(message) {
         overlay.style.width = '100vw';
         overlay.style.height = '100vh';
         overlay.style.display = 'flex';
-        overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.5)'; // Fade 50% for visual feedback
-        overlay.style.zIndex = 20000; // High z-index to cover everything
-        overlay.style.pointerEvents = 'auto'; // Block interactions
-        overlay.style.fontSize = '48px';
+        overlay.style.flexDirection = 'column';
+        overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+        overlay.style.zIndex = 20000;
+        overlay.style.pointerEvents = 'auto';
         overlay.style.justifyContent = 'center';
         overlay.style.alignItems = 'center';
-        overlay.style.color = '#fff'; // Text color
+        overlay.style.color = '#fff';
         overlay.style.transition = 'background-color 0.2s, opacity 5s';
-        overlay.innerHTML = message;
+        
+        const messageDiv = document.createElement('div');
+        messageDiv.id = 'input-blocker-message';
+        messageDiv.style.fontSize = '48px';
+        messageDiv.style.marginBottom = '20px';
+        messageDiv.textContent = message;
+        
+        const filenameDiv = document.createElement('div');
+        filenameDiv.id = 'input-blocker-filename';
+        filenameDiv.style.fontSize = '24px';
+        filenameDiv.style.marginBottom = '20px';
+        filenameDiv.style.display = 'none';
+        
+        const progressContainer = document.createElement('div');
+        progressContainer.id = 'input-blocker-progress-container';
+        progressContainer.style.display = 'none';
+        progressContainer.style.width = '400px';
+        progressContainer.style.flexDirection = 'column';
+        progressContainer.style.alignItems = 'center';
+        
+        const progressBarBg = document.createElement('div');
+        progressBarBg.style.width = '100%';
+        progressBarBg.style.height = '30px';
+        progressBarBg.style.backgroundColor = 'rgba(255, 255, 255, 0.3)';
+        progressBarBg.style.borderRadius = '15px';
+        progressBarBg.style.overflow = 'hidden';
+        progressBarBg.style.marginBottom = '10px';
+        
+        const progressBar = document.createElement('div');
+        progressBar.id = 'input-blocker-progress-bar';
+        progressBar.style.width = '0%';
+        progressBar.style.height = '100%';
+        progressBar.style.backgroundColor = '#4CAF50';
+        progressBar.style.transition = 'width 0.3s ease';
+        
+        const progressText = document.createElement('div');
+        progressText.id = 'input-blocker-progress-text';
+        progressText.style.fontSize = '18px';
+        progressText.style.marginTop = '10px';
+        
+        progressBarBg.appendChild(progressBar);
+        progressContainer.appendChild(progressBarBg);
+        progressContainer.appendChild(progressText);
+        
+        overlay.appendChild(messageDiv);
+        overlay.appendChild(filenameDiv);
+        overlay.appendChild(progressContainer);
+        
         document.body.appendChild(overlay);
     }
 
-    // Add global event blockers
     document.addEventListener('keydown', preventDefaultHandler, true);
     document.addEventListener('keyup', preventDefaultHandler, true);
     document.addEventListener('mousedown', preventDefaultHandler, true);
     document.addEventListener('mouseup', preventDefaultHandler, true);
     document.addEventListener('click', preventDefaultHandler, true);
+}
+
+export function updateUploadProgress(filename, uploadedBytes, totalBytes) {
+    const filenameDiv = document.getElementById('input-blocker-filename');
+    const progressContainer = document.getElementById('input-blocker-progress-container');
+    const progressBar = document.getElementById('input-blocker-progress-bar');
+    const progressText = document.getElementById('input-blocker-progress-text');
+    
+    if (filenameDiv && progressContainer && progressBar && progressText) {
+        filenameDiv.textContent = filename;
+        filenameDiv.style.display = 'block';
+        progressContainer.style.display = 'flex';
+        
+        const percentage = (uploadedBytes / totalBytes * 100).toFixed(1);
+        progressBar.style.width = percentage + '%';
+        
+        const uploadedMB = (uploadedBytes / 1024 / 1024).toFixed(2);
+        const totalMB = (totalBytes / 1024 / 1024).toFixed(2);
+        progressText.textContent = `${uploadedMB} MB / ${totalMB} MB (${percentage}%)`;
+    }
 }
 
 // Function to enable input

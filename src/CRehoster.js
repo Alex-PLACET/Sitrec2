@@ -1,7 +1,7 @@
 import {assert} from "./assert.js";
 import {SITREC_SERVER} from "./configUtils";
 import {showError} from "./showError";
-import {parseBoolean} from "./utils";
+import {parseBoolean, updateUploadProgress} from "./utils";
 
 
 export class CRehoster {
@@ -11,7 +11,7 @@ export class CRehoster {
         this.rehostPromises = [];
     }
 
-    async uploadPartWithXHR(blob, url, partNumber, totalParts) {
+    async uploadPartWithXHR(blob, url, partNumber, totalParts, filename, totalFileSize, previouslyUploadedBytes) {
         return new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest();
             xhr.open('PUT', url);
@@ -20,6 +20,9 @@ export class CRehoster {
                 if (evt.lengthComputable) {
                     const percentComplete = (evt.loaded / evt.total * 100).toFixed(1);
                     console.log(`  Part ${partNumber}/${totalParts}: ${percentComplete}% uploaded`);
+                    
+                    const totalUploaded = previouslyUploadedBytes + evt.loaded;
+                    updateUploadProgress(filename, totalUploaded, totalFileSize);
                 }
             };
             
@@ -119,6 +122,8 @@ export class CRehoster {
                     console.log(`[Multipart Upload] Initiated with uploadId: ${uploadId}`);
 
                     const uploadedParts = [];
+                    let cumulativeUploadedBytes = 0;
+                    
                     for (let i = 0; i < totalParts; i++) {
                         const start = i * CHUNK_SIZE;
                         const end = Math.min(start + CHUNK_SIZE, data.byteLength);
@@ -126,8 +131,17 @@ export class CRehoster {
                         
                         console.log(`[Multipart Upload] Uploading part ${i + 1}/${totalParts} (${(chunk.byteLength / 1024 / 1024).toFixed(2)} MB)`);
                         
-                        const part = await this.uploadPartWithXHR(chunk, uploadUrls[i], i + 1, totalParts);
+                        const part = await this.uploadPartWithXHR(
+                            chunk, 
+                            uploadUrls[i], 
+                            i + 1, 
+                            totalParts, 
+                            filename, 
+                            data.byteLength, 
+                            cumulativeUploadedBytes
+                        );
                         uploadedParts.push(part);
+                        cumulativeUploadedBytes += chunk.byteLength;
                         
                         console.log(`[Multipart Upload] Part ${i + 1}/${totalParts} completed (ETag: ${part.ETag.substring(0, 8)}...)`);
                     }
@@ -175,18 +189,28 @@ export class CRehoster {
                 let presignedData = await response.json();
                 const { presignedUrl, objectUrl } = presignedData;
 
-                const uploadResponse = await fetch(presignedUrl, {
-                    method: 'PUT',
-                    body: data,
-                    headers: {
-                        'Content-Type': 'application/octet-stream',
-                    },
-                    cache: 'no-store'
+                await new Promise((resolve, reject) => {
+                    const xhr = new XMLHttpRequest();
+                    xhr.open('PUT', presignedUrl);
+                    xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+                    
+                    xhr.upload.onprogress = (evt) => {
+                        if (evt.lengthComputable) {
+                            updateUploadProgress(filename, evt.loaded, evt.total);
+                        }
+                    };
+                    
+                    xhr.onload = () => {
+                        if (xhr.status === 200) {
+                            resolve();
+                        } else {
+                            reject(new Error(`S3 upload failed with ${xhr.status}`));
+                        }
+                    };
+                    
+                    xhr.onerror = () => reject(new Error('Network error during upload'));
+                    xhr.send(data);
                 });
-
-                if (!uploadResponse.ok) {
-                    throw new Error('S3 upload failed with ' + uploadResponse.status);
-                }
 
                 console.log('File uploaded to S3:', objectUrl);
 
@@ -208,54 +232,41 @@ export class CRehoster {
                 formData.append('fileContent', new Blob([data]));
                 formData.append('filename', filename);
                 if (version !== undefined) {
-                    // if we pass in a version number, then the backend (rehost.php) will save the file to
-                    // a folder with the file name, and the version within that folder
-                    // it will use the extension of the filename for the version
                     formData.append('version', version);
                 }
 
                 const serverURL = SITREC_SERVER + 'rehost.php?unique=' + Date.now();
 
-                let response = await fetch(serverURL, {
-                    method: 'POST',
-                    body: formData,  // Send FormData with file and filename
-                    cache: 'no-store'  // Ensure we never cache POST responses
+                const resultUrl = await new Promise((resolve, reject) => {
+                    const xhr = new XMLHttpRequest();
+                    xhr.open('POST', serverURL);
+                    
+                    xhr.upload.onprogress = (evt) => {
+                        if (evt.lengthComputable) {
+                            updateUploadProgress(filename, evt.loaded, evt.total);
+                        }
+                    };
+                    
+                    xhr.onload = () => {
+                        if (xhr.status === 200) {
+                            resolve(xhr.responseText);
+                        } else {
+                            reject(new Error(`Server responded with ${xhr.status}`));
+                        }
+                    };
+                    
+                    xhr.onerror = () => reject(new Error('Network error during upload'));
+                    xhr.send(formData);
                 });
-
-                if (!response.ok) {
-                    throw new Error('Server responded with ' + response.status);
-                }
-
-                let resultUrl = await response.text();
-
-                // // Remove existing instance of resultUrl, if present
-                // // this will ensure we load the files in the same order, but each file just once (the most recent)
-                // // e.g. A,B,C,A will be B,C,A
-                //
-                // const index = this.rehostedFiles.indexOf(resultUrl);
-                // if (index > -1) {
-                //     this.rehostedFiles.splice(index, 1);
-                // }
-                //
-                // // Push the new resultUrl
-                // this.rehostedFiles.push(resultUrl);
-
 
                 console.log('File uploaded:', resultUrl);
 
-                // // copy the URL to the clipboard
-                // navigator.clipboard.writeText(resultUrl).then(() => {
-                //     console.log('URL copied to clipboard:', resultUrl);
-                // })
+                const escapedUrl = resultUrl.replace(/ /g, "%20");
 
-                // make resultUrl more shareable by escaping any space with %20
-                resultUrl = resultUrl.replace(/ /g, "%20");
-
-                // Diagnostic check: log the returned URL vs what was sent to detect caching issues
                 console.log(`  Sent: ${filename} (version: ${version || 'none'})`);
-                console.log(`  Received: ${resultUrl}`);
+                console.log(`  Received: ${escapedUrl}`);
 
-                return resultUrl
+                return escapedUrl;
             } catch (error) {
                 showError('Error uploading file:', error);
 
