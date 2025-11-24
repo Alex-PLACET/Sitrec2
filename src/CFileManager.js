@@ -1018,10 +1018,24 @@ export class CFileManager extends CManager {
                     return fs.promises.readFile(filename);
                 });
             } else {
+                // URL-encode the path components (especially filenames with spaces)
+                // Split URL into base and query string if present
+                const [urlBase, queryString] = filename.split('?');
+                
+                // Encode each path segment while preserving slashes
+                const encodedUrlBase = urlBase.split('/').map(segment => {
+                    // Don't encode protocol part (http:, https:) or empty segments
+                    if (segment.endsWith(':') || segment === '') return segment;
+                    return encodeURIComponent(segment);
+                }).join('/');
+                
+                // Reconstruct with query string if it existed
+                const encodedFilename = queryString ? `${encodedUrlBase}?${queryString}` : encodedUrlBase;
+                
                 // add a version string to the filename, so we can force a reload when a new version is deployed
                 // the filename is the URL to the file, so we can just add a query string
                 // unless it already has one, in which case we add a &v=1
-                const versionExtension = (filename.includes("?") ? "&" : "?") + "v=1" + versionString;
+                const versionExtension = (encodedFilename.includes("?") ? "&" : "?") + "v=1" + versionString;
                 
                 // Create AbortController for this fetch and register it
                 const fetchController = new AbortController();
@@ -1032,7 +1046,7 @@ export class CFileManager extends CManager {
                 );
                 
                 // Use custom fetch wrapper that supports File System Access API
-                bufferPromise = fileSystemFetch(filename + versionExtension, { signal: fetchController.signal })
+                bufferPromise = fileSystemFetch(encodedFilename + versionExtension, { signal: fetchController.signal })
                 .then(response => {
                     if (!response.ok) {
                         throw new Error('Network response was not ok');
