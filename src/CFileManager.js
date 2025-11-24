@@ -1021,13 +1021,20 @@ export class CFileManager extends CManager {
                 // URL-encode the path components (especially filenames with spaces)
                 // Split URL into base and query string if present
                 const [urlBase, queryString] = filename.split('?');
-                
-                // Encode each path segment while preserving slashes
-                const encodedUrlBase = urlBase.split('/').map(segment => {
-                    // Don't encode protocol part (http:, https:) or empty segments
-                    if (segment.endsWith(':') || segment === '') return segment;
-                    return encodeURIComponent(segment);
-                }).join('/');
+
+
+                let encodedUrlBase = urlBase;
+
+                // WE DON'T DO THIS AS IT MESSES WITH KNOWN GOOD URLS ON S3
+                // // Encode each path segment while preserving slashes
+                // encodedUrlBase = urlBase.split('/').map(segment => {
+                //     // Don't encode protocol part (http:, https:) or empty segments
+                //     if (segment.endsWith(':') || segment === '') return segment;
+                //     return encodeURIComponent(segment);
+                // }).join('/');
+
+
+
                 
                 // Reconstruct with query string if it existed
                 const encodedFilename = queryString ? `${encodedUrlBase}?${queryString}` : encodedUrlBase;
