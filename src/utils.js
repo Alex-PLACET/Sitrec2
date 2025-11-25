@@ -989,6 +989,24 @@ export function disableAllInput(message) {
     document.addEventListener('click', preventDefaultHandler, true);
 }
 
+export function initUploadProgress(filename, totalBytes) {
+    const filenameDiv = document.getElementById('input-blocker-filename');
+    const progressContainer = document.getElementById('input-blocker-progress-container');
+    const progressBar = document.getElementById('input-blocker-progress-bar');
+    const progressText = document.getElementById('input-blocker-progress-text');
+    
+    if (filenameDiv && progressContainer && progressBar && progressText) {
+        filenameDiv.textContent = filename;
+        filenameDiv.style.display = 'block';
+        progressContainer.style.display = 'flex';
+        
+        progressBar.style.width = '0%';
+        
+        const totalMB = (totalBytes / 1024 / 1024).toFixed(2);
+        progressText.textContent = `0.00 MB / ${totalMB} MB (0.0%)`;
+    }
+}
+
 export function updateUploadProgress(filename, uploadedBytes, totalBytes, speedMbps) {
     const filenameDiv = document.getElementById('input-blocker-filename');
     const progressContainer = document.getElementById('input-blocker-progress-container');

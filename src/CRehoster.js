@@ -1,7 +1,7 @@
 import {assert} from "./assert.js";
 import {SITREC_SERVER} from "./configUtils";
 import {showError} from "./showError";
-import {parseBoolean, updateUploadProgress} from "./utils";
+import {initUploadProgress, parseBoolean, updateUploadProgress} from "./utils";
 
 
 export class CRehoster {
@@ -9,51 +9,6 @@ export class CRehoster {
     constructor() {
         // this.rehostedFiles = [];
         this.rehostPromises = [];
-    }
-
-    async uploadPartWithXHR(blob, url, partNumber, totalParts, filename, totalFileSize, previouslyUploadedBytes, uploadStartTime) {
-        return new Promise((resolve, reject) => {
-            const xhr = new XMLHttpRequest();
-            xhr.open('PUT', url);
-            
-            let lastLoggedPercent = -1;
-            
-            xhr.upload.onprogress = (evt) => {
-                if (evt.lengthComputable) {
-                    const totalUploaded = previouslyUploadedBytes + evt.loaded;
-                    
-                    const elapsedSeconds = (Date.now() - uploadStartTime) / 1000;
-                    const speedMbps = elapsedSeconds > 0 ? (totalUploaded * 8 / 1000000) / elapsedSeconds : 0;
-                    
-                    updateUploadProgress(filename, totalUploaded, totalFileSize, speedMbps);
-                    
-                    const percentComplete = Math.floor(evt.loaded / evt.total * 100);
-                    if (percentComplete !== lastLoggedPercent && percentComplete % 10 === 0) {
-                        console.log(`  Part ${partNumber}/${totalParts}: ${percentComplete}% uploaded`);
-                        lastLoggedPercent = percentComplete;
-                    }
-                }
-            };
-            
-            xhr.onload = () => {
-                if (xhr.status === 200) {
-                    const etag = xhr.getResponseHeader('ETag');
-                    if (etag) {
-                        resolve({
-                            ETag: etag.replace(/"/g, ''),
-                            PartNumber: partNumber
-                        });
-                    } else {
-                        reject(new Error('No ETag in response'));
-                    }
-                } else {
-                    reject(new Error(`Upload failed with status ${xhr.status}`));
-                }
-            };
-            
-            xhr.onerror = () => reject(new Error('Network error during upload'));
-            xhr.send(blob);
-        });
     }
 
     async initiateMultipartUpload(filename, version, totalParts) {
@@ -117,45 +72,114 @@ export class CRehoster {
         assert(filename !== undefined, "rehostFile needs a filename")
 
         if (parseBoolean(process.env.SAVE_TO_S3) && parseBoolean(process.env.USE_S3_PRESIGNED_URLS)) {
-            const MULTIPART_THRESHOLD = 100 * 1024 * 1024;
-            const CHUNK_SIZE = 10 * 1024 * 1024;
+            const MULTIPART_THRESHOLD = (parseInt(process.env.S3_MULTIPART_THRESHOLD_MB) || 100) * 1024 * 1024;
+            const CHUNK_SIZE = (parseInt(process.env.S3_CHUNK_SIZE_MB) || 16) * 1024 * 1024;
+            const PARALLEL_UPLOADS = parseInt(process.env.S3_PARALLEL_UPLOADS) || 8;
 
             if (data.byteLength > MULTIPART_THRESHOLD) {
                 console.log(`[Multipart Upload] Starting upload for ${filename} (${(data.byteLength / 1024 / 1024).toFixed(2)} MB)`);
                 
+                initUploadProgress(filename, data.byteLength);
+                
                 try {
                     const uploadStartTime = Date.now();
                     const totalParts = Math.ceil(data.byteLength / CHUNK_SIZE);
-                    console.log(`[Multipart Upload] File will be split into ${totalParts} parts of ~${CHUNK_SIZE / 1024 / 1024}MB each`);
+                    console.log(`[Multipart Upload] File will be split into ${totalParts} parts of ~${CHUNK_SIZE / 1024 / 1024}MB each, ${PARALLEL_UPLOADS} concurrent uploads`);
 
                     const { uploadId, uploadUrls, objectUrl } = await this.initiateMultipartUpload(filename, version, totalParts);
                     console.log(`[Multipart Upload] Initiated with uploadId: ${uploadId}`);
 
-                    const uploadedParts = [];
-                    let cumulativeUploadedBytes = 0;
-                    
-                    for (let i = 0; i < totalParts; i++) {
+                    const uploadedBytesPerPart = new Array(totalParts).fill(0);
+                    const updateProgress = () => {
+                        const totalUploaded = uploadedBytesPerPart.reduce((sum, bytes) => sum + bytes, 0);
+                        const elapsedSeconds = (Date.now() - uploadStartTime) / 1000;
+                        const speedMbps = elapsedSeconds > 0 ? (totalUploaded * 8 / 1000000) / elapsedSeconds : 0;
+                        updateUploadProgress(filename, totalUploaded, data.byteLength, speedMbps);
+                    };
+
+                    const uploadPart = async (i) => {
                         const start = i * CHUNK_SIZE;
                         const end = Math.min(start + CHUNK_SIZE, data.byteLength);
                         const chunk = data.slice(start, end);
                         
-                        console.log(`[Multipart Upload] Uploading part ${i + 1}/${totalParts} (${(chunk.byteLength / 1024 / 1024).toFixed(2)} MB)`);
+                        console.log(`[Multipart Upload] Starting part ${i + 1}/${totalParts} (${(chunk.byteLength / 1024 / 1024).toFixed(2)} MB)`);
                         
-                        const part = await this.uploadPartWithXHR(
-                            chunk, 
-                            uploadUrls[i], 
-                            i + 1, 
-                            totalParts, 
-                            filename, 
-                            data.byteLength, 
-                            cumulativeUploadedBytes,
-                            uploadStartTime
-                        );
-                        uploadedParts.push(part);
-                        cumulativeUploadedBytes += chunk.byteLength;
-                        
-                        console.log(`[Multipart Upload] Part ${i + 1}/${totalParts} completed (ETag: ${part.ETag.substring(0, 8)}...)`);
+                        return new Promise((resolve, reject) => {
+                            const xhr = new XMLHttpRequest();
+                            xhr.open('PUT', uploadUrls[i]);
+                            
+                            let lastLoggedPercent = -1;
+                            let hasLoggedAny = false;
+                            
+                            xhr.upload.onprogress = (evt) => {
+                                if (evt.lengthComputable) {
+                                    uploadedBytesPerPart[i] = evt.loaded;
+                                    updateProgress();
+                                    
+                                    const percentComplete = Math.floor(evt.loaded / evt.total * 100);
+                                    if (!hasLoggedAny || (percentComplete !== lastLoggedPercent && percentComplete % 5 === 0)) {
+                                        console.log(`  Part ${i + 1}/${totalParts}: ${percentComplete}%`);
+                                        lastLoggedPercent = percentComplete;
+                                        hasLoggedAny = true;
+                                    }
+                                }
+                            };
+                            
+                            xhr.onload = () => {
+                                if (xhr.status === 200) {
+                                    const etag = xhr.getResponseHeader('ETag');
+                                    if (etag) {
+                                        uploadedBytesPerPart[i] = chunk.byteLength;
+                                        updateProgress();
+                                        console.log(`[Multipart Upload] Part ${i + 1}/${totalParts} completed (ETag: ${etag.substring(1, 9)}...)`);
+                                        resolve({
+                                            ETag: etag.replace(/"/g, ''),
+                                            PartNumber: i + 1
+                                        });
+                                    } else {
+                                        reject(new Error('No ETag in response'));
+                                    }
+                                } else {
+                                    reject(new Error(`Upload failed with status ${xhr.status}`));
+                                }
+                            };
+                            
+                            xhr.onerror = () => reject(new Error('Network error during upload'));
+                            xhr.send(chunk);
+                        });
+                    };
+
+                    const uploadQueue = [];
+                    for (let i = 0; i < totalParts; i++) {
+                        uploadQueue.push(i);
                     }
+                    
+                    const uploadedParts = [];
+                    const activeUploads = new Set();
+                    
+                    const processQueue = async () => {
+                        while (uploadQueue.length > 0 || activeUploads.size > 0) {
+                            while (activeUploads.size < PARALLEL_UPLOADS && uploadQueue.length > 0) {
+                                const partIndex = uploadQueue.shift();
+                                const uploadPromise = uploadPart(partIndex).then(result => {
+                                    activeUploads.delete(uploadPromise);
+                                    uploadedParts.push(result);
+                                    return result;
+                                }).catch(error => {
+                                    activeUploads.delete(uploadPromise);
+                                    throw error;
+                                });
+                                activeUploads.add(uploadPromise);
+                            }
+                            
+                            if (activeUploads.size > 0) {
+                                await Promise.race(activeUploads);
+                            }
+                        }
+                    };
+                    
+                    await processQueue();
+                    uploadedParts.sort((a, b) => a.PartNumber - b.PartNumber);
 
                     console.log(`[Multipart Upload] All parts uploaded, completing multipart upload...`);
                     const result = await this.completeMultipartUpload(filename, version, uploadId, uploadedParts);
@@ -174,6 +198,8 @@ export class CRehoster {
                 }
             }
 
+            initUploadProgress(filename, data.byteLength);
+            
             try {
                 let requestData = {
                     filename: filename,
@@ -241,6 +267,7 @@ export class CRehoster {
             }
         } else {
 
+            initUploadProgress(filename, data.byteLength);
 
             try {
                 let formData = new FormData();
