@@ -34,6 +34,7 @@ import {asyncOperationRegistry} from "./AsyncOperationRegistry";
 import {ECEFToLLAVD_Sphere, EUSToECEF} from "./LLA-ECEF-ENU";
 import {V3} from "./threeUtils";
 import {isAudioOnlyFormat} from "./AudioFormats";
+import {isFeaturesCSV} from "./ParseFeaturesCSV";
 
 
 // The file manager is a singleton that manages all the files
@@ -1600,14 +1601,9 @@ export function detectCSVType(csv) {
         return "FOV"
     }
 
-    // features are just lat,lon, alt, lablel
-    if ((csv[0][0].toLowerCase() === "latitude" || csv[0][0].toLowerCase() === "lat")
-        && (csv[0][1].toLowerCase() === "longitude" || csv[0][1].toLowerCase() === "lon" || csv[0][1].toLowerCase() === "long")
-        && (csv[0][2].toLowerCase() === "altitude" || csv[0][2].toLowerCase() === "alt")
-        && (csv[0][3].toLowerCase() === "label" || csv[0][3].toLowerCase() === "name")) {
+    if (isFeaturesCSV(csv)) {
         return "FEATURES"
     }
-
 
     // only give an error warning for custom, as some sitches have custom code to use
     // specific columns of CSV files.

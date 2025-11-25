@@ -12,8 +12,8 @@ import {doesKMLContainTrack, extractKMLObjects} from "./KMLUtils";
 import {findColumn} from "./ParseUtils";
 import {EventManager} from "./CEventManager";
 import {CNodeArray} from "./nodes/CNodeArray";
-import {FeatureManager} from "./CFeatureManager";
 import {MP4_DEMUXER_EXTENSIONS, WEBAUDIO_SUPPORTED_EXTENSIONS} from "./AudioFormats";
+import {extractFeaturesFromFile} from "./ParseFeaturesCSV";
 
 // The DragDropHandler is more like the local client file handler, with rehosting, and parsing
 class CDragDropHandler {
@@ -651,55 +651,8 @@ class CDragDropHandler {
 
             console.warn("Unhandled file type: " + fileExt + " for " + filename);
 
-
         }
     }
-
-
-
 }
-
-// a features CSV has lat, lon, alt, and label columns
-// iterate over it and make markers with labels at those locations
-function extractFeaturesFromFile(csv) {
-    console.log("Extracting FEATURES from CSV file");
-    
-    // Find column indices once before the loop
-    const latCol = findColumn(csv, "lat", true);
-    const lonCol = findColumn(csv, "lon", true);
-    const altCol = findColumn(csv, "alt", true);
-    const labelCol = findColumn(csv, "label", true);
-
-    if (latCol === -1 || lonCol === -1 || altCol === -1 || labelCol === -1) {
-        console.warn("FEATURES CSV missing required columns (lat, lon, alt, label)");
-        return;
-    }
-
-    // Iterate over rows (skip header row at index 0)
-    for (let i = 1; i < csv.length; i++) {
-        const row = csv[i];
-
-        const lat = parseFloat(row[latCol]);
-        const lon = parseFloat(row[lonCol]);
-        let alt = parseFloat(row[altCol]);
-        if (isNaN(alt)) alt = 0;
-        const label = row[labelCol] ?? "";
-
-        // Skip rows with invalid coordinates
-        if (isNaN(lat) || isNaN(lon)) {
-            continue;
-        }
-
-        // Create a feature marker using FeatureManager
-        FeatureManager.addFeature({
-            id: `feature_${i}_${label.replace(/\s+/g, '_')}`,
-            text: label,
-            positionLLA: {lat: lat, lon: lon, alt: alt},
-        });
-    }
-    
-    console.log(`Extracted ${FeatureManager.size()} feature markers`);
-}
-
 
 export const DragDropHandler = new CDragDropHandler();

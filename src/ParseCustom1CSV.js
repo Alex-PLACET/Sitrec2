@@ -38,7 +38,7 @@ export function isCustom1(csv) {
     // csv[0] is the header row
     // given
     const headerValues= CustomCSVFormats.CUSTOM1;
-    // we only need time, lat, lon, alt
+    // we only need time, lat, lon
     // we can ignore the rest
     if (findColumn(csv, headerValues.time, true) !== -1
         && findColumn(csv, headerValues.lat, true) !== -1
