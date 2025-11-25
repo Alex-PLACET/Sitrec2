@@ -1176,8 +1176,9 @@ export class CSatellite {
      * Internal method to update satellites of a specific type
      */
     updateSats(satType) {
-        // get the start time
-        let startTime = GlobalDateTimeNode.dateStart;
+        // get a copy of the the start time object
+        // (as we need to change it, but don't want to change the global one)
+        let startTime = new Date(GlobalDateTimeNode.dateStart);
 
         // if the startTime is greater than 48 hours ago, set it to that
         const now = new Date();
