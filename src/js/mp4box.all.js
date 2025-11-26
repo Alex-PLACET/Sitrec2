@@ -2662,12 +2662,37 @@ BoxParser.createMediaSampleEntryCtor(BoxParser.SAMPLE_ENTRY_TYPE_VISUAL, functio
 
 BoxParser.createMediaSampleEntryCtor(BoxParser.SAMPLE_ENTRY_TYPE_AUDIO, function(stream) {
     this.parseHeader(stream);
-    stream.readUint32Array(2);
+    
+    var pos = stream.getPosition();
+    
+    var version = stream.readUint16();
+    var revision = stream.readUint16();
+    var vendor = stream.readUint32();
+    
     this.channel_count = stream.readUint16();
     this.samplesize = stream.readUint16();
     stream.readUint16();
     stream.readUint16();
     this.samplerate = (stream.readUint32()/(1<<16));
+    
+    if (version === 1) {
+        this.samples_per_packet = stream.readUint32();
+        this.bytes_per_packet = stream.readUint32();
+        this.bytes_per_frame = stream.readUint32();
+        this.bytes_per_sample = stream.readUint32();
+    } else if (version === 2) {
+        stream.readUint32();
+        this.samplerate = stream.readFloat64();
+        this.channel_count = stream.readUint32();
+        stream.readUint32();
+        stream.readUint32();
+        stream.readUint32();
+        stream.readUint32();
+        stream.readUint32();
+    } else if (version !== 0) {
+        Log.warn("BoxParser", "Unknown QuickTime audio sample entry version: " + version);
+    }
+    
     this.parseFooter(stream);
 });
 
