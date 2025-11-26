@@ -2520,8 +2520,7 @@ export class CCustomManager {
                 // Defensive check: detect if we got a cached response from a previous upload
                 // This can happen if rehost.php was called multiple times rapidly
                 // and the browser's fetch cache returned a stale response
-                if (staticURL.includes('video') || staticURL.includes('.mp4') || staticURL.includes('.mov') || 
-                    staticURL.includes('.webm') || staticURL.includes('.avi')) {
+                if (staticURL.endsWith('.mp4') || staticURL.endsWith('.mov')) {
                     console.error("ERROR: Sitch URL contains VIDEO indicator - likely a CACHED response!");
                     console.error("  This happens when rehost.php is called rapidly and browser caches POST responses");
                     console.error("  Expected: .js file URL (e.g., /sitrec/custom/...Custom.js.1.js)");
