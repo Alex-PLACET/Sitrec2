@@ -249,7 +249,10 @@ const frameRateController = {
 checkLocal();
 
 
-if (isLocal) {
+// Check the user agent for VR capability and mobile
+checkUserAgent();
+
+if (!Globals.canVR && isLocal) {
 // Initialize IWER (Immersive Web Emulation Runtime) for WebXR emulation
 // This must be done before any rendering or WebXR logic
     if (typeof navigator !== 'undefined') {
@@ -261,6 +264,7 @@ if (isLocal) {
 
             // Store device globally for debugging
             window._iwerDevice = xrDevice;
+            Globals.canVR = true;
             console.log("✓ IWER installed. Device available as window._iwerDevice");
             console.log("✓ To test: Click the 'ENTER VR' button or use the 'Start VR/XR' menu item");
         }).catch(err => {
@@ -271,8 +275,7 @@ if (isLocal) {
 
 
 
-// Check the user agent for VR capability and mobile
-checkUserAgent();
+
 
 // we set Globals.wasPending to 5 so if we get to the render loop with no pending async actions
 // we will still get the "No pending actions" message
@@ -867,11 +870,6 @@ function checkUserAgent() {
     Globals.onMetaQuest = false;
     Globals.onMac = false;
     Globals.isMobile = false;
-
-
-    if (isLocal) {
-        Globals.canVR = true;
-    }
 
 
     if (!isConsole) {
