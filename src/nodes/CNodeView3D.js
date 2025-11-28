@@ -254,6 +254,13 @@ export class CNodeView3D extends CNodeViewCanvas {
      */
     onXRSessionStarted() {
         console.log("WebXR session started");
+        
+        // Safety check: ensure renderer still exists (might have been disposed)
+        if (!this.renderer) {
+            console.warn("XR: Cannot start session - renderer has been disposed");
+            return;
+        }
+        
         this.xrActive = true;
         
         // Get lookCamera position to set up camera rig
@@ -391,7 +398,7 @@ export class CNodeView3D extends CNodeViewCanvas {
         // console.log("XR: === START of renderXR === time:", time.toFixed(3), "view:", this.id);
 
         // Get lookCamera for settings like near/far planes
-        const lookCameraNode = NodeMan.get("lookCamera");
+        const lookCameraNode = NodeMan.get("lookCamera", false);
         if (!lookCameraNode) {
             console.warn("lookCamera not found, cannot render XR frame");
             return;
@@ -399,14 +406,15 @@ export class CNodeView3D extends CNodeViewCanvas {
         const lookCamera = lookCameraNode.camera;
 
 
-        const xrCamera = this.renderer.xr.getCamera(this.xrCamera)
-
-        // Use the XR camera we created
-        if (!xrCamera) {
+        // Check XR is ready
+        if (!this.renderer.xr.getCamera()) {
             console.error("XR camera not initialized");
             return;
         }
 
+        this.xrCamera.layers.mask = lookCamera.layers.mask;
+
+        let internalXRCamera = this.renderer.xr.getCamera();
 
         // Synchronize xrCameraRig position with lookCamera world position
         this.xrCameraRig.position.copy(lookCamera.position);
@@ -415,24 +423,14 @@ export class CNodeView3D extends CNodeViewCanvas {
 
 
         // Copy near/far planes from lookCamera (critical for logarithmic depth buffer)
-        xrCamera.near = lookCamera.near;
-        xrCamera.far = lookCamera.far;
+        this.xrCamera.near = lookCamera.near;
+        this.xrCamera.far = lookCamera.far;
         
         // Update camera projection
-        xrCamera.updateProjectionMatrix();
+        this.xrCamera.updateProjectionMatrix();
         
         // Update world matrix
-        xrCamera.updateMatrixWorld(true);
-        
-        // Get camera world position for debugging
-        const camWorldPos = new Vector3();
-        xrCamera.getWorldPosition(camWorldPos);
-        // console.log("XR: Camera local pos:", xrCamera.position.x.toFixed(1), xrCamera.position.y.toFixed(1), xrCamera.position.z.toFixed(1));
-        // console.log("XR: Camera world pos:", camWorldPos.x.toFixed(1), camWorldPos.y.toFixed(1), camWorldPos.z.toFixed(1));
-        // console.log("XR: Camera rig pos:", xrCameraRig ? (xrCameraRig.position.x.toFixed(1) + " " + xrCameraRig.position.y.toFixed(1) + " " + xrCameraRig.position.z.toFixed(1)) : "none");
-
-
-
+        this.xrCamera.updateMatrixWorld(true);
 
         // Call preRender on all nodes (important for terrain LOD and visibility)
         for (const entry of Object.values(NodeMan.list)) {
@@ -489,11 +487,37 @@ export class CNodeView3D extends CNodeViewCanvas {
         // Clear buffers manually before rendering
         this.renderer.clear(true, true, true);
 
+        this.renderer.xr.cameraAutoUpdate = false;
+        this.renderer.xr.updateCamera(this.xrCamera);
+
+        // the mask on the internal XR cameras get set in WebManager.js with:
+        //
+        //          cameraXR.layers.mask = camera.layers.mask | 0b110;
+        //          cameraL.layers.mask = cameraXR.layers.mask & 0b011;
+        //          cameraR.layers.mask = cameraXR.layers.mask & 0b101;
+        //
+        // The problem is that this clears all the other bits in the mask except the first three
+        // A better way would have been to just OR in the 0b110 bits, but that's not how it's done
+        // see, a better way of doing it here:
+        // https://github.com/mrxz/three.js/commit/6a3a0d262b769d8753a17587ef252e6fe6598d1d
+        // 			cameraL.layers.mask = camera.layers.mask | 0b010;
+        // 			cameraR.layers.mask = camera.layers.mask | 0b100;
+        // 			cameraXR.layers.mask = cameraL.layers.mask | cameraR.layers.mask;
+
+
+        // so here we just OR in the lookCamera layers mask to each of the internal XR cameras
+        internalXRCamera.cameras[0].layers.mask &= 0b110; // keep only bits 1 and 2 (LEFTEYE and RIGHTEYE)
+        internalXRCamera.cameras[0].layers.mask |= lookCamera.layers.mask;
+
+        internalXRCamera.cameras[1].layers.mask &= 0b110;
+        internalXRCamera.cameras[1].layers.mask |= lookCamera.layers.mask;
+
 
         // Render the scene - Three.js XR system handles stereo rendering automatically
         // This will render twice (once per eye) with proper camera offsets for VR
         // Note: We skip post-processing effects in XR mode for performance
-        this.renderer.render(GlobalScene, this.xrCamera);
+        this.renderer.render(GlobalScene,this.xrCamera);
+
     }
 
 
@@ -1268,6 +1292,51 @@ export class CNodeView3D extends CNodeViewCanvas {
     }
 
     dispose() {
+        // Clean up XR session if active
+        if (Globals.canVR && this.id === "lookView") {
+            // Remove XR event listeners
+            if (this.renderer && this.renderer.xr) {
+                this.renderer.xr.removeEventListener('sessionstart', this.onXRSessionStarted);
+                this.renderer.xr.removeEventListener('sessionend', this.onXRSessionEnded);
+                
+                // End any active XR session
+                const xrSession = this.renderer.xr.getSession();
+                if (xrSession) {
+                    console.log("XR: Ending active session during dispose");
+                    xrSession.end().catch(err => {
+                        console.warn("XR: Error ending session during dispose:", err);
+                    });
+                }
+                
+                // Clear animation loop
+                this.renderer.setAnimationLoop(null);
+            }
+            
+            // Clean up XR camera rig
+            if (this.xrCameraRig) {
+                GlobalScene.remove(this.xrCameraRig);
+                this.xrCameraRig = null;
+            }
+            
+            // Clean up XR camera
+            if (this.xrCamera) {
+                this.xrCamera = null;
+            }
+            
+            // Clean up original camera reference
+            if (this.originalCamera) {
+                this.originalCamera = null;
+            }
+            
+            // Remove VR button
+            const vrButton = document.getElementById('VRButton');
+            if (vrButton) {
+                vrButton.remove();
+            }
+            
+            this.xrActive = false;
+        }
+        
         super.dispose();
         this.renderer.dispose();
         this.renderer.forceContextLoss();

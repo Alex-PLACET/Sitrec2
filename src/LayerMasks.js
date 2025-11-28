@@ -7,10 +7,8 @@
 export const podsEye = 7    // Specific to the ATFLIR pod
 export const podBack = 8
 
-// not sure of the order here
-export const RIGHTEYE = 1
-export const LEFTEYE = 2
-
+export const LEFTEYE = 1
+export const RIGHTEYE = 2
 
 export const WORLD = 0       // all normal 3D objects in the GlobalScene
 
