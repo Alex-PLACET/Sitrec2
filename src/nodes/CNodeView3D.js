@@ -413,8 +413,7 @@ export class CNodeView3D extends CNodeViewCanvas {
         }
 
         this.xrCamera.layers.mask = lookCamera.layers.mask;
-
-        let internalXRCamera = this.renderer.xr.getCamera();
+        console.log("XR: xrCamera layers mask:", this.xrCamera.layers.mask.toString(2), "(" + this.xrCamera.layers.mask + ")");
 
         // Synchronize xrCameraRig position with lookCamera world position
         this.xrCameraRig.position.copy(lookCamera.position);
@@ -484,35 +483,162 @@ export class CNodeView3D extends CNodeViewCanvas {
         // Configure renderer for manual clearing (needed for proper depth buffer handling)
         this.renderer.autoClear = false;
         
-        // Clear buffers manually before rendering
-        this.renderer.clear(true, true, true);
-
+        // Setup internal XR cameras BEFORE rendering sky
+        // This is critical for stereo rendering of the celestial sphere
         this.renderer.xr.cameraAutoUpdate = false;
         this.renderer.xr.updateCamera(this.xrCamera);
-
-        // the mask on the internal XR cameras get set in WebManager.js with:
-        //
-        //          cameraXR.layers.mask = camera.layers.mask | 0b110;
-        //          cameraL.layers.mask = cameraXR.layers.mask & 0b011;
-        //          cameraR.layers.mask = cameraXR.layers.mask & 0b101;
-        //
-        // The problem is that this clears all the other bits in the mask except the first three
-        // A better way would have been to just OR in the 0b110 bits, but that's not how it's done
-        // see, a better way of doing it here:
-        // https://github.com/mrxz/three.js/commit/6a3a0d262b769d8753a17587ef252e6fe6598d1d
-        // 			cameraL.layers.mask = camera.layers.mask | 0b010;
-        // 			cameraR.layers.mask = camera.layers.mask | 0b100;
-        // 			cameraXR.layers.mask = cameraL.layers.mask | cameraR.layers.mask;
-
-
-        // so here we just OR in the lookCamera layers mask to each of the internal XR cameras
+        
+        let internalXRCamera = this.renderer.xr.getCamera();
+        
+        // Fix layer masks on internal XR cameras (left/right eye)
+        // The XR system clears high bits, so we OR them back in
         internalXRCamera.cameras[0].layers.mask &= 0b110; // keep only bits 1 and 2 (LEFTEYE and RIGHTEYE)
         internalXRCamera.cameras[0].layers.mask |= lookCamera.layers.mask;
-
+        
         internalXRCamera.cameras[1].layers.mask &= 0b110;
         internalXRCamera.cameras[1].layers.mask |= lookCamera.layers.mask;
+        
+        console.log("XR: Internal camera[0] layers:", internalXRCamera.cameras[0].layers.mask.toString(2));
+        console.log("XR: Internal camera[1] layers:", internalXRCamera.cameras[1].layers.mask.toString(2));
+        
+        // Render sky - matches renderSky() logic from renderTargetAndEffects
+        if (this.canDisplayNightSky && GlobalNightSkyScene !== undefined) {
+            console.log("XR: Starting sky rendering");
+            
+            // Update star and satellite scales for this view
+            const nightSkyNode = NodeMan.get("NightSkyNode");
+            if (nightSkyNode) {
+                nightSkyNode.starField.updateStarScales(this);
+                nightSkyNode.updateSatelliteScales(this);
+                if (nightSkyNode.showSatelliteNames) {
+                    nightSkyNode.updateSatelliteText(this);
+                }
+            }
+            
+            // Set initial clear color
+            this.renderer.setClearColor(this.background);
+            
+            // Calculate sky brightness and color
+            let skyOpacity = 1;
+            let skyColor = this.background;
+            const sunNode = NodeMan.get("theSun", true);
+            if (sunNode !== undefined) {
+                this.renderer.setClearColor("black");
+                skyColor = sunNode.calculateSkyColor(lookCamera.position);
+                skyOpacity = sunNode.calculateSkyOpacity(lookCamera.position);
+            }
+            console.log("XR: skyOpacity =", skyOpacity);
+            
+            // Render night sky if visible (opacity < 1 means stars are visible)
+            if (skyOpacity < 1) {
+                console.log("XR: Rendering night sky");
+                
+                // Clear with black background
+                this.renderer.clear(true, true, true);
+                
+                // Save XR camera RIG position and move to origin for celestial sphere
+                const tempPos = this.xrCameraRig.position.clone();
+                const tempQuat = this.xrCameraRig.quaternion.clone();
+                this.xrCameraRig.position.set(0, 0, 0);
+                this.xrCameraRig.updateMatrix();
+                this.xrCameraRig.updateMatrixWorld(true);
+                
+                // Update XR camera system after moving rig
+                this.xrCamera.updateMatrix();
+                this.xrCamera.updateMatrixWorld(true);
+                this.renderer.xr.updateCamera(this.xrCamera);
+                
+                // Re-fix layer masks after updateCamera
+                internalXRCamera = this.renderer.xr.getCamera();
+                internalXRCamera.cameras[0].layers.mask &= 0b110;
+                internalXRCamera.cameras[0].layers.mask |= lookCamera.layers.mask;
+                internalXRCamera.cameras[1].layers.mask &= 0b110;
+                internalXRCamera.cameras[1].layers.mask |= lookCamera.layers.mask;
+                
+                console.log("XR: Rendering night sky, camera at:", this.xrCamera.position.x.toFixed(1), this.xrCamera.position.y.toFixed(1), this.xrCamera.position.z.toFixed(1));
+                console.log("XR: Rendering night sky, rig at:", this.xrCameraRig.position.x.toFixed(1), this.xrCameraRig.position.y.toFixed(1), this.xrCameraRig.position.z.toFixed(1));
+                
+                this.renderer.render(GlobalNightSkyScene, this.xrCamera);
+                this.renderer.clearDepth();
+                
+                // Restore XR camera RIG position
+                this.xrCameraRig.position.copy(tempPos);
+                this.xrCameraRig.quaternion.copy(tempQuat);
+                this.xrCameraRig.updateMatrix();
+                this.xrCameraRig.updateMatrixWorld(true);
+                this.xrCamera.updateMatrix();
+                this.xrCamera.updateMatrixWorld(true);
+                this.renderer.xr.updateCamera(this.xrCamera);
+            }
+            
+            // Render sky brightness overlay and sun sky only during daytime
+            if (skyOpacity > 0) {
+                console.log("XR: Rendering daytime sky (opacity:", skyOpacity + ")");
+                
+                // Recreate fullscreen quad (matches renderSky behavior)
+                if (this.fullscreenQuadScene !== undefined) {
+                    this.fullscreenQuadScene.remove(this.fullscreenQuad);
+                }
+                this.fullscreenQuad = new Mesh(this.fullscreenQuadGeometry, this.skyBrightnessMaterial);
+                this.fullscreenQuadScene.add(this.fullscreenQuad);
+                
+                this.updateSkyUniforms(skyColor, skyOpacity);
+                this.renderer.render(this.fullscreenQuadScene, this.fullscreenQuadCamera);
+                this.renderer.clearDepth();
+                
+                // Render sun/day sky
+                if (GlobalSunSkyScene) {
+                    console.log("XR: Rendering sun sky");
+                    
+                    // Move camera RIG to origin for sun rendering
+                    const tempPos = this.xrCameraRig.position.clone();
+                    const tempQuat = this.xrCameraRig.quaternion.clone();
+                    this.xrCameraRig.position.set(0, 0, 0);
+                    this.xrCameraRig.updateMatrix();
+                    this.xrCameraRig.updateMatrixWorld(true);
+                    
+                    // Update XR camera system after moving rig
+                    this.xrCamera.updateMatrix();
+                    this.xrCamera.updateMatrixWorld(true);
+                    this.renderer.xr.updateCamera(this.xrCamera);
+                    
+                    // Re-fix layer masks after updateCamera
+                    internalXRCamera = this.renderer.xr.getCamera();
+                    internalXRCamera.cameras[0].layers.mask &= 0b110;
+                    internalXRCamera.cameras[0].layers.mask |= lookCamera.layers.mask;
+                    internalXRCamera.cameras[1].layers.mask &= 0b110;
+                    internalXRCamera.cameras[1].layers.mask |= lookCamera.layers.mask;
+                    
+                    this.renderer.render(GlobalSunSkyScene, this.xrCamera);
+                    this.renderer.clearDepth();
+                    
+                    // Restore camera RIG position
+                    this.xrCameraRig.position.copy(tempPos);
+                    this.xrCameraRig.quaternion.copy(tempQuat);
+                    this.xrCameraRig.updateMatrix();
+                    this.xrCameraRig.updateMatrixWorld(true);
+                    this.xrCamera.updateMatrix();
+                    this.xrCamera.updateMatrixWorld(true);
+                    this.renderer.xr.updateCamera(this.xrCamera);
+                }
+            }
+        } else {
+            // No night sky - clear with background color
+            console.warn("XR: No night sky, clearing with background");
+            this.renderer.setClearColor(this.background);
+            this.renderer.clear(true, true, true);
+        }
 
-
+        // Fix layer masks one final time before rendering main scene
+        internalXRCamera = this.renderer.xr.getCamera();
+        internalXRCamera.cameras[0].layers.mask &= 0b110;
+        internalXRCamera.cameras[0].layers.mask |= lookCamera.layers.mask;
+        internalXRCamera.cameras[1].layers.mask &= 0b110;
+        internalXRCamera.cameras[1].layers.mask |= lookCamera.layers.mask;
+        
+        console.log("XR: Before main scene render, camera[0] layers:", internalXRCamera.cameras[0].layers.mask.toString(2));
+        console.log("XR: Before main scene render, camera[1] layers:", internalXRCamera.cameras[1].layers.mask.toString(2));
+        
         // Render the scene - Three.js XR system handles stereo rendering automatically
         // This will render twice (once per eye) with proper camera offsets for VR
         // Note: We skip post-processing effects in XR mode for performance
