@@ -27,7 +27,7 @@ class CreateDirectoriesPlugin {
     }
 }
 
-module.exports = merge(common, {
+module.exports = merge(common({ includeIWER: true }), {
     mode: 'development',
     devtool: 'eval-source-map', // Better for debugging - faster rebuild, good source maps
     optimization: {

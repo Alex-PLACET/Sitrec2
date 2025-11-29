@@ -6,7 +6,7 @@ const CircularDependencyPlugin = require('circular-dependency-plugin');
 // This config is specifically for Docker development with optimizations for Windows/Mac Docker volumes
 // For local development, use webpack.dev.js instead (which has cache disabled)
 
-module.exports = merge(common, {
+module.exports = merge(common({ includeIWER: true }), {
     mode: 'development',
     devtool: 'eval-cheap-module-source-map', // Much faster than inline-source-map
     devServer: {

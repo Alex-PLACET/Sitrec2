@@ -3,7 +3,7 @@ const common = require('./webpack.common.js');
 const InstallPaths = require('./config/config-install');
 const CircularDependencyPlugin = require('circular-dependency-plugin');
 
-module.exports = merge(common, {
+module.exports = merge(common({ includeIWER: true }), {
     mode: 'development',
     devtool: 'eval-cheap-module-source-map', // Much faster than inline-source-map, especially on Windows
     devServer: {

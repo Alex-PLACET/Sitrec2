@@ -92,7 +92,7 @@ class CreateDirectoriesPlugin {
 module.exports = (env, argv) => {
     const isDevelopment = argv.mode !== 'production';
     
-    return merge(common, {
+    return merge(common({ includeIWER: false }), {
         mode: argv.mode || 'development',
         devtool: isDevelopment ? 'eval-source-map' : false,
         optimization: {

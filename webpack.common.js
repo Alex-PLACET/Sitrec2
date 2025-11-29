@@ -42,7 +42,7 @@ function getFormattedLocalDateTime() {
 
 console.log(getFormattedLocalDateTime());
 
-module.exports = {
+module.exports = (env = {}) => ({
 
     entry: {
         index: './src/index.js',
@@ -184,6 +184,7 @@ module.exports = {
             'process.env.BUILD_VERSION_NUMBER': JSON.stringify(getVersionNumber()),
             'process.env.DOCKER_BUILD': JSON.stringify(process.env.DOCKER_BUILD === 'true'),
             'CAN_REQUIRE_CONTEXT': JSON.stringify(true),
+            'INCLUDE_IWER_EMULATOR': JSON.stringify(env.includeIWER !== false),
         }),
 
         {
@@ -260,4 +261,4 @@ module.exports = {
         path: InstallPaths.dev_path,
         clean: true, // this deletes the contents of path (InstallPaths.dev_path)
     },
-};
+});

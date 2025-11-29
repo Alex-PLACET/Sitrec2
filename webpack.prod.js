@@ -3,7 +3,7 @@ const common = require('./webpack.common.js');
 const path = require("path");
 const InstallPaths = require("./config/config-install");
 
-module.exports = merge(common, {
+module.exports = merge(common({ includeIWER: false }), {
     mode: 'production',
 
     output: {

@@ -252,24 +252,26 @@ checkLocal();
 // Check the user agent for VR capability and mobile
 await checkUserAgent();
 
-if (!Globals.canVR && isLocal) {
-// Initialize IWER (Immersive Web Emulation Runtime) for WebXR emulation
-// This must be done before any rendering or WebXR logic
-    if (typeof navigator !== 'undefined') {
-        import('iwer').then(({XRDevice, metaQuest3}) => {
-            console.log("Installing IWER for WebXR emulation");
-            const xrDevice = new XRDevice(metaQuest3);
-            xrDevice.fovy = Math.PI / 2; // Set a comfortable FOV
-            xrDevice.installRuntime();
+if (INCLUDE_IWER_EMULATOR) {
+    if (!Globals.canVR && isLocal) {
+        // Initialize IWER (Immersive Web Emulation Runtime) for WebXR emulation
+        // This must be done before any rendering or WebXR logic
+        if (typeof navigator !== 'undefined') {
+            import('iwer').then(({XRDevice, metaQuest3}) => {
+                console.log("Installing IWER for WebXR emulation");
+                const xrDevice = new XRDevice(metaQuest3);
+                xrDevice.fovy = Math.PI / 2; // Set a comfortable FOV
+                xrDevice.installRuntime();
 
-            // Store device globally for debugging
-            window._iwerDevice = xrDevice;
-            Globals.canVR = true;
-            console.log("✓ IWER installed. Device available as window._iwerDevice");
-            console.log("✓ To test: Click the 'ENTER VR' button or use the 'Start VR/XR' menu item");
-        }).catch(err => {
-            console.warn("Failed to load IWER:", err);
-        });
+                // Store device globally for debugging
+                window._iwerDevice = xrDevice;
+                Globals.canVR = true;
+                console.log("✓ canVR TRUE. IWER installed. Device available as window._iwerDevice");
+                console.log("✓ To test: Click the 'ENTER VR' button or use the 'Start VR/XR' menu item");
+            }).catch(err => {
+                console.warn("Failed to load IWER:", err);
+            });
+        }
     }
 }
 
@@ -876,7 +878,7 @@ async function checkUserAgent() {
         const userAgent = navigator.userAgent;
         console.log("User Agent = " + userAgent);
         if (userAgent.includes("OculusBrowser") || userAgent.includes("Quest")) {
-            console.log("Running on MetaQuest")
+            console.log("CanVR = true, as running on MetaQuest")
             Globals.onMetaQuest = true;
             Globals.canVR = true;
         }
@@ -896,12 +898,21 @@ async function checkUserAgent() {
         }
 
         // Check for WebXR support (for desktop VR headsets like Valve Index, HTC Vive, etc.)
+        // Exclude Immersive Web Emulator extension unless running locally
         if (!Globals.canVR && navigator.xr) {
             try {
                 const isVRSupported = await navigator.xr.isSessionSupported('immersive-vr');
                 if (isVRSupported) {
-                    console.log("WebXR VR support detected (desktop VR headset)");
-                    Globals.canVR = true;
+                    // Check if this is the Immersive Web Emulator extension
+                    const isEmulator = navigator.xr.constructor.name === 'XRSystem' && 
+                                     window.hasOwnProperty('XRDevice');
+                    
+                    if (isEmulator && !isLocal) {
+                        console.log("Immersive Web Emulator detected - VR disabled (enable locally for testing)");
+                    } else {
+                        console.log("CanVR = True as WebXR VR support detected (desktop VR headset)");
+                        Globals.canVR = true;
+                    }
                 }
             } catch (err) {
                 console.log("WebXR check failed:", err);
