@@ -1082,7 +1082,7 @@ export function updateNewCustomFields(sitchObject) {
 
             // "forced" node defs are only added if they don't already exist
             if (value.force) {
-                console.log("Custom sitch: forcing node def for key: "+key);
+//                console.log("Custom sitch: forcing node def for key: "+key);
                 // if the key doesn't exist in the sitchObject, then add it
                 if (sitchObject[key] === undefined) {
                     console.log("  adding new forced node def for key: "+key);

@@ -182,7 +182,7 @@ export class CSituation {
         if(!isConsole)
             infoDiv.innerHTML = "Loading<br>"
         for (let key in assets) {
-            console.log("++++ Loading asset ", key, " from ", assets[key])
+//            console.log("++++ Loading asset ", key, " from ", assets[key])
 
             if (key === "KMLTarget")   {
                 console.warn("KMLTarget is deprecated, patching to TargetTrack")

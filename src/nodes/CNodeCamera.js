@@ -36,7 +36,7 @@ export class CNodeCamera extends CNode3D {
             this._object.layers.mask = v.layers;
         }
 
-        console.log("🎥🎥🎥 " + this.id + " CREATE CAMERA " + this.id);
+//        console.log("🎥🎥🎥 " + this.id + " CREATE CAMERA " + this.id);
 
         this.resetCamera()
 

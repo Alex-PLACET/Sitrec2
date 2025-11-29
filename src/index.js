@@ -1401,7 +1401,7 @@ async function initializeOnce() {
 
 function initRendering() {
 
-    console.log("Window inner size = " + window.innerWidth + "," + window.innerHeight)
+    // console.log("Window inner size = " + window.innerWidth + "," + window.innerHeight)
 
     setInfoDiv(document.createElement('div'))
 
@@ -2331,9 +2331,9 @@ function selectInitialSitch(force) {
             document.body.appendChild(newReadyElement);
         }
         
-        console.log('Exposed Sit to window in selectInitialSitch:', !!window.Sit);
-        console.log('Updated SITREC_OBJECTS_READY flag:', window.SITREC_OBJECTS_READY);
-        console.log('Updated DOM ready signal to complete');
+        // console.log('Exposed Sit to window in selectInitialSitch:', !!window.Sit);
+        // console.log('Updated SITREC_OBJECTS_READY flag:', window.SITREC_OBJECTS_READY);
+        // console.log('Updated DOM ready signal to complete');
     }
 }
 

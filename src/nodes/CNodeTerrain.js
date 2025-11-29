@@ -3,7 +3,7 @@ import {pointAbove} from "../threeExt";
 import {cos, radians} from "../utils";
 import {Globals, NodeMan, Sit} from "../Globals";
 import {EUSToLLA, RLLAToECEFV_Sphere, wgs84} from "../LLA-ECEF-ENU";
-import {CanvasTexture, Group, Mesh, MeshBasicMaterial, Raycaster, SphereGeometry} from "three";
+import {Group, Mesh, MeshBasicMaterial, Raycaster, SphereGeometry} from "three";
 import {GlobalScene} from "../LocalFrame";
 import {V3} from "../threeUtils";
 import {assert} from "../assert";
@@ -15,7 +15,6 @@ import * as LAYER from "../LayerMasks";
 import {ViewMan} from "../CViewManager";
 import {CNodeViewUI} from "./CNodeViewUI";
 import {isLocal} from "../configUtils";
-import {createTerrainDayNightMaterial} from "../js/map33/material/TerrainDayNightMaterial";
 
 const terrainGUIColor = "#c0ffc0";
 
@@ -131,38 +130,38 @@ export class CNodeTerrain extends CNode {
         this.greySphere.visible = Globals.dynamicSubdivision === true;
         GlobalScene.add(this.greySphere);
 
-        // DEBUG: Create test spheres to verify rendering in VR
-        const testSphereRadius = 10; // 10m radius
-        const testSphereGeometry = new SphereGeometry(testSphereRadius, 32, 32);
-        
-        // Create a checkerboard texture
-        const canvas = document.createElement('canvas');
-        canvas.width = 256;
-        canvas.height = 256;
-        const ctx = canvas.getContext('2d');
-        const tileSize = 32;
-        for (let y = 0; y < canvas.height; y += tileSize) {
-            for (let x = 0; x < canvas.width; x += tileSize) {
-                const isWhite = ((x / tileSize) + (y / tileSize)) % 2 === 0;
-                ctx.fillStyle = isWhite ? '#ffffff' : '#ff0000';
-                ctx.fillRect(x, y, tileSize, tileSize);
-            }
-        }
-        const checkerTexture = new CanvasTexture(canvas);
-        
-        // Red sphere with TerrainDayNightMaterial (shader)
-        const redMaterial = createTerrainDayNightMaterial(checkerTexture, 0.3, false);
-        this.testSphereRed = new Mesh(testSphereGeometry, redMaterial);
-        this.testSphereRed.position.set(20, 0, -100); // 20m right, 100m forward (in -Z direction)
-        GlobalScene.add(this.testSphereRed);
-        
-        // Green sphere with standard MeshBasicMaterial
-        const greenMaterial = new MeshBasicMaterial({ color: 0x00ff00 });
-        this.testSphereGreen = new Mesh(testSphereGeometry, greenMaterial);
-        this.testSphereGreen.position.set(-20, 0, -100); // 20m left, 100m forward (in -Z direction)
-        GlobalScene.add(this.testSphereGreen);
-        
-        console.log("DEBUG: Red sphere now uses TerrainDayNightMaterial with checkerboard texture");
+        // // DEBUG: Create test spheres to verify rendering in VR
+        // const testSphereRadius = 10; // 10m radius
+        // const testSphereGeometry = new SphereGeometry(testSphereRadius, 32, 32);
+        //
+        // // Create a checkerboard texture
+        // const canvas = document.createElement('canvas');
+        // canvas.width = 256;
+        // canvas.height = 256;
+        // const ctx = canvas.getContext('2d');
+        // const tileSize = 32;
+        // for (let y = 0; y < canvas.height; y += tileSize) {
+        //     for (let x = 0; x < canvas.width; x += tileSize) {
+        //         const isWhite = ((x / tileSize) + (y / tileSize)) % 2 === 0;
+        //         ctx.fillStyle = isWhite ? '#ffffff' : '#ff0000';
+        //         ctx.fillRect(x, y, tileSize, tileSize);
+        //     }
+        // }
+        // const checkerTexture = new CanvasTexture(canvas);
+        //
+        // // Red sphere with TerrainDayNightMaterial (shader)
+        // const redMaterial = createTerrainDayNightMaterial(checkerTexture, 0.3, false);
+        // this.testSphereRed = new Mesh(testSphereGeometry, redMaterial);
+        // this.testSphereRed.position.set(20, 0, -100); // 20m right, 100m forward (in -Z direction)
+        // GlobalScene.add(this.testSphereRed);
+        //
+        // // Green sphere with standard MeshBasicMaterial
+        // const greenMaterial = new MeshBasicMaterial({ color: 0x00ff00 });
+        // this.testSphereGreen = new Mesh(testSphereGeometry, greenMaterial);
+        // this.testSphereGreen.position.set(-20, 0, -100); // 20m left, 100m forward (in -Z direction)
+        // GlobalScene.add(this.testSphereGreen);
+        //
+        // console.log("DEBUG: Red sphere now uses TerrainDayNightMaterial with checkerboard texture");
 
         this.maps = []
         for (const mapName in this.UI.mapTypesKV) {
