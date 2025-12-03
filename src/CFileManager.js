@@ -1070,13 +1070,14 @@ export class CFileManager extends CManager {
             Globals.pendingActions++;
 
             if (filename.toLowerCase().endsWith('.ts')) {
-                // if it's a TS file, then just laod it and pass it to parseResult
+                // if it's a TS file, then just load it and pass it to parseResult
+                // The id will be the original dropped filename
                 loadingPromise = bufferPromise
                     .then(arrayBuffer => {
-                        console.log(`Specila handling for .TS file load: ${filename} (id: ${id})`);
+                        console.log(`Special handling for .TS file load: ${filename} (id: ${id})`);
                         Globals.parsing--;
                         Globals.pendingActions--;
-                        return DragDropHandler.parseResult(filename, arrayBuffer, null);
+                        return DragDropHandler.parseResult(id, arrayBuffer, null);
                     })
             } else {
 
