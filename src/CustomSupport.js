@@ -2474,11 +2474,52 @@ export class CCustomManager {
             // if we are saving locally, then we don't need to rehost the files
             // so just save the stringified sitch
             // with the loaded files using their original names
-            const str = this.getCustomSitchString(true);
+            let str = this.getCustomSitchString(true);
 
-            // savem it with a dialog to select the name
+            // special handling for local save of a sitch with a dropped TS file
+            // which will give us something like:
+            // "videoFile" : "falls.ts_h264_273.h264",
+            //     "loadedFiles" : {
+            //     "IAUCSN" : "https://local.metabunk.org/sitrec/data/nightsky/IAU-CSN.txt",
+            //         "BSC5" : "https://local.metabunk.org/sitrec/data/nightsky/sitrec_bsc_lite.bin",
+            //         "constellationsLines" : "https://local.metabunk.org/sitrec/data/nightsky/constellations.lines.json",
+            //         "constellations" : "https://local.metabunk.org/sitrec/data/nightsky/constellations.json",
+            //         "falls.ts_h264_273.h264" : "falls.ts_h264_273.h264",
+            //         "falls.ts_klv_4096.klv" : "falls.ts_klv_4096.klv",
+            //         "falls.ts_ecm_4099.ecm" : "falls.ts_ecm_4099.ecm",
+            //         "falls.ts_emm_4097.emm" : "falls.ts_emm_4097.emm",
+            //         "falls.ts_klv_4098.klv" : "falls.ts_klv_4098.klv",
+            //         "falls.ts_ecm_4100.ecm" : "falls.ts_ecm_4100.ecm",
+            //         "data/models/MQ9-clean.glb" : "https://local.metabunk.org/sitrec/data/models/MQ9-clean.glb"
+            // },
+            // what we will need to do is make the videoFile point to the original TS file
+            // and remove the other extracted TS files from loadedFiles
+            const sitchObj = JSON.parse(str);
+            if (sitchObj.videoFile && sitchObj.videoFile.endsWith(".h264")) {
+                const baseName = sitchObj.videoFile.replace(/_(h264|klv|ecm|emm)_\d+\.(h264|klv|ecm|emm)$/, "");
+                console.log("Local save: detected TS video file, adjusting loadedFiles for base TS:", baseName);
+                // Remove all extracted TS files from loadedFiles
+                for (const fileId in sitchObj.loadedFiles) {
+                    if (fileId.startsWith(baseName)) {
+                        console.log("  Removing extracted TS file from loadedFiles:", fileId);
+                        delete sitchObj.loadedFiles[fileId];
+                    }
+                }
+                // delete the sitchObj.videoFile entry
+                delete sitchObj.videoFile;
+
+                // we add back the base TS file to loadedFiles
+                // to force it to reload it and extract the streams again
+                sitchObj.loadedFiles[baseName] = baseName;
+                console.log("  Added base TS file to loadedFiles:", baseName);
+
+            }
+
+            // re-stringify
+            str = JSON.stringify(sitchObj, null, 2);
 
 
+            // save it with a dialog to select the name
             return new Promise((resolve, reject) => {
                 saveFilePrompted(new Blob([str]), name + ".json").then((filename) => {
                         console.log("Saved as " + filename)
@@ -2494,11 +2535,6 @@ export class CCustomManager {
                     })
             })
 
-
-            //            saveAs(new Blob([str]), name + ".json")
-            // return a promise that resolves to true
-            // just because saveSitchNamed expects a promise
-            // return Promise.resolve(true)
         }
 
 
@@ -2590,11 +2626,32 @@ export class CCustomManager {
             // load the files as if they have been drag-and-dropped in
             for (let id in sitchData.loadedFiles) {
                 loadingPromises.push(FileManager.loadAsset(Sit.loadedFiles[id], id).then(
-                    (result) => {
-                        console.log("Loaded " + id +"filename: " + FileManager.list[id].filename + " with data length: " + FileManager.list[id].data.length)
+                    (parsedResult) => {
                         Globals.dontAutoZoom = true;
-                        DragDropHandler.handleParsedFile(id, FileManager.list[id].data)
+
+                        assert(parsedResult !== undefined, "Parsed result should not be undefined for loaded file id: " + id);
+
+                        // since it might be a container that parse to multiple files
+                        // we need to handle an array of parsed results
+                        // if a single file, then make it an array of one
+                        if (!Array.isArray(parsedResult)) {
+                            parsedResult.id = id; // assign the id to the single file parsed result
+                            parsedResult = [parsedResult]
+                        }
+                        // might need to use filename as id here?
+
+                        // for each parsed result, handle it just like it was drag-and-dropped
+                        for (const x of parsedResult) {
+                            const parsedFile = x.parsed;
+                            const filename = x.filename;
+                            const fileID = x.id ?? x.filename; // use filename as fallback id
+                            console.log("HANDLING LOADED FILE ID: " + id + " filename: " + filename);
+                            DragDropHandler.handleParsedFile(fileID, parsedFile);
+                        }
+
                         Globals.dontAutoZoom = false;
+
+
                     }
                 ))
             }

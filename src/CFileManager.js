@@ -28,7 +28,7 @@ import {addOptionToGUIMenu, removeOptionFromGUIMenu} from "./lil-gui-extras";
 import {isCustom1, isFR24CSV, parseCustom1CSV, parseCustomFLLCSV, parseFR24CSV} from "./ParseCustom1CSV";
 import {stripDuplicateTimes} from "./ParseUtils";
 import {isConsole, isLocal, isServerless, SITREC_APP, SITREC_DOMAIN, SITREC_SERVER} from "./configUtils";
-import {probeTransportStreamBufferDetailed, TSParser} from "./TSParser";
+import {TSParser} from "./TSParser";
 import {showError} from "./showError";
 import {asyncOperationRegistry} from "./AsyncOperationRegistry";
 import {ECEFToLLAVD_Sphere, EUSToECEF} from "./LLA-ECEF-ENU";
@@ -955,17 +955,13 @@ export class CFileManager extends CManager {
             loadingPromise = this.directoryHandle.getFileHandle(filename).then(fileHandle => {
                 return fileHandle.getFile().then(file => {
                     return file.arrayBuffer().then(arrayBuffer => {
-                        return this.parseAsset(filename, id, arrayBuffer).then(parsedAsset => {
-                            // We now have a full parsed asset in a {filename: filename, parsed: parsed} structure
-                            this.add(id, parsedAsset.parsed, arrayBuffer); // Add the loaded and parsed asset to the manager
-                            this.list[id].dynamicLink = true;  // Local files are always dynamic links, meaning they require rehosting
-                            this.list[id].staticURL = null; // indicates it has NOT been rehosted
-                            this.list[id].filename = filename;
-                            
-                            // Add the ID to the parsed asset for reference in the loading promise map
-                            parsedAsset.id = id;
-                            return parsedAsset; // Return the asset for further chaining if necessary
-                        });
+                        // Got a LOCALLY LOAD arrayBuffer for the file
+                        // we pass it into the DragDropHandler to parse it
+                        // exactly as if it was drag-dropped
+                        // this is specifically for the .TS files
+                        // which are expanded into multiple pseudo-files from the streams
+                        // But we also do it with the other local files.
+                        return DragDropHandler.parseResult(filename, arrayBuffer, null);
                     });
                 });
             });
@@ -1156,20 +1152,8 @@ export class CFileManager extends CManager {
 
 
     parseAsset(filename, id, buffer, metadata = null) {
-
-//        console.log("parseAsset(" + filename + "," + id + ",<buffer>)")
-        
         // Check if it's a TS file first
         if (filename.toLowerCase().endsWith('.ts')) {
-
-          //  const probe = probeTransportStreamBuffer(buffer);
-            const probe = probeTransportStreamBufferDetailed(buffer);
-            // and as JSON, pretty formatted
-          // console.log(JSON.stringify(probe, null, 2));
-
-           // debugger;
-
-
             return TSParser.parseTSFile(filename, id, buffer, (streamFilename, streamId, streamData, streamMetadata) => {
                 console.log("Detected TS Stream: " + streamFilename + " for id: " + streamId + "")
                 return this.parseAsset(streamFilename, streamId, streamData, streamMetadata);

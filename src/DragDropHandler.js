@@ -14,6 +14,7 @@ import {EventManager} from "./CEventManager";
 import {CNodeArray} from "./nodes/CNodeArray";
 import {MP4_DEMUXER_EXTENSIONS, WEBAUDIO_SUPPORTED_EXTENSIONS} from "./AudioFormats";
 import {extractFeaturesFromFile} from "./ParseFeaturesCSV";
+import {assert} from "./assert";
 
 // The DragDropHandler is more like the local client file handler, with rehosting, and parsing
 class CDragDropHandler {
@@ -353,8 +354,10 @@ class CDragDropHandler {
     // @param {string} filename - The name of the file
     // @param {ArrayBuffer} result - The raw file data
     // @param {string|null} newStaticURL - The static URL for the file, if applicable
+    // return a promise that resolves to the parsed result
     parseResult(filename, result, newStaticURL) {
-        FileManager.parseAsset(filename, filename, result)
+        console.log("parseResult: Parsing " + filename)
+        return FileManager.parseAsset(filename, filename, result)
             .then(parsedResult => {
 
                 // Rehosting would be complicated with multiple results. Ignored for now.
@@ -386,6 +389,7 @@ class CDragDropHandler {
                 }
                 console.log("parseResult: DONE Parse " + filename)
                 setRenderOne(true);
+                return parsedResult
             })
     }
 
@@ -398,14 +402,24 @@ class CDragDropHandler {
 
         setRenderOne(2)
 
-        const fileManagerEntry = FileManager.list[filename];
-
         const fileExt = getFileExtension(filename);
 
         if (filename.split('.').length === 1) {
 //            console.log("Skipping handleParseFile, as no file extension for " + filename+" assuming it's an ID");
             return;
         }
+
+        const fileManagerEntry = FileManager.list[filename];
+
+        assert(fileManagerEntry !== undefined, "handleParsedFile: FileManager entry not found for " + filename);
+        assert(fileManagerEntry.dataType !== undefined, "handleParsedFile: FileManager entry dataType not set for " + filename);
+
+        // ensure we don't parse the file twice.
+        if (fileManagerEntry.handled)   {
+            console.error("handleParsedFile: File already handled for " + filename+", skipping");
+            return;
+        }
+        fileManagerEntry.handled = true;
 
         // first we check for special files that need special handling
         if (fileManagerEntry.dataType === "FEATURES") {
