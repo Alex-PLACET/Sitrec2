@@ -1077,7 +1077,7 @@ export class CFileManager extends CManager {
                         console.log(`Special handling for .TS file load: ${filename} (id: ${id})`);
                         Globals.parsing--;
                         Globals.pendingActions--;
-                        return DragDropHandler.parseResult(id, arrayBuffer, null);
+                        return DragDropHandler.parseResult(id, arrayBuffer, filename);
                     })
             } else {
 
