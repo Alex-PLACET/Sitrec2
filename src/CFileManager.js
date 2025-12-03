@@ -1069,60 +1069,72 @@ export class CFileManager extends CManager {
 
             Globals.pendingActions++;
 
-            var original = null;
-            loadingPromise = bufferPromise
-                .then(arrayBuffer => {
-                    // parseAsset always returns a promise
-                    console.log(`<<< loadAsset() Loading Finished: ${filename} (id: ${id})`);
+            if (filename.toLowerCase().endsWith('.ts')) {
+                // if it's a TS file, then just laod it and pass it to parseResult
+                loadingPromise = bufferPromise
+                    .then(arrayBuffer => {
+                        console.log(`Specila handling for .TS file load: ${filename} (id: ${id})`);
+                        Globals.parsing--;
+                        Globals.pendingActions--;
+                        return DragDropHandler.parseResult(filename, arrayBuffer, null);
+                    })
+            } else {
 
-                    // always store the original
-                    original = arrayBuffer;
+                var original = null;
+                loadingPromise = bufferPromise
+                    .then(arrayBuffer => {
+                        // parseAsset always returns a promise
+                        console.log(`<<< loadAsset() Loading Finished: ${filename} (id: ${id})`);
 
-                    const assetPromise = this.parseAsset(filename, id, arrayBuffer);
-                    return assetPromise;
-                })
-                .then(parsedAsset => {
-                    // if an array is returned, we just assume it's the first one
-                    // because we are adding by id here, not by filename
-                    // so if it's a zipped asset, it should only be one
-                    if (Array.isArray(parsedAsset)) {
-                        assert(parsedAsset.length === 1, "Zipped IDed asset contains multiple files")
-                        parsedAsset = parsedAsset[0]
-                    }
+                        // always store the original
+                        original = arrayBuffer;
 
-                    // We now have a full parsed asset in a {filename: filename, parsed: parsed} structure
-                    this.add(id, parsedAsset.parsed, original); // Add the loaded and parsed asset to the manager
-                    this.list[id].dynamicLink = dynamicLink;
-                    this.list[id].staticURL = null; // indicates it has not been rehosted
-                    this.list[id].dataType = parsedAsset.dataType; // Store the data type of the asset
-                    if (isHttpOrHttps(filename) && !dynamicLink) {
-                        // if it's a URL, and it's not a dynamic link, then we can store the URL as the static URL
-                        // indicating we don't want to rehost this later.
-                        this.list[id].staticURL = filename;
-                    }
-                    this.list[id].filename = filename;
-                    if (id === "starLink") {
-                        console.log("Flagging initial starlink file");
-                        this.list[id].isTLE = true;
-                    }
+                        const assetPromise = this.parseAsset(filename, id, arrayBuffer);
+                        return assetPromise;
+                    })
+                    .then(parsedAsset => {
+                        // if an array is returned, we just assume it's the first one
+                        // because we are adding by id here, not by filename
+                        // so if it's a zipped asset, it should only be one
+                        if (Array.isArray(parsedAsset)) {
+                            assert(parsedAsset.length === 1, "Zipped IDed asset contains multiple files")
+                            parsedAsset = parsedAsset[0]
+                        }
 
-                    Globals.parsing--;
-                    // console.log(`<<< loadAsset() parsing Finished: ${filename} (id: ${id})`);
-                    Globals.pendingActions--;
-                    
-                    // Add the ID to the parsed asset for reference in the loading promise map
-                    parsedAsset.id = id;
-                    return parsedAsset; // Return the asset for further chaining if necessary
-                })
-                .catch(error => {
-                    Globals.parsing--;
-                    console.log(`There was a problem loading ${filename}: ${error.message}`);
-                    Globals.pendingActions--;
-                    
-                    // Remove from loading promises map on error
-                    this.#loadingPromises.delete(loadingKey);
-                    throw error;
-                });
+                        // We now have a full parsed asset in a {filename: filename, parsed: parsed} structure
+                        this.add(id, parsedAsset.parsed, original); // Add the loaded and parsed asset to the manager
+                        this.list[id].dynamicLink = dynamicLink;
+                        this.list[id].staticURL = null; // indicates it has not been rehosted
+                        this.list[id].dataType = parsedAsset.dataType; // Store the data type of the asset
+                        if (isHttpOrHttps(filename) && !dynamicLink) {
+                            // if it's a URL, and it's not a dynamic link, then we can store the URL as the static URL
+                            // indicating we don't want to rehost this later.
+                            this.list[id].staticURL = filename;
+                        }
+                        this.list[id].filename = filename;
+                        if (id === "starLink") {
+                            console.log("Flagging initial starlink file");
+                            this.list[id].isTLE = true;
+                        }
+
+                        Globals.parsing--;
+                        // console.log(`<<< loadAsset() parsing Finished: ${filename} (id: ${id})`);
+                        Globals.pendingActions--;
+
+                        // Add the ID to the parsed asset for reference in the loading promise map
+                        parsedAsset.id = id;
+                        return parsedAsset; // Return the asset for further chaining if necessary
+                    })
+                    .catch(error => {
+                        Globals.parsing--;
+                        console.log(`There was a problem loading ${filename}: ${error.message}`);
+                        Globals.pendingActions--;
+
+                        // Remove from loading promises map on error
+                        this.#loadingPromises.delete(loadingKey);
+                        throw error;
+                    });
+            }
         }
 
         // Register the loading promise with the async operation registry
@@ -1499,7 +1511,11 @@ export class CFileManager extends CManager {
                 const rehostPromise = this.rehoster.rehostFile(rehostFilename, f.original).then((staticURL) => {
                     console.log("AS PROMISED: " + staticURL)
                     f.staticURL = staticURL;
+                }).catch((error) => {
+                    console.error("Rehost failed for " + rehostFilename + ":", error);
+                    throw error; // Re-throw to propagate to Promise.all
                 })
+                console.log("Pushing rehost promise for " + rehostFilename);
                 rehostPromises.push(rehostPromise)
             }
         })
