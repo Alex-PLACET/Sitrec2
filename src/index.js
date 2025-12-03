@@ -1116,7 +1116,7 @@ async function initializeOnce() {
         window.NodeMan = NodeMan;
         window.DragDropHandler = DragDropHandler;
         window.UndoManager = undoManager;
-        
+
         // Set a flag to indicate that these objects are ready
         window.SITREC_OBJECTS_READY = {
             NodeMan: true,
@@ -1305,6 +1305,9 @@ async function initializeOnce() {
     setupGUIGlobals(_gui,_guiShowHide,_guiTweaks, _guiShowHideViews, _guiPhysics)
     setUnits(new CUnits("Nautical"));
     setFileManager(new CFileManager())
+
+    window.FileManager = FileManager;
+
 
     //first add buttons for the root sitches
 
