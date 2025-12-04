@@ -124,6 +124,7 @@ export class CNodeViewEphemeris extends CNodeViewText {
 
     // Predict next event (rise/set) for a satellite
     // Returns string like "AOS 5m 23s" (Acquisition of Signal) or "LOS 3m 45s" (Loss of Signal)
+    // Based on C++ pass predictor which uses 2-minute steps and looks for horizon crossings
     predictNextEvent(sat, currentDate, currentEl, lookCamera) {
         // Cache predictions to avoid recalculating every frame
         const now = Date.now();
@@ -135,18 +136,35 @@ export class CNodeViewEphemeris extends CNodeViewText {
         
         // Get the appropriate satrec for this satellite and date
         const satrec = bestSat(sat.satrecs, currentDate);
-        if (!satrec) return '---';
+        if (!satrec) {
+            sat.cachedNextEvent = '---';
+            sat.lastPredictionTime = now;
+            return '---';
+        }
         
         // Search forward in time to find next horizon crossing
-        const searchMinutes = 90; // Look ahead 90 minutes
-        const stepSeconds = 60; // Check every minute (faster than 2 minutes)
+        // C++ code uses 2-minute steps and searches up to 120 minutes by default
+        const searchMinutes = 120; // Look ahead 2 hours
+        const stepSeconds = 30; // Use 30-second steps for better accuracy
         
         let searchTime = new Date(currentDate.getTime());
         let prevEl = currentEl;
         const cameraPos = lookCamera.camera.position;
         
-        for (let i = 0; i < (searchMinutes * 60 / stepSeconds); i++) {
-            searchTime = new Date(searchTime.getTime() + stepSeconds * 1000);
+        // Sample at current time first to get accurate starting elevation
+        const currentSatrec = bestSat(sat.satrecs, currentDate);
+        if (currentSatrec) {
+            const currentSatEus = satellites.calcSatEUS(currentSatrec, currentDate);
+            if (currentSatEus) {
+                const currentToSat = currentSatEus.clone().sub(cameraPos);
+                const currentForward = currentToSat.clone().normalize();
+                const [currentAz, currentElev] = getAzElFromPositionAndForward(cameraPos, currentForward);
+                prevEl = currentElev;
+            }
+        }
+        
+        for (let i = 1; i <= (searchMinutes * 60 / stepSeconds); i++) {
+            searchTime = new Date(currentDate.getTime() + i * stepSeconds * 1000);
             
             // Get satrec for the search time (in case satellite has multiple TLEs)
             const searchSatrec = bestSat(sat.satrecs, searchTime);
@@ -160,7 +178,10 @@ export class CNodeViewEphemeris extends CNodeViewText {
             
             const [az, el] = getAzElFromPositionAndForward(cameraPos, forward);
             
-            // Check for horizon crossing
+            // Check for horizon crossing (elevation crossing 0°)
+            // We check if the sign changed between prevEl and current el
+            // For satellites currently above horizon (prevEl > 0), we're looking for LOS (el < 0)
+            // For satellites currently below horizon (prevEl < 0), we're looking for AOS (el > 0)
             if ((prevEl < 0 && el >= 0) || (prevEl >= 0 && el < 0)) {
                 const isRising = el > prevEl;
                 const diffMs = searchTime.getTime() - currentDate.getTime();
@@ -180,7 +201,10 @@ export class CNodeViewEphemeris extends CNodeViewText {
             prevEl = el;
         }
         
-        const result = '---';
+        // No horizon crossing found in search window
+        // For debug: show ">2h" to indicate satellite stays visible longer than search window
+        // In production C++ code, this would show the actual time or keep searching
+        const result = prevEl > 0 ? '>2h' : '---';
         sat.cachedNextEvent = result;
         sat.lastPredictionTime = now;
         return result;
@@ -220,6 +244,9 @@ export class CNodeViewEphemeris extends CNodeViewText {
 
             const [az, el] = getAzElFromPositionAndForward(cameraPos, forward);
             
+            // Skip satellites below horizon for display
+            // But note: in C++ code, predictions happen for all satellites
+            // that pass the initial filter, not just above horizon
             if (el < 0) {
                 continue;
             }
@@ -229,7 +256,8 @@ export class CNodeViewEphemeris extends CNodeViewText {
             // Calculate visibility state
             const visState = this.calculateVisibilityState(satPos, cameraPos, currentDate, el, toSun);
             
-            // Predict next event
+            // Predict next event - pass the current elevation we just calculated
+            // This should predict when the satellite will SET (LOS) since it's currently above horizon
             const nextEvent = this.predictNextEvent(sat, currentDate, el, lookCamera);
 
             satData.push({
