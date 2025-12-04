@@ -34,6 +34,14 @@ export class CNodeViewEphemeris extends CNodeViewText {
         this.updateEphemeris();
     }
 
+    namePad = 20;
+    azPad = 5;
+    elPad = 5;
+    rangePad = 6;
+    altPad = 6;
+
+    totalPad = this.namePad + this.azPad + this.elPad + this.rangePad + this.altPad;
+
     updateEphemeris() {
         if (!this.nightSkyNode || !this.nightSkyNode.satellites || !this.nightSkyNode.satellites.TLEData) {
             return;
@@ -86,14 +94,14 @@ export class CNodeViewEphemeris extends CNodeViewText {
         this.clearOutput();
 
         const header = this.formatRow("Name", "Az", "El", "Range", "Alt");
-        const separator = "─".repeat(80);
+        const separator = "─".repeat(this.totalPad);
 
         this.addMessage(header, '#00ff00');
         this.addMessage(separator, '#00ff00');
 
         for (const sat of top30) {
             const row = this.formatRow(
-                sat.name.substring(0, 30),
+                sat.name.substring(0, 15),
                 sat.az.toFixed(1),
                 sat.el.toFixed(1),
                 sat.range.toFixed(0),
@@ -104,17 +112,13 @@ export class CNodeViewEphemeris extends CNodeViewText {
     }
 
     formatRow(name, az, el, range, alt) {
-        const namePad = 32;
-        const azPad = 8;
-        const elPad = 8;
-        const rangePad = 10;
-        const altPad = 10;
 
-        const nameStr = String(name).padEnd(namePad, ' ');
-        const azStr = String(az).padStart(azPad, ' ');
-        const elStr = String(el).padStart(elPad, ' ');
-        const rangeStr = String(range).padStart(rangePad, ' ');
-        const altStr = String(alt).padStart(altPad, ' ');
+
+        const nameStr = String(name).padEnd(this.namePad, '\u00A0');
+        const azStr = String(az).padStart(this.azPad, '\u00A0');
+        const elStr = String(el).padStart(this.elPad, '\u00A0');
+        const rangeStr = String(range).padStart(this.rangePad, '\u00A0');
+        const altStr = String(alt).padStart(this.altPad, '\u00A0');
 
         return `${nameStr}${azStr}${elStr}${rangeStr}${altStr}`;
     }
