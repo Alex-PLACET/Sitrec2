@@ -12,6 +12,7 @@ export class CNodeViewEphemeris extends CNodeViewText {
         v.idPrefix = 'ephemeris-view';
         v.hideOnFileDrop = false;
         v.maxMessages = 0;
+        v.manualScroll = true;
 
         super(v);
 
@@ -280,7 +281,10 @@ export class CNodeViewEphemeris extends CNodeViewText {
             filteredData = satData.filter(sat => sat.visState === 'VIS');
         }
 
-        const top30 = filteredData.slice(0, 30);
+        const top100 = filteredData.slice(0, 100);
+        
+        // Store filtered data for use by other views (e.g., Sky Plot)
+        this.filteredSatData = top100;
 
         this.clearOutput();
 
@@ -290,7 +294,7 @@ export class CNodeViewEphemeris extends CNodeViewText {
         this.addMessage(header, '#00ff00');
         this.addMessage(separator, '#00ff00');
 
-        for (const sat of top30) {
+        for (const sat of top100) {
             const row = this.formatRow(
                 sat.name.substring(0, this.namePad-1).trim(),
                 sat.az.toFixed(1),

@@ -28,6 +28,7 @@ import {CNodeLabeledArrow} from "./CNodeLabels3D";
 import {CNodeDisplaySkyOverlay} from "./CNodeDisplaySkyOverlay";
 import {CNodeViewUI} from "./CNodeViewUI";
 import {CNodeViewEphemeris} from "./CNodeViewEphemeris";
+import {CNodeSkyPlotView} from "./CNodeSkyPlotView";
 //import { eci_to_geodetic } from '../../pkg/eci_convert.js';
 // npm install satellite.js --save-dev
 // installed with
@@ -634,10 +635,24 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
                     nightSkyNode: this,
                     visible: false,
                     draggable: true, resizable: true, freeAspect: true,
-                    left: 0.05, top: 0.10, width: 0.50, height: 0.80,
+                    left: 0.05, top: 0.10, width: 0.60, height: 0.80,
                 });
                 
                 this.celestialGUI.add(this.ephemerisView, "show").name("Satellite Ephemeris").onChange(() => {
+                    this.celestialGUI.close();
+                });
+            }
+            
+            if (!this.skyPlotView) {
+                this.skyPlotView = new CNodeSkyPlotView({
+                    id: "skyPlotView",
+                    nightSkyNode: this,
+                    visible: false,
+                    draggable: true, resizable: true, freeAspect: true,
+                    left: 0.60, top: 0.10, width: 0.35, height: 0.35,
+                });
+                
+                this.celestialGUI.add(this.skyPlotView, "show").name("Sky Plot").onChange(() => {
                     this.celestialGUI.close();
                 });
             }

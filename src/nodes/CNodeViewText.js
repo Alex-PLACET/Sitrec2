@@ -54,6 +54,9 @@ export class CNodeViewText extends CNodeView {
         // Configure maximum number of messages (0 = unlimited)
         this.maxMessages = v.maxMessages || 1000;
 
+        // Configure manual scrolling mode (default false = auto-scroll to bottom)
+        this.manualScroll = v.manualScroll || false;
+
         // Create the tab with title
         this.createTab(v.title || 'Text View');
 
@@ -243,7 +246,9 @@ export class CNodeViewText extends CNodeView {
         }
         this.outputArea.appendChild(div);
         this.cullMessages();
-        this.scrollToBottom();
+        if (!this.manualScroll) {
+            this.scrollToBottom();
+        }
     }
 
     /**
@@ -256,7 +261,9 @@ export class CNodeViewText extends CNodeView {
         div.style.color = `var(--cnodeview-debug-color)`;
         this.outputArea.appendChild(div);
         this.cullMessages();
-        this.scrollToBottom();
+        if (!this.manualScroll) {
+            this.scrollToBottom();
+        }
     }
 
     /**
