@@ -17,8 +17,12 @@ My goal here is to create a tool to effectively analyze UAP/UFO cases, and to sh
 
 ### Technical Documentation (for coders and webmasters)
 
-- [File Rehosting and Server Configuration](docs/dev/FileRehosting.md)
+- [Installing and Configuring a Sitrec Server](docs/dev/Installing-and-configuring.md)
+- [File Rehosting and Related Server Configuration](docs/dev/FileRehosting.md)
 - [Custom Terrain and Elevation Sources, WMS, etc.](docs/dev/CustomTerrainSources.md)
+
+
+### Legacy documentation 
 - [Adding a Sitch in Code (older method)](docs/dev/AddSitchInCode.md)
 - [Local custom Sitch with JSON files - More complex cusom sitches](./docs/LocalCustomSitches.md)
 
