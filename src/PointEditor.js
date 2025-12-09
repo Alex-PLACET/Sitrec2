@@ -353,35 +353,35 @@ export class PointEditor {
         this.onDownPosition.y = event.clientY;
         this.onDownButton = event.button; // Track which button was pressed
 
-        // Right click on point to delete it
-        if (event.button === 2) {
-            if (!this.setupRaycasterForEvent(event)) {
-                return; // Not in main view or view doesn't exist
-            }
-
-            const object = this.getIntersectedControlPoint();
-            if (object) {
-                // Detach transform control if we're deleting the object it's attached to
-                if (object === this.transformControl.object) {
-                    this.transformControl.detach();
-                }
-
-                // Find and remove the control point
-                const index = this.splineHelperObjects.findIndex(ob => ob === object);
-                assert(index !== -1, "Can't find object to destroy!!");
-
-                this.scene.remove(object);
-
-                // Remove from all tracking arrays
-                this.frameNumbers.splice(index, 1);
-                this.positions.splice(index, 1);
-                this.splineHelperObjects.splice(index, 1);
-                
-                this.updatePointEditorGraphics();
-                this.numPoints--;
-                this.dirty = true;
-            }
-        }
+        // // Right click on point to delete it
+        // if (event.button === 2) {
+        //     if (!this.setupRaycasterForEvent(event)) {
+        //         return; // Not in main view or view doesn't exist
+        //     }
+        //
+        //     const object = this.getIntersectedControlPoint();
+        //     if (object) {
+        //         // Detach transform control if we're deleting the object it's attached to
+        //         if (object === this.transformControl.object) {
+        //             this.transformControl.detach();
+        //         }
+        //
+        //         // Find and remove the control point
+        //         const index = this.splineHelperObjects.findIndex(ob => ob === object);
+        //         assert(index !== -1, "Can't find object to destroy!!");
+        //
+        //         this.scene.remove(object);
+        //
+        //         // Remove from all tracking arrays
+        //         this.frameNumbers.splice(index, 1);
+        //         this.positions.splice(index, 1);
+        //         this.splineHelperObjects.splice(index, 1);
+        //
+        //         this.updatePointEditorGraphics();
+        //         this.numPoints--;
+        //         this.dirty = true;
+        //     }
+        // }
     }
 
     onPointerUp(event) {
