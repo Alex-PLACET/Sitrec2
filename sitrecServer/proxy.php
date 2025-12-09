@@ -3,6 +3,19 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/config_paths.php';
 
+// These are no-longer configurable via config.php
+// Instead, set them in shared.env (see example file)
+if (getenv("CURRENT_STARLINK")) {
+    // Lookup table for requests
+    $request_url_map = array(
+        "CURRENT_STARLINK" => getEnv("CURRENT_STARLINK"),
+        "CURRENT_ACTIVE" => getEnv("CURRENT_ACTIVE"),
+    );
+} else {        $request_url_map = array(
+    // these are the defaults if you don't set something in shared.env
+    "CURRENT_STARLINK" => "https://celestrak.org/NORAD/elements/supplemental/sup-gp.php?FILE=starlink&FORMAT=tle",
+    "CURRENT_ACTIVE" => "https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle",
+);}
 
 $request = isset($_GET["request"]) ? $_GET["request"] : null;
 
@@ -23,9 +36,10 @@ if (!array_key_exists($request, $request_url_map)) {
 $url = $request_url_map[$request];
 $url_parts = parse_url($url);
 
-if (!$url_parts || $url_parts['scheme'] !== 'https' || $url_parts['host'] !== 'celestrak.org') {
-    exit("Illegal URL or scheme");
-}
+// We don't need this check any more, as all URLs are from the $request_url_map array
+//if (!$url_parts || $url_parts['scheme'] !== 'https' || $url_parts['host'] !== 'celestrak.org') {
+//    exit("Illegal URL or scheme");
+//}
 
 $path_parts = pathinfo($url);
 $ext = strtolower($path_parts['extension']);

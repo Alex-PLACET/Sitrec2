@@ -17,8 +17,8 @@ export const SitStarlink = {
 
 
 
-    // no quad terrain for now, as we want a globe
-    TerrainModel: {kind: "Terrain", lat: 34, lon: -118.3, zoom: 7, nTiles: 3, fullUI: true, dynamic: false},
+    // Don't need to old terrain model any more
+    // TerrainModel: {kind: "Terrain", lat: 34, lon: -118.3, zoom: 7, nTiles: 3, fullUI: true, dynamic: false},
 
 
     patchSatellites: true, // this is a custom patch to the satellites, normally programattically done in SitNightSky.js

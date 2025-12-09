@@ -31,11 +31,7 @@ require_once __DIR__ . '/injectEnv.php';
     ];
     $useAWS = getenv("SAVE_TO_S3");
 
-// From proxy.php
-    // Lookup table for requests
-    $request_url_map = array(
-        "CURRENT_STARLINK" => "https://celestrak.org/NORAD/elements/supplemental/sup-gp.php?FILE=starlink&FORMAT=tle"
-    );
+    // NOTE: $request_url_map is now configured in shared.env
 
 // installation specific authentication
 // should return a user id which can be used as a directory name
@@ -78,3 +74,18 @@ function getUserIDCustom()
     }
     return $user_id;
 }
+
+//// Custom TLE fetch function example
+//function getTLECustom($startDate, $endDate, $type, $defaultURL)
+//{
+//    // You can customize the URL based on type if needed
+//
+//    // example
+//    $url = "https://www.space-track.org/basicspacedata/query/class/gp_history/EPOCH/" . $startDate . "--" . $endDate . "/MEAN_MOTION/>11.25/ECCENTRICITY/<0.25/format/3le";
+//
+//
+//
+//    // optionally return the default URL
+//    return $defaultURL;
+//
+//}

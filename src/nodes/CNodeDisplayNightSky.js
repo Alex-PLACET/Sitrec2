@@ -132,8 +132,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
             penumbraDepth: 5000
         });
 
-        // Initialize Earth's Shadow properties before GUI
-
+        console.log(process.env.MAPBOX_TOKEN)
         if (Globals.env.SITREC_USE_CUSTOM_TLE) {
 
             const menuName = Globals.env.SITREC_CUSTOM_TLE_MENU_NAME || "Custom Satellites";
@@ -153,20 +152,25 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
                     this.parent.close()
                 })
                 .tooltip("Get the latest LEO Satellite TLE data for the set simulator date/time. This will download the data from the internet, so it may take a few seconds.\nWill also enable the satellites to be displayed in the night sky.")
+        }
 
+        if (process.env.CURRENT_STARLINK) {
             satGUI.add(this.satellites, "updateStarlink").name("Load CURRENT Starlink")
                 .onChange(function (x) {
                     this.parent.close()
                 })
                 .tooltip("Get the CURRENT (not historical, now, real time) Starlink satellite positions. This will download the data from the internet, so it may take a few seconds.\n")
+        }
 
-
+        if (process.env.CURRENT_ACTIVE) {
             satGUI.add(this.satellites, "updateActive").name("Load ACTIVE Satellites")
                 .onChange(function (x) {
                     this.parent.close()
                 })
                 .tooltip("Get the CURRENT (not historical, now, real time) ACTIVE satellite positions. This will download the data from the internet, so it may take a few seconds.\n")
+        }
 
+        if (Globals.env.SITREC_ENABLE_DEFAULT_TLE_SOURCES) {
 
             satGUI.add(this.satellites, "updateSLOWSats").name("(Experimental) Load SLOW Satellites")
                 .onChange(function (x) {
