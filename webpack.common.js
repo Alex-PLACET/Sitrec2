@@ -127,13 +127,6 @@ module.exports = (env = {}) => ({
         new CopyPlugin({
             patterns: [
                 ...copyPatterns, // Existing patterns
-                {
-                    from: path.resolve(__dirname, 'docs'),
-                    to: path.resolve(InstallPaths.dev_path, 'docs'),
-                    globOptions: {
-                        ignore: ['**/*.md'], // Ignore Markdown files here
-                    },
-                },
             ],
         }),
         {
@@ -141,9 +134,10 @@ module.exports = (env = {}) => ({
             apply: (compiler) => {
                 compiler.hooks.afterEmit.tapPromise('MarkdownToHtmlPlugin', async () => {
                     const docsDir = path.resolve(__dirname, 'docs');
-                    const outputDir = path.resolve(InstallPaths.dev_path, 'docs');
+                    const outputBaseDir = compiler.options.output.path;
+                    const outputDir = path.resolve(outputBaseDir, 'docs');
                     const rootReadme = path.resolve(__dirname, 'README.md');
-                    const outputRootReadme = path.resolve(InstallPaths.dev_path, 'README.html');
+                    const outputRootReadme = path.resolve(outputBaseDir, 'README.html');
 
                     const convertMarkdownFiles = async (dir) => {
                         const files = await fs.promises.readdir(dir, { withFileTypes: true });
@@ -178,6 +172,10 @@ ${bodyContent}
 </body>
 </html>`;
                                 await fs.promises.writeFile(outputPath, htmlContent, 'utf-8');
+                            } else {
+                                // Copy non-markdown files (images, CSS, etc.)
+                                const outputFilePath = path.join(outputDir, relativePath);
+                                await fs.promises.copyFile(fullPath, outputFilePath);
                             }
                         }
                     };
@@ -191,6 +189,8 @@ ${bodyContent}
                     // Convert the root README.md file
                     if (fs.existsSync(rootReadme)) {
                         let readmeContent = await fs.promises.readFile(rootReadme, 'utf-8');
+                        // Remove image links to github.com
+                        readmeContent = readmeContent.replace(/!\[.*?\]\(https?:\/\/github\.com\/[^\)]+\)\s*\n?/g, '');
                         readmeContent = readmeContent.replace(/(\[.*?\]\((?:\.\/)?(?:docs\/)?)(.*?)(\.md\))/g, '$1$2.html)');
                         const bodyContent = md.render(readmeContent);
                         

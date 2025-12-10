@@ -8,7 +8,7 @@ Here's a link to [Sitrec on Metabunk](https://www.metabunk.org/sitrec).
 
 My goal here is to create a tool to effectively analyze UAP/UFO cases, and to share that analysis in a way that people can understand it. Hence, I focused on making Sitrec run in real-time (30 fps or faster), and be interactive both in viewing, and in exploring the various parameters of a sitch.  
 
-### User Documentation [_NEW_]
+### User Documentation
 
 - [The Sitrec User Interface - How the menus work](docs/UserInterface.md)
 - [The Custom Sitch Tool - Drag and Drop Sitches](docs/CustomSitchTool.md)
