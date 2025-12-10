@@ -157,6 +157,9 @@ if ($caching) {
 // For CUSTOM type, use simple GET request without Space-Track login
 if ($type == "CUSTOM") {
     $ch = curl_init();
+
+
+
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     $data = curl_exec($ch);

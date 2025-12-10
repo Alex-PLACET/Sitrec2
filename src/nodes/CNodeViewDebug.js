@@ -16,7 +16,8 @@ class CNodeViewDebug extends CNodeViewText {
         // Add to Help menu
         guiMenus.help.add(this, "show").name("Debug Console").onChange(() => {
             guiMenus.help.close();
-        });
+        })
+            .tooltip("Debug Console");
 
         // Add initial welcome message
         this.log("Debug Console initialized.");

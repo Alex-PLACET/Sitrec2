@@ -34,7 +34,7 @@ You can also apply the custom material to the object. This is a good way of quic
 
 The geometry specification are in meters. You can see the dimensions of the bounding box of an object by checking "Display Bounding Box" in the Object menu. This will display the dimensions in your default units (feet or meters).  
 
-![Model Viewer dimensions.jpg](docimages/Model Viewer dimensions.jpg)
+![Model Viewer dimensions.jpg](docimages/Model-Viewer-dimensions.jpg)
 
 ## Custom Models using Blender
 

@@ -1281,23 +1281,45 @@ async function initializeOnce() {
     addGUIMenu("help", "Help").tooltip("Links to the documentation and other help resources");
     addGUIMenu("debug", "Debug").tooltip("Debug tools and monitoring\nGPU memory usage, performance metrics, and other debugging information");
 
+    const docs = addGUIFolder("doumentation", "Documentation", "help")
+        .tooltip(parseBoolean(process.env.LOCAL_DOCS) ?
+            "Links to the documentation (local)" :
+            "Links to the documentation on Github"
+        ).perm();
+
 
     function addHelpLink(name, file) {
         if (parseBoolean(process.env.LOCAL_DOCS) ) {
-            return guiMenus.help.addExternalLink(name, "./"+file+".html").perm();
+            return docs.addExternalLink(name, "./"+file+".html").perm().tooltip(name);
         } else {
-            return guiMenus.help.addExternalLink(name+ " (Github)", "https://github.com/MickWest/sitrec2/blob/main/"+file+".md").perm();
+            return docs.addExternalLink(name+ " (Github)", "https://github.com/MickWest/sitrec2/blob/main/"+file+".md").perm();
         }
     }
 
     addHelpLink("Sitrec ReadMe", "README")
-    addHelpLink("User Interface", "docs/UserInterface")
-    addHelpLink("Custom Sitch Tool", "docs/CustomSitchTool")
-    addHelpLink("Custom Models", "docs/CustomModels")
+    addHelpLink("User Interface Basics", "docs/UserInterface")
+    addHelpLink("How to set up a sitch", "docs/CustomSitchTool")
+    addHelpLink("How to Investigate Starlink Flares", "docs/Starlink")
+    addHelpLink("Objects and 3D Models (Planes)", "docs/CustomModels")
 
     if (configParams.extraHelpLinks !== undefined) {
+
+        const external = addGUIFolder("external", "External Links", "help")
+            .tooltip("External help links"
+            ).perm();
+
         for (const [key, value] of Object.entries(configParams.extraHelpLinks)) {
-            guiMenus.help.addExternalLink(key, value).perm();
+            if (typeof value === "string") {
+                const e = external.addExternalLink(key, value).perm();
+                e.tooltip(key);
+            } else {
+                const e = external.addExternalLink(key, value.url).perm();
+                if (value.tooltip !== undefined) {
+                    e.tooltip(value.tooltip);
+                } else {
+                    e.tooltip(key);
+                }
+            }
         }
     }
 

@@ -36,7 +36,7 @@ class CNodeViewChat extends CNodeViewText {
         this.setupChatEventListeners();
 
         // Add to Help menu
-        guiMenus.help.add(this, "show").name("Assistant").moveToFirst().onChange(() => {
+        guiMenus.help.add(this, "show").name("AI Assistant").moveToFirst().onChange(() => {
             guiMenus.help.close()
         });
 

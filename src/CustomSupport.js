@@ -279,7 +279,8 @@ export class CCustomManager {
             } else {
                 infoDiv.style.display = 'none';
             }
-        }))
+        }).tooltip ("Show or hide the keyboard shortcuts overlay")
+        )
 
         toggler('e', guiMenus.contents.add(this, "toggleExtendToGround")
             .name("Toggle ALL [E]xtend To Ground")
