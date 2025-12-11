@@ -10,7 +10,7 @@ import {
 } from "./utils";
 import {fileSystemFetch} from "./fileSystemFetch";
 import JSZip from "jszip";
-import {parseSRT, parseXml} from "./KMLUtils";
+import {CTrackFileKML, CTrackFileXML, parseSRT, parseXml} from "./KMLUtils";
 import {CRehoster} from "./CRehoster";
 import {CManager} from "./CManager";
 import {CustomManager, Globals, guiMenus, NodeMan, setNewSitchObject, Sit} from "./Globals";
@@ -1317,11 +1317,13 @@ export class CFileManager extends CManager {
                     break;
                 case "kml":
                 case "ksv":
-                    parsed = parseXml(decoder.decode(buffer));
+                    const kmlParsed = parseXml(decoder.decode(buffer));
+                    parsed = new CTrackFileKML(kmlParsed);
                     dataType = "klm";
                     break;
                 case "xml": // generic XML files (e.g. STANAG)
-                    parsed = parseXml(decoder.decode(buffer));
+                    const xmlParsed = parseXml(decoder.decode(buffer));
+                    parsed = new CTrackFileXML(xmlParsed);
                     dataType = "xlm";
                     break;
                 case "glb":             // 3D models in glTF binary format

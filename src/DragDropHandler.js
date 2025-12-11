@@ -8,7 +8,7 @@ import {ModelFiles} from "./nodes/CNode3DObject";
 import {LLAToEUS} from "./LLA-ECEF-ENU";
 import {getLocalSouthVector, getLocalUpVector} from "./SphericalMath";
 import {SITREC_DEV_DOMAIN, SITREC_DOMAIN} from "./configUtils";
-import {doesKMLContainTrack, doesXMLContainTrack, extractKMLObjects} from "./KMLUtils";
+
 import {findColumn} from "./ParseUtils";
 import {EventManager} from "./CEventManager";
 import {CNodeArray} from "./nodes/CNodeArray";
@@ -581,11 +581,11 @@ class CDragDropHandler {
 
             // kml files might not contain a track
             if (fileExt === "kml") {
-                isATrack = doesKMLContainTrack(parsedFile)
+                isATrack = parsedFile.doesContainTrack()
             }
 
             if (fileExt === "xml") {
-                isATrack = doesXMLContainTrack(parsedFile);
+                isATrack = parsedFile.doesContainTrack();
             }
 
 
@@ -597,7 +597,7 @@ class CDragDropHandler {
                 TrackManager.addTracks([filename], true)
                 if (fileExt === "kml") {
                     console.log("KML file detected, adding anything else in the file")
-                    extractKMLObjects(parsedFile)
+                    parsedFile.extractObjects()
                 }
                 return
             } else if (isASitch) {

@@ -9,6 +9,139 @@ import * as LAYERS from "./LayerMasks";
 import {timeStrToEpoch} from "./DateTimeUtils";
 import {FeatureManager} from "./CFeatureManager";
 
+export class CTrackFile {
+    constructor(data) {
+        this.data = data;
+    }
+
+    doesContainTrack() {
+        throw new Error("doesContainTrack must be implemented by subclass");
+    }
+
+    toMISB(trackIndex = 0) {
+        throw new Error("toMISB must be implemented by subclass");
+    }
+}
+
+export class CTrackFileKML extends CTrackFile {
+    doesContainTrack() {
+        const valid = getKMLTrackWhenCoord(this.data, 0);
+        return valid;
+    }
+
+    toMISB(trackIndex = 0) {
+        const _times = [];
+        const _coord = [];
+        const info = {};
+        const success = getKMLTrackWhenCoord(this.data, trackIndex, _times, _coord, info);
+
+        if (!success) {
+            console.warn("KMLToMISB: No track in KML file for index" + trackIndex);
+            return false;
+        }
+
+        const misb = [];
+        for (let i = 0; i < _times.length; i++) {
+            misb[i] = new Array(MISBFields);
+            misb[i][MISB.UnixTimeStamp] = _times[i];
+            misb[i][MISB.SensorLatitude] = _coord[i].lat;
+            misb[i][MISB.SensorLongitude] = _coord[i].lon;
+            misb[i][MISB.SensorTrueAltitude] = _coord[i].alt;
+        }
+        return misb;
+    }
+
+    getShortName(trackIndex = 0) {
+        const _times = [];
+        const _coord = [];
+        const info = {};
+        getKMLTrackWhenCoord(this.data, trackIndex, _times, _coord, info);
+        return info.name || "Unnamed Track";
+    }
+
+    extractObjects() {
+        extractKMLObjects(this.data);
+    }
+}
+
+export class CTrackFileXML extends CTrackFile {
+    doesContainTrack() {
+        if (this.data.nitsRoot?.message?.track) {
+            return true;
+        }
+        return false;
+    }
+
+    toMISB(trackIndex = 0) {
+        if (!this.doesContainTrack()) {
+            console.warn("XMLToMISB: No track in XML file for index" + trackIndex);
+            return false;
+        }
+
+        const message = this.data.nitsRoot?.message;
+        if (!message || !message.baseTime || !message.track) {
+            console.warn("XMLToMISB: Invalid XML structure");
+            return false;
+        }
+
+        const baseTime = timeStrToEpoch(message.baseTime["#text"]);
+        const relTimeIncrement = message.relTimeIncrement?.["#text"] ? Number(message.relTimeIncrement["#text"]) : 0;
+        const track = message.track;
+        const trackPoints = track.segment?.tp;
+
+        if (!trackPoints) {
+            console.warn("XMLToMISB: No track points found");
+            return false;
+        }
+
+        const tpArray = Array.isArray(trackPoints) ? trackPoints : [trackPoints];
+        const misb = [];
+
+        for (let i = 0; i < tpArray.length; i++) {
+            const tp = tpArray[i];
+            const relTime = tp.relTime?.["#text"] ? Number(tp.relTime["#text"]) : 0;
+            const posStr = tp.dynamics?.pos?.["#text"];
+
+            if (!posStr) {
+                console.warn("XMLToMISB: Track point " + i + " missing position data");
+                continue;
+            }
+
+            const coords = posStr.trim().split(/\s+/);
+            if (coords.length < 3) {
+                console.warn("XMLToMISB: Track point " + i + " has invalid position format");
+                continue;
+            }
+
+            const lat = Number(coords[0]);
+            const lon = Number(coords[1]);
+            const alt = Number(coords[2]);
+
+            const time = baseTime + (relTime * relTimeIncrement * 1000);
+
+            misb[misb.length] = new Array(MISBFields);
+            misb[misb.length - 1][MISB.UnixTimeStamp] = time;
+            misb[misb.length - 1][MISB.SensorLatitude] = lat;
+            misb[misb.length - 1][MISB.SensorLongitude] = lon;
+            misb[misb.length - 1][MISB.SensorTrueAltitude] = alt;
+        }
+
+        if (misb.length === 0) {
+            console.warn("XMLToMISB: No valid track points found");
+            return false;
+        }
+
+        return misb;
+    }
+
+    getShortName(trackIndex = 0) {
+        return "XML Track";
+    }
+
+    extractObjects() {
+    }
+}
+
 export function parseXml(xml, arrayTags)
 {
     let dom = null;
@@ -294,8 +427,13 @@ export function getKMLTrackWhenCoord(kml, trackIndex, when, coord, info) {
 // this function checks if the KML file contains a track by doing a dummy call to getKMLTrackWhenCoord
 // if it fails, then there is no track
 export function doesKMLContainTrack(kml) {
-    const valid = getKMLTrackWhenCoord(kml, 0);
-    return valid;
+    let trackFile;
+    if (kml instanceof CTrackFileKML) {
+        trackFile = kml;
+    } else {
+        trackFile = new CTrackFileKML(kml);
+    }
+    return trackFile.doesContainTrack();
 }
 
 
@@ -629,27 +767,13 @@ message
 // then we just map that to the MISB format
 // Which means we are only using the time, lat, lon, and alt fields
 export function KMLToMISB(kml, trackIndex = 0) {
-    const _times = []
-    const _coord = []
-    const info = {}
-    const success = getKMLTrackWhenCoord(kml, trackIndex, _times, _coord, info)
-
-    if (!success) {
-        console.warn("KMLToMISB: No track in KML file for index" + trackIndex)
-        return false;
+    let trackFile;
+    if (kml instanceof CTrackFileKML) {
+        trackFile = kml;
+    } else {
+        trackFile = new CTrackFileKML(kml);
     }
-
-
-    const misb = []
-    for (let i = 0; i < _times.length; i++) {
-        misb[i] = new Array(MISBFields);
-        misb[i][MISB.UnixTimeStamp] = _times[i]
-        misb[i][MISB.SensorLatitude] = _coord[i].lat
-        misb[i][MISB.SensorLongitude] = _coord[i].lon
-        misb[i][MISB.SensorTrueAltitude] = _coord[i].alt
-
-    }
-    return misb
+    return trackFile.toMISB(trackIndex);
 }
 
 const defaultStyle = {
@@ -899,70 +1023,21 @@ function extractKMLPolygon(obj, style, name) {
 // XML like STANAG
 
 export function doesXMLContainTrack(xml) {
-    if (xml.nitsRoot?.message?.track) {
-        return true;
+    let trackFile;
+    if (xml instanceof CTrackFileXML) {
+        trackFile = xml;
+    } else {
+        trackFile = new CTrackFileXML(xml);
     }
-    return false;
+    return trackFile.doesContainTrack();
 }
 
 export function XMLToMISB(xml, trackIndex = 0) {
-    if (!doesXMLContainTrack(xml)) {
-        console.warn("XMLToMISB: No track in XML file for index" + trackIndex)
-        return false;
+    let trackFile;
+    if (xml instanceof CTrackFileXML) {
+        trackFile = xml;
+    } else {
+        trackFile = new CTrackFileXML(xml);
     }
-
-    const message = xml.nitsRoot?.message;
-    if (!message || !message.baseTime || !message.track) {
-        console.warn("XMLToMISB: Invalid XML structure")
-        return false;
-    }
-
-    const baseTime = timeStrToEpoch(message.baseTime["#text"]);
-    const relTimeIncrement = message.relTimeIncrement?.["#text"] ? Number(message.relTimeIncrement["#text"]) : 0;
-    const track = message.track;
-    const trackPoints = track.segment?.tp;
-    
-    if (!trackPoints) {
-        console.warn("XMLToMISB: No track points found")
-        return false;
-    }
-
-    const tpArray = Array.isArray(trackPoints) ? trackPoints : [trackPoints];
-    const misb = []
-
-    for (let i = 0; i < tpArray.length; i++) {
-        const tp = tpArray[i];
-        const relTime = tp.relTime?.["#text"] ? Number(tp.relTime["#text"]) : 0;
-        const posStr = tp.dynamics?.pos?.["#text"];
-        
-        if (!posStr) {
-            console.warn("XMLToMISB: Track point " + i + " missing position data")
-            continue;
-        }
-
-        const coords = posStr.trim().split(/\s+/);
-        if (coords.length < 3) {
-            console.warn("XMLToMISB: Track point " + i + " has invalid position format")
-            continue;
-        }
-
-        const lat = Number(coords[0]);
-        const lon = Number(coords[1]);
-        const alt = Number(coords[2]);
-
-        const time = baseTime + (relTime * relTimeIncrement * 1000);
-
-        misb[misb.length] = new Array(MISBFields);
-        misb[misb.length - 1][MISB.UnixTimeStamp] = time;
-        misb[misb.length - 1][MISB.SensorLatitude] = lat;
-        misb[misb.length - 1][MISB.SensorLongitude] = lon;
-        misb[misb.length - 1][MISB.SensorTrueAltitude] = alt;
-    }
-
-    if (misb.length === 0) {
-        console.warn("XMLToMISB: No valid track points found")
-        return false;
-    }
-
-    return misb;
+    return trackFile.toMISB(trackIndex);
 }
