@@ -7,6 +7,7 @@ import {CNodeController} from "./CNodeController";
 import {V3} from "../threeUtils";
 import {assert} from "../assert";
 import {Vector3} from "three";
+import {extractFOV} from "./CNodeControllerVarious";
 
 const pszUIColor = "#C0C0FF";
 
@@ -74,7 +75,7 @@ export class CNodeControllerAzElZoom extends CNodeController {
 
         fwd.applyAxisAngle(right,radians(el))
         fwd.applyAxisAngle(up,-radians(az))
-        camera.fov = this.fov;
+        camera.fov = extractFOV(this.fov);
         assert(!Number.isNaN(camera.fov), "CNodeControllerPTZUI: camera.fov is NaN");
         assert(camera.fov !== undefined && camera.fov>0 && camera.fov <= 180, `bad fov ${camera.fov}` )
         fwd.add(camera.position);
