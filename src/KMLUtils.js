@@ -911,24 +911,58 @@ export function XMLToMISB(xml, trackIndex = 0) {
         return false;
     }
 
-    console.log("XMLToMISB: XML track parsing not yet implemented", xml)
+    const message = xml.nitsRoot?.message;
+    if (!message || !message.baseTime || !message.track) {
+        console.warn("XMLToMISB: Invalid XML structure")
+        return false;
+    }
 
-    // assuming STANAG XML format
-    // nitsRoot.message.baseTime = base time ISO string
+    const baseTime = timeStrToEpoch(message.baseTime["#text"]);
+    const relTimeIncrement = message.relTimeIncrement?.["#text"] ? Number(message.relTimeIncrement["#text"]) : 0;
+    const track = message.track;
+    const trackPoints = track.segment?.tp;
+    
+    if (!trackPoints) {
+        console.warn("XMLToMISB: No track points found")
+        return false;
+    }
 
-    // TRACK POINTS:
-    // nitsRoot.message.track will be a track object
-    // track.segment.tp will be an array of track points
-    // tp[n] will have at least
-    // relTime = time offset in ns from base time
-    // dynamics.pos["#text"] = lat lon alt string
-    //
-    // then optionally:
-    //   posLow = lat lon at of ground?
-    //   posHigh = lat lon alt of drone?
-    //   frameNumber = frame number in video
+    const tpArray = Array.isArray(trackPoints) ? trackPoints : [trackPoints];
+    const misb = []
 
+    for (let i = 0; i < tpArray.length; i++) {
+        const tp = tpArray[i];
+        const relTime = tp.relTime?.["#text"] ? Number(tp.relTime["#text"]) : 0;
+        const posStr = tp.dynamics?.pos?.["#text"];
+        
+        if (!posStr) {
+            console.warn("XMLToMISB: Track point " + i + " missing position data")
+            continue;
+        }
 
+        const coords = posStr.trim().split(/\s+/);
+        if (coords.length < 3) {
+            console.warn("XMLToMISB: Track point " + i + " has invalid position format")
+            continue;
+        }
 
+        const lat = Number(coords[0]);
+        const lon = Number(coords[1]);
+        const alt = Number(coords[2]);
 
+        const time = baseTime + (relTime * relTimeIncrement * 1000);
+
+        misb[misb.length] = new Array(MISBFields);
+        misb[misb.length - 1][MISB.UnixTimeStamp] = time;
+        misb[misb.length - 1][MISB.SensorLatitude] = lat;
+        misb[misb.length - 1][MISB.SensorLongitude] = lon;
+        misb[misb.length - 1][MISB.SensorTrueAltitude] = alt;
+    }
+
+    if (misb.length === 0) {
+        console.warn("XMLToMISB: No valid track points found")
+        return false;
+    }
+
+    return misb;
 }
