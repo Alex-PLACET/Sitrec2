@@ -8,7 +8,7 @@ import {ModelFiles} from "./nodes/CNode3DObject";
 import {LLAToEUS} from "./LLA-ECEF-ENU";
 import {getLocalSouthVector, getLocalUpVector} from "./SphericalMath";
 import {SITREC_DEV_DOMAIN, SITREC_DOMAIN} from "./configUtils";
-import {doesKMLContainTrack, extractKMLObjects} from "./KMLUtils";
+import {doesKMLContainTrack, doesXMLContainTrack, extractKMLObjects} from "./KMLUtils";
 import {findColumn} from "./ParseUtils";
 import {EventManager} from "./CEventManager";
 import {CNodeArray} from "./nodes/CNodeArray";
@@ -582,6 +582,10 @@ class CDragDropHandler {
             // kml files might not contain a track
             if (fileExt === "kml") {
                 isATrack = doesKMLContainTrack(parsedFile)
+            }
+
+            if (fileExt === "xml") {
+                isATrack = doesXMLContainTrack(parsedFile);
             }
 
 

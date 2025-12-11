@@ -894,3 +894,41 @@ function extractKMLPolygon(obj, style, name) {
     const coordinates = extractCoordinates(obj.outerBoundaryIs.LinearRing)
     makeKMLDisplayTrack(coordinates, style, name, altitudeMode, true);
 }
+
+///////////////////////////////////////////////////
+// XML like STANAG
+
+export function doesXMLContainTrack(xml) {
+    if (xml.nitsRoot?.message?.track) {
+        return true;
+    }
+    return false;
+}
+
+export function XMLToMISB(xml, trackIndex = 0) {
+    if (!doesXMLContainTrack(xml)) {
+        console.warn("XMLToMISB: No track in XML file for index" + trackIndex)
+        return false;
+    }
+
+    console.log("XMLToMISB: XML track parsing not yet implemented", xml)
+
+    // assuming STANAG XML format
+    // nitsRoot.message.baseTime = base time ISO string
+
+    // TRACK POINTS:
+    // nitsRoot.message.track will be a track object
+    // track.segment.tp will be an array of track points
+    // tp[n] will have at least
+    // relTime = time offset in ns from base time
+    // dynamics.pos["#text"] = lat lon alt string
+    //
+    // then optionally:
+    //   posLow = lat lon at of ground?
+    //   posHigh = lat lon alt of drone?
+    //   frameNumber = frame number in video
+
+
+
+
+}

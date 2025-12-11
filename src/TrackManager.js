@@ -22,7 +22,7 @@ import {CNodeControllerMatrix, CNodeControllerTrackPosition} from "./nodes/CNode
 import {MISB} from "./MISBUtils";
 // Removed mathjs import - using native JavaScript Number.isFinite or typeof checks
 import {CNodeMISBDataTrack, makeLOSNodeFromTrackAngles, removeLOSNodeColumnNodes} from "./nodes/CNodeMISBData";
-import {getValidIndexedTrackInFolder, KMLToMISB} from "./KMLUtils";
+import {getValidIndexedTrackInFolder, KMLToMISB, XMLToMISB} from "./KMLUtils";
 import {CNodeTrackFromMISB} from "./nodes/CNodeTrackFromMISB";
 import {assert} from "./assert.js";
 import {getLocalSouthVector, getLocalUpVector, pointOnSphereBelow} from "./SphericalMath";
@@ -235,6 +235,8 @@ class CTrackManager extends CManager {
             misb = geo.toMISB(trackIndex);
         } else if (ext === "kml") {
             misb = KMLToMISB(FileManager.get(sourceFile), trackIndex);
+        } else if (ext === "xml") {
+            misb = XMLToMISB(FileManager.get(sourceFile), trackIndex);
         } else if (ext === "srt" || ext === "klv") {
             misb = FileManager.get(sourceFile);
         } else if (ext === "csv") {

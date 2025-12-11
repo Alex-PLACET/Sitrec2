@@ -1320,6 +1320,10 @@ export class CFileManager extends CManager {
                     parsed = parseXml(decoder.decode(buffer));
                     dataType = "klm";
                     break;
+                case "xml": // generic XML files (e.g. STANAG)
+                    parsed = parseXml(decoder.decode(buffer));
+                    dataType = "xlm";
+                    break;
                 case "glb":             // 3D models in glTF binary format
                     dataType = "glb";
                     parsed = buffer;
