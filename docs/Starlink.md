@@ -119,7 +119,7 @@ To add a video (or a photo) just drag it in. The viewports will reconfigure to t
 
 ![Starlink-sitrec-with-video.jpg](docimages/Starlink-sitrec-with-video.jpg)
 
-### Step 6 - Refine the DTLSs
+### Step 6 - Refine the DTLDs
 
 You will often be missing the exact time, location, direction, and field of view, so you will have to adjust one or more of these to match. Even if you have the time down to the second, you may need to adjust the millisecond (ms) value to get things perfectly aligned. 
 
