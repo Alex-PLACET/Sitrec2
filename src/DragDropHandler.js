@@ -334,6 +334,7 @@ class CDragDropHandler {
     // @param {ArrayBuffer} result - The raw file data
     // @param {string|null} newStaticURL - The static URL for the file, if applicable
     queueResult(filename, result, newStaticURL) {
+        console.log("queueResult: Queuing " + filename + " for parsing")
         this.dropQueue.push({filename: filename, result: result, newStaticURL: newStaticURL});
     }
 
@@ -343,6 +344,7 @@ class CDragDropHandler {
     checkDropQueue() {
         while (this.dropQueue.length > 0) {
             const drop = this.dropQueue.shift();
+            console.log("checkDropQueue: Parsing queued file " + drop.filename)
             this.parseResult(drop.filename, drop.result, drop.newStaticURL);
         }
     }
