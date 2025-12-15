@@ -181,11 +181,16 @@ export class CNodeMISBDataTrack extends CNodeEmptyArray {
         return this.adjustAlt(a);
     }
 
+    // get time at frame i in milliseconds since epoch
+    // MISB data (or converted CSV data) can be in seconds, milliseconds, or microseconds
+    // so we have to detect which and convert to milliseconds
     getTime(i) {
         let time = Number(this.misb[i][MISB.UnixTimeStamp])
         // check to see if it's in milliseconds or microseconds
         if (time > 31568461000000) {   // 31568461000000 is 1971 using microseconds, but 2970 using milliseconds
             time = time / 1000
+        } else if (time < 31568461000) { // <1971 in milliseconds, less than 2970 in seconds, so seconds
+            time = time * 1000
         }
         return time
     }
