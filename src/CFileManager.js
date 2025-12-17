@@ -34,6 +34,7 @@ import {ECEFToLLAVD_Sphere, EUSToECEF} from "./LLA-ECEF-ENU";
 import {V3} from "./threeUtils";
 import {isAudioOnlyFormat} from "./AudioFormats";
 import {isFeaturesCSV} from "./ParseFeaturesCSV";
+import {createImageFromArrayBuffer} from "./FileUtils";
 
 
 // The file manager is a singleton that manages all the files
@@ -1099,24 +1100,33 @@ export class CFileManager extends CManager {
     }
 
 
+    // parse an asset based on its filename and buffer contents
+    // @param {string} filename - The name of the file being parsed.
+    // @param {string} id - The identifier for the asset.
+    // @param {ArrayBuffer} buffer - The binary data of the file (already loaded)
+    // @param {object} [metadata=null] - Optional metadata associated with the asset.
+    // @returns {Promise} A promise that resolves to the parsed asset.
     parseAsset(filename, id, buffer, metadata = null) {
-        // Check if it's a TS file first
+
+        // Check if it's a TS file first, these require special handling
+        // as they can contain multiple streams inside them
         if (filename.toLowerCase().endsWith('.ts')) {
+            // Use the TSParser to handle TS files, which will call back to parseAsset for each stream
             return TSParser.parseTSFile(filename, id, buffer, (streamFilename, streamId, streamData, streamMetadata) => {
                 console.log("Detected TS Stream: " + streamFilename + " for id: " + streamId + "")
                 return this.parseAsset(streamFilename, streamId, streamData, streamMetadata);
             });
         }
         
-        // if it's a zip file, then we need to extract the file
-        // and then parse that.
+        // similarly, if it's a zip file, then we need to extract the files
+        // and then parse them
+        // checking for a zip file by both extension and magic number in the first four bytes
 
         let isZip = false;
         // Check if the filename ends with .zip or .kmz
         if (filename.endsWith('.zip') || filename.endsWith('.kmz')) {
             isZip = true;
         }
-
         // files zipped on the server are not always .zip at this point
         // so we need to check the first few bytes of the file
         const byteView = new Uint8Array(buffer);
@@ -1135,7 +1145,8 @@ export class CFileManager extends CManager {
                     const filePromises = Object.keys(zipContents.files).map(zipFilename => {
                         const zipEntry = zipContents.files[zipFilename];
                         // We only care about actual files (not directories)
-                        if (!zipEntry.dir) {
+                        // Skip macOS metadata files (__MACOSX directory and ._ prefixed files)
+                        if (!zipEntry.dir && !zipFilename.includes('__MACOSX') && !zipFilename.includes('._')) {
                             // Get the ArrayBuffer of the unzipped file
                             return zipEntry.async('arraybuffer')
                                 .then(unzippedBuffer => {
@@ -1149,15 +1160,20 @@ export class CFileManager extends CManager {
                                     // (typically for doc.kml insize a .kmz file)
                                     zipFilename = filename+"_"+zipFilename; // Prefix the zip filename with the original filename
 
-                                    // console.log("Unzipped file: " + zipFilename + " for id: " + id);
+                                    console.log("Unzipped file: " + zipFilename + " for id: " + id + " buffer size: " + unzippedBuffer.byteLength);
                                     return this.parseAsset(zipFilename, id, unzippedBuffer);
+                                })
+                                .catch(err => {
+                                    console.error("Error parsing unzipped file " + zipFilename + ":", err);
+                                    throw err;
                                 });
                         }
-                    });
+                    }).filter(p => p !== undefined);
                     // Wait for all files to be processed
                     return Promise.all(filePromises);
                 })
                 .catch(error => {
+                    console.error('Error unzipping the file:', error);
                     showError('Error unzipping the file:', error);
                 });
         } else {
@@ -1354,6 +1370,9 @@ export class CFileManager extends CManager {
         }
     }
 
+    // derive the file extension, with special handling for dynamic proxy URLs
+    // those return txt files, which are interpreted as TLEs
+    // otherwise just use getFileExtension which get the normal extension
     deriveExtension(filename) {
         var fileExt;
         if (filename.startsWith(SITREC_SERVER + "proxy.php")) {
@@ -1470,29 +1489,6 @@ export class CFileManager extends CManager {
         super.disposeAll()
     }
 
-}
-
-// we have to return a promise as the Image loading is async,
-// even when from a blob/URL
-function createImageFromArrayBuffer(arrayBuffer, type) {
-    return new Promise((resolve, reject) => {
-        // Create a blob from the ArrayBuffer
-        const blob = new Blob([arrayBuffer], {type: type});
-
-        // Create an object URL for the blob
-        const url = URL.createObjectURL(blob);
-
-        // Create a new Image and set its source to the object URL
-        const img = new Image();
-        img.onload = () => {
-            console.log("Done with " + url);
-            // Release the object URL after the image has been loaded
-            URL.revokeObjectURL(url);
-            resolve(img); // Resolve the promise with the Image object
-        };
-        img.onerror = reject; // Reject the promise if there's an error loading the image
-        img.src = url;
-    });
 }
 
 // given a 2d CSV file, attempt to detect what type of file it is

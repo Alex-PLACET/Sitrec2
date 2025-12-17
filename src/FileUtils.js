@@ -129,3 +129,28 @@ export function createCustomModalWithCopy(url) {
     // Return the showModal function to allow opening the modal
     return showModal;
 }
+
+// Given an ArrayBuffer and a MIME type (e.g. 'image/jpeg' or 'image/png'),
+// create an Image object from it.
+// Note that we have to return a promise as the Image loading is async,
+// even when from a blob/URL
+export function createImageFromArrayBuffer(arrayBuffer, type) {
+    return new Promise((resolve, reject) => {
+        // Create a blob from the ArrayBuffer
+        const blob = new Blob([arrayBuffer], {type: type});
+
+        // Create an object URL for the blob
+        const url = URL.createObjectURL(blob);
+
+        // Create a new Image and set its source to the object URL
+        const img = new Image();
+        img.onload = () => {
+            console.log("Done with " + url);
+            // Release the object URL after the image has been loaded
+            URL.revokeObjectURL(url);
+            resolve(img); // Resolve the promise with the Image object
+        };
+        img.onerror = reject; // Reject the promise if there's an error loading the image
+        img.src = url;
+    });
+}
