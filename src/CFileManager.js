@@ -736,7 +736,7 @@ export class CFileManager extends CManager {
 
     // load a file from the local system by first putting up a file selector dialog
     // then running the processFile on the resultant file object
-    loadLocalFile(processFile) {
+    selectAndLoadLocalFile(processFile) {
         // Create an input element
         const inputElement = document.createElement('input');
 
@@ -772,30 +772,33 @@ export class CFileManager extends CManager {
 
     }
 
-    rehostFile() {
-        this.loadLocalFile( (file) => {
-            const reader = new FileReader();
+    // Direct file rehosting is deprecated
+    // files are now rehosted as needed when they are used in the sitch
+    // rehostFile() {
+    //     this.selectAndLoadLocalFile( (file) => {
+    //         const reader = new FileReader();
+    //
+    //         // Listen for the 'load' event on the FileReader
+    //         reader.addEventListener('load', () => {
+    //
+    //             this.rehoster.rehostFile(file.name, reader.result).then(rehostResult => {
+    //                 console.log("Imported File Rehosted as " + rehostResult);
+    //                 // display an alert with the new URL so the user can copy it
+    //                 //alert(rehostResult);
+    //                 createCustomModalWithCopy(rehostResult)();
+    //
+    //             });
+    //
+    //         });
+    //
+    //         // Read the file as an array buffer (binary data)
+    //         reader.readAsArrayBuffer(file);
+    //     })
+    // }
 
-            // Listen for the 'load' event on the FileReader
-            reader.addEventListener('load', () => {
-
-                this.rehoster.rehostFile(file.name, reader.result).then(rehostResult => {
-                    console.log("Imported File Rehosted as " + rehostResult);
-                    // display an alert with the new URL so the user can copy it
-                    //alert(rehostResult);
-                    createCustomModalWithCopy(rehostResult)();
-
-                });
-
-            });
-
-            // Read the file as an array buffer (binary data)
-            reader.readAsArrayBuffer(file);
-        })
-    }
-
+    // importFile menu option
     importFile() {
-        this.loadLocalFile( (file) => {
+        this.selectAndLoadLocalFile( (file) => {
             DragDropHandler.uploadDroppedFile(file)
         })
     }
