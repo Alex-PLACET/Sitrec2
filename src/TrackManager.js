@@ -1545,7 +1545,9 @@ class CTrackManager extends CManager {
         this.iterate((key, trackOb) => {
             if (trackOb.isSynthetic) {
                 // Get the spline editor node to extract control points
-                const splineEditorNode = NodeMan.get(trackOb.trackID);
+                // The actual spline editor is in the _unsmoothed version
+                const unsmoothedID = trackOb.trackID + "_unsmoothed";
+                const splineEditorNode = NodeMan.get(unsmoothedID);
                 
                 // Extract positions from the spline editor
                 let positions = [];
