@@ -30,7 +30,6 @@ import {
 } from "./Globals";
 import {isKeyHeld, toggler} from "./KeyBoardHandler";
 import {ECEFToLLAVD_Sphere, EUSToECEF, EUSToLLA} from "./LLA-ECEF-ENU";
-import {createCustomModalWithCopy, saveFilePrompted} from "./CFileManager";
 import {DragDropHandler} from "./DragDropHandler";
 import {par} from "./par";
 import {GlobalScene} from "./LocalFrame";
@@ -53,6 +52,7 @@ import {configParams} from "./login";
 import {showError} from "./showError";
 import {initializeSettings, SettingsSaver} from "./SettingsManager";
 import {CNodeCurveEditor2} from "./nodes/CNodeCurveEdit2";
+import {createCustomModalWithCopy, saveFilePrompted} from "./FileUtils";
 
 export class CCustomManager {
     constructor() {
