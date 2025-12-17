@@ -1179,17 +1179,17 @@ export class CFileManager extends CManager {
         } else {
 
 
-            // first check for loading via URL, which is things like the Celestrack proxy
+            // get the extension from the filename
+            // this is normally just the part after the last dot
+            // but for Proxied files, we default to .txt (for TLE files)
             var fileExt = this.deriveExtension(filename);
 
-            var parsed;
-            var prom;
+            var parsed;  // set to true if we successfully parse the file
+            var prom; // set to a promise if the parsing is async
 
             const decoder = new TextDecoder("utf-8"); // replace "utf-8" with detected encoding
 
-            // might not need this, as we can just use the fileExt
             let dataType = "unknown";
-
 
             switch (fileExt.toLowerCase()) {
                 case "txt":
@@ -1491,18 +1491,30 @@ export class CFileManager extends CManager {
 
 }
 
-// given a 2d CSV file, attempt to detect what type of file it is
-// and the mappings of columns to data
+// given a CSV file stored as a 2D array [row][col], attempt to detect what type of file it is
+// this is all down via ad hoc checks of the first row (the header row)
+// returns a string indicating the type
+// known types are: "Airdata", "MISB1", "CUSTOM1", "FR24CSV", "AZIMUTH", "ELEVATION", "HEADING", "FOV", "FEATURES", "Unknown"
 export function detectCSVType(csv) {
+
+    // Airdata is DJI airdata export CSV files from https://airdata.com/
     if (csv[0][0] === "time(millisecond)" && csv[0][1] === "datetime(utc)") {
         return "Airdata"
-    } else if (csv[0][0] === "DPTS" && csv[0][1] === "Security:") {
+    }
+
+
+    // MISB1 is some exported verions of MISB KLV as CSV
+    // There are a couple of variants of this
+    // but basically it's going to have some of the standard MISB columns in it
+    // and possibly some extra columns at the start, depending on what tool exported it
+
+    if (csv[0][0] === "DPTS" && csv[0][1] === "Security:") {
         // The DPTS and Security: columns are the first two columns of the MISB1 CSV sample header used for misb2 test sitch
         // not sure if this is actually common
         return "MISB1"
     }
 
-    // a MISB file will have a header row with the column names
+    // a more normal MISB file will have a header row with the column names
     // and one of them will be "Sensor Latitude"
     // so return true if "Sensor Latitude" is in the first row
     // also return true for "SensorLatitude" as we want to allow the headers to be the tag ids as well as the full tag names
@@ -1511,10 +1523,14 @@ export function detectCSVType(csv) {
     }
 
 
+    // Just Frame, Latitude, Longitude for custom FLL files
     if (csv[0][0].toLowerCase() === "frame" && csv[0][1].toLowerCase() === "latitude" && csv[0][2].toLowerCase() === "longitude") {
         return "CUSTOM_FLL"
     }
 
+    // CUSTOM1, is a more generic custom CSV format
+    // that has things like time, lat, lon, alt, and other things in various configuration
+    // see the isCustom1() function in CFileManger.js for details
     if (isCustom1(csv)) {
         return "CUSTOM1";
     }
