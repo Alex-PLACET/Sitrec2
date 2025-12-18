@@ -690,14 +690,14 @@ class CTrackManager extends CManager {
     }
 
     centerOnTrack(shortName, trackNumber, trackOb, hasCenter, hasAngles) {
-        console.log("Considering setup options for track: ", shortName, " number ", trackNumber)
-        console.log("Sit.centerOnLoadedTracks: ", Sit.centerOnLoadedTracks, " Globals.dontAutoZoom: ", Globals.dontAutoZoom, " Globals.sitchEstablished: ", Globals.sitchEstablished)
+//        console.log("Considering setup options for track: ", shortName, " number ", trackNumber)
+//        console.log("Sit.centerOnLoadedTracks: ", Sit.centerOnLoadedTracks, " Globals.dontAutoZoom: ", Globals.dontAutoZoom, " Globals.sitchEstablished: ", Globals.sitchEstablished)
 
 
         if (Sit.centerOnLoadedTracks && !Globals.dontAutoZoom && !Globals.sitchEstablished) {
 
 
-            console.log("Centering on loaded track ", shortName)
+//            console.log("Centering on loaded track ", shortName)
 
             // maybe adjust the main view camera to look at the center of the track
             const mainCameraNode = NodeMan.get("mainCamera");
@@ -748,7 +748,7 @@ class CTrackManager extends CManager {
             const track0 = TrackManager.getByIndex(0);
             if (track0 !== trackOb) {
                 let time = closestIntersectionTime(track0.trackDataNode, trackOb.trackDataNode);
-                console.log("Closest intersection time: ", time);
+//                console.log("Closest intersection time: ", time);
 
                 // we want this in the middle, so subtract half the Sit.frames
 

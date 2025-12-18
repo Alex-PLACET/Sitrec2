@@ -420,6 +420,8 @@ class CDragDropHandler {
     // @param {string} filename - The name of the file
     // @param {ArrayBuffer} parsedFile - The parsed file data (from parseResult)
     handleParsedFile(filename, parsedFile) {
+        console.log("handleParsedFile: Handling parsed file " + filename)
+
 
         setRenderOne(2)
 

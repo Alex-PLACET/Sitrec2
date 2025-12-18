@@ -2,9 +2,6 @@
 import {NodeMan, Sit} from "./Globals";
 import {degrees} from "./utils";
 import {assert} from "./assert";
-import {MISB} from "./MISBUtils";
-import {getLocalUpVector} from "./SphericalMath";
-import {DebugArrowAB} from "./threeExt";
 
 export function trackHeading(source, f) {
     if (f > Sit.frames - 2) f = Sit.frames - 2; // hand out of range
@@ -111,7 +108,7 @@ export function closestIntersectionTime(track1, track2) {
 
     const startString = new Date(start).toISOString();
     const endString = new Date(end).toISOString();
-    console.log(`INTERSECTION Start: ${startString}, End: ${endString}`);
+//    console.log(`INTERSECTION Start: ${startString}, End: ${endString}`);
 
 
     // use the middle of the time as default best time
@@ -130,7 +127,7 @@ export function closestIntersectionTime(track1, track2) {
         }
     }
     const timeString = new Date(bestTime).toISOString();
-    console.log(`New Best Time: ${timeString}, Distance: ${bestDistance}`);
+//    console.log(`New Best Time: ${timeString}, Distance: ${bestDistance}`);
 
     return bestTime;
 

@@ -1107,6 +1107,7 @@ export class CFileManager extends CManager {
     // @param {object} [metadata=null] - Optional metadata associated with the asset.
     // @returns {Promise} A promise that resolves to the parsed asset.
     parseAsset(filename, id, buffer, metadata = null) {
+        console.log("CFileManager::parseAsset - " + filename + " for id: " + id + " buffer size: " + buffer.byteLength);
 
         // Check if it's a TS file first, these require special handling
         // as they can contain multiple streams inside them
