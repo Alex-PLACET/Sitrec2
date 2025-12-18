@@ -31,8 +31,8 @@ class MultiCloudGeometry extends BufferGeometry {
         rng = seedrandom("x")
 
         var index = 0
-        for (var x = -250; x < -50; x += 2) {
-            for (var y = 50; y < 250; y += 2) {
+        for (var x = -250; x < 0; x += 2) {
+            for (var y = 0; y < 250; y += 2) {
                 if (abs(x / y) > 0.5 && abs(x / y) < 3) {
                     var pos = V3(metersFromMiles(x) + getRandomInt(f2m(-5000), f2m(5000)),
                         alt - f2m(1500) - drop(metersFromMiles(x), metersFromMiles(y), metersFromMiles(radius)) + getRandomInt(f2m(-100), f2m(100)),
