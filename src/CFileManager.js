@@ -3,6 +3,7 @@ import {
     cleanCSVText,
     disableAllInput,
     enableAllInput,
+    getDateTimeFilename,
     getFileExtension,
     isHttpOrHttps,
     parseBoolean,
@@ -493,13 +494,8 @@ export class CFileManager extends CManager {
 
         // and then save the sitch to the server where it will be versioned by data in a folder named for this sitch, for this user
         console.log("Saving sitch as " + sitchName)
-        // get date and time into a string, so long as you don't save more than one a second
-        // then this will be unique
-        const todayDateStr = new Date().toISOString().split('T')[0];
-        const todayTimeStr = new Date().toISOString().split('T')[1].split('.')[0];
-        const todayDateTimeStr = todayDateStr + "_" + todayTimeStr;
-        // strip out - and : so it's a valid filename (leave the underscore)
-        const todayDateTimeFilename = todayDateTimeStr.replaceAll("-", "").replaceAll(":", "");
+
+        const todayDateTimeFilename = getDateTimeFilename();
         console.log("Unique date time string: " + todayDateTimeFilename)
 
         const oldPaused = par.paused;

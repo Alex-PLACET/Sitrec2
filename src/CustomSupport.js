@@ -38,7 +38,7 @@ import {assert} from "./assert.js";
 import {getShortURL} from "./urlUtils";
 import {CNode3DObject} from "./nodes/CNode3DObject";
 import {UpdateHUD} from "./JetStuff";
-import {degrees} from "./utils";
+import {degrees, getDateTimeFilename} from "./utils";
 import {ViewMan} from "./CViewManager";
 import {EventManager} from "./CEventManager";
 import {SITREC_APP} from "./configUtils";
@@ -269,7 +269,7 @@ export class CCustomManager {
             this.buttonColor = "#80ff80"
 
             if (Globals.userID > 0)
-                this.serializeButton = theGUI.add(this, "serialize").name(this.buttonText).setLabelColor(this.buttonColor)
+                this.serializeButton = theGUI.add(this, "serializeMod").name(this.buttonText).setLabelColor(this.buttonColor)
             else
                 this.serializeButton = theGUI.add(this, "loginAttempt").name("Export Disabled (click to log in)").setLabelColor("#FF8080");
 
@@ -2460,13 +2460,19 @@ export class CCustomManager {
         return Sit.ignores.includes(id);
     }
 
+    // For saving a modified legacy sitch, like Gimbal, use the original name, with _mod
+    // and make the version from the datetime as normal
+    serializeMod() {
+        const name = Sit.name + "_mod";
+        const todayDateTimeFilename = getDateTimeFilename();
+        return this.serialize(name, todayDateTimeFilename);
+    }
+
     serialize(name, version, local = false) {
         console.log("Serializing custom sitch")
 
         assert (Sit.canMod || Sit.isCustom, "one of Sit.canMod or Sit.isCustom must be true to serialize a sitch")
         assert (!Sit.canMod || !Sit.isCustom, "one of Sit.canMod or Sit.isCustom must be false to serialize a sitch")
-
-
 
         if (local) {
 

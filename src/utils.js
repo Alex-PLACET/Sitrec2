@@ -1210,3 +1210,15 @@ export function cleanFloat(x, maxDecimals = 12) {
     }
     return x; // nothing convincingly "artifacty"
 }
+
+// For making filenames unique based on date and time
+// get date and time into a string, so long as you don't save more than one a second
+// then this will be unique
+export function getDateTimeFilename() {
+    const todayDateStr = new Date().toISOString().split('T')[0];
+    const todayTimeStr = new Date().toISOString().split('T')[1].split('.')[0];
+    const todayDateTimeStr = todayDateStr + "_" + todayTimeStr;
+    // strip out - and : so it's a valid filename (leave the underscore)
+    const todayDateTimeFilename = todayDateTimeStr.replaceAll("-", "").replaceAll(":", "");
+    return todayDateTimeFilename;
+}
