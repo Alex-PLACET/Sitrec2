@@ -112,6 +112,7 @@ export class CNodeViewCanvas extends CNodeView {
                 // Scale the 2D context so drawing commands work with logical coordinates
                 if (this.ctx) {
                     this.ctx.scale(this.devicePixelRatio, this.devicePixelRatio);
+                    this._contextScaled = true;
                 }
             }
 
@@ -136,6 +137,8 @@ export class CNodeViewCanvas extends CNodeView {
                 // Use logical coordinates (widthPx, heightPx) since context is scaled by devicePixelRatio
                 this.ctx.clearRect(0, 0, this.widthPx, this.heightPx);
             }
+            // Context scaling is still valid if size hasn't changed
+            this._contextScaled = true;
         }
     }
 
@@ -158,6 +161,19 @@ class CNodeViewCanvas2D extends CNodeViewCanvas {
         this.autoFillColor = v.autoFillColor;
 
         this.devicePixelRatio = window.devicePixelRatio || 1;
+        this._contextScaled = true;
+    }
+
+    // Helper method: ensures canvas dimensions and context scaling match current display requirements
+    // This should be called before direct drawing operations when the context needs to be scaled
+    // It will only re-scale if canvas dimensions have changed (detected by checking _contextScaled flag)
+    ensureContextScaled() {
+        if (!this._contextScaled) {
+            this.canvas.width = this.widthPx * this.devicePixelRatio;
+            this.canvas.height = this.heightPx * this.devicePixelRatio;
+            this.ctx.scale(this.devicePixelRatio, this.devicePixelRatio);
+            this._contextScaled = true;
+        }
     }
 
     dispose() {

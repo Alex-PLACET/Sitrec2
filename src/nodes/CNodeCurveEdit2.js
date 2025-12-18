@@ -704,11 +704,6 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
         
         if (!this.visible) return;
         
-        // Ensure canvas is scaled for high DPI on every frame
-        this.canvas.width = this.widthPx * this.devicePixelRatio;
-        this.canvas.height = this.heightPx * this.devicePixelRatio;
-        this.ctx.scale(this.devicePixelRatio, this.devicePixelRatio);
-        
         const ctx = this.ctx;
         const margin = 60;
         const width = this.widthPx;

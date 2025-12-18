@@ -160,6 +160,7 @@ export class CNodeViewUI extends CNodeViewCanvas2D {
         this.canvas.height = this.heightPx * this.devicePixelRatio
         // Scale context so all drawing uses logical coordinates
         this.ctx.scale(this.devicePixelRatio, this.devicePixelRatio);
+        this._contextScaled = true;
         //this.canvas.style.zIndex = 10;
 
         this.textElements[key] = new CUIText(text, x, y, size, color, align, font)

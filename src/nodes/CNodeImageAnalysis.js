@@ -36,10 +36,7 @@ export class CNodeImageView extends CNodeViewUI {
     renderCanvas() {
         super.renderCanvas(0)
         
-        // Ensure canvas is scaled for high DPI on every frame
-        this.canvas.width = this.widthPx * this.devicePixelRatio;
-        this.canvas.height = this.heightPx * this.devicePixelRatio;
-        this.ctx.scale(this.devicePixelRatio, this.devicePixelRatio);
+        this.ensureContextScaled();
         
         if (this.stretchToFit) {
             this.ctx.drawImage(this.image, 0, 0, this.widthPx, this.heightPx)

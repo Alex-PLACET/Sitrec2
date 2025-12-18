@@ -369,10 +369,7 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         // if no video file, this is just a drop target for now
         if (!this.videoData) return;
         
-        // Ensure canvas is scaled for high DPI on every frame
-        this.canvas.width = this.widthPx * this.devicePixelRatio;
-        this.canvas.height = this.heightPx * this.devicePixelRatio;
-        this.ctx.scale(this.devicePixelRatio, this.devicePixelRatio);
+        this.ensureContextScaled();
 
         this.syncAudioWithVideo(frame);
 
