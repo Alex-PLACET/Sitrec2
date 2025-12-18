@@ -4,6 +4,7 @@ import {AdditiveBlending, Mesh, PlaneGeometry, ShaderMaterial, Vector3} from 'th
 import {sharedUniforms} from "../js/map33/material/SharedUniforms";
 import {NodeMan} from "../Globals";
 import {CNodeGUIValue} from "./CNodeGUIValue";
+import {CNodeGUIColor} from "./CNodeGUIColor";
 import {par} from "../par";
 
 export class CNode3DLight extends CNode3D {
@@ -166,14 +167,16 @@ export class CNode3DLight extends CNode3D {
             }
         }, this.gui);
 
-        // Color control - create a color object for the GUI
-        this.colorObject = {
-            color: '#' + this.light.color.getHexString()
-        };
-        this.colorControl = this.gui.addColor(this.colorObject, 'color').name('Color').onChange((value) => {
-            this.light.color.setHex(value.replace('#', '0x'));
-            this._object.material.uniforms.uColor.value = [this.light.color.r, this.light.color.g, this.light.color.b];
-        });
+        // Color control
+        this.colorControl = new CNodeGUIColor({
+            id: this.id + "_color",
+            desc: "Color",
+            value: this.light.color,
+            onChange: (value) => {
+                this.light.color.copy(value);
+                this._object.material.uniforms.uColor.value = [this.light.color.r, this.light.color.g, this.light.color.b];
+            }
+        }, this.gui);
 
         // Radius control
         this.radiusControl = new CNodeGUIValue({
@@ -231,19 +234,10 @@ export class CNode3DLight extends CNode3D {
         NodeMan.disposeRemove(this.lightVisibleControl, true);
         NodeMan.disposeRemove(this.lightIlluminatesControl, true);
         NodeMan.disposeRemove(this.intensityControl, true);
+        NodeMan.disposeRemove(this.colorControl, true);
         NodeMan.disposeRemove(this.radiusControl, true);
         NodeMan.disposeRemove(this.strobeEveryControl, true);
         NodeMan.disposeRemove(this.strobeLengthControl, true);
-
-
-        // currently UI is destroyed when changing levels, but this reference is still there
-        // an now has no parent.
-        // if we want to remove things individually, we might want to improve this
-        // but for now it's a possible minor temporary memory leak.
-        // if (this.colorControl) {
-        //     this.colorControl.destroy();
-        //     this.colorControl = null;
-        // }
 
 
         if (this._object) {
