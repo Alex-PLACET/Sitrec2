@@ -25,7 +25,7 @@ import {assert} from "./assert.js";
 import {textSitchToObject} from "./RegisterSitches";
 import {addOptionToGUIMenu, removeOptionFromGUIMenu} from "./lil-gui-extras";
 import {isCustom1, isFR24CSV, parseCustom1CSV, parseCustomFLLCSV, parseFR24CSV} from "./ParseCustom1CSV";
-import {stripDuplicateTimes} from "./ParseUtils";
+import {findColumn, stripDuplicateTimes} from "./ParseUtils";
 import {isConsole, isLocal, isServerless, SITREC_APP, SITREC_DOMAIN, SITREC_SERVER} from "./configUtils";
 import {TSParser} from "./TSParser";
 import {showError} from "./showError";
