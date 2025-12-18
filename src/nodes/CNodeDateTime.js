@@ -16,8 +16,8 @@ const timeZoneOffsets = {
     "HST UTC-10": -10,      // Hawaii Standard Time
     "HDT UTC-9": -9,        // Hawaii Daylight Time
     "AKST UTC-9": -9,       // Alaska Standard Time
-    "AKDT UTC-8": -8,       // Alaska Daylight Time
     "PST UTC-8": -8,        // Pacific Standard Time
+    "AKDT UTC-8": -8,       // Alaska Daylight Time
     "PDT UTC-7": -7,        // Pacific Daylight Time
     "MST UTC-7": -7,        // Mountain Standard Time
     "MDT UTC-6": -6,        // Mountain Daylight Time
@@ -30,8 +30,8 @@ const timeZoneOffsets = {
     "FKST UTC-3": -3,       // Falkland Islands Summer Time
     "GST UTC-2": -2,        // South Georgia and the South Sandwich Islands
     "AZOT UTC-1": -1,       // Azores Standard Time
-    "AZOST UTC+0": 0,       // Azores Summer Time
     "GMT UTC+0": 0,         // Greenwich Mean Time
+    "AZOST UTC+0": 0,       // Azores Summer Time
     "BST UTC+1": 1,         // British Summer Time
     "CET UTC+1": 1,         // Central European Time
     "CEST UTC+2": 2,        // Central European Summer Time
