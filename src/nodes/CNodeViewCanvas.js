@@ -103,6 +103,18 @@ export class CNodeViewCanvas extends CNodeView {
                 this.renderer.setSize(this.heightPx, this.widthPx, false)
             }
 
+            // Scale canvas backing store by devicePixelRatio for high DPI displays
+            // Logical dimensions (widthPx, heightPx) stay the same for coordinate calculations
+            // Physical canvas size is scaled for better resolution
+            if (this.canvas) {
+                this.canvas.width = this.widthPx * this.devicePixelRatio;
+                this.canvas.height = this.heightPx * this.devicePixelRatio;
+                // Scale the 2D context so drawing commands work with logical coordinates
+                if (this.ctx) {
+                    this.ctx.scale(this.devicePixelRatio, this.devicePixelRatio);
+                }
+            }
+
             // shoudl not be neede
             //this.canvas.style.width = "100%";
             //this.canvas.style.height = "100%";
@@ -121,7 +133,8 @@ export class CNodeViewCanvas extends CNodeView {
         } else {
             if (this.autoClear) {
                 // not clearing it by changing the size, so clear it here
-                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                // Use logical coordinates (widthPx, heightPx) since context is scaled by devicePixelRatio
+                this.ctx.clearRect(0, 0, this.widthPx, this.heightPx);
             }
         }
     }
@@ -144,6 +157,7 @@ class CNodeViewCanvas2D extends CNodeViewCanvas {
         this.autoFill = v.autoFill;
         this.autoFillColor = v.autoFillColor;
 
+        this.devicePixelRatio = window.devicePixelRatio || 1;
     }
 
     dispose() {
