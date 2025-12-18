@@ -31,7 +31,6 @@ import {
 } from "./Globals";
 import {isKeyHeld, toggler} from "./KeyBoardHandler";
 import {ECEFToLLAVD_Sphere, EUSToECEF, EUSToLLA} from "./LLA-ECEF-ENU";
-import {DragDropHandler} from "./DragDropHandler";
 import {par} from "./par";
 import {GlobalScene} from "./LocalFrame";
 import {refreshLabelsAfterLoading} from "./nodes/CNodeLabels3D";
@@ -2650,7 +2649,7 @@ export class CCustomManager {
                             const filename = x.filename;
                             const fileID = x.id ?? x.filename; // use filename as fallback id
                             console.log("HANDLING LOADED FILE ID: " + id + " filename: " + filename);
-                            DragDropHandler.handleParsedFile(fileID, parsedFile);
+                            FileManager.handleParsedFile(fileID, parsedFile);
                         }
 
                         Globals.dontAutoZoom = false;

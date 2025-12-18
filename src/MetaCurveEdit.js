@@ -383,6 +383,7 @@ class MetaBezierCurveEditor {
 
         this.xLabel2 = p.xLabel2;
 
+        this.devicePixelRatio = p.devicePixelRatio || 1;
 
         this.resize = function () {
 
@@ -390,12 +391,25 @@ class MetaBezierCurveEditor {
 //                console.warn("MetaBezierCurveEditor: canvas is zero size");
             }
 
+            // Use the actual displayed canvas size from the parent div
+            // canvas.width property reflects physical pixels (after adjustSize scaling)
+            // but we want logical/CSS pixel dimensions for layout calculations
+            // clientWidth/clientHeight give us the displayed size in CSS pixels
+            let canvasWidth = this.c.clientWidth;
+            let canvasHeight = this.c.clientHeight;
+            
+            // If clientWidth is 0 or invalid, fall back to canvas.width / devicePixelRatio
+            if (canvasWidth === 0 || canvasHeight === 0) {
+                canvasWidth = this.c.width / this.devicePixelRatio;
+                canvasHeight = this.c.height / this.devicePixelRatio;
+            }
+
             if (this.fillCanvas) {
                 this.g = {
                     x: 0,
                     y: 0,
-                    w: this.c.width,
-                    h: this.c.height,
+                    w: canvasWidth,
+                    h: canvasHeight,
                 }
             } else {
                 // g is the graph window in which we draw the graph
@@ -403,8 +417,8 @@ class MetaBezierCurveEditor {
                 // so g.y,g.y is the top left offset from (0,0) in the canvas (in canvas pixels)
                 // and g.w,g.h is the width and height of the graph in canvas pixels
 
-                if (this.c.width <= 58 || this.c.height <= 54) {
-                    console.warn("MetaBezierCurveEditor: canvas is too small", this.c.width, this.c.height);
+                if (canvasWidth <= 58 || canvasHeight <= 54) {
+                    console.warn("MetaBezierCurveEditor: canvas is too small", canvasWidth, canvasHeight);
                     return;
                 }
 
@@ -416,8 +430,8 @@ class MetaBezierCurveEditor {
                 this.g = {
                     x: leftMargin,
                     y: topMargin,
-                    w: this.c.width - (leftMargin + rightMargin+1),
-                    h: this.c.height - (topMargin + bottomMargin+1),
+                    w: canvasWidth - (leftMargin + rightMargin+1),
+                    h: canvasHeight - (topMargin + bottomMargin+1),
                 };
                 if (this.xLabel2 != undefined) {
                     this.g.y += 20;
@@ -430,6 +444,7 @@ class MetaBezierCurveEditor {
 
         this.resize();
         this.ctx = this.c.getContext("2d");
+        // Context scaling is done in CNodeCurveEditorView.renderCanvas() before update()
         // define major and minor steps for the grid
 
         this.major = {
@@ -634,6 +649,10 @@ class MetaBezierCurveEditor {
             this.dirty = 0;
         }
 
+        // Calculate canvas dimensions once for use throughout update()
+        const canvasWidth = this.c.clientWidth || (this.c.width / this.devicePixelRatio);
+        const canvasHeight = this.c.clientHeight || (this.c.height / this.devicePixelRatio);
+
         // If the user shrinks the window to small size, we don't want to crash
         // so we set a minimum size for the graph
         if (this.g.w <= 1) {
@@ -694,7 +713,7 @@ class MetaBezierCurveEditor {
 
 
         ctx.fillStyle = "white";
-        ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
         // X axis
         ctx.fillStyle = "black";
@@ -921,11 +940,11 @@ class MetaBezierCurveEditor {
             let deltaInfo = `[${first.toFixed(1)} -> ${last.toFixed(1)}] ${delta>0?'+':''}${delta.toFixed(1)}`
 
             ctx.font = "14px Arial";
-            ctx.fillText(deltaInfo, this.g.x + this.g.w / 2, this.c.height - 15);
+            ctx.fillText(deltaInfo, this.g.x + this.g.w / 2, canvasHeight - 15);
 
         } else {
             ctx.font = "20px Arial";
-            ctx.fillText(this.xLabel, this.g.x + this.g.w / 2, this.c.height - 15);
+            ctx.fillText(this.xLabel, this.g.x + this.g.w / 2, canvasHeight - 15);
         }
 
 

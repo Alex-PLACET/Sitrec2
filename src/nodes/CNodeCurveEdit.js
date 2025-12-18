@@ -16,6 +16,7 @@ export class CNodeCurveEditorView extends CNodeViewCanvas2D {
         v.menuName = v.menuName ?? v.editorConfig.yLabel
         super(v);
         v.editorConfig.canvas = this.canvas
+        v.editorConfig.devicePixelRatio = this.devicePixelRatio
         this.addInputs(v.displayInputs)
         this.editor = new MetaBezierCurveEditor(v.editorConfig)
         this.recalculate()
@@ -64,6 +65,13 @@ export class CNodeCurveEditorView extends CNodeViewCanvas2D {
     // for ground speed, air speed, and vertical speed
     renderCanvas(frame) {
         super.renderCanvas(frame)
+        
+        // Ensure canvas is scaled for high DPI on every frame (like CNodeViewUI does)
+        // This is critical because the context needs to be scaled before drawing
+        this.canvas.width = this.widthPx * this.devicePixelRatio;
+        this.canvas.height = this.heightPx * this.devicePixelRatio;
+        this.ctx.scale(this.devicePixelRatio, this.devicePixelRatio);
+        
         this.editor.update();
     }
 
