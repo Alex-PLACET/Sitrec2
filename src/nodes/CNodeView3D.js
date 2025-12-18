@@ -10,7 +10,8 @@ import {
     NodeMan,
     setGPUMemoryMonitor,
     setRenderOne,
-    Synth3DManager
+    Synth3DManager,
+    TrackManager
 } from "../Globals";
 import {isKeyHeld} from "../KeyBoardHandler";
 import {GlobalDaySkyScene, GlobalNightSkyScene, GlobalScene, GlobalSunSkyScene} from "../LocalFrame";
