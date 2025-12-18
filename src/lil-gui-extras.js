@@ -41,6 +41,11 @@ export function addOptionToGUIMenu(controller, optionName, optionValue = optionN
 
     // Update the display
     controller.updateDisplay();
+    
+    // Notify menu bar to update visibility
+    if (controller.parent) {
+        controller.parent._notifyMenuBarChanged();
+    }
 }
 
 // Same, but for removing an option
@@ -57,6 +62,11 @@ export function removeOptionFromGUIMenu(controller, optionName) {
 
         // Update the display
         controller.updateDisplay();
+        
+        // Notify menu bar to update visibility
+        if (controller.parent) {
+            controller.parent._notifyMenuBarChanged();
+        }
     } else {
 //        console.warn("Option "+ optionName +"  does not exist in controller, skipping remove");
     }
@@ -101,6 +111,52 @@ GUI.prototype.getFolder = function(title) {
     return folder || null;
 }
 
+// Helper to trigger menu bar update when children change
+GUI.prototype._notifyMenuBarChanged = function() {
+    if (Globals.menuBar && typeof Globals.menuBar.hideEmpty === 'function') {
+        // Defer the update to avoid excessive calls during rapid changes
+        if (!this._hideEmptyTimeout) {
+            this._hideEmptyTimeout = setTimeout(() => {
+                Globals.menuBar.hideEmpty();
+                this._hideEmptyTimeout = null;
+            }, 0);
+        }
+    }
+}
+
+// Store original add method and wrap it
+const originalAdd = GUI.prototype.add;
+GUI.prototype.add = function(...args) {
+    const result = originalAdd.apply(this, args);
+    this._notifyMenuBarChanged();
+    return result;
+};
+
+// Store original addColor method and wrap it
+const originalAddColor = GUI.prototype.addColor;
+GUI.prototype.addColor = function(...args) {
+    const result = originalAddColor.apply(this, args);
+    this._notifyMenuBarChanged();
+    return result;
+};
+
+// Store original addFolder method and wrap it
+const originalAddFolder = GUI.prototype.addFolder;
+GUI.prototype.addFolder = function(...args) {
+    const result = originalAddFolder.apply(this, args);
+    this._notifyMenuBarChanged();
+    return result;
+};
+
+// Store original destroy method and wrap it
+const originalDestroy = GUI.prototype.destroy;
+GUI.prototype.destroy = function(recursive = true) {
+    // Notify before destroying so parent can check its content
+    if (this.parent) {
+        this.parent._notifyMenuBarChanged();
+    }
+    return originalDestroy.call(this, recursive);
+};
 
 // Extend the lil-gui Controller prototype
 Controller.prototype.setLabelColor = function(color) {
@@ -891,6 +947,22 @@ export class CGuiMenuBar {
         })
     }
 
+    // Check if a GUI folder has any actual content (recursively)
+    _hasContent(gui) {
+        if (!gui) return false;
+        
+        for (const child of gui.children) {
+            // If it's a folder (GUI), recursively check its content
+            if (child instanceof GUI) {
+                if (this._hasContent(child)) return true;
+            } else {
+                // It's a controller, so this GUI has content
+                return true;
+            }
+        }
+        return false;
+    }
+
     hideEmpty() {
         let x = 0;
         for (let i = 0; i < this.numSlots; i++) {
@@ -898,12 +970,17 @@ export class CGuiMenuBar {
             if (gui) {
                 const div = this.divs[i];
 
-                if (gui.children.length === 0 && !gui._closed) {
+                // Check if the GUI has any actual content (recursively)
+                const hasContent = this._hasContent(gui);
+                
+                if (!hasContent) {
+                    // Empty menu - close and hide it
                     gui.close();
                     div.style.display = "none";
                 } else {
+                    // Has content - make sure it's visible
+                    div.style.display = "block";
                     if (gui._closed) {
-                        div.style.display = "block";
                         if (!gui.lockOpenClose) {
                             div.style.left = x + "px";
                         }

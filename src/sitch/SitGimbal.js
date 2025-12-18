@@ -75,7 +75,7 @@ const GimbalDefaults = {
     },
 
     mainCamera: {},
-    mainView: { left: 0.00, top: 0, width: 1, height: 1, fov: 10, background:'#202020' },
+    mainView: { left: 0.00, top: 0, width: 1, height: 1, fov: 10, background:'#000000' },
 
     videoFile: "../sitrec-videos/public/2 - Gimbal-WMV2PRORES-CROP-428x428.mp4",
     videoView: {left: 0.8250, top: 0.6666, width: -1, height: 0.3333,background:[1,0,0,0]},
