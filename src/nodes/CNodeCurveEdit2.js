@@ -704,6 +704,8 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
         
         if (!this.visible) return;
         
+        this.ensureContextScaled();
+        
         const ctx = this.ctx;
         const margin = 60;
         const width = this.widthPx;

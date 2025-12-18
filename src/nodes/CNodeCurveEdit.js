@@ -65,6 +65,7 @@ export class CNodeCurveEditorView extends CNodeViewCanvas2D {
     // for ground speed, air speed, and vertical speed
     renderCanvas(frame) {
         super.renderCanvas(frame)
+        this.ensureContextScaled();
         this.editor.update();
     }
 

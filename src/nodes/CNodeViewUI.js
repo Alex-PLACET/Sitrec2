@@ -155,12 +155,9 @@ export class CNodeViewUI extends CNodeViewCanvas2D {
 
         // make sure we have the size right for centering text
         this.inheritSize()
-        // Scale canvas backing store by devicePixelRatio for high DPI displays
-        this.canvas.width = this.widthPx * this.devicePixelRatio
-        this.canvas.height = this.heightPx * this.devicePixelRatio
-        // Scale context so all drawing uses logical coordinates
-        this.ctx.scale(this.devicePixelRatio, this.devicePixelRatio);
-        this._contextScaled = true;
+        // Ensure canvas is properly scaled, but only set dimensions if they've changed
+        // This avoids unnecessary canvas clears which can cause flickering
+        this.ensureContextScaled();
         //this.canvas.style.zIndex = 10;
 
         this.textElements[key] = new CUIText(text, x, y, size, color, align, font)
