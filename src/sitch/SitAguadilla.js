@@ -1,17 +1,12 @@
 import {par} from "../par";
-import {FileManager, gui, guiMenus, NodeMan, setRenderOne, Sit} from "../Globals";
-import {
-    AlwaysDepth
-} from "three";
-import {ExpandKeyframes, f2m, m2f, metersFromMiles, radians, scaleF2M} from "../utils";
-import {VG} from "../nodes/CNodeView";
+import {FileManager, guiMenus, guiTweaks, NodeMan, setRenderOne, Sit} from "../Globals";
+import {AlwaysDepth} from "three";
+import {ExpandKeyframes, f2m, scaleF2M} from "../utils";
 import {LLAToEUS} from "../LLA-ECEF-ENU";
 import {CNodeSplineEditor} from "../nodes/CNodeSplineEdit";
 import * as LAYER from "../LayerMasks.js"
 import {CNodeSwitch} from "../nodes/CNodeSwitch";
-import {
-    CNodeArray,
-} from "../nodes/CNodeArray";
+import {CNodeArray,} from "../nodes/CNodeArray";
 import {CNodeGUIValue} from "../nodes/CNodeGUIValue";
 import {CNodeMunge} from "../nodes/CNodeMunge";
 import {CNodeDisplayTrackToTrack} from "../nodes/CNodeDisplayTrackToTrack";
@@ -22,10 +17,9 @@ import {CNodeScale} from "../nodes/CNodeScale";
 import {CNodeWind} from "../nodes/CNodeWind";
 import {CNodeHeading} from "../nodes/CNodeHeading";
 import {AddSpeedGraph} from "../JetGraphs";
-import {guiTweaks} from "../Globals";
 import {GlobalScene} from "../LocalFrame";
 import {showHider, toggler} from "../KeyBoardHandler";
-import {CreateTraverseNodes, SetupTraverseNodes} from "../JetStuff";
+import {CreateTraverseNodes} from "../JetStuff";
 import {DebugSphere} from "../threeExt";
 import {CNodeDisplayLOS} from "../nodes/CNodeDisplayLOS";
 import {makeMatLine} from "../MatLines";
@@ -33,7 +27,7 @@ import {addControllerTo} from "../nodes/CNodeController";
 import {CNodeSmoothedPositionTrack} from "../nodes/CNodeSmoothedPositionTrack";
 import {CNodeTrackClosest} from "../nodes/CNodeTrackClosest";
 import {assert} from "../assert.js";
-import {MV3, V3} from "../threeUtils";
+import {V3} from "../threeUtils";
 import {ViewMan} from "../CViewManager";
 
 import {MakeTraverseNodesMenu} from "../MakeTraverseNodesMenu";
@@ -493,7 +487,7 @@ export const SitAguadilla = {
             id: "groundSplineEditorDisplay",
             track: "groundSplineEditor",
             color: [0,1,1],
-            width: 3,
+            width: 1,
         })
 
         
@@ -572,7 +566,7 @@ export const SitAguadilla = {
             id: "uapSplineEditorDisplay",
             track: "uapSplineEditor",
             color: [1,0,0],
-            width: 3,
+            width: 1,
         })
 
 
@@ -618,7 +612,7 @@ export const SitAguadilla = {
             id: "lanternSplineEditorDisplay",
             track: "lanternSplineEditor",
             color: [1,1,0],
-            width: 3,
+            width: 1,
         })
 
 
@@ -734,7 +728,7 @@ export const SitAguadilla = {
             cameraTrack: "jetTrackSmooth",
             targetTrack: "LOSTraverseSelectSmoothed",
             color: [1,1,1],
-            width: 2,
+            width: 1,
             extensioncolor: [0,1,0],
 
         })
@@ -782,7 +776,7 @@ export const SitAguadilla = {
             traverse:"LOSTraverseSelectSmoothed",
             container:GlobalScene,
             color: "#0000ff",
-            width: 1,
+            width: 0.5,
             spacing: 60,
 
 
@@ -800,7 +794,7 @@ export const SitAguadilla = {
             id: "TraversePathDisplay",
             track: "LOSTraverseSelectSmoothed",
             color: [0.3,1,0.3],
-            width: 4,
+            width: 1,
             depthFunc:AlwaysDepth,
 
         })
