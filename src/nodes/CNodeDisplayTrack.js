@@ -517,6 +517,7 @@ export class CNodeDisplayTrack extends CNode3DGroup {
         var width = 1
         if (this.in.width != undefined)
             width = this.in.width.v0
+        width *= 3;  // thicker lines reduce apparent jaggedness through shader smoothing
 
         var matLineTrack = new LineMaterial({
 
@@ -535,7 +536,10 @@ export class CNodeDisplayTrack extends CNode3DGroup {
 
         });
 
-        matLineTrack.resolution.set(window.innerWidth, window.innerHeight)
+        const dpr = window.devicePixelRatio || 1;
+        const w = window.innerWidth * dpr;
+        const h = window.innerHeight * dpr;
+        matLineTrack.resolution.set(w, h);
 
         this.trackLine = new Line2(this.trackGeometry, matLineTrack);
 

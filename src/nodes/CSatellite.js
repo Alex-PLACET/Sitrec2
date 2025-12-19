@@ -4,7 +4,6 @@ import {LLAToEUSRadians} from "../LLA-ECEF-ENU";
 import {SITREC_APP, SITREC_SERVER} from "../configUtils";
 import {sharedUniforms} from "../js/map33/material/SharedUniforms";
 import {FileManager, GlobalDateTimeNode, guiMenus, setRenderOne} from "../Globals";
-import {DragDropHandler} from "../DragDropHandler";
 import {EventManager} from "../CEventManager";
 import * as satellite from 'satellite.js';
 import {bestSat, CTLEData} from "../TLEUtils";
@@ -1253,7 +1252,7 @@ export class CSatellite {
 
             fileInfo.dynamicLink = true;
 
-            DragDropHandler.handleParsedFile(id, fileInfo.data);
+            FileManager.handleParsedFile(id, fileInfo.data);
         });
     }
 
