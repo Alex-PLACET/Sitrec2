@@ -2476,14 +2476,14 @@ export class QuadTreeTile {
             return;
         }
 
-        console.log(`Generating interpolated elevation color texture for tile ${this.key()}`);
+        // console.log(`Generating interpolated elevation color texture for tile ${this.key()}`);
 
         // Generate heightmap from interpolated data
         const heightmapData = this.generateHeightmapFromInterpolation();
 
         // If all elevations are 0, it means no elevation data is loaded yet - skip texture generation
         if (heightmapData.minElevation === 0 && heightmapData.maxElevation === 0) {
-            console.log(`No elevation data loaded yet for tile ${this.key()}, skipping texture generation`);
+            // console.log(`No elevation data loaded yet for tile ${this.key()}, skipping texture generation`);
             return;
         }
 
@@ -2911,7 +2911,7 @@ export class QuadTreeTile {
                 console.warn(`Failed to generate elevation color texture for tile ${this.key()}:`, error);
             });
         } else {
-            console.log(`No elevation data available yet for tile ${this.key()}, will wait for elevation tile to load`);
+            // console.log(`No elevation data available yet for tile ${this.key()}, will wait for elevation tile to load`);
         }
     }
 

@@ -192,7 +192,7 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
                         finishLoading();
                     } else if (this.audioHandler && this.audioHandler.expectedAudioSamples > 0) {
                         // Still waiting for audio decoding, check again in 50ms
-                        console.log(`[CVideoMp4Data] Waiting for audio decoding... received`, this.audioHandler.receivedEncodedSamples, "/", this.audioHandler.expectedAudioSamples, "encoded, decoded", this.audioHandler.decodedAudioData.length);
+                        // console.log(`[CVideoMp4Data] Waiting for audio decoding... received`, this.audioHandler.receivedEncodedSamples, "/", this.audioHandler.expectedAudioSamples, "encoded, decoded", this.audioHandler.decodedAudioData.length);
                         this._audioWaitTimeout = setTimeout(waitForAudioDecoding, 50);
                     } else {
                         // No audio, proceed immediately
