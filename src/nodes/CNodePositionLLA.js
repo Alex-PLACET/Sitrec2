@@ -156,7 +156,7 @@ export class CNodePositionLLA extends CNode {
                                         this.guiAlt.setValueWithUnits(this._LLA[2], "metric", "small", true);
                                         this.recalculateCascade();
                                     } else {
-                                        console.warn("No elevation data found for " + this.lookupString);
+                                        // console.warn("No elevation data found for " + this.lookupString);
                                     }
 
                                     this.goTo();

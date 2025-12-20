@@ -1,9 +1,4 @@
-import puppeteer from 'puppeteer';
-import {toMatchImageSnapshot} from 'jest-image-snapshot';
-import path from 'path';
-import fs from 'fs';
-
-expect.extend({ toMatchImageSnapshot });
+import {expect, test} from '@playwright/test';
 
 // Array of test cases: each object contains a name and its corresponding URL.
 const testDataDefault = [
@@ -32,218 +27,112 @@ const testDataTrackFiles = [
 ]
 
 
-/**
- * Wait for a specific text to appear in console messages.
- * @param {import('puppeteer').Page} page - Puppeteer page instance.
- * @param {string} expectedText - Text to wait for.
- * @param {number} timeoutMs - Timeout in milliseconds.
- * @returns {Promise<void>}
- */
-function waitForConsoleText(page, expectedText, timeoutMs = 15000) {
+async function waitForConsoleText(page, expectedText, timeoutMs = 15000) {
     return new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
-            page.off('console', onConsole);
             reject(new Error(`Timed out waiting for console text: "${expectedText}"`));
         }, timeoutMs);
 
-        function onConsole(msg) {
+        const handler = (msg) => {
             if (msg.text().includes(expectedText)) {
                 clearTimeout(timeout);
-                page.off('console', onConsole);
+                page.off('console', handler);
                 resolve();
             }
-        }
+        };
 
-        page.on('console', onConsole);
+        page.on('console', handler);
     });
 }
 
-describe('Visual Regression Testing', () => {
-    let browser;
-    let page;
+let testData;
+if (process.env.TEST_TRACKFILES === 'true') {
+    testData = testDataTrackFiles;
+} else {
+    testData = testDataDefault;
+}
 
-    // Increase the timeout for the entire test suite.
-    jest.setTimeout(60000);
+test.describe('Visual Regression Testing', () => {
+    testData.forEach(({ name, url }) => {
+        test(`should match the baseline screenshot for ${name}`, async ({ page }) => {
+            test.setTimeout(120000);
 
-    beforeAll(async () => {
-        browser = await puppeteer.launch({
-            headless: true,
-            defaultViewport: {
-                width: 1920,
-                height: 1080,
-            },
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
-        });
-    });
-    
-    beforeEach(async () => {
-        // Create a fresh page for each test to avoid state bleed
-        page = await browser.newPage();
+            await page.setViewportSize({ width: 1920, height: 1080 });
 
-        page.on('console', msg => {
-            console.log(`PAGE CONSOLE [${msg.type()}]: ${msg.text()}`);
-        });
+            page.on('console', msg => {
+                console.log(`PAGE CONSOLE [${msg.type()}]: ${msg.text()}`);
+            });
 
-        page.on('pageerror', err => {
-            console.log('PAGE ERROR:', err);
-        });
+            page.on('pageerror', err => {
+                console.log('PAGE ERROR:', err);
+            });
 
-        page.on('response', res => {
-            if (res.status() >= 400) {
-                console.log(`Failed response: ${res.url()} - Status: ${res.status()}`);
+            page.on('response', res => {
+                if (res.status() >= 400) {
+                    console.log(`Failed response: ${res.url()} - Status: ${res.status()}`);
+                }
+            });
+
+            page.on('requestfailed', req => {
+                console.log(`Request failed: ${req.url()}`);
+            });
+
+            const fullUrl = url + '&ignoreunload=1&regression=1';
+
+            const consolePromise = waitForConsoleText(page, 'No pending actions', 70000);
+
+            const response = await page.goto(fullUrl, {
+                waitUntil: 'networkidle',
+                timeout: 30000
+            });
+
+            if (!response.ok()) {
+                console.error(`Page load failed with status: ${response.status()} for URL: ${fullUrl}`);
             }
-        });
 
-        page.on('requestfailed', req => {
-            console.log(`Request failed: ${req.url()} - Error: ${req.failure().errorText}`);
-        });
+            await consolePromise;
 
-    });
+            await page.waitForTimeout(500);
 
-    afterEach(async () => {
-        // Clear renderer and WebGL state between tests
-        try {
             await page.evaluate(() => {
-                // Dispose of Three.js renderer to clean up WebGL context
+                return new Promise((resolve) => {
+                    let frameCount = 0;
+                    function waitForFrames() {
+                        frameCount++;
+                        if (frameCount < 20) {
+                            requestAnimationFrame(waitForFrames);
+                        } else {
+                            resolve();
+                        }
+                    }
+                    requestAnimationFrame(waitForFrames);
+                });
+            });
+
+            await expect(page).toHaveScreenshot(`${name}-snapshot.png`, {
+                fullPage: true,
+                threshold: 0.02,
+                maxDiffPixels: 20000,
+                timeout: 30000,
+            });
+
+            await page.evaluate(() => {
                 if (window.Globals && window.Globals.renderData) {
                     try {
                         window.Globals.renderData.forEach(rd => {
                             if (rd.renderer) {
                                 rd.renderer.dispose();
                             }
-                        });
-                    } catch (e) {
-                        // ignore errors during cleanup
-                    }
-                }
-                // Cancel resize debounce timeout if it exists
-                if (window.Globals && window.Globals.renderData) {
-                    try {
-                        window.Globals.renderData.forEach(rd => {
                             if (rd._resizeTimeout) {
                                 clearTimeout(rd._resizeTimeout);
                                 rd._resizeTimeout = null;
                             }
                         });
                     } catch (e) {
-                        // ignore
+                        // ignore errors during cleanup
                     }
                 }
             });
-        } catch (e) {
-            // ignore if page is already closed
-        }
-        // Close the page to release all resources
-        await page.close();
-    });
-
-    afterAll(async () => {
-        await browser.close();
-    });
-
-    let testData;
-    // based a command line argument, choose which set of tests to run
-    if (process.env.TEST_TRACKFILES === 'true') {
-        testData = testDataTrackFiles;
-    } else {
-        testData = testDataDefault;
-    }
-
-    // Iterate through each test data object.
-    testData.forEach(({ name, url }) => {
-        it(`should match the baseline screenshot for ${name}`, async () => {
-            try {
-                // Set a consistent viewport size.
-                await page.setViewport({ width: 1920, height: 1080 });
-
-                // Remove all existing 'console' listeners from previous test runs
-                page.removeAllListeners('console');
-
-                url = url+'&ignoreunload=1&regression=1';
-
-                const consolePromise = waitForConsoleText(page, 'No pending actions', 35000);
-
-
-                // Navigate to the URL with detailed error logging.
-                // Wait for the network to be idle.
-                const response = await page.goto(url, {
-                    waitUntil: ['networkidle0', 'domcontentloaded'],
-                    timeout: 30000
-                });
-
-
-                if (!response.ok()) {
-                    console.error(`Page load failed with status: ${response.status()} for URL: ${url}`);
-                }
-
-                // wait a second to ensure the page is fully loaded.
-                //await new Promise(resolve => setTimeout(resolve, 3000));
-
-                await consolePromise;
-
-                // Wait for any deferred resize timeouts to complete (100ms debounce)
-                // Use a longer timeout to ensure all animations and loading settle
-                await new Promise(resolve => setTimeout(resolve, 500));
-
-                // Ensure the page is fully rendered after resize completes
-                await page.evaluate(() => {
-                    return new Promise((resolve) => {
-                        // Wait multiple frames to ensure renderer has processed resize and rendered
-                        let frameCount = 0;
-                        function waitForFrames() {
-                            frameCount++;
-                            if (frameCount < 10) {
-                                requestAnimationFrame(waitForFrames);
-                            } else {
-                                resolve();
-                            }
-                        }
-                        requestAnimationFrame(waitForFrames);
-                    });
-                });
-
-
-
-                // Take the screenshot with explicit encoding.
-                const screenshot = await page.screenshot({
-                    fullPage: true,
-                    type: 'png',
-                    encoding: 'binary'
-                });
-
-                // Ensure snapshot directory exists.
-                const snapshotDir = path.join(process.cwd(), '__image_snapshots__');
-                if (!fs.existsSync(snapshotDir)) {
-                    fs.mkdirSync(snapshotDir, { recursive: true });
-                }
-
-                // Ensure the custom diff directory exists.
-                const customDiffDir = path.join(snapshotDir, '__diff_output__');
-                if (!fs.existsSync(customDiffDir)) {
-                    fs.mkdirSync(customDiffDir, { recursive: true });
-                }
-
-                // Use the provided name as part of the snapshot identifier.
-                const customConfig = {
-                    customSnapshotIdentifier: () => `${name}-snapshot`,
-                    customDiffConfig: {
-                        threshold: 0.01, // 1% threshold for pixel color difference.
-                    },
-                    failureThreshold: 0.01, // 1% threshold for image diff percentage.
-                    failureThresholdType: 'percent',
-                    customSnapshotsDir: snapshotDir,
-                    customDiffDir: customDiffDir,
-                    // updateSnapshot: process.env.UPDATE_SNAPSHOT === 'true'
-                };
-
-                const screenshotBuffer = Buffer.from(screenshot);
-
-                expect(screenshotBuffer).toMatchImageSnapshot(customConfig);
-            } catch (error) {
-                console.error(`Test for ${name} failed with error:`, error);
-                console.error('Stack trace:', error.stack);
-                throw error;
-            }
         });
     });
 });

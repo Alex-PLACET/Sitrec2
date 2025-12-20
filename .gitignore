@@ -20,3 +20,5 @@ tests/__image_snapshots__/
 /dist/
 /dist-serverless/
 /.certs/
+/tests_regression/regression.test.js-snapshots/
+/tests_regression/ui-playwright.test.js-snapshots/
