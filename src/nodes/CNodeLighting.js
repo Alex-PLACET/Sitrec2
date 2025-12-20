@@ -3,8 +3,7 @@ import {AmbientLight, DirectionalLight} from "three";
 import {GlobalScene} from "../LocalFrame";
 import {CNode} from "./CNode";
 import * as LAYER from "../LayerMasks";
-import {assert} from "../assert";
-import {loadNightTexture, updateNightTexture} from "../Globe";
+import {updateNightTexture} from "../Globe";
 
 // by default this will live in one node "lighting"
 export class CNodeLighting extends CNode {
@@ -70,6 +69,14 @@ export class CNodeLighting extends CNode {
 
     }
 
+
+    getEffectiveSunIntensity() {
+        return this.ambientOnly ? 0 : this.sunIntensity;
+    }
+
+    getEffectiveSunScattering() {
+        return this.ambientOnly ? 0 : this.sunScattering;
+    }
 
     setIR(on) {
         if (on) {
