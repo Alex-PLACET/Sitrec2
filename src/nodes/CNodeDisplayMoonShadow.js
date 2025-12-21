@@ -100,16 +100,15 @@ export class CNodeDisplayMoonShadow extends CNode3DGroup {
         }
     }
 
-    calculateShadowRadii(altitude) {
+    calculateShadowRadii(altitude, sunMoonDistance) {
         const MOON_RADIUS = 1737400;
         const SUN_RADIUS = 696000000;
-        const SUN_MOON_DISTANCE = 149600000000;
 
         if (altitude < 0) {
             throw new Error("Altitude must be non-negative");
         }
 
-        const sunAngularRadius = Math.atan(SUN_RADIUS / SUN_MOON_DISTANCE);
+        const sunAngularRadius = Math.atan(SUN_RADIUS / sunMoonDistance);
         
         const umbraTipDistance = MOON_RADIUS / Math.tan(sunAngularRadius);
         
@@ -153,7 +152,7 @@ export class CNodeDisplayMoonShadow extends CNode3DGroup {
         return moonPos.clone().add(shadowDir.clone().multiplyScalar(t));
     }
 
-    buildSegmentedCone(moonCenter, earthIntersection, perpendicular, otherPerpendicular, isUmbra, material, geometryProp, meshProp, renderOrder) {
+    buildSegmentedCone(moonCenter, earthIntersection, perpendicular, otherPerpendicular, isUmbra, material, geometryProp, meshProp, renderOrder, sunMoonDistance) {
         const circleSegments = 32;
         const geometry = new BufferGeometry();
         const vertices = [];
@@ -167,7 +166,7 @@ export class CNodeDisplayMoonShadow extends CNode3DGroup {
             const distanceFromMoon = totalDistance * t;
             
             const altitude = distanceFromMoon;
-            const shadowData = this.calculateShadowRadii(altitude);
+            const shadowData = this.calculateShadowRadii(altitude, sunMoonDistance);
             const radius = isUmbra ? shadowData.umbraDiameter / 2 : shadowData.penumbraDiameter / 2;
             
             const center = moonCenter.clone().add(shadowDir.clone().multiplyScalar(distanceFromMoon));
@@ -204,14 +203,14 @@ export class CNodeDisplayMoonShadow extends CNode3DGroup {
         this.group.add(this[meshProp]);
     }
 
-    buildUmbraCone(moonCenter, earthIntersection, perpendicular, otherPerpendicular) {
+    buildUmbraCone(moonCenter, earthIntersection, perpendicular, otherPerpendicular, sunMoonDistance) {
         this.buildSegmentedCone(moonCenter, earthIntersection, perpendicular, otherPerpendicular, true,
-                       this.umbraConeMaterial, 'umbraConeGeometry', 'umbraConeMesh', 2);
+                       this.umbraConeMaterial, 'umbraConeGeometry', 'umbraConeMesh', 2, sunMoonDistance);
     }
 
-    buildPenumbraCone(moonCenter, earthIntersection, perpendicular, otherPerpendicular) {
+    buildPenumbraCone(moonCenter, earthIntersection, perpendicular, otherPerpendicular, sunMoonDistance) {
         this.buildSegmentedCone(moonCenter, earthIntersection, perpendicular, otherPerpendicular, false,
-                       this.penumbraConeMaterial, 'penumbraConeGeometry', 'penumbraConeMesh', 1);
+                       this.penumbraConeMaterial, 'penumbraConeGeometry', 'penumbraConeMesh', 1, sunMoonDistance);
     }
 
     rebuild() {
@@ -237,14 +236,18 @@ export class CNodeDisplayMoonShadow extends CNode3DGroup {
             return;
         }
         
+        const sunEarthDistance = 149597870700;
+        const sunPos = Globals.toSun.clone().normalize().multiplyScalar(sunEarthDistance);
+        const sunMoonDistance = sunPos.distanceTo(moonCenter);
+        
         const perpendicular = perpendicularVector(shadowDir).normalize();
         const otherPerpendicular = shadowDir.clone().cross(perpendicular);
         
-        this.buildPenumbraCone(moonCenter, earthIntersection, perpendicular, otherPerpendicular);
-        this.buildUmbraCone(moonCenter, earthIntersection, perpendicular, otherPerpendicular);
+        this.buildPenumbraCone(moonCenter, earthIntersection, perpendicular, otherPerpendicular, sunMoonDistance);
+        this.buildUmbraCone(moonCenter, earthIntersection, perpendicular, otherPerpendicular, sunMoonDistance);
 
         const totalDistance = moonCenter.distanceTo(earthIntersection);
-        const shadowData = this.calculateShadowRadii(totalDistance);
+        const shadowData = this.calculateShadowRadii(totalDistance, sunMoonDistance);
         const umbraRadius = shadowData.umbraDiameter / 2;
         const penumbraRadius = shadowData.penumbraDiameter / 2;
 
