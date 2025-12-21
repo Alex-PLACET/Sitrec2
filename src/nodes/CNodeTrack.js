@@ -22,7 +22,7 @@ export class CNodeTrack extends CNodeEmptyArray {
     }
 
     // calculate min and max LLA extents of the track
-    // from the ESU positions
+    // from the EUS positions
     getLLAExtents() {
         let pos = this.v(0)
         if (pos === undefined || pos.position === undefined) {

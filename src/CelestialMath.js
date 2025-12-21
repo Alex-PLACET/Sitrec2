@@ -4,8 +4,8 @@
 // X axis - To vernal equinox
 // Y Axis - right angles to this, in the equatorial plane
 // Z Axis - Up through the North pole
-// Compared to a ESU coordinate system where the ECEF X axis exit the surface of the earth
-// ESU(X,Y,Z) would be ECEF(Y, Z, X) (not sure if this is useful info).
+// Compared to a EUS coordinate system where the ECEF X axis exit the surface of the earth
+// EUS(X,Y,Z) would be ECEF(Y, Z, X) (not sure if this is useful info).
 // See: https://en.wikipedia.org/wiki/Equatorial_coordinate_system#Rectangular_coordinates
 import {V3} from "./threeUtils";
 import {ECEF2EUS, EUSToLLA, wgs84} from "./LLA-ECEF-ENU";
@@ -134,20 +134,7 @@ export function celestialToECEF(ra, dec, dist, gst) {
     return V3(x_ecef, y_ecef, z_ecef);
 }
 
-// Function to convert ECI KM to ECEF in m
-function eciKToEcefM(eci, date) {
-    const {x, y, z} = eci;
-    const gst = calculateGST(date);
-
-    // Rotate ECI coordinates by GST to get ECEF
-    const xEcef = x * Math.cos(gst) + y * Math.sin(gst);
-    const yEcef = -x * Math.sin(gst) + y * Math.cos(gst);
-    const zEcef = z;  // No change in the z-coordinate
-
-    return V3(x * 1000, y * 1000, z * 1000)
-}
-
-// get a vector in ESU coordinates to a celestial body from a EUS position (like a camera or object)
+// get a vector in EUS coordinates to a celestial body from a EUS position (like a camera or object)
 // - body = (e.g "Sun", "Venus", "Moon", etc)
 // - date = date of observation (Date object)
 export function getCelestialDirection(body, date, pos) {

@@ -137,7 +137,7 @@ function PRJ2EA(pitch, roll, jetPitch) {
     return XYZ2EA(PRJ2XYZ(pitch,roll,jetPitch,1))
 }
 
-// How much is the ground below the ESU plane
+// How much is the ground below the EUS plane
 // x, y and radius are in meters
 // Note there two Pythagorean ways you can derive drop
 // Either the distance straight down, or the distance towards the center of the Earth

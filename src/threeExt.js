@@ -654,7 +654,7 @@ export class CDisplayLine {
     }
 }
 
-// get the point on the ground below a point in ESU
+// get the point on the ground below a point in EUS
 // if the terrain model is loaded, use that, otherwise use the sphere
 export function getPointBelow(A, raycast = false) {
     if (NodeMan.exists("TerrainModel")) {
@@ -670,14 +670,14 @@ export function getPointBelowLL(lat, lon) {
     return getPointBelow(A)
 }
 
-// get the above ground altitude a point in ESU
+// get the above ground altitude a point in EUS
 export function aboveGroundLevelAt(A) {
     const B = getPointBelow(A);
     const altitude = A.clone().sub(B).length();
     return altitude;
 }
 
-// given a point in ESU, ensure it is at least "height" meters above the ground
+// given a point in EUS, ensure it is at least "height" meters above the ground
 // accounting for terrain.
 export function clampAboveGround(point, height) {
     const ground = getPointBelow(point);
@@ -694,7 +694,7 @@ export function aboveGroundLevelAtLL(lat, lon) {
     return aboveGroundLevelAt(A)
 }
 
-// given a point in ESU, return a point above (or below) it by a given additional height
+// given a point in EUS, return a point above (or below) it by a given additional height
 export function pointAbove(point, height) {
     const center = V3(0,-wgs84.RADIUS,0);
     const toPoint = point.clone().sub(center).normalize();
@@ -706,7 +706,7 @@ export function adjustHeightAboveGround (point, height, raycast = false) {
     return pointAbove(ground, height);
 }
 
-// given a point in ESU, calculate the altitude above the WGS84 sphere (i.e. the MSL altitude)
+// given a point in EUS, calculate the altitude above the WGS84 sphere (i.e. the MSL altitude)
 export function calculateAltitude(point) {
     const center = V3(0,-wgs84.RADIUS,0);
     return point.clone().sub(center).length() - wgs84.RADIUS;
@@ -716,7 +716,7 @@ export function calculateAltitude(point) {
 // (i.e. the MSL altitude of the ground below that point)
 // uses the terrain model if available, otherwise uses the WGS84 sphere
 export function elevationAtLL(lat, lon, raycast = false) {
-    // get the point in ESU
+    // get the point in EUS
     const point = LLAToEUS(lat, lon, 100000);
     // get the ground point below it
     const groundPoint = getPointBelow(point, raycast);

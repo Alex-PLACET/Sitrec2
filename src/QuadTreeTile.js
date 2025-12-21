@@ -506,10 +506,10 @@ export class QuadTreeTile {
             }
 
             // Convert to EUS coordinates
-            const vertexESU = LLAToEUS(lat, lon, elevation);
+            const vertexEUS = LLAToEUS(lat, lon, elevation);
 
             // Subtract the center of the tile for relative positioning
-            const vertex = vertexESU.sub(tileCenter);
+            const vertex = vertexEUS.sub(tileCenter);
 
             assert(!isNaN(vertex.x), 'vertex.x is NaN in QuadTreeTile.js i=' + i);
             assert(!isNaN(vertex.y), 'vertex.y is NaN in QuadTreeTile.js');
@@ -886,10 +886,10 @@ export class QuadTreeTile {
             // elevation = Math.random()*100000
 
             // convert that to EUS
-            const vertexESU = LLAToEUS(lat, lon, elevation)
+            const vertexEUS = LLAToEUS(lat, lon, elevation)
 
             // subtract the center of the tile
-            const vertex = vertexESU.sub(tileCenter)
+            const vertex = vertexEUS.sub(tileCenter)
 
             assert(!isNaN(vertex.x), 'vertex.x is NaN in QuadTreeMap.js i=' + i)
             assert(!isNaN(vertex.y), 'vertex.y is NaN in QuadTreeMap.js')
@@ -1065,8 +1065,8 @@ export class QuadTreeTile {
                 this.highestAltitude = elevation;
             }
 
-            const vertexESU = LLAToEUS(lat, lon, elevation);
-            const vertex = vertexESU.sub(tileCenter);
+            const vertexEUS = LLAToEUS(lat, lon, elevation);
+            const vertex = vertexEUS.sub(tileCenter);
 
             assert(!isNaN(vertex.x), 'vertex.x is NaN in QuadTreeTile.js i=' + i);
             assert(!isNaN(vertex.y), 'vertex.y is NaN in QuadTreeTile.js');
@@ -1136,10 +1136,10 @@ export class QuadTreeTile {
             const elevation = 0;
 
             // Convert to EUS coordinates
-            const vertexESU = LLAToEUS(lat, lon, elevation);
+            const vertexEUS = LLAToEUS(lat, lon, elevation);
 
             // Subtract the center of the tile for relative positioning
-            const vertex = vertexESU.sub(tileCenter);
+            const vertex = vertexEUS.sub(tileCenter);
 
             assert(!isNaN(vertex.x), 'vertex.x is NaN in QuadTreeTile.js i=' + i);
             assert(!isNaN(vertex.y), 'vertex.y is NaN in QuadTreeTile.js');

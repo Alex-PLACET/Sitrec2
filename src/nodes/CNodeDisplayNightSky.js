@@ -805,7 +805,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
         // do adjustements for date/time, and maybe precession, here
         // .....
 
-        // The ESU Coordinate system is right handed Y-Up
+        // The EUS Coordinate system is right handed Y-Up
         // X = East
         // Y = Up
         // Z = South (-Z = North)
@@ -823,7 +823,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
         var nowDate = this.in.startTime.dateNow;
         const fieldRotation = getSiderealTime(nowDate, 0) - 90
 
-        // we just use the origin of the local ESU coordinate systems
+        // we just use the origin of the local EUS coordinate systems
         // to tilt the stars by latitude and rotate them by longitude
         const lat1 = radians(Sit.lat);
         const lon1 = radians(Sit.lon);
