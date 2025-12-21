@@ -8,7 +8,7 @@
 // ESU(X,Y,Z) would be ECEF(Y, Z, X) (not sure if this is useful info).
 // See: https://en.wikipedia.org/wiki/Equatorial_coordinate_system#Rectangular_coordinates
 import {V3} from "./threeUtils";
-import {ECEF2EUS, ECEFToLLAVD_Sphere, wgs84} from "./LLA-ECEF-ENU";
+import {ECEF2EUS, EUSToLLA, wgs84} from "./LLA-ECEF-ENU";
 import {Sit} from "./Globals";
 import * as Astronomy from "astronomy-engine";
 import {radians} from "./utils";
@@ -156,7 +156,7 @@ export function getCelestialDirection(body, date, pos) {
     // realistically this won't make any significant difference for the Sun,
     // the biggest difference will be for the Moon, then nearby planets
     if (pos !== undefined) {
-        LLA = ECEFToLLAVD_Sphere(pos)
+        LLA = EUSToLLA(pos);
     } else {
         // default to the local origin, should be fine for the sun.
         LLA = V3(Sit.lat, Sit.lon, 0)
