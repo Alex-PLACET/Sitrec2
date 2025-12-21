@@ -8,7 +8,7 @@ import {makeMatLine} from "../MatLines";
 import {perpendicularVector} from "../threeUtils";
 import {Globals, guiShowHide, setRenderOne} from "../Globals";
 import {BufferAttribute, BufferGeometry, Mesh, MeshBasicMaterial, Vector3} from "three";
-import {Raycaster} from "three/src/core/Raycaster";
+
 
 export class CNodeDisplayMoonShadow extends CNode3DGroup {
     constructor(v) {
@@ -131,94 +131,50 @@ export class CNodeDisplayMoonShadow extends CNode3DGroup {
         };
     }
 
-    findEarthIntersection(moonPos, shadowDir) {
-        const globeCenter = new Vector3(0, -this.earthRadius, 0);
-        const raycaster = new Raycaster(moonPos, shadowDir);
-        
-        const a = shadowDir.dot(shadowDir);
-        const oc = moonPos.clone().sub(globeCenter);
-        const b = 2 * oc.dot(shadowDir);
-        const c = oc.dot(oc) - this.earthRadius * this.earthRadius;
-        const discriminant = b * b - 4 * a * c;
-        
-        if (discriminant < 0) {
-            return null;
-        }
-        
-        const t = (-b - Math.sqrt(discriminant)) / (2 * a);
-        if (t < 0) {
-            return null;
-        }
-        
-        return moonPos.clone().add(shadowDir.clone().multiplyScalar(t));
-    }
-
-
-
-    buildSegmentedCone(moonCenter, earthIntersection, perpendicular, otherPerpendicular, isUmbra, material, geometryProp, meshProp, renderOrder, sunMoonDistance) {
+    buildSegmentedCone(moonCenter, shadowDir, perpendicular, otherPerpendicular, isUmbra, material, geometryProp, meshProp, renderOrder, sunMoonDistance, coneReferenceDistance) {
         const circleSegments = 32;
         const geometry = new BufferGeometry();
         const vertices = [];
         const indices = [];
         
-        const shadowDir = earthIntersection.clone().sub(moonCenter).normalize();
-        const totalDistance = moonCenter.distanceTo(earthIntersection);
+        const extensionDistance = coneReferenceDistance + 100000000;
+        
+        const refShadowData = this.calculateShadowRadii(coneReferenceDistance, sunMoonDistance);
+        const refRadius = isUmbra ? refShadowData.umbraDiameter / 2 : refShadowData.penumbraDiameter / 2;
+        const refCenter = moonCenter.clone().add(shadowDir.clone().multiplyScalar(coneReferenceDistance));
+        
+        const rayDirs = [];
+        const mslDistances = [];
+        for (let i = 0; i < circleSegments; i++) {
+            const theta = (i / circleSegments) * 2 * Math.PI;
+            const refPoint = refCenter.clone();
+            refPoint.add(perpendicular.clone().multiplyScalar(Math.cos(theta) * refRadius));
+            refPoint.add(otherPerpendicular.clone().multiplyScalar(Math.sin(theta) * refRadius));
+            
+            const rayDir = refPoint.clone().sub(moonCenter).normalize();
+            rayDirs.push(rayDir);
+            
+            const mslPoint = intersectMSL(moonCenter, rayDir);
+            mslDistances.push(mslPoint ? moonCenter.distanceTo(mslPoint) : Infinity);
+        }
         
         for (let seg = 0; seg <= this.numSegments; seg++) {
             const t = seg / this.numSegments;
-            const distanceFromMoon = totalDistance * t;
+            const distanceFromMoon = extensionDistance * t;
             
-            const altitude = distanceFromMoon;
-            const shadowData = this.calculateShadowRadii(altitude, sunMoonDistance);
-            const radius = isUmbra ? shadowData.umbraDiameter / 2 : shadowData.penumbraDiameter / 2;
-            
-            const center = moonCenter.clone().add(shadowDir.clone().multiplyScalar(distanceFromMoon));
-            
-            if (seg === this.numSegments) {
-                const mslPoints = [];
-                let maxDistance = 0;
+            for (let i = 0; i < circleSegments; i++) {
+                const rayDir = rayDirs[i];
+                const mslDist = mslDistances[i];
                 
-                for (let i = 0; i < circleSegments; i++) {
-                    const theta = (i / circleSegments) * 2 * Math.PI;
-                    let point = center.clone();
-                    point.add(perpendicular.clone().multiplyScalar(Math.cos(theta) * radius));
-                    point.add(otherPerpendicular.clone().multiplyScalar(Math.sin(theta) * radius));
-                    
-                    const rayDir = point.clone().sub(moonCenter).normalize();
-                    const mslPoint = intersectMSL(moonCenter, rayDir);
-                    mslPoints.push(mslPoint);
-                    
-                    if (mslPoint) {
-                        const distance = moonCenter.distanceTo(mslPoint);
-                        maxDistance = Math.max(maxDistance, distance);
-                    }
+                let point;
+                if (mslDist < distanceFromMoon) {
+                    const mslPoint = moonCenter.clone().add(rayDir.clone().multiplyScalar(mslDist));
+                    point = clampAboveGround(mslPoint, 100);
+                } else {
+                    point = moonCenter.clone().add(rayDir.clone().multiplyScalar(distanceFromMoon));
                 }
                 
-                for (let i = 0; i < circleSegments; i++) {
-                    const theta = (i / circleSegments) * 2 * Math.PI;
-                    let point = center.clone();
-                    point.add(perpendicular.clone().multiplyScalar(Math.cos(theta) * radius));
-                    point.add(otherPerpendicular.clone().multiplyScalar(Math.sin(theta) * radius));
-                    
-                    if (mslPoints[i]) {
-                        point = clampAboveGround(mslPoints[i], 100);
-                    } else {
-                        const rayDir = point.clone().sub(moonCenter).normalize();
-                        point = moonCenter.clone().add(rayDir.multiplyScalar(maxDistance));
-                        point = clampAboveGround(point, 100);
-                    }
-                    
-                    vertices.push(point.x, point.y, point.z);
-                }
-            } else {
-                for (let i = 0; i < circleSegments; i++) {
-                    const theta = (i / circleSegments) * 2 * Math.PI;
-                    let point = center.clone();
-                    point.add(perpendicular.clone().multiplyScalar(Math.cos(theta) * radius));
-                    point.add(otherPerpendicular.clone().multiplyScalar(Math.sin(theta) * radius));
-                    
-                    vertices.push(point.x, point.y, point.z);
-                }
+                vertices.push(point.x, point.y, point.z);
             }
         }
         
@@ -245,14 +201,14 @@ export class CNodeDisplayMoonShadow extends CNode3DGroup {
         this.group.add(this[meshProp]);
     }
 
-    buildUmbraCone(moonCenter, earthIntersection, perpendicular, otherPerpendicular, sunMoonDistance) {
-        this.buildSegmentedCone(moonCenter, earthIntersection, perpendicular, otherPerpendicular, true,
-                       this.umbraConeMaterial, 'umbraConeGeometry', 'umbraConeMesh', 2, sunMoonDistance);
+    buildUmbraCone(moonCenter, shadowDir, perpendicular, otherPerpendicular, sunMoonDistance, coneReferenceDistance) {
+        this.buildSegmentedCone(moonCenter, shadowDir, perpendicular, otherPerpendicular, true,
+                       this.umbraConeMaterial, 'umbraConeGeometry', 'umbraConeMesh', 2, sunMoonDistance, coneReferenceDistance);
     }
 
-    buildPenumbraCone(moonCenter, earthIntersection, perpendicular, otherPerpendicular, sunMoonDistance) {
-        this.buildSegmentedCone(moonCenter, earthIntersection, perpendicular, otherPerpendicular, false,
-                       this.penumbraConeMaterial, 'penumbraConeGeometry', 'penumbraConeMesh', 1, sunMoonDistance);
+    buildPenumbraCone(moonCenter, shadowDir, perpendicular, otherPerpendicular, sunMoonDistance, coneReferenceDistance) {
+        this.buildSegmentedCone(moonCenter, shadowDir, perpendicular, otherPerpendicular, false,
+                       this.penumbraConeMaterial, 'penumbraConeGeometry', 'penumbraConeMesh', 1, sunMoonDistance, coneReferenceDistance);
     }
 
     rebuild() {
@@ -273,10 +229,22 @@ export class CNodeDisplayMoonShadow extends CNode3DGroup {
         
         const shadowDir = Globals.fromSun.clone().normalize();
         
-        const earthIntersection = this.findEarthIntersection(moonCenter, shadowDir);
-        if (!earthIntersection) {
-            return;
+        const globeCenter = new Vector3(0, -this.earthRadius, 0);
+        
+        const oc = moonCenter.clone().sub(globeCenter);
+        const b = -oc.dot(shadowDir);
+        const c = oc.dot(oc) - this.earthRadius * this.earthRadius;
+        const discriminant = b * b - c;
+        
+        let coneReferenceDistance;
+        if (discriminant >= 0) {
+            coneReferenceDistance = b - Math.sqrt(discriminant);
+        } else {
+            const t = -oc.dot(shadowDir);
+            coneReferenceDistance = t > 0 ? t : moonCenter.length();
         }
+        
+        const coneEndPoint = moonCenter.clone().add(shadowDir.clone().multiplyScalar(coneReferenceDistance));
         
         const sunEarthDistance = 149597870700;
         const sunPos = Globals.toSun.clone().normalize().multiplyScalar(sunEarthDistance);
@@ -285,11 +253,9 @@ export class CNodeDisplayMoonShadow extends CNode3DGroup {
         const perpendicular = perpendicularVector(shadowDir).normalize();
         const otherPerpendicular = shadowDir.clone().cross(perpendicular);
         
-        this.buildPenumbraCone(moonCenter, earthIntersection, perpendicular, otherPerpendicular, sunMoonDistance);
-        this.buildUmbraCone(moonCenter, earthIntersection, perpendicular, otherPerpendicular, sunMoonDistance);
-
-        const totalDistance = moonCenter.distanceTo(earthIntersection);
-        const shadowData = this.calculateShadowRadii(totalDistance, sunMoonDistance);
+        this.buildPenumbraCone(moonCenter, shadowDir, perpendicular, otherPerpendicular, sunMoonDistance, coneReferenceDistance);
+        this.buildUmbraCone(moonCenter, shadowDir, perpendicular, otherPerpendicular, sunMoonDistance, coneReferenceDistance);
+        const shadowData = this.calculateShadowRadii(coneReferenceDistance, sunMoonDistance);
         const umbraRadius = shadowData.umbraDiameter / 2;
         const penumbraRadius = shadowData.penumbraDiameter / 2;
 
@@ -297,9 +263,10 @@ export class CNodeDisplayMoonShadow extends CNode3DGroup {
         
         {
             const line_points = [];
+            
             for (let i = 0; i < segments; i++) {
                 const theta = i / (segments - 1) * 2 * Math.PI;
-                let point = earthIntersection.clone();
+                let point = coneEndPoint.clone();
                 point.add(perpendicular.clone().multiplyScalar(Math.cos(theta) * umbraRadius));
                 point.add(otherPerpendicular.clone().multiplyScalar(Math.sin(theta) * umbraRadius));
                 
@@ -325,9 +292,10 @@ export class CNodeDisplayMoonShadow extends CNode3DGroup {
 
         {
             const line_points = [];
+            
             for (let i = 0; i < segments; i++) {
                 const theta = i / (segments - 1) * 2 * Math.PI;
-                let point = earthIntersection.clone();
+                let point = coneEndPoint.clone();
                 point.add(perpendicular.clone().multiplyScalar(Math.cos(theta) * penumbraRadius));
                 point.add(otherPerpendicular.clone().multiplyScalar(Math.sin(theta) * penumbraRadius));
                 
