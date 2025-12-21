@@ -127,15 +127,17 @@ async function waitForConsoleText(page, expectedText, timeoutMs = 15000) {
 
 test.describe.serial('UI Interaction Tests - Playwright', () => {
     let sharedPage;
+    let workerIndex;
 
-    test.beforeAll(async ({ browser }) => {
+    test.beforeAll(async ({ browser }, testInfo) => {
+        workerIndex = testInfo.workerIndex;
         sharedPage = await browser.newPage();
         
         sharedPage.on('console', msg => {
-            console.log(`PAGE CONSOLE [${msg.type()}]: ${msg.text()}`);
+            console.log(`[WORKER-${workerIndex}] PAGE CONSOLE [${msg.type()}]: ${msg.text()}`);
         });
         
-        await sharedPage.goto('https://local.metabunk.org/sitrec');
+        await sharedPage.goto('https://local.metabunk.org/sitrec?ignoreunload=1&regression=1');
         
         await sharedPage.waitForFunction(() => {
             return document.querySelector('.lil-gui') !== null;

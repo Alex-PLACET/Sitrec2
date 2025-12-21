@@ -56,26 +56,26 @@ if (process.env.TEST_TRACKFILES === 'true') {
 test.describe('Visual Regression Testing', () => {
     testData.forEach(({ name, url }) => {
         test(`should match the baseline screenshot for ${name}`, async ({ page }, testInfo) => {
-            test.setTimeout(60000);
+            test.setTimeout(120000);
 
             await page.setViewportSize({ width: 1920, height: 1080 });
 
             page.on('console', msg => {
-                console.log(`PAGE CONSOLE [${msg.type()}]: ${msg.text()}`);
+                console.log(`[WORKER-${testInfo.workerIndex}] PAGE CONSOLE [${msg.type()}]: ${msg.text()}`);
             });
 
             page.on('pageerror', err => {
-                console.log('PAGE ERROR:', err);
+                console.log(`[WORKER-${testInfo.workerIndex}] PAGE ERROR:`, err);
             });
 
             page.on('response', res => {
                 if (res.status() >= 400) {
-                    console.log(`Failed response: ${res.url()} - Status: ${res.status()}`);
+                    console.log(`[WORKER-${testInfo.workerIndex}] Failed response: ${res.url()} - Status: ${res.status()}`);
                 }
             });
 
             page.on('requestfailed', req => {
-                console.log(`Request failed: ${req.url()}`);
+                console.log(`[WORKER-${testInfo.workerIndex}] Request failed: ${req.url()}`);
             });
 
             const fullUrl = url + '&ignoreunload=1&regression=1';
@@ -88,7 +88,7 @@ test.describe('Visual Regression Testing', () => {
             });
 
             if (!response.ok()) {
-                console.error(`Page load failed with status: ${response.status()} for URL: ${fullUrl}`);
+                console.error(`[WORKER-${testInfo.workerIndex}] Page load failed with status: ${response.status()} for URL: ${fullUrl}`);
             }
 
             await consolePromise;

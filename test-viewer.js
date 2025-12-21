@@ -337,6 +337,15 @@ wss.on('connection', (ws) => {
         const text = data.toString();
         process.stdout.write(text);
         
+        // Check for worker ID prefix: [WORKER-0], [WORKER-1], etc.
+        const workerMatch = text.match(/\[WORKER-(\d+)\]/);
+        let targetWorker = lastSeenWorker;
+        
+        if (workerMatch) {
+            targetWorker = parseInt(workerMatch[1]);
+            lastSeenWorker = targetWorker;
+        }
+        
         // Parse test count: "Running 14 tests using 4 workers"
         const countMatch = text.match(/Running (\d+) tests? using/);
         if (countMatch) {
@@ -368,20 +377,19 @@ wss.on('connection', (ws) => {
             
             // Assign worker to test if not already assigned
             if (!testToWorkerMap.has(testNum)) {
-                testToWorkerMap.set(testNum, nextWorker);
-                workerTestNames.set(nextWorker, testName);
+                testToWorkerMap.set(testNum, targetWorker);
+                workerTestNames.set(targetWorker, testName);
                 
                 // Send worker name update
                 ws.send(JSON.stringify({ 
                     type: 'workerName', 
-                    worker: nextWorker,
+                    worker: targetWorker,
                     name: testName
                 }));
-                
-                nextWorker = (nextWorker + 1) % 4;
             }
             
-            lastSeenWorker = testToWorkerMap.get(testNum);
+            targetWorker = testToWorkerMap.get(testNum);
+            lastSeenWorker = targetWorker;
             
             ws.send(JSON.stringify({ 
                 type: 'status', 
@@ -389,7 +397,7 @@ wss.on('connection', (ws) => {
                 total: totalTests
             }));
             
-            ws.send(JSON.stringify({ type: 'output', text, worker: lastSeenWorker }));
+            ws.send(JSON.stringify({ type: 'output', text, worker: targetWorker }));
             return;
         }
         
@@ -401,8 +409,37 @@ wss.on('connection', (ws) => {
             return;
         }
         
-        // For other output, send to the last worker that had activity
-        ws.send(JSON.stringify({ type: 'output', text, worker: lastSeenWorker }));
+        // Detect screenshot mismatch and extract image paths
+        const lines = text.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            
+            // Parse Playwright output format:
+            // Expected: tests_regression/.../snapshot.png
+            // Received: test-results/.../actual.png
+            // Diff:     test-results/.../diff.png
+            if (line.startsWith('Expected:') && i + 2 < lines.length) {
+                const expectedPath = line.replace('Expected:', '').trim();
+                const receivedLine = lines[i + 1].trim();
+                const diffLine = lines[i + 2].trim();
+                
+                if (receivedLine.startsWith('Received:') && diffLine.startsWith('Diff:')) {
+                    const actualPath = receivedLine.replace('Received:', '').trim();
+                    const diffPath = diffLine.replace('Diff:', '').trim();
+                    
+                    ws.send(JSON.stringify({
+                        type: 'imageDiff',
+                        expected: `http://localhost:${port}/${expectedPath}`,
+                        actual: `http://localhost:${port}/${actualPath}`,
+                        diff: `http://localhost:${port}/${diffPath}`
+                    }));
+                    console.log(`\n📸 Opening image comparison tabs:\n  Expected: ${expectedPath}\n  Actual: ${actualPath}\n  Diff: ${diffPath}\n`);
+                }
+            }
+        }
+        
+        // For other output, send to the detected worker
+        ws.send(JSON.stringify({ type: 'output', text, worker: targetWorker }));
     });
 
     testProcess.stderr.on('data', (data) => {
