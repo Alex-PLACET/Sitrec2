@@ -138,13 +138,13 @@ export class CPlanets {
         for (const planet of this.planets) {
             const texture = this._getTextureForPlanet(planet);
             const color = this.planetColors[n++];
-            const spriteMaterial = new SpriteMaterial({map: texture, color: color});
+            const spriteMaterial = new SpriteMaterial({map: texture, color: color, depthWrite: false});
             const sprite = new Sprite(spriteMaterial);
 
             // Create day sky sprite for Sun and Moon
             let daySkySprite = null;
             if ((planet === "Sun" || planet === "Moon") && dayScene) {
-                const daySkyMaterial = new SpriteMaterial({map: texture, color: color});
+                const daySkyMaterial = new SpriteMaterial({map: texture, color: color, depthWrite: false});
                 daySkySprite = new Sprite(daySkyMaterial);
                 dayScene.add(daySkySprite);
             }
@@ -203,10 +203,22 @@ export class CPlanets {
 
         sprite.scale.set(scale, scale, 1);
 
+        // Set renderOrder so moon always renders in front of sun
+        if (planet === "Sun") {
+            sprite.renderOrder = 1;
+        } else if (planet === "Moon") {
+            sprite.renderOrder = 2;
+        }
+
         // Update day sky sprite if provided
         if (daySkySprite) {
             daySkySprite.position.set(equatorial.x, equatorial.y, equatorial.z);
             daySkySprite.scale.set(scale, scale, 1);
+            if (planet === "Sun") {
+                daySkySprite.renderOrder = 1;
+            } else if (planet === "Moon") {
+                daySkySprite.renderOrder = 2;
+            }
         }
 
         // Store or update planet sprite data
