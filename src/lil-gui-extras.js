@@ -619,7 +619,7 @@ GUI.prototype.addHTML = function(html, labelText = '') {
     };
 };
 
-var injectedLILGUICode = false;
+let injectedLILGUICode = false;
 
 export class CGuiMenuBar {
     constructor() {

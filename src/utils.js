@@ -569,7 +569,7 @@ export function vdump(v,decimals,a='(', b=')') {
         return (a+v.x.toFixed(decimals)+","+v.y.toFixed(decimals)+","+v.z.toFixed(decimals)+b)
 }
 
-var scrollTop, scrollLeft
+let scrollTop, scrollLeft
 export function disableScroll() {
     // Get the current page scroll position
     scrollTop =

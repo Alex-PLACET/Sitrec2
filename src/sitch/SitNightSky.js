@@ -407,6 +407,6 @@ export const SitNightSky = {
     },
 }
 
-var oldURL = "";
+let oldURL = "";
 
 
