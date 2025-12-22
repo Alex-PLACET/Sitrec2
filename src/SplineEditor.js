@@ -42,14 +42,14 @@ export class   SplineEditor extends PointEditor{
     }
 
     getLength(steps) {
-        var len = 0;
-        var lastPos = new Vector3()
-        var pos = new Vector3()
+        let len = 0;
+        const lastPos = new Vector3()
+        const pos = new Vector3()
         const spline = this.spline
         spline.getPoint(0,lastPos)
 
-        for (var i=1;i<steps;i++){
-            var t = i/(steps-1) // go from 0 to 1, so we need steps-1 for the last one
+        for (let i=1;i<steps;i++){
+            const t = i/(steps-1) // go from 0 to 1, so we need steps-1 for the last one
             spline.getPoint(t,pos)
             len += pos.clone().sub(lastPos).length()
             lastPos.copy(pos)

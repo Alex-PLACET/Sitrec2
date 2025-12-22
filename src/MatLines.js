@@ -2,7 +2,7 @@
 import {LineMaterial} from "three/addons/lines/LineMaterial.js";
 import {Color} from "three";
 
-var matLines = {} // collection of line materials that need updating on resize
+const matLines = {} // collection of line materials that need updating on resize
 // we make one entry per unique material
 function makeMatLine(color, linewidth = 2, dashed = false) {
     if(typeof window == 'undefined')
@@ -19,10 +19,10 @@ function makeMatLine(color, linewidth = 2, dashed = false) {
     // first we make a string of the values
     // color is THREE.Color, convert it to a hex string
     const hex = color.getHexString()
-    var key = hex + String(linewidth) + String(dashed)
+    const key = hex + String(linewidth) + String(dashed)
     if (!matLines[key]) {
 //        console.warn("LEAK?: Creating new line material for key: ", key)
-        var lineMaterial = new LineMaterial({
+        const lineMaterial = new LineMaterial({
             color: color,
             linewidth: linewidth,
             dashed: dashed,

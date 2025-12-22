@@ -820,7 +820,7 @@ export class QuadTreeTile {
     // at this point we are Z-up
     // OLD VERSION - inefficient for tiles of different sizes
     async recalculateCurveOld(radius) {
-        var geometry = this.geometry;
+        let geometry = this.geometry;
         if (this.mesh !== undefined) {
             geometry = this.mesh.geometry;
             //    console.log("Recalculating Mesh Geometry"+geometry)
@@ -955,7 +955,7 @@ export class QuadTreeTile {
     async recalculateCurveOptimized(radius = wgs84.RADIUS) {
         this.highestAltitude = 0;
 
-        var geometry = this.geometry;
+        let geometry = this.geometry;
         if (this.mesh !== undefined) {
             geometry = this.mesh.geometry;
         }
@@ -1098,7 +1098,7 @@ export class QuadTreeTile {
     async recalculateCurveFlat(skipNormalComputation = false) {
         this.highestAltitude = 0;
 
-        var geometry = this.geometry;
+        let geometry = this.geometry;
         if (this.mesh !== undefined) {
             geometry = this.mesh.geometry;
         }
@@ -1184,7 +1184,7 @@ export class QuadTreeTile {
 
         this.highestAltitude = 0;
 
-        var geometry = this.geometry;
+        let geometry = this.geometry;
         if (this.mesh !== undefined) {
             geometry = this.mesh.geometry;
         }

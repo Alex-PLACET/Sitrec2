@@ -156,13 +156,13 @@ export function wut() {
 }
 
 // a quickToggle is a more immediate mode UI toggle you can just use
-export var toggles = {}
+export const toggles = {}
 export const toggler = function (key, controller) {
     toggles[key] = controller;
 }
 // generic toggler that has a callback and some data that's passed to that callback
 // along with the
-export var genericToggles = {}
+export const genericToggles = {}
 // a generic toggler just sets up a key/gui pair
 // and calls the callback when there's a change
 function togglerGeneric(key, data, gui, name, callback) {
@@ -173,7 +173,7 @@ function togglerGeneric(key, data, gui, name, callback) {
         value: false,
         name: name,
     }
-    var controller = gui.add(genericToggles[key], "value").name(name).listen().onChange(
+    const controller = gui.add(genericToggles[key], "value").name(name).listen().onChange(
         (newValue) => {
             genericToggles[key].callback(genericToggles[key], newValue)
         })
@@ -201,7 +201,7 @@ export function togglerNodes(key, nodes, gui, name, callback) {
 }
 
 // and it will be created if needed
-export var quickToggles = {}
+export const quickToggles = {}
 
 export function quickToggle(key, start = false, toggleGui = gui) {
     if (quickToggles[key] === undefined) {
@@ -246,7 +246,7 @@ export function showHider(_ob, id, visible, key) {
     return con;
 }
 
-var isFullScreen = false;
+let isFullScreen = false;
 
 export function initKeyboard() {
     document.onkeydown = function (e) {
@@ -394,7 +394,7 @@ export function initKeyboard() {
         }
 
         // now see if keycode is in the gui togglers array
-        var guiController = toggles[key]
+        let guiController = toggles[key]
 //        console.log("toggles[key] = " + guiController)
         if (guiController !== undefined) {
             guiController.setValue(!guiController.getValue())
@@ -405,7 +405,7 @@ export function initKeyboard() {
             guiController.setValue(!guiController.getValue())
         }
 
-        var toggleData = genericToggles[key]
+        const toggleData = genericToggles[key]
         if (toggleData !== undefined) {
             toggleData.guiController.setValue(!toggleData.guiController.getValue())
         }

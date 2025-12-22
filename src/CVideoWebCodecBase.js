@@ -111,10 +111,10 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
                 this.lastDecodeInfo = "last frame.timestamp = " + videoFrame.timestamp + "<br>";
 
                 // Find the group this frame belongs to
-                var groupNumber = 0;
+                let groupNumber = 0;
                 while (groupNumber + 1 < this.groups.length && videoFrame.timestamp >= this.groups[groupNumber + 1].timestamp)
                     groupNumber++;
-                var group = this.groups[groupNumber];
+                const group = this.groups[groupNumber];
 
                 // Calculate the frame number from group position and pending count
                 const frameNumber = group.frame + group.length - group.pending;
@@ -816,11 +816,11 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
                 const g = this.groups[_g];
 
                 // count how many images and imageDatas we have
-                var images = 0;
-                var imageDatas = 0;
-                var framesCaches = 0;
+                let images = 0;
+                let imageDatas = 0;
+                let framesCaches = 0;
                 if (this.imageCache) {
-                    for (var i = g.frame; i < g.frame + g.length; i++) {
+                    for (let i = g.frame; i < g.frame + g.length; i++) {
                         if (this.imageCache[i] != undefined && this.imageCache[i].width != 0)
                             images++;
                         if (this.imageDataCache[i] != undefined && this.imageDataCache[i].width != 0)

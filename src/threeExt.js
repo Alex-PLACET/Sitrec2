@@ -57,9 +57,9 @@ class GridHelperWorldComplex extends LineSegments {
         color2 = new Color( color2 );
 
         const vertices = [], colors = [];
-        var j = 0
-        for (var x = xStart; x < xEnd; x+= xStep) {
-            for (var y = yStart; y< yEnd; y+= yStep) {
+        let j = 0
+        for (let x = xStart; x < xEnd; x+= xStep) {
+            for (let y = yStart; y< yEnd; y+= yStep) {
                 const A = drop3(x,y,radius)
                 const B = drop3(x+xStep,y,radius)
                 const C = drop3(x,y+yStep,radius)
@@ -95,9 +95,9 @@ export class ColoredLine extends LineSegments {
         const vertices = [];
         const colors = [];
 
-        for (var i=0;i<_positions.length-1;i++) {
-            var p = _positions[i]
-            var c = _colors[i]
+        for (let i=0;i<_positions.length-1;i++) {
+            const p = _positions[i]
+            const c = _colors[i]
             vertices.push(_positions[i].x,_positions[i].y,_positions[i].z)
             vertices.push(_positions[i+1].x,_positions[i+1].y,_positions[i+1].z)
             _colors[i].toArray(colors,i*6)
@@ -152,7 +152,7 @@ export {GridHelperWorld, GridHelperWorldComplex}
 function sphereAt(x, y, z, radius = 5, color = 0xffffff, parent) {
     const geometry = new SphereGeometry(radius, 10, 10);
     const material = new MeshBasicMaterial({color: color});
-    var sphere = new Mesh(geometry, material);
+    const sphere = new Mesh(geometry, material);
     sphere.position.x = x;
     sphere.position.y = y;
     sphere.position.z = z;
@@ -169,7 +169,7 @@ export function sphereMark(point, r = 5, color = 0xffffff, parent=null) {
 function boxAt(x, y, z, xs = 1, ys=1, zs=1, color = 0xffffff, parent) {
     const geometry = new BoxGeometry(xs,ys,zs);
     const material = new MeshBasicMaterial({color: color});
-    var sphere = new Mesh(geometry, material);
+    const sphere = new Mesh(geometry, material);
     sphere.position.x = x;
     sphere.position.y = y;
     sphere.position.z = z;
@@ -185,7 +185,7 @@ export function boxMark(point,  xs = 1, ys=1, zs=1, color = 0xffffff, parent=nul
 
 
 // Create anywhere debug sphere
-var DebugSpheres = {}
+let DebugSpheres = {}
 export function DebugSphere(name, origin, radius = 100, color = 0xffffff, parent = GlobalScene, layers = LAYER.MASK_HELPERS, wireframe = false) {
 
     color = new Color(color)  // convert from whatever format, like "green" or "#00ff00" to a THREE.Color(r,g,b)
@@ -244,12 +244,12 @@ export function DebugWireframeSphere(name, origin, radius = 100, color = 0xfffff
 
 }
 
-export var DebugArrows = {}
+export let DebugArrows = {}
 
 export function disposeDebugArrows() {
     console.log("Disposing all debug arrows")
 
-    for (var key in DebugArrows) {
+    for (const key in DebugArrows) {
        // DebugArrows[key].dispose();
     }
     DebugArrows = {}
@@ -257,7 +257,7 @@ export function disposeDebugArrows() {
 
 export function disposeDebugSpheres() {
     console.log("Disposing all debug spheres")
-    for (var key in DebugSpheres) {
+    for (const key in DebugSpheres) {
      //   DebugSpheres[key].dispose();
     }
     DebugSpheres = {}
@@ -331,7 +331,7 @@ export function scaleArrows(view) {
     // the arrows are only rendered in 3D views, so we can ignore this
     if (view.pixelsToMeters === undefined) return;
 
-    for (var key in DebugArrows) {
+    for (const key in DebugArrows) {
         const arrow = DebugArrows[key]
         // arrow.position is the start of the arrow, we need to scale the arrow head
         // based on the end of the arrow
@@ -479,9 +479,9 @@ function DebugArrowOrigin(name, direction, length = 100, color, visible=true, pa
 }
 
 export function DebugArrowAB(name, A, B, color, visible, parent, headLength=20, layerMask) {
-    var direction = B.clone()
+    const direction = B.clone()
     direction.sub(A)
-    var length = direction.length()
+    const length = direction.length()
     direction.normalize()
     return DebugArrow(name, direction, A, length, color, visible, parent, headLength, layerMask)
 }

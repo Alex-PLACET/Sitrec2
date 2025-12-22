@@ -312,7 +312,7 @@ export async function resolveAnonObjects(data, depth=0) {
 }
 
 // information about which nodes/keys are allowed/needed in console mode
-var consoleKeys = null
+let consoleKeys = null
 
 function initConsoleKeys() {
     if(consoleKeys)
@@ -421,7 +421,7 @@ export async function SetupFromKeyAndData(key, _data, depth=0) {
     // only certain nodes work in console mode
     if(isConsole) {
         initConsoleKeys()
-        var consoleKeyInfo = consoleKeys.get(key)
+        const consoleKeyInfo = consoleKeys.get(key)
         if(!consoleKeyInfo)
             return null
     }
@@ -630,8 +630,8 @@ export async function SetupFromKeyAndData(key, _data, depth=0) {
 
             // now make a per-frame array of focal lengths
             const focalLengths = new Array(Sit.frames);
-            for (var frame = 0; frame < Sit.frames; frame++) {
-                var focalLength = getArrayValueFromFrame(wescamSource, 0, data.focalIndex, frame)
+            for (let frame = 0; frame < Sit.frames; frame++) {
+                let focalLength = getArrayValueFromFrame(wescamSource, 0, data.focalIndex, frame)
                 const mode = getArrayValueFromFrame(wescamSource, 0, data.modeIndex, frame);
                 if (mode !== "IR") {
                     focalLength *= 2
@@ -674,7 +674,7 @@ export async function SetupFromKeyAndData(key, _data, depth=0) {
         case "lookView":
             SSLog();
 
-            var color = Sit.skyColor
+            let color = Sit.skyColor
 
             // if we have a mainView, then use its background color
             if (NodeMan.exists("mainView")) {
@@ -952,7 +952,7 @@ export async function SetupFromKeyAndData(key, _data, depth=0) {
             SSLog();
             const overlayNode = data.overlay ?? "lookView";
             const overlayView = NodeMan.get(overlayNode);
-            var labelVideo = new CNodeViewUI({id: data.id ?? "labelVideo", overlayView: overlayView});
+            const labelVideo = new CNodeViewUI({id: data.id ?? "labelVideo", overlayView: overlayView});
             let textSize = 2.5;
             let dateTimeY = data.dateTimeY ?? 96;
 

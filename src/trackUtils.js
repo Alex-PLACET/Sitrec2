@@ -6,8 +6,8 @@ import {assert} from "./assert";
 export function trackHeading(source, f) {
     if (f > Sit.frames - 2) f = Sit.frames - 2; // hand out of range
     if (f < 0) f = 0
-    var fwd = source.p(f + 1).sub(source.p(f))
-    var heading = degrees(Math.atan2(fwd.x, -fwd.z))
+    const fwd = source.p(f + 1).sub(source.p(f))
+    const heading = degrees(Math.atan2(fwd.x, -fwd.z))
     return heading
 } // per frame closing speed
 // per frame velocity vector
@@ -29,7 +29,7 @@ export function trackVelocity(source, f, debugN=0) {
     // DebugArrowAB(source.id+"velocity"+debugN, A1, B1, 0x00FFFF)
 
 
-    var fwd = source.p(f + 1).sub(source.p(f))
+    const fwd = source.p(f + 1).sub(source.p(f))
     return fwd
 }
 
@@ -43,14 +43,14 @@ export function trackDirection(source, f, debugN=0) {
 export function trackAcceleration(source, f) {
     const v1 = trackVelocity(source, f,     0)
     const v2 = trackVelocity(source, f + 1, 1)
-    var fwd = v2.clone().sub(v1)
+    const fwd = v2.clone().sub(v1)
     return fwd
 }
 
 // this is the chan
 export function closingSpeed(jet, target, f) {
-    var d1 = jet.p(f).sub(target.p(f)).length()
-    var d2 = jet.p(f + 1).sub(target.p(f + 1)).length()
+    const d1 = jet.p(f).sub(target.p(f)).length()
+    const d2 = jet.p(f + 1).sub(target.p(f + 1)).length()
     return d1 - d2
 
 }
