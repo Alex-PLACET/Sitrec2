@@ -429,7 +429,7 @@ export class CCustomManager {
                 // if it IS visible, then we assume the user has set it up how they want
                 if (!videoView.visible) {
                     // decide what preset is needed
-                    if (width == undefined || width > height) {
+                    if (width === undefined || width > height) {
                         this.currentViewPreset = "Default"; // wide video
                     } else {
                         this.currentViewPreset = "ThreeWide"; // tall video

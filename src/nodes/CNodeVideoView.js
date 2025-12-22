@@ -431,7 +431,7 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
 
 
             // TODO - combine this zoom input with the mouse zoom
-            if (this.in.zoom != undefined) {
+            if (this.in.zoom !== undefined) {
 
                 this.getSourceAndDestCoords();
                 ctx.drawImage(image,this.sx, this.sy, this.sWidth, this.sHeight,

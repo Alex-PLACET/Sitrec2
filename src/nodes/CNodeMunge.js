@@ -40,7 +40,7 @@ export class CNodeDerivative extends CNode {
         if (f === this.frames-1)
             f--
         var v0 = this.in.source.v(f)
-        if (v0.position != undefined) {
+        if (v0.position !== undefined) {
             return {position: this.in.source.p(f+1).sub(v0.position)}
         } else {
 

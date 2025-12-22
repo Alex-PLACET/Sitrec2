@@ -713,7 +713,7 @@ export class CNodeTerrain extends CNode {
         var radius = this.radius;
         // flattening is 0 to 1, whenre 0=no flattening, 1=flat
         // so scale radius by (1/(1-flattening)
-        if (this.in.flattening != undefined) {
+        if (this.in.flattening !== undefined) {
             var flattening = this.in.flattening.v0
             if (flattening >= 1) flattening = 0.999999
             radius *= (1 / (1 - flattening))

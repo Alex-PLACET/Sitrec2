@@ -194,7 +194,7 @@ export class PointEditor {
     snapPointByIndex(i) {
         const editingObject = this.splineHelperObjects[i];
         //      editingObject.position.y = 500;
-        if (this.snapCamera != undefined) {
+        if (this.snapCamera !== undefined) {
             // Snap to a LOS between the snapCamera track and the snapTarget Track
             const editingFrame = this.frameNumbers[i]
             const cameraPos = this.snapCamera.p(editingFrame)

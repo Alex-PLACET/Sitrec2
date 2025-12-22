@@ -54,7 +54,7 @@ export class CNodeSplineEditor extends CNodeTrack {
         this.splineEditor.parentNode = this;
 
         this.optionalInputs(["snapCamera","snapTarget"])
-        if (this.in.snapCamera != undefined) {
+        if (this.in.snapCamera !== undefined) {
             this.splineEditor.snapCamera  = this.in.snapCamera;
             this.splineEditor.snapTarget  = this.in.snapTarget;
         }

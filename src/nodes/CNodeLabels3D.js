@@ -266,7 +266,7 @@ export class CNodeLabel3D extends CNode3DGroup {
         let zoom = 1;
         if (view.syncVideoZoom && NodeMan.exists("videoZoom")) {
             var videoZoom = NodeMan.get("videoZoom")
-            if (videoZoom != undefined) {
+            if (videoZoom !== undefined) {
                 zoom = videoZoom.v0 / 100;
             }
         }
@@ -642,7 +642,7 @@ export class CNodeFeatureMarker extends CNodeLabel3D {
 
 export function doLabel3D(id, pos, text, size, layers) {
     let node = NodeMan.get(id, false);
-    if (node == undefined) {
+    if (node === undefined) {
         node = new CNodeLabel3D({id, position: pos, text, size, layers});
         NodeMan.add(id, node);
     }

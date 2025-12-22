@@ -154,7 +154,7 @@ export class CNodeDisplayLOS extends CNode3DGroup {
                 var color = this.material // matLineWhiteThin;
 
                 // we can be passed in an array of lines to highlight
-                if (this.highlightLines[f] != undefined)
+                if (this.highlightLines[f] !== undefined)
                     color = this.highlightLines[f]
 
                 // dim out things outside the active range

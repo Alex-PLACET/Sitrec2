@@ -225,7 +225,7 @@ export function setupOpts() {
             move: function cursorMove(self, mouseLeft1, mouseTop1) {
 
                 let sc = self.scales.x;  // probably not always x
-                if (sc.max > 0 && self.mickWidth != undefined) {
+                if (sc.max > 0 && self.mickWidth !== undefined) {
 
                     if (self.mickDragging == true) {
                         par.frame = self.mickMouseLeft1 / self.mickWidth * sc.max * Sit.fps;

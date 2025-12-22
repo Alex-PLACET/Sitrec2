@@ -53,7 +53,7 @@ export class CNodeDisplayATFLIR extends CNode3DGroup {
         setPodFrame(new Group());
         PodFrame.layers.mask = LAYER.MASK_HELPERS
 
-        assert(PodFrame != undefined, "Missing PodFrame")
+        assert(PodFrame !== undefined, "Missing PodFrame")
         LocalFrame.add(PodFrame)
 
 
@@ -234,7 +234,7 @@ let PointingLineGeometry
 let POINTING_line
 function makePointingLine() {
     let oldVisible = false; // stupid way of doing it, because I'm recreatingthe object. Should alter geometry.
-    if (POINTING_line != undefined) oldVisible = POINTING_line.visible
+    if (POINTING_line !== undefined) oldVisible = POINTING_line.visible
     LocalFrame.remove(POINTING_line)
     // Green track of view point line
     const line_points = [];

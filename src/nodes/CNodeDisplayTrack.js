@@ -515,7 +515,7 @@ export class CNodeDisplayTrack extends CNode3DGroup {
 //        var material1 = this.in.color.v(0)
 
         var width = 1
-        if (this.in.width != undefined)
+        if (this.in.width !== undefined)
             width = this.in.width.v0
         width *= 3;  // thicker lines reduce apparent jaggedness through shader smoothing
 

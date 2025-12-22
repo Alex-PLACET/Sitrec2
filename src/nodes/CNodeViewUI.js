@@ -178,7 +178,7 @@ export class CNodeViewUI extends CNodeViewCanvas2D {
         this.zoom = 1;
         if (this.syncVideoZoom && NodeMan.exists("videoZoom")) {
             var videoZoom = NodeMan.get("videoZoom")
-            if (videoZoom != undefined) {
+            if (videoZoom !== undefined) {
                 this.zoom = videoZoom.v0 / 100;
             }
         }
@@ -250,7 +250,7 @@ export class CNodeViewUI extends CNodeViewCanvas2D {
         if (this.textElements === undefined) return;
         Object.keys(this.textElements).forEach(key => {
             const t = this.textElements[key]
-            if (t.object != undefined) {
+            if (t.object !== undefined) {
                 t.initialValue = undefined;
                 t.checkListener();
             }
@@ -266,7 +266,7 @@ export function forceUpdateUIText() {
             // clear the t.initialValue of all text elements
             Object.keys(n.textElements).forEach(key => {
                 const t = n.textElements[key]
-                if (t.object != undefined) {
+                if (t.object !== undefined) {
                     t.initialValue = undefined;
                 }
             })

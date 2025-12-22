@@ -351,7 +351,7 @@ export class CVideoWebCodecData extends CVideoData {
             }
         }
         const last = this.groups[this.groups.length - 1];
-        assert(last != undefined, "last groups is undefined, I've loaded " + this.groups.length)
+        assert(last !== undefined, "last groups is undefined, I've loaded " + this.groups.length)
         console.warn("Last frame = " + last.frame + ", length = " + last.length + ", i.e. up to " + (last.frame + last.length - 1))
         //assert(0,"group not found for frame "+frame)
         return null;
@@ -447,11 +447,11 @@ export class CVideoWebCodecData extends CVideoData {
                 var imageDatas = 0;
                 var framesCaches = 0;
                 for (var i = g.frame; i < g.frame + g.length; i++) {
-                    if (this.imageCache[i] != undefined && this.imageCache[i].width != 0)
+                    if (this.imageCache[i] !== undefined && this.imageCache[i].width !== 0)
                         images++;
-                    if (this.imageDataCache[i] != undefined && this.imageDataCache[i].width != 0)
+                    if (this.imageDataCache[i] !== undefined && this.imageDataCache[i].width !== 0)
                         imageDatas++;
-                    if (this.frameCache[i] != undefined)
+                    if (this.frameCache[i] !== undefined)
                         framesCaches++;
                 }
 

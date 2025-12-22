@@ -88,7 +88,7 @@ export class CNodeControllerObjectTilt extends CNodeController {
 
         const object = objectNode._object;
 
-        if (object != undefined) {
+        if (object !== undefined) {
             if (f >= 0) {
 
                 var next = this.in.track.p(f + 1)

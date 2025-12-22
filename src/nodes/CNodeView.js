@@ -758,7 +758,7 @@ class CUIText {
     }
 
     checkListener() {
-        if (this.object != undefined) {
+        if (this.object !== undefined) {
             const v = this.getValue()
             if (v != this.initialValue) {
                 if (this.callback === undefined) {

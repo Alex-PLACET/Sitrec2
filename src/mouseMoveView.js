@@ -48,7 +48,7 @@ export function onDocumentWheel(event) {
         }
     } else {
         ViewMan.iterateVisibleIncludingOverlays((name, view) => {
-            if (mouseInViewOnly(view, mouseX, mouseY) && view.onMouseWheel != undefined) {
+            if (mouseInViewOnly(view, mouseX, mouseY) && view.onMouseWheel !== undefined) {
                 view.onMouseWheel(event, mouseX, mouseY, event.deltaX, event.deltaY)
             }
         })
@@ -72,7 +72,7 @@ export function onDocumentMouseDown(event) {
 
             if (mouseInViewOnly(view, mouseX, mouseY, false)) {
   //              console.log("onDocumentMouseDown has mouseInViewOnly true for" + view.id)
-                if (view.onMouseDown != undefined) {
+                if (view.onMouseDown !== undefined) {
                   //  console.log("Calling onMouseDown for" + view.id)
                     view.onMouseDown(event, mouseX, mouseY)
                     mouseDragView = view;
@@ -114,7 +114,7 @@ export function onDocumentMouseMove(event) {
         // otherwise, send to the view we are inside
         ViewMan.iterateVisibleIncludingOverlays((name, view) => {
 
-            if (mouseInViewOnly(view, mouseX, mouseY) && view.onMouseMove != undefined) {
+            if (mouseInViewOnly(view, mouseX, mouseY) && view.onMouseMove !== undefined) {
                 // console.log("Mouse Move (no drag) in view "+view.id)
                 view.onMouseMove(event, mouseX, mouseY, mouseX-mouseLastX, mouseY-mouseLastY)
             }
@@ -132,7 +132,7 @@ export function onDocumentMouseMove(event) {
 }
 
 export function onDocumentMouseUp(event) {
-    if (mouseDragView && mouseDragView.onMouseUp != undefined ) {
+    if (mouseDragView && mouseDragView.onMouseUp !== undefined ) {
         mouseDragView.onMouseUp(event, mouseX, mouseY)
         dragMode = DRAG.NONE;
     }

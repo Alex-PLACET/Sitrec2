@@ -821,11 +821,11 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
                 let framesCaches = 0;
                 if (this.imageCache) {
                     for (let i = g.frame; i < g.frame + g.length; i++) {
-                        if (this.imageCache[i] != undefined && this.imageCache[i].width != 0)
+                        if (this.imageCache[i] !== undefined && this.imageCache[i].width !== 0)
                             images++;
-                        if (this.imageDataCache[i] != undefined && this.imageDataCache[i].width != 0)
+                        if (this.imageDataCache[i] !== undefined && this.imageDataCache[i].width !== 0)
                             imageDatas++;
-                        if (this.frameCache[i] != undefined)
+                        if (this.frameCache[i] !== undefined)
                             framesCaches++;
                     }
                 }

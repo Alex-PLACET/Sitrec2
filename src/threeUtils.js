@@ -157,7 +157,7 @@ export function V3(x = 0, y = 0, z = 0) {
 
 // create a Vectorthree from an array, or from three parameters, or a Vector3
 export function MV3(x = 0, y = 0, z = 0) {
-    if (x.x != undefined) {
+    if (x.x !== undefined) {
         // it's a THREE.Vector3, or similar with x,y,z memmbers
         return (new Vector3()).copy(x);
     } else if (Array.isArray(x)) {

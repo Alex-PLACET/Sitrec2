@@ -406,13 +406,13 @@ class CNode {
 
 // check all the inputs in this array exist
     checkInputs(inputList) {
-        inputList.forEach(key => assert(this.inputs[key] != undefined, "CNode Missing input -> "+ key ))
+        inputList.forEach(key => assert(this.inputs[key] !== undefined, "CNode Missing input -> "+ key ))
     }
 
     // check that we have one and only one of a list of inputs
     checkExclusiveInputs(inputList) {
         var numMatchingInputs = 0;
-        inputList.forEach(key => {if (this.inputs[key] != undefined) numMatchingInputs++;})
+        inputList.forEach(key => {if (this.inputs[key] !== undefined) numMatchingInputs++;})
         if (numMatchingInputs == 0)  assert( 0, "Zero matching inputs " )
         if (numMatchingInputs > 1)  assert( 0, ">1 matching inputs " )
     }
@@ -476,7 +476,7 @@ class CNode {
     addInputs(inputs) {
         if (inputs) {
             Object.keys(inputs).forEach(key => {
-                assert(inputs[key] != undefined, "Node has undefined input = " + key)
+                assert(inputs[key] !== undefined, "Node has undefined input = " + key)
                 this.addInput(key, inputs[key])
             })
         }
@@ -485,7 +485,7 @@ class CNode {
     // add an input node, and add this to its list of outputs
     input(i,optional=false) {
         // if declared in the input object, then check if it's a node or node name
-        if (this.inputs[i] != undefined) {
+        if (this.inputs[i] !== undefined) {
             // by this point, it should be resolved into a node
             assert(this.inputs[i] instanceof CNode, "Node has none-node input -> " + i)
             return;
@@ -989,7 +989,7 @@ function recalculateNodesBreadthFirstRecurse(list, f, noControllers, depth, debu
 export class CNodeConstant extends CNode {
     constructor(v) {
         super(v);
-        assert(v.value != undefined, "Constant node needs value")
+        assert(v.value !== undefined, "Constant node needs value")
         this.value = v.value;
     }
 

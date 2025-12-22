@@ -216,7 +216,7 @@ export function update_ERROR_circle(scence, circleCenter) {
     ERROR_geometry = new LineGeometry();
     ERROR_geometry.setPositions(ERROR_points);
     let oldErrorCircleVisible = true;
-    if (ERROR_circle != undefined)
+    if (ERROR_circle !== undefined)
         oldErrorCircleVisible = ERROR_circle.visible
     ERROR_circle = new Line2(ERROR_geometry, matLineGreenThin);
     ERROR_circle.layers.enable(LAYER.podsEye)
@@ -301,7 +301,7 @@ export function UpdateHUD(text="") {
 // so are assuming that podRoll and jetRoll are correc
 export function ChangedPR() {
 
-    if (Ball == undefined) {
+    if (Ball === undefined) {
         // waiting for the model to load, so set a flag saying we need to do this again
         // this is a patch, as we really should seperate the the rendered model from the calculations
         // of the gimbal orientation (plane->EOSU->Ball)

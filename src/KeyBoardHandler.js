@@ -240,7 +240,7 @@ export function showHider(_ob, id, visible, key) {
 
     })
 
-    if (key != undefined) {
+    if (key !== undefined) {
         toggles[key] = con
     }
     return con;

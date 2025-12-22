@@ -1726,14 +1726,14 @@ export class CNodeView3D extends CNodeViewCanvas {
 
             // we don't check the glare (green) sphere if it's locked to the white (target sphere)
             if (targetSphere.position.y !== glareSphere.position.y) {
-                if (intersects.find(hit => hit.object == glareSphere) != undefined) {
+                if (intersects.find(hit => hit.object === glareSphere) !== undefined) {
                     // CLICKED ON THE green SPHERE
                     this.dragMode = DRAG.MOVEHANDLE;
                     // must pause, as we are controlling the pod now
                     par.paused = true;
                 }
             }
-            if (intersects.find(hit => hit.object == targetSphere) != undefined) {
+            if (intersects.find(hit => hit.object === targetSphere) !== undefined) {
 
                 if (this.dragMode === 1) {
                     var glareSphereWorldPosition = glareSphere.getWorldPosition(new Vector3())
@@ -1880,7 +1880,7 @@ export class CNodeView3D extends CNodeViewCanvas {
             }
 
 
-            if (target != undefined) {
+            if (target !== undefined) {
                 this.cursorSprite.position.copy(target)
 
                 if (this.controls) {

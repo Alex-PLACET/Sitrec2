@@ -156,7 +156,7 @@ function sphereAt(x, y, z, radius = 5, color = 0xffffff, parent) {
     sphere.position.x = x;
     sphere.position.y = y;
     sphere.position.z = z;
-    if (parent != undefined) parent.add(sphere);
+    if (parent !== undefined) parent.add(sphere);
 //    sphere.layers.mask = LAYER.MASK_MAIN;
     sphere.layers.mask = LAYER.MASK_HELPERS;
     return sphere;
@@ -174,7 +174,7 @@ function boxAt(x, y, z, xs = 1, ys=1, zs=1, color = 0xffffff, parent) {
     sphere.position.y = y;
     sphere.position.z = z;
     sphere.layers.mask = LAYER.MASK_MAIN;
-    if (parent != undefined) parent.add(sphere);
+    if (parent !== undefined) parent.add(sphere);
     return sphere;
 }
 
@@ -218,7 +218,7 @@ export function DebugWireframeSphere(name, origin, radius = 100, color = 0xfffff
 
     color = new Color(color)  // convert from whatever format, like "green" or "#00ff00" to a THREE.Color(r,g,b)
 
-    if (parent == undefined)
+    if (parent === undefined)
         parent = GlobalScene
 
     if (DebugSpheres[name] === undefined) {
@@ -284,7 +284,7 @@ export function DebugArrow(name, direction, origin, _length = 100, color="#FFFFF
     }
 
 
-    if (DebugArrows[name] == undefined) {
+    if (DebugArrows[name] === undefined) {
         color = new Color(color)  // convert from whatever format, like "green" or "#00ff00" to a THREE.Color(r,g,b)
 //        DebugArrows[name] = new ArrowHelper(dir, origin, _length, color, _headLength);
         DebugArrows[name] = new ArrowHelper(dir, origin, _length, color);
@@ -550,7 +550,7 @@ export function disposeObject(object) {
 // Helper function to dispose materials and textures
 export function disposeMaterial(material) {
     Object.keys(material).forEach(prop => {
-        if (material[prop] !== null && material[prop] != undefined && typeof material[prop].dispose === 'function') {
+        if (material[prop] !== null && material[prop] !== undefined && typeof material[prop].dispose === 'function') {
             // This includes disposing textures, render targets, etc.
             material[prop].dispose();
         }

@@ -129,7 +129,7 @@ export class CNode3D extends CNode {
 
     getUpVector(position) {
 
-        if (position == undefined) {
+        if (position === undefined) {
             position = this._object.position
         }
 

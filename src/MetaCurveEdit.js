@@ -303,7 +303,7 @@ class MetaBezierCurveEditor {
     constructor(p) {
 
 
-        if (p.points == undefined) {
+        if (p.points === undefined) {
             p.points = []
         }
 
@@ -408,7 +408,7 @@ class MetaBezierCurveEditor {
                     w: canvasWidth - (leftMargin + rightMargin+1),
                     h: canvasHeight - (topMargin + bottomMargin+1),
                 };
-                if (this.xLabel2 != undefined) {
+                if (this.xLabel2 !== undefined) {
                     this.g.y += 20;
                     this.g.h -= 20;
                     // debugger;
@@ -738,7 +738,7 @@ class MetaBezierCurveEditor {
         ctx.rotate(+Math.PI / 2);
 
         // possible second x axis label.
-        if (this.xLabel2 != undefined) {
+        if (this.xLabel2 !== undefined) {
             ctx.font = "20px Arial";
             ctx.textAlign = "center";
             ctx.fillText(this.xLabel2, this.g.x + this.g.w / 2, this.g.y - 15);
@@ -827,7 +827,7 @@ class MetaBezierCurveEditor {
                 const oldMinY = this.min.y
                 const oldMaxY = this.max.y
 
-                if (compareNode.min != undefined) {
+                if (compareNode.min !== undefined) {
                     this.min.y = compareNode.min;
                     this.max.y = compareNode.max;
                 }
@@ -924,7 +924,7 @@ class MetaBezierCurveEditor {
 /*
 //this was the old method of getting in another line, passing in a function f2(y)
 // y specific, as in the old refraction sim
-        if (this.useF2 && this.p.f2 != undefined) {
+        if (this.useF2 && this.p.f2 !== undefined) {
             ctx.strokeStyle = "blue";
             ctx.beginPath();
             var startX = this.p.f2(0)

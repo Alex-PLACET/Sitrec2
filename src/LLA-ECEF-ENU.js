@@ -425,7 +425,7 @@ function _updateSitConstants() {
 // OPTIMIZED VERSION: All calculations inlined with pre-computed constants for maximum performance
 export function LLAToEUSRadians(lat, lon, alt=0, radius) {
     assert(radius === undefined, "undexpected radius in LLAToEUS")
-    assert(Sit.lat != undefined, "Sit.lat undefined in LLAToEUS")
+    assert(Sit.lat !== undefined, "Sit.lat undefined in LLAToEUS")
     
     // Update constants if Sit location changed
     _updateSitConstants();
