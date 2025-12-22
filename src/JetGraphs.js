@@ -526,8 +526,9 @@ export function AddGenericNodeGraph(title, yAxis, nodes, params={}, lines=[]) {
     let max = -100000000000
     let minFrame = 0;
     let maxFrame = 0;
+    let node;
     for (let j=0;j<nodes.length;j++) {
-        const node = munges[j]
+        node = munges[j]
 
         for (let i = 0; i < frames; i++) {
             const value = node.v(i)
