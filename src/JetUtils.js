@@ -9,7 +9,7 @@ export function jetRollFromFrame(f) {
 }
 
 export function jetPitchFromFrame(f = -1) {
-    if (f == -1) f = par.frame;
+    if (f === -1) f = par.frame;
     let jetPitch = par.jetPitch;
     if (par.scaleJetPitch) {
         const roll = jetRollFromFrame(f)

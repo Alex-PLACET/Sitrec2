@@ -776,7 +776,7 @@ export function setURLParameters(params) {
     // and add that to the base URL
     url += "?sitch=" + Sit.name + params;
 
-    if (oldURL.localeCompare(url) != 0) {
+    if (oldURL.localeCompare(url) !== 0) {
         // then push the current state, so we can go back
         window.history.pushState({}, null, url);
     }

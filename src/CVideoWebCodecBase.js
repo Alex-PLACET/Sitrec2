@@ -298,7 +298,7 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
                 }
 
                 group.pending--;
-                if (group.pending == 0) {
+                if (group.pending === 0) {
                     group.loaded = true;
                     this.groupsPending--;
                     this.handleGroupComplete();
@@ -317,7 +317,7 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
                 // Decrement pending count even on error
                 if (group && group.pending > 0) {
                     group.pending--;
-                    if (group.pending == 0) {
+                    if (group.pending === 0) {
                         group.loaded = false;
                         this.groupsPending--;
                     }
@@ -334,7 +334,7 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
             // Decrement pending count on error
             if (group && group.pending > 0) {
                 group.pending--;
-                if (group.pending == 0) {
+                if (group.pending === 0) {
                     group.loaded = false;
                     this.groupsPending--;
                 }

@@ -893,7 +893,7 @@ class MetaBezierCurveEditor {
                     this.max.y = realMinY+1
                 }
 
-                assert(this.min.y != this.max.y, "min and max y the same! = "+this.min.y)
+                assert(this.min.y !== this.max.y, "min and max y the same! = "+this.min.y)
                 this.yStep = (this.max.y-this.min.y)/10
             }
 
@@ -981,7 +981,7 @@ class MetaBezierCurveEditor {
             this.selectPointAt(e.layerX, e.layerY);
 
             // adding and deleteing point is now done with right click
-            if (e.button == 2) {
+            if (e.button === 2) {
 
                 if (this.selectedPoint !== null && this.curve.ps.length > 4) {
                     // right button removes
@@ -1037,21 +1037,21 @@ class MetaBezierCurveEditor {
                 this.moved = true;
                 let move_x = (this.C2DX(e.layerX) - this.C2DX(this.lastMouseX))/1;
                 let move_y = (this.C2DY(e.layerY) - this.C2DY(this.lastMouseY))/1;
-                if (this.curve.clampFirstY && this.selectedPointIndex == 0) {
+                if (this.curve.clampFirstY && this.selectedPointIndex === 0) {
 
                     move_y = 0;
                 }
 
                 if (this.clampXEnds
-                    && (this.selectedPointIndex == 0
-                        || this.selectedPointIndex == this.curve.ps.length-2)) // -2 as the last one is the control point
+                    && (this.selectedPointIndex === 0
+                        || this.selectedPointIndex === this.curve.ps.length-2)) // -2 as the last one is the control point
                 {
                     move_x = 0;
                 }
 
                 // if we want to keep the y order, then don't allow movement past adjacent points vertically
                 // but only for the even points (back, data points)
-                if (this.keepYOrder && (this.selectedPointIndex % 2 == 0)) {
+                if (this.keepYOrder && (this.selectedPointIndex % 2 === 0)) {
                     if (move_y > 0 && this.selectedPointIndex < this.curve.ps.length - 2
                         && (this.selectedPoint.y + move_y > this.curve.ps[this.selectedPointIndex + 2].y)) {
                         move_y = 0;
@@ -1063,7 +1063,7 @@ class MetaBezierCurveEditor {
                     }
                 }
 
-                if (this.curve.topGradient != 0 && this.selectedPointIndex == this.curve.ps.length - 1) {
+                if (this.curve.topGradient !== 0 && this.selectedPointIndex === this.curve.ps.length - 1) {
                     move_x = move_y * this.curve.topGradient
                 }
 
@@ -1079,7 +1079,7 @@ class MetaBezierCurveEditor {
 
                 // If the shift key is down, then continue to move all the nect points (points above this one)
 
-                if (e.shiftKey && (this.selectedPointIndex % 2) == 0) {
+                if (e.shiftKey && (this.selectedPointIndex % 2) === 0) {
                     let i = this.selectedPointIndex + 2;
                     while (i < this.curve.ps.length) {
                         this.curve.ps[i].x += move_x;
@@ -1110,7 +1110,7 @@ class MetaBezierCurveEditor {
             // highlight the one we are hovering over
             const len = this.curve.ps.length;
             for (let i = 0; i < len; i++) {
-                if (i%2 == 0 || !this.curve.useRegression) {
+                if (i%2 === 0 || !this.curve.useRegression) {
                     const d = Math.sqrt(Math.pow(this.D2CX(this.curve.ps[i].x) - e.layerX, 2) + Math.pow(this.D2CY(this.curve.ps[i].y) - e.layerY, 2));
                     if (d <= 10) {
                         ctx.fillStyle = "green";

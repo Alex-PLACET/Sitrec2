@@ -245,7 +245,7 @@ export class CRegionSelector {
         }
 
         // recalculate the center, unless we are rotating, in which case the center is fixed
-        if (this.dragMode != DRAG_ROTATE) {
+        if (this.dragMode !== DRAG_ROTATE) {
             this.center.set(0, 0)
             for (var q = 0; q < 4; q++) {
                 this.center.add(this.rect[q])

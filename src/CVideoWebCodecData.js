@@ -238,7 +238,7 @@ export class CVideoWebCodecData extends CVideoData {
                     }
 
                     group.pending--;
-                    if (group.pending == 0) {
+                    if (group.pending === 0) {
                         // this one group has finished loading
                         //                  console.log("finished loading group at frame "+ group.frame)
                         group.loaded = true;

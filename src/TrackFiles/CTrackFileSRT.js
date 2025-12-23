@@ -51,7 +51,7 @@ const SRTMapMISB = {
 
 function parseSRT(data) {
     const lines = data.split('\n');
-    if (lines[4] == "2" && lines [8] == "3") {
+    if (lines[4] === "2" && lines [8] === "3") {
         return parseSRT2(lines)
     }
     return parseSRT1(lines)

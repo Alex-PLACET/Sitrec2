@@ -5,7 +5,7 @@ import {Color} from "three";
 const matLines = {} // collection of line materials that need updating on resize
 // we make one entry per unique material
 function makeMatLine(color, linewidth = 2, dashed = false) {
-    if(typeof window == 'undefined')
+    if(typeof window === 'undefined')
         return null;
     
     // if it's not a color object, then make it one
@@ -40,7 +40,7 @@ function makeMatLine(color, linewidth = 2, dashed = false) {
 // as identical materials can be used in multiple places
 // and we don't want to dispose of them until they're no longer needed
 export function disposeMatLine(matLine) {
-    if(typeof window == 'undefined')
+    if(typeof window === 'undefined')
         return null;
 
     Object.keys(matLines).forEach(key => {

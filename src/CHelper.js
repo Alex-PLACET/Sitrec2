@@ -32,7 +32,7 @@ class SphericalGridHelper extends Group {
             const geometry = new LineGeometry();
             geometry.setPositions( line_points );
             let line2
-            if (roll == 90 || roll == 270)
+            if (roll === 90 || roll === 270)
                 line2 = new Line2( geometry, matLineHorizon );
             else
                 line2 = new Line2( geometry, matLineBlue );

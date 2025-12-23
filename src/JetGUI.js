@@ -13,7 +13,7 @@ import {FA18, PODBack} from "./nodes/ATFLIRVars";
 
 function guiRemove(gui, obj, property) {
     for (const c of gui.controllers) {
-        if (c.object == obj && c.property === property ) {
+        if (c.object === obj && c.property === property ) {
             c.destroy()
             break;
         }

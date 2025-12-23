@@ -1,6 +1,6 @@
 import {Globals} from "./Globals.js";
 
-export const isConsole = (typeof window == 'undefined');
+export const isConsole = (typeof window === 'undefined');
 
 // Serverless mode is determined at build time via webpack DefinePlugin
 // true = static serverless build (no PHP backend), false = server-backed deployment

@@ -248,7 +248,7 @@ export const SitNightSky = {
 
                 if (isLocal) {
                     // if it's different to the URL we have now
-                    if (oldURL.localeCompare(url) != 0) {
+                    if (oldURL.localeCompare(url) !== 0) {
                         // then push the current state, so we can go back
                         window.history.pushState({}, null, url);
                         oldURL = "" + url;
@@ -284,7 +284,7 @@ export const SitNightSky = {
                         .catch(error => {
                             showError("Error fetching shortened URL:", error);
                             // Some error, or not logged in
-                            if (oldURL.localeCompare(url) != 0) {
+                            if (oldURL.localeCompare(url) !== 0) {
                                 // then push the current state, so we can go back
                                 window.history.pushState({}, null, url);
                                 oldURL = "" + url;

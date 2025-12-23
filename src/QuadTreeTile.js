@@ -2853,7 +2853,7 @@ export class QuadTreeTile {
         }
 
         // if flat, then return, as the intial geometry is flat
-        if (this.map.elevationMap?.options.elevationType == "Flat") {
+        if (this.map.elevationMap?.options.elevationType === "Flat") {
             return;
         }
 

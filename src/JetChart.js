@@ -227,7 +227,7 @@ export function setupOpts() {
                 let sc = self.scales.x;  // probably not always x
                 if (sc.max > 0 && self.mickWidth !== undefined) {
 
-                    if (self.mickDragging == true) {
+                    if (self.mickDragging === true) {
                         par.frame = self.mickMouseLeft1 / self.mickWidth * sc.max * Sit.fps;
                        // UIChangedTime()
                         console.warn("Cursor move but not updating time as UIChangedTime caused circular dependencies at build time")

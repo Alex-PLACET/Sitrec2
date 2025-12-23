@@ -640,8 +640,8 @@ export class PointEditor {
     // and an array of positions for the spline code
     insertPoint(frame, position) {
 
-        assert(this.frameNumbers.length == this.positions.length)
-        assert(this.frameNumbers.length == this.splineHelperObjects.length)
+        assert(this.frameNumbers.length === this.positions.length)
+        assert(this.frameNumbers.length === this.splineHelperObjects.length)
         assert(this.frameNumbers.length === this.numPoints)
 
         // make the helper object we are going to add ahead of time

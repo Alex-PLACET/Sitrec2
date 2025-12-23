@@ -105,7 +105,7 @@ class QuadTreeMapTexture extends QuadTreeMap {
 
     recalculateCurveMap(radius, force = false) {
 
-        if (!force && radius == this.radius) {
+        if (!force && radius === this.radius) {
             console.log('map33 recalculateCurveMap Radius is the same - no need to recalculate, radius = ' + radius);
             return;
         }

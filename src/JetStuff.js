@@ -287,7 +287,7 @@ export function UpdateHUD(text="") {
         // })
     }
 
-    if (debugText != "")
+    if (debugText !== "")
         infoDiv.innerHTML = debugText;
     else
         infoDiv.innerHTML = keyInfo;
@@ -886,7 +886,7 @@ let lastWindowWidth, lastWindowHeight;
 // Detects if the page's window has been resized, and resize things as needed.
 export function updateSize(force) {
 
-    if (force || lastWindowWidth != window.innerWidth || lastWindowHeight != window.innerHeight) {
+    if (force || lastWindowWidth !== window.innerWidth || lastWindowHeight !== window.innerHeight) {
         const windowWidth = window.innerWidth;
         const windowHeight = window.innerHeight;
         lastWindowHeight = windowHeight;
@@ -1075,7 +1075,7 @@ export function CommonJetStuff() {
     ])
     AddAltitudeGraph(10000, 45000)
 
-    if (Sit.name == "gimbal") {
+    if (Sit.name === "gimbal") {
         AddTailAngleGraph(null, {left: 0.73, top: .25, width: -1, height: .25})
     }
 
