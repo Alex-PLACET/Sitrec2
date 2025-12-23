@@ -511,9 +511,51 @@ class CSitrecAPI {
 
         const controller = result.controller;
         try {
-            controller.setValue(value);
+            let finalValue = value;
+            
+            // For dropdown controllers, try flexible matching on option values
+            if (controller._values && Array.isArray(controller._values)) {
+                const valueLower = String(value).toLowerCase();
+                // Try exact match first
+                if (!controller._values.includes(value)) {
+                    // Try case-insensitive match
+                    let matched = controller._values.find(v => String(v).toLowerCase() === valueLower);
+                    if (!matched) {
+                        // Try partial match (value contains or is contained by option)
+                        matched = controller._values.find(v => 
+                            String(v).toLowerCase().includes(valueLower) || 
+                            valueLower.includes(String(v).toLowerCase())
+                        );
+                    }
+                    if (!matched) {
+                        // Try acronym match: "OpenStreetMap" -> "OSM"
+                        const valueWords = String(value).split(/(?=[A-Z])|\s+/).filter(w => w.length > 0);
+                        const valueAcronym = valueWords.map(w => w[0].toLowerCase()).join('');
+                        matched = controller._values.find(v => String(v).toLowerCase() === valueAcronym);
+                        // Also try reverse: option "OpenStreetMap" matches input "osm"
+                        if (!matched) {
+                            matched = controller._values.find(v => {
+                                const optWords = String(v).split(/(?=[A-Z])|\s+/).filter(w => w.length > 0);
+                                const optAcronym = optWords.map(w => w[0].toLowerCase()).join('');
+                                return optAcronym === valueLower;
+                            });
+                        }
+                    }
+                    if (matched) {
+                        finalValue = matched;
+                    } else {
+                        return { success: false, error: `Value '${value}' not found. Options: ${controller._values.join(', ')}` };
+                    }
+                }
+            }
+            
+            controller.setValue(finalValue);
+            // Trigger onFinishChange callbacks (e.g., terrain recalculation)
+            if (controller._onFinishChange) {
+                controller._callOnFinishChange(finalValue);
+            }
             this.invalidateMenuDocCache();
-            return { success: true, oldValue: controller.initialValue, newValue: value };
+            return { success: true, oldValue: controller.initialValue, newValue: finalValue };
         } catch (e) {
             return { success: false, error: e.message };
         }

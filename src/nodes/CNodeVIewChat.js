@@ -44,6 +44,7 @@ class CNodeViewChat extends CNodeViewText {
         this.addSystemMessage("Hi! Welcome to Sitrec!\nYou can ask me to do things like adjust the position and time, e.g. 'go to London at 12pm yesterday'." +
             "\n\nYou can ask me to do things like 'show me orion's belt.'" +
             "\n\nOr simple math like 'what is 2+2' or 'how long is 1° of latitude.'" +
+            "\n\nOr anything that you can do with the menu commands, e.g. 'use OSM' or 'ambient only'" +
             "\n\nYou can toggle me on and off with Tab, or click on the X, or 'Assistant' in the Help menu" +
             "\n\nThis window can be resized and moved around, and you can scroll the chat log with the mouse wheel. Up arrow will repeat the last command" +
             "\n\nI'm a work in progress, so please be patient with me! Report bugs, quirks, and features you would like to Mick West on Metabunk" +

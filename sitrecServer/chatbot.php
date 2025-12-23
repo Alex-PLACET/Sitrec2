@@ -3,8 +3,12 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/config_paths.php';
 
-// Load API key from environment or config
+// Load API keys and provider from environment
+$CHATBOT_PROVIDER = getenv("CHATBOT_PROVIDER") ?: "openai";
 $OPENAI_API_KEY = getenv("OPENAI_API");
+$ANTHROPIC_API_KEY = getenv("ANTHROPIC_API");
+$GROQ_API_KEY = getenv("GROQ_API");
+$GROK_API_KEY = getenv("GROK_API");
 
 $data = json_decode(file_get_contents('php://input'), true);
 $prompt = $data['prompt'] ?? '';
@@ -13,13 +17,20 @@ $sitrecDoc = $data['sitrecDoc'] ?? [];
 $menuSummary = $data['menuSummary'] ?? [];
 $date = $data['dateTime'] ?? date('Y-m-d H:i:s');
 
-// Build tools array from sitrecDoc
+// Build tools array from sitrecDoc (OpenAI format, will convert for Anthropic)
 function buildToolsFromDoc($sitrecDoc, $menuSummary) {
     $tools = [];
+    $addedNames = [];
+    
+    // Menu function names that we'll add manually with better schemas
+    $menuFunctions = ['setMenuValue', 'getMenuValue', 'executeMenuButton', 'listMenus', 'listMenuControls'];
     
     // Parse sitrecDoc entries to extract function schemas
-    // Format: "Description. Parameters: param1 (type desc), param2 (type desc)"
     foreach ($sitrecDoc as $fn => $desc) {
+        // Skip menu functions - we'll add them with better schemas below
+        if (in_array($fn, $menuFunctions)) {
+            continue;
+        }
         $tool = [
             "type" => "function",
             "function" => [
@@ -36,7 +47,6 @@ function buildToolsFromDoc($sitrecDoc, $menuSummary) {
         // Try to extract parameters from description
         if (preg_match('/Parameters:\s*(.+)$/i', $desc, $matches)) {
             $paramsStr = $matches[1];
-            // Match patterns like: paramName (type description)
             preg_match_all('/(\w+)\s*\(([^)]+)\)/', $paramsStr, $paramMatches, PREG_SET_ORDER);
             
             $properties = [];
@@ -45,7 +55,6 @@ function buildToolsFromDoc($sitrecDoc, $menuSummary) {
                 $paramName = $pm[1];
                 $paramDesc = $pm[2];
                 
-                // Determine type from description
                 $type = "string";
                 if (stripos($paramDesc, 'float') !== false || stripos($paramDesc, 'number') !== false) {
                     $type = "number";
@@ -60,7 +69,6 @@ function buildToolsFromDoc($sitrecDoc, $menuSummary) {
                     "description" => $paramDesc
                 ];
                 
-                // If not marked as optional, it's required
                 if (stripos($paramDesc, 'optional') === false) {
                     $required[] = $paramName;
                 }
@@ -75,37 +83,21 @@ function buildToolsFromDoc($sitrecDoc, $menuSummary) {
         $tools[] = $tool;
     }
     
-    // Build menu controls description for context (no truncation)
-    $menuDesc = "";
-    if (!empty($menuSummary)) {
-        $menuDesc = "Available menus and controls:\n";
-        foreach ($menuSummary as $menuId => $controls) {
-            if (!empty($controls)) {
-                $menuDesc .= "Menu '$menuId': " . implode(", ", $controls) . "\n";
-            }
-        }
-    }
+    // Build short menu list for tool descriptions (just menu IDs)
+    $menuIds = !empty($menuSummary) ? implode(", ", array_keys($menuSummary)) : "view, camera, satellites, terrain";
     
-    // Add menu control functions
+    // Add menu control functions (keep descriptions short - full list is in system prompt)
     $tools[] = [
         "type" => "function",
         "function" => [
             "name" => "setMenuValue",
-            "description" => "Set a menu control's value. " . $menuDesc,
+            "description" => "Set a menu control's value. Available menus: $menuIds. See system prompt for full control list.",
             "parameters" => [
                 "type" => "object",
                 "properties" => [
-                    "menu" => [
-                        "type" => "string",
-                        "description" => "Menu ID (e.g. 'view', 'camera', 'satellites', 'terrain', 'showhide', 'objects')"
-                    ],
-                    "path" => [
-                        "type" => "string",
-                        "description" => "Control name or path with '/' for nested folders (e.g. 'Zoom (fov)', 'Views/Video')"
-                    ],
-                    "value" => [
-                        "description" => "New value (type depends on control: number, boolean, string)"
-                    ]
+                    "menu" => ["type" => "string", "description" => "Menu ID"],
+                    "path" => ["type" => "string", "description" => "Control name or path with '/' for nested folders"],
+                    "value" => ["description" => "New value (number, boolean, or string)"]
                 ],
                 "required" => ["menu", "path", "value"]
             ]
@@ -116,18 +108,12 @@ function buildToolsFromDoc($sitrecDoc, $menuSummary) {
         "type" => "function",
         "function" => [
             "name" => "getMenuValue",
-            "description" => "Get the current value of a menu control. " . $menuDesc,
+            "description" => "Get the current value of a menu control.",
             "parameters" => [
                 "type" => "object",
                 "properties" => [
-                    "menu" => [
-                        "type" => "string",
-                        "description" => "Menu ID (e.g. 'view', 'camera', 'satellites')"
-                    ],
-                    "path" => [
-                        "type" => "string",
-                        "description" => "Control name or path with '/' for nested folders"
-                    ]
+                    "menu" => ["type" => "string", "description" => "Menu ID"],
+                    "path" => ["type" => "string", "description" => "Control name or path"]
                 ],
                 "required" => ["menu", "path"]
             ]
@@ -138,18 +124,12 @@ function buildToolsFromDoc($sitrecDoc, $menuSummary) {
         "type" => "function",
         "function" => [
             "name" => "executeMenuButton",
-            "description" => "Click/execute a button control in a menu. " . $menuDesc,
+            "description" => "Click/execute a button control in a menu.",
             "parameters" => [
                 "type" => "object",
                 "properties" => [
-                    "menu" => [
-                        "type" => "string",
-                        "description" => "Menu ID (e.g. 'objects', 'view')"
-                    ],
-                    "path" => [
-                        "type" => "string",
-                        "description" => "Button name or path with '/' for nested folders"
-                    ]
+                    "menu" => ["type" => "string", "description" => "Menu ID"],
+                    "path" => ["type" => "string", "description" => "Button name or path"]
                 ],
                 "required" => ["menu", "path"]
             ]
@@ -161,10 +141,7 @@ function buildToolsFromDoc($sitrecDoc, $menuSummary) {
         "function" => [
             "name" => "listMenus",
             "description" => "List all available menu IDs.",
-            "parameters" => [
-                "type" => "object",
-                "properties" => new stdClass()
-            ]
+            "parameters" => ["type" => "object", "properties" => new stdClass()]
         ]
     ];
     
@@ -175,12 +152,7 @@ function buildToolsFromDoc($sitrecDoc, $menuSummary) {
             "description" => "List all controls in a specific menu.",
             "parameters" => [
                 "type" => "object",
-                "properties" => [
-                    "menu" => [
-                        "type" => "string",
-                        "description" => "Menu ID to list controls for"
-                    ]
-                ],
+                "properties" => ["menu" => ["type" => "string", "description" => "Menu ID to list controls for"]],
                 "required" => ["menu"]
             ]
         ]
@@ -189,21 +161,42 @@ function buildToolsFromDoc($sitrecDoc, $menuSummary) {
     return $tools;
 }
 
+// Convert OpenAI tools format to Anthropic format
+function convertToolsForAnthropic($tools) {
+    $anthropicTools = [];
+    foreach ($tools as $tool) {
+        $anthropicTools[] = [
+            "name" => $tool["function"]["name"],
+            "description" => $tool["function"]["description"],
+            "input_schema" => $tool["function"]["parameters"]
+        ];
+    }
+    return $anthropicTools;
+}
+
 $tools = buildToolsFromDoc($sitrecDoc, $menuSummary);
 
-// Build full menu documentation for system prompt
+// Build menu documentation for system prompt (limit size to avoid token limits)
 $menuDocForPrompt = "";
 if (!empty($menuSummary)) {
     $menuDocForPrompt = "\n\nAVAILABLE MENU CONTROLS:\n";
+    $totalControls = 0;
+    $maxControls = 9999; // Limit to prevent huge prompts (temporarily high for debugging)
+    
     foreach ($menuSummary as $menuId => $controls) {
-        if (!empty($controls)) {
+        if (!empty($controls) && $totalControls < $maxControls) {
             $menuDocForPrompt .= "\nMenu '$menuId':\n";
             foreach ($controls as $control) {
+                if ($totalControls >= $maxControls) {
+                    $menuDocForPrompt .= "  - (more controls available - use listMenuControls)\n";
+                    break;
+                }
                 $menuDocForPrompt .= "  - $control\n";
+                $totalControls++;
             }
         }
     }
-    $menuDocForPrompt .= "\nUse setMenuValue with menu ID and control path (e.g., 'Flow Orbs/Visible' for nested controls).\n";
+    $menuDocForPrompt .= "\nUse setMenuValue with menu ID and control path (e.g., 'Flow Orbs/Visible' for nested). Use listMenuControls to see all controls in a menu.\n";
 }
 
 $systemPrompt = <<<EOT
@@ -224,7 +217,7 @@ Sitrec is a Situation Recreation application written by Mick West. It can:
 - Set the camera to follow or track objects
 The primary use is for resolving UAP sightings and other events by showing what was in the sky at a given time.
 
-When the user asks you to DO something (set, change, move, show, hide, point, go to, etc.), USE THE APPROPRIATE FUNCTION. Do not just describe what you would do - actually call the function.
+When the user asks you to DO something (set, change, move, show, hide, point, go to, etc.), USE THE APPROPRIATE FUNCTION IMMEDIATELY. Do not explore or list menus first - directly call setMenuValue or executeMenuButton with your best guess for the menu and control name. The system uses flexible matching so partial names work. If it fails, you can then try other names or list controls.
 
 IMPORTANT: Always execute the requested action, even if you think it was already done or the value is already set. The user may want to ensure the setting is applied. Never refuse to call a function just because you believe the state is already correct.
 
@@ -237,62 +230,332 @@ EOT;
 
 $systemPrompt .= $menuDocForPrompt;
 
-// Build messages array from history
-$messages = [["role" => "system", "content" => $systemPrompt]];
-if (is_array($history)) {
+// Call OpenAI API
+function callOpenAI($apiKey, $systemPrompt, $history, $tools) {
+    $messages = [["role" => "system", "content" => $systemPrompt]];
     foreach ($history as $msg) {
         $role = $msg['role'] === 'bot' ? 'assistant' : $msg['role'];
-        $messages[] = [
-            "role" => $role,
-            "content" => $msg['text']
-        ];
+        $messages[] = ["role" => $role, "content" => $msg['text']];
     }
+    
+    $ch = curl_init("https://api.openai.com/v1/chat/completions");
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_HTTPHEADER => [
+            "Authorization: Bearer $apiKey",
+            "Content-Type: application/json"
+        ],
+        CURLOPT_POSTFIELDS => json_encode([
+            "model" => "gpt-4o",
+            "messages" => $messages,
+            "tools" => $tools,
+            "tool_choice" => "auto",
+            "temperature" => 0.2
+        ])
+    ]);
+    
+    $response = curl_exec($ch);
+    curl_close($ch);
+    
+    $parsed = json_decode($response, true);
+    $message = $parsed['choices'][0]['message'] ?? [];
+    $text = $message['content'] ?? '';
+    $calls = [];
+    
+    if (!empty($message['tool_calls'])) {
+        foreach ($message['tool_calls'] as $tc) {
+            $args = json_decode($tc['function']['arguments'], true);
+            $calls[] = [
+                "fn" => $tc['function']['name'],
+                "args" => $args ?? []
+            ];
+        }
+    }
+    
+    return [
+        'text' => trim($text),
+        'apiCalls' => $calls,
+        'debug' => [
+            'provider' => 'openai',
+            'hasToolCalls' => !empty($message['tool_calls']),
+            'toolCallCount' => count($message['tool_calls'] ?? [])
+        ]
+    ];
 }
 
-// Call OpenAI with function calling
-$ch = curl_init("https://api.openai.com/v1/chat/completions");
-curl_setopt_array($ch, [
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_POST => true,
-    CURLOPT_HTTPHEADER => [
-        "Authorization: Bearer $OPENAI_API_KEY",
-        "Content-Type: application/json"
-    ],
-    CURLOPT_POSTFIELDS => json_encode([
-        "model" => "gpt-4-turbo",
-        "messages" => $messages,
-        "tools" => $tools,
-        "tool_choice" => "auto",
-        "temperature" => 0.2
-    ])
-]);
 
-$response = curl_exec($ch);
-curl_close($ch);
+// Current antropic models:
+// Claude Sonnet 4.5	claude-sonnet-4-5-20250929	Recommended - best balance
+// Claude Haiku 4.5	    claude-haiku-4-5-20251001	Fastest, cheapest
+// Claude Opus 4.5	    claude-opus-4-5-20251101	Most intelligent, higher cost
 
-$parsed = json_decode($response, true);
-$message = $parsed['choices'][0]['message'] ?? [];
-$text = $message['content'] ?? '';
-$calls = [];
-
-// Extract tool calls from response
-if (!empty($message['tool_calls'])) {
-    foreach ($message['tool_calls'] as $tc) {
-        $args = json_decode($tc['function']['arguments'], true);
-        $calls[] = [
-            "fn" => $tc['function']['name'],
-            "args" => $args ?? []
+// Call Anthropic (Claude) API
+function callAnthropic($apiKey, $systemPrompt, $history, $tools) {
+    $messages = [];
+    foreach ($history as $msg) {
+        $role = $msg['role'] === 'bot' ? 'assistant' : 'user';
+        $messages[] = ["role" => $role, "content" => $msg['text']];
+    }
+    
+    // Anthropic requires at least one message
+    if (empty($messages)) {
+        return [
+            'text' => 'Error: No messages to send',
+            'apiCalls' => [],
+            'debug' => ['provider' => 'anthropic', 'error' => 'No messages']
         ];
     }
+    
+    $anthropicTools = convertToolsForAnthropic($tools);
+    
+    $requestBody = [
+        "model" => "claude-sonnet-4-20250514",
+        "max_tokens" => 1024,
+        "system" => $systemPrompt,
+        "messages" => $messages,
+        "tools" => $anthropicTools
+    ];
+    
+    $ch = curl_init("https://api.anthropic.com/v1/messages");
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_HTTPHEADER => [
+            "x-api-key: $apiKey",
+            "anthropic-version: 2023-06-01",
+            "Content-Type: application/json"
+        ],
+        CURLOPT_POSTFIELDS => json_encode($requestBody)
+    ]);
+    
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+    
+    // Check for curl errors
+    if ($curlError) {
+        return [
+            'text' => "Error: $curlError",
+            'apiCalls' => [],
+            'debug' => ['provider' => 'anthropic', 'curlError' => $curlError]
+        ];
+    }
+    
+    $parsed = json_decode($response, true);
+    
+    // Check for API errors
+    if (isset($parsed['error'])) {
+        return [
+            'text' => "Anthropic API error: " . ($parsed['error']['message'] ?? 'Unknown error'),
+            'apiCalls' => [],
+            'debug' => [
+                'provider' => 'anthropic',
+                'httpCode' => $httpCode,
+                'error' => $parsed['error']
+            ]
+        ];
+    }
+    
+    $content = $parsed['content'] ?? [];
+    
+    $text = '';
+    $calls = [];
+    
+    foreach ($content as $block) {
+        if ($block['type'] === 'text') {
+            $text .= $block['text'];
+        } elseif ($block['type'] === 'tool_use') {
+            $calls[] = [
+                "fn" => $block['name'],
+                "args" => $block['input'] ?? []
+            ];
+        }
+    }
+    
+    return [
+        'text' => trim($text),
+        'apiCalls' => $calls,
+        'debug' => [
+            'provider' => 'anthropic',
+            'hasToolCalls' => !empty($calls),
+            'toolCallCount' => count($calls),
+            'stopReason' => $parsed['stop_reason'] ?? null,
+            'httpCode' => $httpCode
+        ]
+    ];
+}
+
+// Groq models (OpenAI-compatible API, very fast inference):
+// llama-3.3-70b-versatile - Best quality
+// llama-3.1-8b-instant - Fastest
+// mixtral-8x7b-32768 - Good balance
+
+// Call Groq API (OpenAI-compatible)
+function callGroq($apiKey, $systemPrompt, $history, $tools) {
+    $messages = [["role" => "system", "content" => $systemPrompt]];
+    foreach ($history as $msg) {
+        $role = $msg['role'] === 'bot' ? 'assistant' : $msg['role'];
+        $messages[] = ["role" => $role, "content" => $msg['text']];
+    }
+    
+    $ch = curl_init("https://api.groq.com/openai/v1/chat/completions");
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_HTTPHEADER => [
+            "Authorization: Bearer $apiKey",
+            "Content-Type: application/json"
+        ],
+        CURLOPT_POSTFIELDS => json_encode([
+            "model" => "llama-3.3-70b-versatile",
+            "messages" => $messages,
+            "tools" => $tools,
+            "tool_choice" => "auto",
+            "temperature" => 0.2
+        ])
+    ]);
+    
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+    
+    if ($curlError) {
+        return [
+            'text' => "Error: $curlError",
+            'apiCalls' => [],
+            'debug' => ['provider' => 'groq', 'curlError' => $curlError]
+        ];
+    }
+    
+    $parsed = json_decode($response, true);
+    
+    if (isset($parsed['error'])) {
+        return [
+            'text' => "Groq API error: " . ($parsed['error']['message'] ?? 'Unknown error'),
+            'apiCalls' => [],
+            'debug' => ['provider' => 'groq', 'httpCode' => $httpCode, 'error' => $parsed['error']]
+        ];
+    }
+    
+    $message = $parsed['choices'][0]['message'] ?? [];
+    $text = $message['content'] ?? '';
+    $calls = [];
+    
+    if (!empty($message['tool_calls'])) {
+        foreach ($message['tool_calls'] as $tc) {
+            $args = json_decode($tc['function']['arguments'], true);
+            $calls[] = [
+                "fn" => $tc['function']['name'],
+                "args" => $args ?? []
+            ];
+        }
+    }
+    
+    return [
+        'text' => trim($text),
+        'apiCalls' => $calls,
+        'debug' => [
+            'provider' => 'groq',
+            'model' => 'llama-3.3-70b-versatile',
+            'hasToolCalls' => !empty($message['tool_calls']),
+            'toolCallCount' => count($message['tool_calls'] ?? []),
+            'httpCode' => $httpCode
+        ]
+    ];
+}
+
+// xAI Grok models (OpenAI-compatible API):
+// grok-2-latest - Latest Grok 2
+// grok-beta - Beta version
+
+// Call xAI Grok API (OpenAI-compatible)
+function callGrok($apiKey, $systemPrompt, $history, $tools) {
+    $messages = [["role" => "system", "content" => $systemPrompt]];
+    foreach ($history as $msg) {
+        $role = $msg['role'] === 'bot' ? 'assistant' : $msg['role'];
+        $messages[] = ["role" => $role, "content" => $msg['text']];
+    }
+    
+    $ch = curl_init("https://api.x.ai/v1/chat/completions");
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_HTTPHEADER => [
+            "Authorization: Bearer $apiKey",
+            "Content-Type: application/json"
+        ],
+        CURLOPT_POSTFIELDS => json_encode([
+            "model" => "grok-2-latest",
+            "messages" => $messages,
+            "tools" => $tools,
+            "tool_choice" => "auto",
+            "temperature" => 0.2
+        ])
+    ]);
+    
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+    
+    if ($curlError) {
+        return [
+            'text' => "Error: $curlError",
+            'apiCalls' => [],
+            'debug' => ['provider' => 'grok', 'curlError' => $curlError]
+        ];
+    }
+    
+    $parsed = json_decode($response, true);
+    
+    if (isset($parsed['error'])) {
+        return [
+            'text' => "Grok API error: " . ($parsed['error']['message'] ?? 'Unknown error'),
+            'apiCalls' => [],
+            'debug' => ['provider' => 'grok', 'httpCode' => $httpCode, 'error' => $parsed['error']]
+        ];
+    }
+    
+    $message = $parsed['choices'][0]['message'] ?? [];
+    $text = $message['content'] ?? '';
+    $calls = [];
+    
+    if (!empty($message['tool_calls'])) {
+        foreach ($message['tool_calls'] as $tc) {
+            $args = json_decode($tc['function']['arguments'], true);
+            $calls[] = [
+                "fn" => $tc['function']['name'],
+                "args" => $args ?? []
+            ];
+        }
+    }
+    
+    return [
+        'text' => trim($text),
+        'apiCalls' => $calls,
+        'debug' => [
+            'provider' => 'grok',
+            'model' => 'grok-2-latest',
+            'hasToolCalls' => !empty($message['tool_calls']),
+            'toolCallCount' => count($message['tool_calls'] ?? []),
+            'httpCode' => $httpCode
+        ]
+    ];
+}
+
+// Call the appropriate provider (openai, anthropic, groq, or grok)
+if ($CHATBOT_PROVIDER === 'anthropic' && !empty($ANTHROPIC_API_KEY)) {
+    $result = callAnthropic($ANTHROPIC_API_KEY, $systemPrompt, $history, $tools);
+} elseif ($CHATBOT_PROVIDER === 'groq' && !empty($GROQ_API_KEY)) {
+    $result = callGroq($GROQ_API_KEY, $systemPrompt, $history, $tools);
+} elseif ($CHATBOT_PROVIDER === 'grok' && !empty($GROK_API_KEY)) {
+    $result = callGrok($GROK_API_KEY, $systemPrompt, $history, $tools);
+} else {
+    $result = callOpenAI($OPENAI_API_KEY, $systemPrompt, $history, $tools);
 }
 
 header('Content-Type: application/json');
-echo json_encode([
-    'text' => trim($text),
-    'apiCalls' => $calls,
-    'debug' => [
-        'hasToolCalls' => !empty($message['tool_calls']),
-        'toolCallCount' => count($message['tool_calls'] ?? []),
-        'messageKeys' => array_keys($message)
-    ]
-]);
+echo json_encode($result);
