@@ -295,6 +295,7 @@ sitch = {
         LLA: [31.980814, -118.428486, 10000],
         desc: "Cam",
         gui: "camera",
+        tipName: "Camera",
         key: "C"
     },
 
@@ -459,7 +460,7 @@ sitch = {
 
     // this is the fixed target position that you can move around while holding X, or edit in the target GUI
     fixedTargetPositionWind: {kind: "PositionLLA", LLA: [32.5,-118.428486,5000],
-        desc: "Target", gui: "target", key:"X", wind: "targetWind"},
+        desc: "Target", gui: "target", tipName: "Target", key:"X", wind: "targetWind"},
 
     fixedTargetPosition: {kind: "SpecificFrame", frame: 0, node: "fixedTargetPositionWind"},
 

@@ -31,6 +31,8 @@ export class CNodePositionLLA extends CNode {
         this.agl = (v.agl !== undefined) ? v.agl : false; // above ground level, default to false
         this.addSimpleSerial("agl");
 
+        this.tipName = v.tipName || v.gui || "Position";
+
         if (v.LLA !== undefined) {
             // copy the array in v.LLA to this._LLA
             this._LLA = v.LLA.slice()
@@ -41,6 +43,7 @@ export class CNodePositionLLA extends CNode {
                this.guiLat = new CNodeGUIValue({
                    id: id + " Lat",
                    desc: name + " Lat",
+                   tooltip: this.tipName + " latitude in degrees. Paste 'lat,lon' to set both.",
                    value: this._LLA[0],
                    start: -90, end: 90, step: 0.01,
                    stepExplicit: false, // prevent snapping
@@ -80,6 +83,7 @@ export class CNodePositionLLA extends CNode {
                this.guiLon = new CNodeGUIValue({
                    id: id + " Lon",
                    desc: name + " Lon",
+                   tooltip: this.tipName + " longitude in degrees.",
                    value: this._LLA[1],
                    start: -180, end: 180, step: 0.01,
                    stepExplicit: false, // prevent snapping
@@ -97,6 +101,7 @@ export class CNodePositionLLA extends CNode {
                this.guiAlt = new CNodeGUIValue({
                    id: id + " Alt (ft)",  // including the (ft) for historical reasons, so we have the same id as older saves
                    desc: name + " Alt",
+                   tooltip: this.tipName + " altitude.",
                    value: 0, // don't set the altitude, as we want to set it with units
                    unitType: "small",
                    start: 0, end: 1000, step: 1,

@@ -14,6 +14,8 @@ $prompt = $data['prompt'] ?? '';
 $history = $data['history'] ?? [];
 // get API documentation from client
 $sitrecDoc = $data['sitrecDoc'] ?? [];
+// get menu summary from client (menuId => array of control names with types)
+$menuSummary = $data['menuSummary'] ?? [];
 
 // get client time, or use current server time
 $date = $data['dateTime'] ?? date('Y-m-d H:i:s');
@@ -50,25 +52,27 @@ If the user asks to change the timezone without changing the time, use the curre
 
 When you respond, you must:
 
+CRITICAL RULES:
+1. If you say "I will..." or "Setting..." or "Done" - you MUST include the API call in the JSON block.
+2. If the user confirms with "yes", "ok", "sure", "do it", etc., EXECUTE the action you proposed. Include the API call.
+3. NEVER say you will do something without actually including the API call.
+
 You must:
 - Only respond with plain text and a list of API calls at the end.
-- Only give API calls that are relevant to the last user message in the context of the chat history, 
-- Do not assume anything about the state of the Sitrec application. It might have changed since the last user message.
-- Repeat previous API calls if they ask the same thing.
+- Use the chat history to understand context. If you proposed an action and the user confirms, DO IT.
 - Not discuss anything unrelated to Sitrec, including people, events, or politics. But you can talk about Mick West
 - Stay focused on satellite tracking, astronomy, ADS-B, and related tools.
-- Concisely show your work in the text for each parameter and choice of API call (unless there are no API calls
+- Keep responses brief. If making an API call, just say what you're doing.
 - Return your API calls in a JSON block with this example structure:
 ```json
 {
   "apiCalls": [
-    { "fn": "gotoLLA", "args": { lat: 0.32324, lon: 15.23223, alt: 2 } }
+    { "fn": "setMenuValue", "args": { "menu": "view", "path": "Star Brightness", "value": 3 } }
   ]
 }
+```
 - Do not mention the API, or say "Here's the API call". Just show the JSON block at the end.
-- Do not return anything except the plain text explanation and the JSON block at the end of your response.
-- Check that if you say you are going to issue an API call, that you actually do so, and that the API call is relevant to the last user message in the context of the chat history.
-- If the API JSON block is empty, explain why it is empty, or why no API calls are needed.
+- VERIFY: Before responding, check - did you say you would do something? If yes, is the API call included? If not, ADD IT.
 
 Always reply in plain text. Do not use Markdown, LaTeX, or code blocks.
 
@@ -79,6 +83,44 @@ $systemPrompt .= ":\n\n";
 
 foreach ($sitrecDoc as $fn => $desc) {
     $systemPrompt .= "- {$fn}: {$desc}\n";
+}
+
+// Add menu documentation
+if (!empty($menuSummary)) {
+    $systemPrompt .= <<<EOT
+
+MENU SYSTEM:
+You can access UI menu controls using these API functions:
+- getMenuValue: Get the current value of a control. Args: menu (string), path (string)
+- setMenuValue: Set a control's value. Args: menu (string), path (string), value (any)
+- executeMenuButton: Click/execute a button control (function type). Args: menu (string), path (string)
+
+IMPORTANT: Use the EXACT control names shown below. The 'path' is the control name (or Folder/ControlName for nested).
+
+EOT;
+
+    // Add each menu with its controls
+    foreach ($menuSummary as $menuId => $controls) {
+        if (!empty($controls)) {
+            $systemPrompt .= "\nMenu '$menuId':\n";
+            foreach ($controls as $control) {
+                $systemPrompt .= "  - $control\n";
+            }
+        }
+    }
+    
+    $systemPrompt .= <<<EOT
+
+Examples:
+- Get FOV: { "fn": "getMenuValue", "args": { "menu": "camera", "path": "Zoom (fov)" } }
+- Set FOV to 5: { "fn": "setMenuValue", "args": { "menu": "camera", "path": "Zoom (fov)", "value": 5 } }
+- Hide video: { "fn": "setMenuValue", "args": { "menu": "showhide", "path": "Views/Video", "value": false } }
+- Click button: { "fn": "executeMenuButton", "args": { "menu": "objects", "path": "Add Object" } }
+- Set camera position: { "fn": "gotoLLA", "args": { "lat": 0, "lon": 0, "alt": 1000 } }
+
+REMINDER: If the user asks you to DO something (set, change, move, show, hide, etc.), you MUST include the JSON block with the API call. No exceptions.
+
+EOT;
 }
 
 // --- Build messages array from history ---

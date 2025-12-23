@@ -136,6 +136,9 @@ export class CNodeViewText extends CNodeView {
         this.outputArea.style.fontFamily = 'monospace';
         this.outputArea.style.fontSize = '13px';
         this.outputArea.style.whiteSpace = 'pre-line';
+        this.outputArea.style.userSelect = 'text';
+        this.outputArea.style.webkitUserSelect = 'text';
+        this.outputArea.style.cursor = 'text';
         this.outputArea.classList.add('cnodeview-output');
         this.div.appendChild(this.outputArea);
     }

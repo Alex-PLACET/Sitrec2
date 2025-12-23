@@ -176,8 +176,10 @@ class CNodeViewChat extends CNodeViewText {
 
         // Add click handler to the main div to focus input box when clicking in the chat area
         this.div.addEventListener('click', (e) => {
-            // Only focus if we're not clicking on interactive elements
-            if (e.target !== this.closeButton && e.target !== this.newChatButton) {
+            // Only focus if we're not clicking on interactive elements and no text is selected
+            const selection = window.getSelection();
+            const hasSelection = selection && selection.toString().length > 0;
+            if (e.target !== this.closeButton && e.target !== this.newChatButton && !hasSelection) {
                 this.inputBox.focus();
             }
         });
@@ -261,6 +263,7 @@ class CNodeViewChat extends CNodeViewText {
                 history,
                 prompt: text,
                 sitrecDoc: sitrecAPI.getDocumentation(),
+                menuSummary: sitrecAPI.getMenuSummary(),
                 dateTime: timeString,
             });
 
@@ -283,8 +286,35 @@ class CNodeViewChat extends CNodeViewText {
 
     // Process any API calls returned by the server
     handleAPICalls(calls) {
+        const results = [];
         for (const call of calls) {
-            sitrecAPI.handleAPICall(call);
+            const result = sitrecAPI.handleAPICall(call);
+            results.push(result);
+        }
+        
+        // Check if any calls returned data that should be displayed
+        for (const result of results) {
+            if (result.result !== undefined) {
+                // Format the result for display
+                let displayValue;
+                if (result.result && typeof result.result === 'object') {
+                    if (result.result.success === false) {
+                        displayValue = `Error: ${result.result.error}`;
+                    } else if (result.result.value !== undefined) {
+                        displayValue = result.result.value;
+                    } else {
+                        displayValue = JSON.stringify(result.result, null, 2);
+                    }
+                } else if (Array.isArray(result.result)) {
+                    displayValue = result.result.join(', ');
+                } else {
+                    displayValue = result.result;
+                }
+                
+                if (displayValue !== undefined) {
+                    this.addSystemMessage(`${result.fn} returned: ${displayValue}`);
+                }
+            }
         }
     }
 
