@@ -354,13 +354,13 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
             },
             {
                 key: "showSatelliteNames",
-                name: "Satellite Names (Look View)",
+                name: "Satellite Labels (Look View)",
                 object: this.satellites,
                 action: () => this.updateSatelliteNamesVisibility()
             },
             {
                 key: "showSatelliteNamesMain",
-                name: "Satellite Names (Main View)",
+                name: "Satellite Labels (Main View)",
                 object: this.satellites,
                 action: () => this.updateSatelliteNamesVisibility()
             },
