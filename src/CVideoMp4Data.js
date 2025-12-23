@@ -185,10 +185,16 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
             }
             
             const completeExtraction = () => {
+                const audioWaitStartTime = Date.now();
+                const audioWaitTimeout = 15000;
+                
                 const waitForAudioDecoding = () => {
                     // Check if audio decoding is complete
                     if (this.audioHandler && this.audioHandler.checkDecodingComplete()) {
                         console.log(`[CVideoMp4Data] Audio decoding confirmed complete, proceeding with video load`);
+                        finishLoading();
+                    } else if (Date.now() - audioWaitStartTime > audioWaitTimeout) {
+                        console.warn(`[CVideoMp4Data] Audio decoding timeout after ${audioWaitTimeout}ms, proceeding with video load`);
                         finishLoading();
                     } else if (this.audioHandler && this.audioHandler.expectedAudioSamples > 0) {
                         // Still waiting for audio decoding, check again in 50ms

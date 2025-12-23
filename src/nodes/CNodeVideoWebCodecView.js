@@ -126,6 +126,9 @@ export class CNodeVideoWebCodecView extends CNodeVideoView {
         this.addLoadingMessage()
         this.disposeVideoData()
         
+        Globals.pendingActions++;
+        this.videoLoadPending = true;
+        
         const fileName = file.name.toLowerCase();
         
         if (isAudioOnlyFormat(fileName) || 

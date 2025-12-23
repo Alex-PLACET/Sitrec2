@@ -3,6 +3,7 @@ import {takeScreenshotOrCompare} from './snapshot-utils.js';
 
 // Array of test cases: each object contains a name and its corresponding URL.
 const testDataDefault = [
+    { name: "testquick", url: "https://local.metabunk.org/sitrec/?sitch=testquick", waitFor: "All tests complete"},
     { name: 'default', url: 'https://local.metabunk.org/sitrec/?frame=10' },
     { name: 'WMTS', url: 'https://local.metabunk.org/sitrec/?custom=https://sitrec.s3.us-west-2.amazonaws.com/99999999/Regression%20test%20NRL%20WMTS/20251204_001658.js' },
     { name: 'agua', url: 'https://local.metabunk.org/sitrec/?sitch=agua&frame=10' },
@@ -54,9 +55,9 @@ if (process.env.TEST_TRACKFILES === 'true') {
 }
 
 test.describe('Visual Regression Testing', () => {
-    testData.forEach(({ name, url }) => {
+    testData.forEach(({ name, url, waitFor }) => {
         test(`should match the baseline screenshot for ${name}`, async ({ page }, testInfo) => {
-            test.setTimeout(120000);
+            test.setTimeout(waitFor ? 900000 : 120000);
 
             await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -80,7 +81,8 @@ test.describe('Visual Regression Testing', () => {
 
             const fullUrl = url + '&ignoreunload=1&regression=1';
 
-            const consolePromise = waitForConsoleText(page, 'No pending actions');
+            const expectedText = waitFor || 'No pending actions';
+            const consolePromise = waitForConsoleText(page, expectedText, waitFor ? 600000 : 60000);
 
             const response = await page.goto(fullUrl, {
                 waitUntil: 'load',

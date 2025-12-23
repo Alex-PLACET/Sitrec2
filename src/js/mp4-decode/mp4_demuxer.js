@@ -262,15 +262,36 @@ export class MP4Source {
     
     if (videoComplete && audioComplete) {
       console.log("Extraction complete: video=", this._receivedVideoSamples, "/", this._expectedVideoSamples, "audio=", this._receivedAudioSamples, "/", this._expectedAudioSamples);
+      this.cancelExtractionTimeout();
       const callback = this._extractionCompleteCallback;
       this._extractionCompleteCallback = null;
       callback();
     }
   }
   
-  onExtractionComplete(callback) {
+  onExtractionComplete(callback, timeoutMs = 30000) {
     this._extractionCompleteCallback = callback;
+    this._extractionStartTime = Date.now();
+    
+    // Set a timeout to force completion even if not all samples arrive
+    // This prevents stuck loading under high resource usage
+    this._extractionTimeout = setTimeout(() => {
+      if (this._extractionCompleteCallback) {
+        console.warn(`[MP4Source] Extraction timeout after ${timeoutMs}ms. Received: video=${this._receivedVideoSamples}/${this._expectedVideoSamples}, audio=${this._receivedAudioSamples}/${this._expectedAudioSamples}`);
+        const cb = this._extractionCompleteCallback;
+        this._extractionCompleteCallback = null;
+        cb();
+      }
+    }, timeoutMs);
+    
     this._checkExtractionComplete();
+  }
+  
+  cancelExtractionTimeout() {
+    if (this._extractionTimeout) {
+      clearTimeout(this._extractionTimeout);
+      this._extractionTimeout = null;
+    }
   }
 }
 
@@ -453,6 +474,50 @@ export class MP4Demuxer {
       numberOfChannels: numberOfChannels,
       sampleRate: sampleRate,
     };
+    
+    // For AAC codecs (mp4a.40.x), we need to provide the AudioSpecificConfig as description
+    // This is required for the AudioDecoder to properly decode the stream
+    if (codec.toLowerCase().startsWith('mp4a')) {
+      try {
+        // Try to get the description from the track's sample entry
+        // MP4Box stores the AudioSpecificConfig in different places depending on the container
+        const track = this.audioTrack;
+        
+        // Look for esds box which contains the decoder config for AAC
+        // The path varies but typically it's in the sample description
+        let description = null;
+        
+        // Try getting from the file's getTrackById which has more complete info
+        const trackInfo = this.source.file.getTrackById(track.id);
+        if (trackInfo && trackInfo.mdia && trackInfo.mdia.minf && trackInfo.mdia.minf.stbl && 
+            trackInfo.mdia.minf.stbl.stsd && trackInfo.mdia.minf.stbl.stsd.entries) {
+          const entry = trackInfo.mdia.minf.stbl.stsd.entries[0];
+          if (entry && entry.esds && entry.esds.esd && entry.esds.esd.descs) {
+            // Navigate to the DecoderSpecificInfo
+            for (const desc of entry.esds.esd.descs) {
+              if (desc.descs) {
+                for (const subdesc of desc.descs) {
+                  if (subdesc.data) {
+                    description = subdesc.data;
+                    break;
+                  }
+                }
+              }
+              if (description) break;
+            }
+          }
+        }
+        
+        if (description) {
+          config.description = description;
+          console.log("[MP4Demuxer]   Description (AudioSpecificConfig):", description.byteLength, "bytes");
+        } else {
+          console.warn("[MP4Demuxer]   No AudioSpecificConfig found for AAC track");
+        }
+      } catch (e) {
+        console.warn("[MP4Demuxer]   Error extracting AudioSpecificConfig:", e);
+      }
+    }
     
     console.log("Audio config prepared:", config);
 

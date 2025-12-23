@@ -88,13 +88,13 @@ export const Sit29Palms = {
 //             "29palms/N279SY-track-EGM96.kml",], sphereMask:"WORLD"},
 
     // a bit of a patch to get all three tracks labeled
-    altLabel1: {kind: "MeasureAltitude", position: "Track_TargetTrack1"},
-    altLabel2: {kind: "MeasureAltitude", position: "Track_TargetTrack2"},
-    altLabel3: {kind: "MeasureAltitude", position: "Track_TargetTrack3"},
+    altLabel1: {kind: "MeasureAltitude", position: "Track_N891UA"},
+    altLabel2: {kind: "MeasureAltitude", position: "Track_N8564Z"},
+    altLabel3: {kind: "MeasureAltitude", position: "Track_N279SY"},
 
-    distLabel1: {kind: "MeasureAB", A:"cameraTrack", B: "Track_TargetTrack1"},
-    distLabel2: {kind: "MeasureAB", A:"cameraTrack", B: "Track_TargetTrack2"},
-    distLabel3: {kind: "MeasureAB", A:"cameraTrack", B: "Track_TargetTrack3"},
+    distLabel1: {kind: "MeasureAB", A:"cameraTrack", B: "Track_N891UA"},
+    distLabel2: {kind: "MeasureAB", A:"cameraTrack", B: "Track_N8564Z"},
+    distLabel3: {kind: "MeasureAB", A:"cameraTrack", B: "Track_N279SY"},
 
     DisplayCameraFrustum: {radius:100000},
 

@@ -946,9 +946,13 @@ async function checkForTest() {
 
 
     } else {
+        // Wait for all pending operations and tiles from the final situation
+        // to complete before we say we are finished
+        await waitForAllPendingOperations();
+
         testing = false;
         Globals.quickTerrain = false;
-
+        console.log("All tests complete");
     }
 }
 

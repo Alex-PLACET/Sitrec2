@@ -33,7 +33,7 @@ import {par} from "../par";
 import {quickToggle} from "../KeyBoardHandler";
 import {CNodeGUIFlag, CNodeGUIValue} from "./CNodeGUIValue";
 import {CNodeConstant} from "./CNode";
-import {guiTweaks, NodeMan, setRenderOne, Sit} from "../Globals";
+import {Globals, guiTweaks, NodeMan, setRenderOne, Sit} from "../Globals";
 import {CMouseHandler} from "../CMouseHandler";
 import {CNodeViewUI} from "./CNodeViewUI";
 import {CVideoMp4Data} from "../CVideoMp4Data";
@@ -104,6 +104,30 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         }
         this.fileName = fileName;
         this.disposeVideoData()
+
+        // to make the quite test even quicker, we don't lad videos, just amke a red square.
+        if (Globals.quickTerrain) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 640;
+            canvas.height = 480;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#FF0000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            this.videoData = new CVideoImageData({
+                    id: this.id + "_data",
+                    filename: fileName,
+                    img: canvas,
+                    deleteAfterUsing: false
+                },
+                this.loadedCallback.bind(this), this.errorCallback.bind(this));
+            this.positioned = false;
+            par.frame = 0;
+            par.paused = false;
+            return;
+        }
+        
+        Globals.pendingActions++;
+        this.videoLoadPending = true;
         
         // Check if it's an audio-only file based on extension
         if (isAudioOnlyFormat(fileName)) {
@@ -156,6 +180,10 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
 
 
     loadedCallback(videoData) {
+        if (this.videoLoadPending) {
+            Globals.pendingActions--;
+            this.videoLoadPending = false;
+        }
         this.removeText();
 
 
@@ -187,6 +215,10 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
     }
 
     errorCallback() {
+        if (this.videoLoadPending) {
+            Globals.pendingActions--;
+            this.videoLoadPending = false;
+        }
         this.videoData.error = false;
         if (this.overlay) {
             this.overlay.removeText("videoLoading")

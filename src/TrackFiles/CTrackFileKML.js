@@ -42,6 +42,11 @@ export class CTrackFileKML extends CTrackFile {
         const info = {};
         this.getKMLTrackWhenCoord(this.data, trackIndex, _times, _coord, info);
         
+        // NOTE: This extracts the track name from inside the KML file structure.
+        // Previously, names were only extracted via regex patterns below, and if those
+        // failed, tracks were named like "track_<ID>" based on the file/index.
+        // This change means tracks may now get different (file-derived) names, which
+        // could break older sitches or serialized data that referenced the old ID-based names.
         let shortName = info.name || "Unnamed Track";
         let found = false;
 
