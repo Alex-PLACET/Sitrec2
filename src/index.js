@@ -941,6 +941,7 @@ async function checkForTest() {
         console.warn("  Testing " + situation + ", will text next: " + toTest)
 
 
+        testing = true;
         newSitch(situation)
 
 
@@ -1581,8 +1582,19 @@ async function setupFunctions() {
     NodeFactory.create("Watch", {id: "frames", ob: "Sit", watchID: "frames"})
     NodeFactory.create("Watch", {id: "fps", ob: "Sit", watchID: "fps"})
 
+    let urlData;
+    if (urlParams.get("data")) {
+        urlData = urlParams.get("data")
+    }
+
 
     let gotLocation = false;
+
+    // get approximate location from IP if needed
+    // only if
+    // - Not testing
+    // - Sit.localLatLon is true
+    // - no URL "data" parameter
     if (!testing  && Sit.localLatLon && urlData === undefined) {
         await getApproximateLocationFromIP().then((result) => {
             if (result) {
@@ -1611,9 +1623,7 @@ async function setupFunctions() {
 // if we are going to load a starlink file (i.e. id = starLink - note capitalization)
 //  check the flag rhs, which is set to rhs: FileManager.rehostedStarlink,
 //  if it's set, then delete the starLink from Sit.files
-    let urlData
-    if (urlParams.get("data")) {
-        urlData = urlParams.get("data")
+    if (urlData) {
         const urlObject = JSURL.parse(urlData)
         if (urlObject.rhs && (Sit.files.starLink !== undefined)) {
             delete Sit.files.starLink
