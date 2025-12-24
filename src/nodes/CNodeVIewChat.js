@@ -302,21 +302,14 @@ class CNodeViewChat extends CNodeViewText {
 
     // Process any API calls returned by the server
     handleAPICalls(calls) {
-        const results = [];
         for (const call of calls) {
             const result = sitrecAPI.handleAPICall(call);
-            results.push(result);
             
             // Show feedback for the action taken
             if (result.success && result.result === undefined) {
                 // Action executed but no return value - show confirmation
                 this.addSystemMessage(`✓ ${this.formatFunctionName(call.fn)}`);
-            }
-        }
-        
-        // Check if any calls returned data that should be displayed
-        for (const result of results) {
-            if (result.result !== undefined) {
+            } else if (result.result !== undefined) {
                 // Format the result for display
                 let displayValue;
                 if (result.result && typeof result.result === 'object') {

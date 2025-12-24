@@ -550,6 +550,10 @@ class CSitrecAPI {
             }
             
             controller.setValue(finalValue);
+            // Trigger onChange callbacks (e.g., elevation type change)
+            if (controller._onChange) {
+                controller._onChange(finalValue);
+            }
             // Trigger onFinishChange callbacks (e.g., terrain recalculation)
             if (controller._onFinishChange) {
                 controller._callOnFinishChange(finalValue);
