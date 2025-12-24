@@ -429,6 +429,278 @@ class CSitrecAPI {
                     
                     return { success: true, object: folder._title, model: modelResult.newValue };
                 }
+            },
+
+            listAvailableGeometries: {
+                doc: "List all available geometry types with their specific dimension parameters. Use setAllObjectsDimensions for geometry-agnostic dimension changes, or setMenuValue with the specific parameters listed here for precise control.",
+                fn: () => {
+                    return {
+                        geometries: ["sphere", "ellipsoid", "box", "capsule", "circle", "cone", "cylinder", 
+                                "dodecahedron", "icosahedron", "octahedron", "ring", "tictac", 
+                                "tetrahedron", "torus", "torusknot", "superegg"],
+                        parameters: {
+                            box: ["width", "height", "depth"],
+                            cylinder: ["radiusTop", "radiusBottom", "height"],
+                            cone: ["radius", "height"],
+                            capsule: ["radius", "totalLength"],
+                            sphere: ["radius"],
+                            ellipsoid: ["radiusX", "radiusY", "radiusZ"],
+                            torus: ["radius", "tube"],
+                            superegg: ["radius", "length", "sharpness"],
+                            tictac: ["radius", "length"],
+                            circle: ["radius"],
+                            ring: ["innerRadius", "outerRadius"],
+                            icosahedron: ["radius"],
+                            dodecahedron: ["radius"],
+                            octahedron: ["radius"],
+                            tetrahedron: ["radius"],
+                            torusknot: ["radius", "tube"]
+                        },
+                        tip: "Use setAllObjectsDimensions(width, height, depth) for automatic parameter mapping, or setMenuValue for direct parameter control."
+                    };
+                }
+            },
+
+            setObjectGeometry: {
+                doc: "Set an object to use a procedural geometry type (instead of a 3D model). After setting geometry, use setObjectDimensions to adjust size. Call listAvailableGeometries to see geometry types and their specific parameters.",
+                params: {
+                    object: "Object name or partial name (e.g. 'camera' will match 'cameraObject')",
+                    geometry: "Geometry type name from listAvailableGeometries (e.g. 'sphere', 'superegg', 'box')"
+                },
+                fn: (v) => {
+                    const gui = guiMenus.objects;
+                    if (!gui) return { success: false, error: "Objects menu not found" };
+                    
+                    const objectLower = String(v.object).toLowerCase();
+                    const folders = gui.children.filter(c => c instanceof GUI);
+                    
+                    // Find best matching folder
+                    let folder = folders.find(c => c._title.toLowerCase() === objectLower);
+                    if (!folder) {
+                        folder = folders.find(c => c._title.toLowerCase().includes(objectLower));
+                    }
+                    if (!folder) {
+                        folder = folders.find(c => objectLower.includes(c._title.toLowerCase()));
+                    }
+                    if (!folder) {
+                        const available = folders.map(c => c._title).join(', ');
+                        return { success: false, error: `Object '${v.object}' not found. Available: ${available}` };
+                    }
+                    
+                    // Find best matching geometry type
+                    const geometryTypes = ["sphere", "ellipsoid", "box", "capsule", "circle", "cone", "cylinder", 
+                                           "dodecahedron", "icosahedron", "octahedron", "ring", "tictac", 
+                                           "tetrahedron", "torus", "torusknot", "superegg"];
+                    const geoLower = String(v.geometry).toLowerCase();
+                    let geoName = geometryTypes.find(g => g.toLowerCase() === geoLower);
+                    if (!geoName) {
+                        geoName = geometryTypes.find(g => g.toLowerCase().includes(geoLower));
+                    }
+                    if (!geoName) {
+                        geoName = geometryTypes.find(g => geoLower.includes(g.toLowerCase()));
+                    }
+                    if (!geoName) {
+                        return { success: false, error: `Geometry '${v.geometry}' not found. Available: ${geometryTypes.join(', ')}` };
+                    }
+                    
+                    // First switch to geometry mode
+                    const modeResult = this._setMenuValue('objects', folder._title + '/Model or Geometry', 'geometry');
+                    if (!modeResult.success) return modeResult;
+                    
+                    // Then set the geometry type
+                    const geoResult = this._setMenuValue('objects', folder._title + '/geometry', geoName);
+                    if (!geoResult.success) return geoResult;
+                    
+                    return { success: true, object: folder._title, geometry: geoResult.newValue };
+                }
+            },
+
+            setAllObjectsGeometry: {
+                doc: "Set all 3D objects to use a specific geometry type. Useful for commands like 'make all objects spheres'. After setting geometry, use setAllObjectsDimensions to adjust size, or call listAvailableGeometries to see specific parameters for each geometry type.",
+                params: {
+                    geometry: "Geometry type name from listAvailableGeometries (e.g. 'sphere', 'superegg', 'box')"
+                },
+                fn: (v) => {
+                    const gui = guiMenus.objects;
+                    if (!gui) return { success: false, error: "Objects menu not found" };
+                    
+                    const geometryTypes = ["sphere", "ellipsoid", "box", "capsule", "circle", "cone", "cylinder", 
+                                           "dodecahedron", "icosahedron", "octahedron", "ring", "tictac", 
+                                           "tetrahedron", "torus", "torusknot", "superegg"];
+                    const geoLower = String(v.geometry).toLowerCase();
+                    let geoName = geometryTypes.find(g => g.toLowerCase() === geoLower);
+                    if (!geoName) {
+                        geoName = geometryTypes.find(g => g.toLowerCase().includes(geoLower));
+                    }
+                    if (!geoName) {
+                        geoName = geometryTypes.find(g => geoLower.includes(g.toLowerCase()));
+                    }
+                    if (!geoName) {
+                        return { success: false, error: `Geometry '${v.geometry}' not found. Available: ${geometryTypes.join(', ')}` };
+                    }
+                    
+                    const folders = gui.children.filter(c => c instanceof GUI);
+                    const results = [];
+                    
+                    for (const folder of folders) {
+                        // Switch to geometry mode
+                        const modeResult = this._setMenuValue('objects', folder._title + '/Model or Geometry', 'geometry');
+                        if (modeResult.success) {
+                            // Set the geometry type
+                            const geoResult = this._setMenuValue('objects', folder._title + '/geometry', geoName);
+                            results.push({ object: folder._title, success: geoResult.success, geometry: geoName });
+                        }
+                    }
+                    
+                    return { success: true, geometry: geoName, objects: results };
+                }
+            },
+
+            setAllObjectsModel: {
+                doc: "Set all 3D objects to use a specific 3D model. Useful for commands like 'make all objects 737s' or 'change everything to helicopters'. Call listAvailableModels first to see available options.",
+                params: {
+                    model: "Exact model name from listAvailableModels"
+                },
+                fn: (v) => {
+                    const gui = guiMenus.objects;
+                    if (!gui) return { success: false, error: "Objects menu not found" };
+                    
+                    const modelLower = String(v.model).toLowerCase();
+                    const modelKeys = Object.keys(ModelFiles);
+                    let modelName = modelKeys.find(m => m.toLowerCase() === modelLower);
+                    if (!modelName) {
+                        modelName = modelKeys.find(m => m.toLowerCase().includes(modelLower));
+                    }
+                    if (!modelName) {
+                        modelName = modelKeys.find(m => modelLower.includes(m.toLowerCase()));
+                    }
+                    if (!modelName) {
+                        return { success: false, error: `Model '${v.model}' not found. Available: ${modelKeys.join(', ')}` };
+                    }
+                    
+                    const folders = gui.children.filter(c => c instanceof GUI);
+                    const results = [];
+                    
+                    for (const folder of folders) {
+                        // Setting Model automatically switches to model mode and triggers rebuild
+                        const modelResult = this._setMenuValue('objects', folder._title + '/Model', modelName);
+                        results.push({ object: folder._title, success: modelResult.success, model: modelName });
+                    }
+                    
+                    return { success: true, model: modelName, objects: results };
+                }
+            },
+
+            setObjectDimensions: {
+                doc: "Set the dimensions of an object's geometry using standardized width/height/depth values. Maps to appropriate parameters based on geometry type: box uses width/height/depth directly; cylinder uses width as radiusTop and radiusBottom, height as height; sphere uses width as radius; capsule uses width as radius and height as totalLength.",
+                params: {
+                    object: "Object name or partial name",
+                    width: "Width dimension (maps to radius for round objects)",
+                    height: "Height dimension (optional)",
+                    depth: "Depth dimension (optional, for box geometry)"
+                },
+                fn: (v) => {
+                    const gui = guiMenus.objects;
+                    if (!gui) return { success: false, error: "Objects menu not found" };
+                    
+                    const objectLower = String(v.object).toLowerCase();
+                    const folders = gui.children.filter(c => c instanceof GUI);
+                    
+                    let folder = folders.find(c => c._title.toLowerCase() === objectLower);
+                    if (!folder) {
+                        folder = folders.find(c => c._title.toLowerCase().includes(objectLower));
+                    }
+                    if (!folder) {
+                        folder = folders.find(c => objectLower.includes(c._title.toLowerCase()));
+                    }
+                    if (!folder) {
+                        const available = folders.map(c => c._title).join(', ');
+                        return { success: false, error: `Object '${v.object}' not found. Available: ${available}` };
+                    }
+                    
+                    const geoResult = this._getMenuValue('objects', folder._title + '/geometry');
+                    const geometry = geoResult.success ? geoResult.value : 'sphere';
+                    
+                    const results = [];
+                    const width = v.width;
+                    const height = v.height ?? v.width;
+                    const depth = v.depth ?? v.width;
+                    
+                    switch (geometry) {
+                        case 'box':
+                            results.push(this._setMenuValue('objects', folder._title + '/width', width));
+                            results.push(this._setMenuValue('objects', folder._title + '/height', height));
+                            results.push(this._setMenuValue('objects', folder._title + '/depth', depth));
+                            break;
+                        case 'cylinder':
+                            results.push(this._setMenuValue('objects', folder._title + '/radiusTop', width / 2));
+                            results.push(this._setMenuValue('objects', folder._title + '/radiusBottom', width / 2));
+                            results.push(this._setMenuValue('objects', folder._title + '/height', height));
+                            break;
+                        case 'cone':
+                            results.push(this._setMenuValue('objects', folder._title + '/radius', width / 2));
+                            results.push(this._setMenuValue('objects', folder._title + '/height', height));
+                            break;
+                        case 'capsule':
+                            results.push(this._setMenuValue('objects', folder._title + '/radius', width / 2));
+                            results.push(this._setMenuValue('objects', folder._title + '/totalLength', height));
+                            break;
+                        case 'sphere':
+                        case 'icosahedron':
+                        case 'dodecahedron':
+                        case 'octahedron':
+                        case 'tetrahedron':
+                            results.push(this._setMenuValue('objects', folder._title + '/radius', width / 2));
+                            break;
+                        case 'ellipsoid':
+                            results.push(this._setMenuValue('objects', folder._title + '/radiusX', width / 2));
+                            results.push(this._setMenuValue('objects', folder._title + '/radiusY', height / 2));
+                            results.push(this._setMenuValue('objects', folder._title + '/radiusZ', depth / 2));
+                            break;
+                        case 'torus':
+                            results.push(this._setMenuValue('objects', folder._title + '/radius', width / 2));
+                            results.push(this._setMenuValue('objects', folder._title + '/tube', height / 4));
+                            break;
+                        case 'superegg':
+                        case 'tictac':
+                            results.push(this._setMenuValue('objects', folder._title + '/radius', width / 2));
+                            results.push(this._setMenuValue('objects', folder._title + '/length', height / 2));
+                            break;
+                        default:
+                            return { success: false, error: `Unknown geometry type: ${geometry}` };
+                    }
+                    
+                    const allSuccess = results.every(r => r.success);
+                    return { success: allSuccess, object: folder._title, geometry, dimensions: { width, height, depth } };
+                }
+            },
+
+            setAllObjectsDimensions: {
+                doc: "Set the dimensions of all objects' geometries using standardized width/height/depth values. Automatically maps to the correct parameters based on each object's geometry type.",
+                params: {
+                    width: "Width dimension (maps to radius for round objects)",
+                    height: "Height dimension (optional)",
+                    depth: "Depth dimension (optional, for box geometry)"
+                },
+                fn: (v) => {
+                    const gui = guiMenus.objects;
+                    if (!gui) return { success: false, error: "Objects menu not found" };
+                    
+                    const folders = gui.children.filter(c => c instanceof GUI);
+                    const results = [];
+                    
+                    for (const folder of folders) {
+                        const dimResult = this.api.setObjectDimensions.fn.call(this, {
+                            object: folder._title,
+                            width: v.width,
+                            height: v.height,
+                            depth: v.depth
+                        });
+                        results.push({ object: folder._title, ...dimResult });
+                    }
+                    
+                    return { success: true, objects: results };
+                }
             }
 
         }

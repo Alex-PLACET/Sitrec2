@@ -314,30 +314,10 @@ class CNodeViewChat extends CNodeViewText {
             const result = sitrecAPI.handleAPICall(call);
             toolResults.push({ fn: call.fn, args: call.args, result: result.result ?? result });
             
-            // Show feedback for the action taken
-            if (result.success && result.result === undefined) {
-                // Action executed but no return value - show confirmation
-                this.addSystemMessage(`✓ ${this.formatFunctionName(call.fn)}`);
-            } else if (result.result !== undefined) {
-                // Format the result for display
-                let displayValue;
-                if (result.result && typeof result.result === 'object') {
-                    if (result.result.success === false) {
-                        displayValue = `Error: ${result.result.error}`;
-                    } else if (result.result.value !== undefined) {
-                        displayValue = result.result.value;
-                    } else {
-                        displayValue = JSON.stringify(result.result, null, 2);
-                    }
-                } else if (Array.isArray(result.result)) {
-                    displayValue = result.result.join(', ');
-                } else {
-                    displayValue = result.result;
-                }
-                
-                if (displayValue !== undefined) {
-                    this.addSystemMessage(`${call.fn} returned: ${displayValue}`);
-                }
+            // Only show user-facing messages for errors
+            // Success messages will come from the LLM's natural language response
+            if (result.result && typeof result.result === 'object' && result.result.success === false) {
+                this.addSystemMessage(`Error: ${result.result.error}`);
             }
         }
         return toolResults;

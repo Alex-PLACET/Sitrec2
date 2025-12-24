@@ -261,4 +261,78 @@ test.describe.serial('Chatbot Tests', () => {
         const responseLower = response.toLowerCase();
         expect(responseLower).toMatch(/cessna|piper|aircraft|plane|model|set|camera/i);
     });
+
+    test('should change object to geometry mode and set superegg', async () => {
+        test.setTimeout(60000);
+        
+        const response = await sendChatAndWait(sharedPage, 'make the camera object a superegg');
+        
+        console.log('Bot response:', response);
+        await waitForFrames(sharedPage, 30);
+        
+        const responseLower = response.toLowerCase();
+        expect(responseLower).toMatch(/superegg|geometry|set|camera|success/i);
+    });
+
+    test('should change all objects to spheres', async () => {
+        test.setTimeout(60000);
+        
+        const response = await sendChatAndWait(sharedPage, 'make all objects use spheres');
+        
+        console.log('Bot response:', response);
+        await waitForFrames(sharedPage, 30);
+        
+        const responseLower = response.toLowerCase();
+        expect(responseLower).toMatch(/sphere|geometry|all|objects|set|success/i);
+    });
+
+    test('should understand geometry request with ambiguous phrasing', async () => {
+        test.setTimeout(60000);
+        
+        const response = await sendChatAndWait(sharedPage, 'change the camera to a box shape');
+        
+        console.log('Bot response:', response);
+        await waitForFrames(sharedPage, 30);
+        
+        const responseLower = response.toLowerCase();
+        expect(responseLower).toMatch(/box|geometry|camera|set|success/i);
+    });
+
+    test('should switch from model to geometry mode', async () => {
+        test.setTimeout(60000);
+        
+        const response = await sendChatAndWait(sharedPage, 'use geometry instead of a model for the camera');
+        
+        console.log('Bot response:', response);
+        await waitForFrames(sharedPage, 30);
+        
+        const responseLower = response.toLowerCase();
+        expect(responseLower).toMatch(/geometry|switched|changed|camera|success|set/i);
+    });
+
+    test('should change all objects to a specific model', async () => {
+        test.setTimeout(60000);
+        
+        const response = await sendChatAndWait(sharedPage, 'make all objects 737s');
+        
+        console.log('Bot response:', response);
+        await waitForFrames(sharedPage, 30);
+        
+        const responseLower = response.toLowerCase();
+        expect(responseLower).toMatch(/737|model|all|objects|set|success/i);
+        expect(responseLower).not.toMatch(/geometry.*not found/i);
+    });
+
+    test('should set geometry dimensions correctly for boxes', async () => {
+        test.setTimeout(60000);
+        
+        const response = await sendChatAndWait(sharedPage, 'make them skinny cuboids');
+        
+        console.log('Bot response:', response);
+        await waitForFrames(sharedPage, 30);
+        
+        const responseLower = response.toLowerCase();
+        expect(responseLower).toMatch(/box|cuboid|dimension|skinny|set|success/i);
+        expect(responseLower).not.toMatch(/radiusTop.*not found|radiusBottom.*not found/i);
+    });
 });
