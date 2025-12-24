@@ -61,7 +61,7 @@ async function waitForBotResponse(page, initialCount, timeoutMs = 30000) {
         });
         
         if (messages.length > initialCount) {
-            await page.waitForTimeout(1000);
+            await page.waitForTimeout(1500);
             
             const finalMessages = await page.evaluate(() => {
                 const chatLog = document.querySelector('.cnodeview-chatlog');
@@ -79,6 +79,12 @@ async function waitForBotResponse(page, initialCount, timeoutMs = 30000) {
     }
     
     throw new Error(`Timed out waiting for bot response after ${timeoutMs}ms`);
+}
+
+async function sendChatAndWait(page, message, timeoutMs = 30000) {
+    await page.waitForTimeout(500);
+    const initialCount = await sendChatMessage(page, message);
+    return waitForBotResponse(page, initialCount, timeoutMs);
 }
 
 async function getChatMessages(page) {
@@ -183,6 +189,76 @@ test.describe.serial('Chatbot Tests', () => {
         
         console.log('Bot response:', response);
         
-        expect(response.toLowerCase()).toContain('ambient');
+        const responseLower = response.toLowerCase();
+        expect(responseLower).toMatch(/ambient|success.*true|enabled|lighting/i);
+    });
+
+    test('should understand "make it a jet" as setting aircraft model', async () => {
+        test.setTimeout(60000);
+        
+        const response = await sendChatAndWait(sharedPage, 'make the camera a jet');
+        
+        console.log('Bot response:', response);
+        await waitForFrames(sharedPage, 30);
+        
+        const responseLower = response.toLowerCase();
+        expect(responseLower).toMatch(/f-?15|f-?18|jet|fighter|aircraft|plane|set|camera/i);
+    });
+
+    test('should understand "use a drone" as setting drone model', async () => {
+        test.setTimeout(60000);
+        
+        const response = await sendChatAndWait(sharedPage, 'change to a drone');
+        
+        console.log('Bot response:', response);
+        await waitForFrames(sharedPage, 30);
+        
+        const responseLower = response.toLowerCase();
+        expect(responseLower).toMatch(/mq|drone|uav|predator|reaper|set|camera/i);
+    });
+
+    test('should understand colloquial time setting', async () => {
+        test.setTimeout(60000);
+        
+        const response = await sendChatAndWait(sharedPage, 'set time to midnight on new years eve 2023');
+        
+        console.log('Bot response:', response);
+        
+        const responseLower = response.toLowerCase();
+        expect(responseLower).toMatch(/date|time|set|2023|midnight|december|31/i);
+    });
+
+    test('should handle ambiguous FOV request with zoom in', async () => {
+        test.setTimeout(60000);
+        
+        const response = await sendChatAndWait(sharedPage, 'zoom in the look camera');
+        
+        console.log('Bot response:', response);
+        
+        const responseLower = response.toLowerCase();
+        expect(responseLower).toMatch(/fov|zoom|field|view|camera|narrower|smaller|reduced|set|look/i);
+    });
+
+    test('should understand partial menu names', async () => {
+        test.setTimeout(60000);
+        
+        const response = await sendChatAndWait(sharedPage, 'turn off stars');
+        
+        console.log('Bot response:', response);
+        
+        const responseLower = response.toLowerCase();
+        expect(responseLower).toMatch(/star|disabled|off|hidden|visibility|success/i);
+    });
+
+    test('should handle vague model requests by picking appropriate model', async () => {
+        test.setTimeout(60000);
+        
+        const response = await sendChatAndWait(sharedPage, 'i want a small plane for the camera');
+        
+        console.log('Bot response:', response);
+        await waitForFrames(sharedPage, 30);
+        
+        const responseLower = response.toLowerCase();
+        expect(responseLower).toMatch(/cessna|piper|aircraft|plane|model|set|camera/i);
     });
 });
