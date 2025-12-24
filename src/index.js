@@ -480,7 +480,17 @@ if (latlon) {
     }
 }
 
+const mapType = urlParams.get("mapType");
+if (mapType && Sit.TerrainModel) {
+    console.log("Setting mapType from URL param: " + mapType);
+    Sit.TerrainModel.mapType = mapType;
+}
 
+const elevationType = urlParams.get("elevationType");
+if (elevationType && Sit.TerrainModel) {
+    console.log("Setting elevationType from URL param: " + elevationType);
+    Sit.TerrainModel.elevationType = elevationType;
+}
 
 legacySetup();
 await setupFunctions();

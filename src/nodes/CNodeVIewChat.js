@@ -285,6 +285,7 @@ class CNodeViewChat extends CNodeViewText {
                 body,
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
             });
             const response = await res.json();
             console.log("Chatbot response:", response);
@@ -294,7 +295,11 @@ class CNodeViewChat extends CNodeViewText {
             if (response.text) this.addSystemMessage(response.text);
             if (response.apiCalls && response.apiCalls.length > 0) {
                 this.addDebugMessage(`API calls: ${JSON.stringify(response.apiCalls)}`);
-                this.handleAPICalls(response.apiCalls);
+                const toolResults = this.handleAPICalls(response.apiCalls);
+                
+                if (response.sessionContinue) {
+                    await this.continueSession(toolResults, provider, model);
+                }
             }
         } catch (e) {
             this.addSystemMessage("[error contacting server]");
@@ -302,10 +307,12 @@ class CNodeViewChat extends CNodeViewText {
         }
     }
 
-    // Process any API calls returned by the server
+    // Process any API calls returned by the server - returns results for session continuation
     handleAPICalls(calls) {
+        const toolResults = [];
         for (const call of calls) {
             const result = sitrecAPI.handleAPICall(call);
+            toolResults.push({ fn: call.fn, args: call.args, result: result.result ?? result });
             
             // Show feedback for the action taken
             if (result.success && result.result === undefined) {
@@ -332,6 +339,42 @@ class CNodeViewChat extends CNodeViewText {
                     this.addSystemMessage(`${call.fn} returned: ${displayValue}`);
                 }
             }
+        }
+        return toolResults;
+    }
+    
+    async continueSession(toolResults, provider, model) {
+        try {
+            const body = JSON.stringify({
+                continueSession: true,
+                toolResults,
+                provider,
+                model,
+            });
+            
+            const res = await fetch(SITREC_SERVER + 'chatbot.php', {
+                body,
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+            });
+            const response = await res.json();
+            console.log("Session continue response:", response);
+            if (response.debug) {
+                this.addDebugMessage(`Continue debug: ${JSON.stringify(response.debug)}`);
+            }
+            if (response.text) this.addSystemMessage(response.text);
+            if (response.apiCalls && response.apiCalls.length > 0) {
+                this.addDebugMessage(`Continue API calls: ${JSON.stringify(response.apiCalls)}`);
+                const newResults = this.handleAPICalls(response.apiCalls);
+                
+                if (response.sessionContinue) {
+                    await this.continueSession(newResults, provider, model);
+                }
+            }
+        } catch (e) {
+            this.addSystemMessage("[error continuing session]");
+            console.error(e);
         }
     }
     

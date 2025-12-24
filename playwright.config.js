@@ -2,7 +2,7 @@ import {defineConfig, devices} from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests_regression',
-  testMatch: ['**/ui-playwright.test.js', '**/regression.test.js'],
+  testMatch: ['**/ui-playwright.test.js', '**/regression.test.js', '**/chatbot-playwright.test.js'],
   timeout: 120000,
   fullyParallel: true,
   forbidOnly: false,

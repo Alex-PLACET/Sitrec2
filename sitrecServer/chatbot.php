@@ -1,5 +1,7 @@
 <?php
 
+session_start();
+
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/config_paths.php';
 require_once __DIR__ . '/user.php';
@@ -172,6 +174,56 @@ if (!$rateLimitResult['allowed']) {
     exit;
 }
 
+// Check if this is a session continuation with tool results
+$toolResults = $data['toolResults'] ?? null;
+$continueSession = isset($data['continueSession']) && $data['continueSession'];
+
+if ($continueSession && $toolResults && isset($_SESSION['chatbot_pending'])) {
+    $pendingState = $_SESSION['chatbot_pending'];
+    unset($_SESSION['chatbot_pending']);
+    
+    $toolResultsText = "[Tool Results]\n";
+    foreach ($toolResults as $tr) {
+        $resultJson = json_encode($tr['result'] ?? null);
+        $toolResultsText .= "Tool {$tr['fn']} returned: $resultJson\n";
+    }
+    
+    $pendingState['history'][] = ['role' => 'user', 'text' => $toolResultsText];
+    
+    $result = runToolLoop(
+        $pendingState['provider'],
+        $pendingState['apiKey'],
+        $pendingState['systemPrompt'],
+        $pendingState['history'],
+        $pendingState['tools'],
+        $pendingState['model'],
+        $pendingState['menuSummary'],
+        $pendingState['available3DModels'],
+        $pendingState['remainingIterations']
+    );
+    
+    if (!empty($result['apiCalls'])) {
+        $_SESSION['chatbot_pending'] = [
+            'provider' => $pendingState['provider'],
+            'apiKey' => $pendingState['apiKey'],
+            'systemPrompt' => $pendingState['systemPrompt'],
+            'history' => $result['history'],
+            'tools' => $pendingState['tools'],
+            'model' => $pendingState['model'],
+            'menuSummary' => $pendingState['menuSummary'],
+            'available3DModels' => $pendingState['available3DModels'],
+            'remainingIterations' => max(1, $pendingState['remainingIterations'] - 1)
+        ];
+        $result['sessionContinue'] = true;
+    }
+    unset($result['history']);
+    
+    $result['debug']['sessionContinued'] = true;
+    header('Content-Type: application/json');
+    echo json_encode($result);
+    exit;
+}
+
 // Validate and sanitize prompt
 $prompt = $data['prompt'] ?? '';
 $prompt = trim($prompt);
@@ -202,19 +254,19 @@ foreach (array_slice($rawHistory, -$maxHistoryMessages) as $msg) {
 
 $sitrecDoc = $data['sitrecDoc'] ?? [];
 $menuSummary = $data['menuSummary'] ?? [];
-$availableModels = $data['availableModels'] ?? [];
+$available3DModels = $data['availableModels'] ?? [];
 $date = $data['dateTime'] ?? date('Y-m-d H:i:s');
 $simDateTime = $data['simDateTime'] ?? null;
 $requestedProvider = $data['provider'] ?? null;
 $requestedModel = $data['model'] ?? null;
 
 // User info already retrieved above for rate limiting
-$availableModels = getAvailableModels($userInfo['user_groups']);
+$aiModels = getAvailableModels($userInfo['user_groups']);
 $selectedProvider = null;
 $selectedModel = null;
 
 if ($requestedProvider && $requestedModel) {
-    foreach ($availableModels as $m) {
+    foreach ($aiModels as $m) {
         if ($m['provider'] === $requestedProvider && $m['model'] === $requestedModel) {
             $selectedProvider = $requestedProvider;
             $selectedModel = $requestedModel;
@@ -224,9 +276,9 @@ if ($requestedProvider && $requestedModel) {
 }
 
 // Fall back to first available model if requested model not allowed
-if (!$selectedProvider && !empty($availableModels)) {
-    $selectedProvider = $availableModels[0]['provider'];
-    $selectedModel = $availableModels[0]['model'];
+if (!$selectedProvider && !empty($aiModels)) {
+    $selectedProvider = $aiModels[0]['provider'];
+    $selectedModel = $aiModels[0]['model'];
 }
 
 // Build tools array from sitrecDoc (OpenAI format, will convert for Anthropic)
@@ -888,6 +940,7 @@ function runToolLoop($provider, $apiKey, $systemPrompt, $history, $tools, $model
     return [
         'text' => $finalText,
         'apiCalls' => $allApiCalls,
+        'history' => $currentHistory,
         'debug' => array_merge(
             ['provider' => $provider, 'model' => $model, 'iterations' => $iteration + 1],
             count($debugInfo) === 1 ? $debugInfo['iteration_0'] : $debugInfo
@@ -909,7 +962,23 @@ if (!$selectedProvider) {
         'grok' => $GROK_API_KEY,
         default => $OPENAI_API_KEY
     };
-    $result = runToolLoop($selectedProvider, $apiKey, $systemPrompt, $history, $tools, $selectedModel, $menuSummary, $availableModels, 5);
+    $result = runToolLoop($selectedProvider, $apiKey, $systemPrompt, $history, $tools, $selectedModel, $menuSummary, $available3DModels, 5);
+    
+    if (!empty($result['apiCalls'])) {
+        $_SESSION['chatbot_pending'] = [
+            'provider' => $selectedProvider,
+            'apiKey' => $apiKey,
+            'systemPrompt' => $systemPrompt,
+            'history' => $result['history'],
+            'tools' => $tools,
+            'model' => $selectedModel,
+            'menuSummary' => $menuSummary,
+            'available3DModels' => $available3DModels,
+            'remainingIterations' => 4
+        ];
+        $result['sessionContinue'] = true;
+    }
+    unset($result['history']);
 }
 
 header('Content-Type: application/json');
