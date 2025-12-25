@@ -1,9 +1,10 @@
 // Client-side Sitrec API with callable functions and documentation
-import {GlobalDateTimeNode, guiMenus, NodeMan} from "./Globals";
+import {CustomManager, GlobalDateTimeNode, guiMenus, NodeMan, Sit} from "./Globals";
 import {isLocal} from "./configUtils";
 import {showError} from "./showError";
 import GUI from "./js/lil-gui.esm";
 import {ModelFiles} from "./nodes/CNode3DObject";
+import {par} from "./par";
 
 class CSitrecAPI {
     constructor() {
@@ -307,7 +308,171 @@ class CSitrecAPI {
             },
 
 
-            //{ key: "showFlareBand", name: "Flare Band", object: this, action: () => this.flareBandGroup.visible = this.showFlareBand},
+            satellitesShowOther: {
+                doc: "Show other (non-Starlink, non-ISS, non-Brightest) satellites.",
+                fn: () => {
+                    const nightSky = NodeMan.get("NightSkyNode");
+                    if(nightSky) {
+                        nightSky.satellites.showOtherSatellites = true;
+                        nightSky.satellites.filterSatellites();
+                    }
+                }
+            },
+
+            satellitesHideOther: {
+                doc: "Hide other (non-Starlink, non-ISS, non-Brightest) satellites.",
+                fn: () => {
+                    const nightSky = NodeMan.get("NightSkyNode");
+                    if(nightSky) {
+                        nightSky.satellites.showOtherSatellites = false;
+                        nightSky.satellites.filterSatellites();
+                    }
+                }
+            },
+
+            getFrame: {
+                doc: "Get the current frame number and total frames.",
+                fn: () => {
+                    return { 
+                        frame: par.frame, 
+                        totalFrames: Sit.frames,
+                        time: par.time,
+                        paused: par.paused
+                    };
+                }
+            },
+
+            setFrame: {
+                doc: "Set the current frame number (0-indexed).",
+                params: {
+                    frame: "Frame number (integer, 0-indexed)"
+                },
+                fn: (v) => {
+                    let frame = parseInt(v.frame);
+                    if (isNaN(frame)) return { success: false, error: "Invalid frame number" };
+                    if (frame < 0) frame = 0;
+                    if (frame > Sit.frames - 1) frame = Sit.frames - 1;
+                    par.frame = frame;
+                    return { success: true, frame: par.frame, totalFrames: Sit.frames };
+                }
+            },
+
+            play: {
+                doc: "Start playing the simulation (unpause).",
+                fn: () => {
+                    par.paused = false;
+                    return { success: true, paused: false };
+                }
+            },
+
+            pause: {
+                doc: "Pause the simulation.",
+                fn: () => {
+                    par.paused = true;
+                    return { success: true, paused: true };
+                }
+            },
+
+            togglePlayPause: {
+                doc: "Toggle between play and pause states.",
+                fn: () => {
+                    par.paused = !par.paused;
+                    return { success: true, paused: par.paused };
+                }
+            },
+
+            getCurrentSimTime: {
+                doc: "Get the current simulation date/time as an ISO string.",
+                fn: () => {
+                    if (GlobalDateTimeNode && GlobalDateTimeNode.dateNow) {
+                        return { 
+                            isoString: GlobalDateTimeNode.dateNow.toISOString(),
+                            localString: GlobalDateTimeNode.dateNow.toLocaleString()
+                        };
+                    }
+                    return { error: "No simulation time available" };
+                }
+            },
+
+            getRealTime: {
+                doc: "Get the current real-world date/time.",
+                fn: () => {
+                    const now = new Date();
+                    return { 
+                        isoString: now.toISOString(),
+                        localString: now.toLocaleString()
+                    };
+                }
+            },
+
+            listCelestialObjects: {
+                doc: "List celestial objects that can be pointed at with pointCameraAtNamedObject.",
+                fn: () => {
+                    return {
+                        planets: ["Mercury", "Venus", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune"],
+                        other: ["Sun", "Moon"],
+                        note: "For stars and constellations, use pointCameraAtRaDec with RA/Dec coordinates."
+                    };
+                }
+            },
+
+            addObjectAtLLA: {
+                doc: "Create a new 3D object at the specified latitude, longitude, and altitude.",
+                params: {
+                    lat: "Latitude in degrees (float)",
+                    lon: "Longitude in degrees (float)",
+                    alt: "Altitude in meters (float, optional, defaults to 0)",
+                    name: "Object name (string, optional)"
+                },
+                fn: (v) => {
+                    try {
+                        const name = v.name || CustomManager.getNextObjectName();
+                        const alt = v.alt ?? 0;
+                        const { objectNode, trackOb } = CustomManager.createObjectFromInput(
+                            name, v.lat, v.lon, alt, v.alt !== undefined
+                        );
+                        if (objectNode) {
+                            return { 
+                                success: true, 
+                                name: name, 
+                                lat: v.lat, 
+                                lon: v.lon, 
+                                alt: alt 
+                            };
+                        }
+                        return { success: false, error: "Failed to create object" };
+                    } catch (e) {
+                        return { success: false, error: e.message };
+                    }
+                }
+            },
+
+            findSatellite: {
+                doc: "Search for satellites by name. Returns matching satellite names. Use this to find the correct name before filtering.",
+                params: {
+                    name: "Partial or full satellite name to search for (string)"
+                },
+                fn: (v) => {
+                    const nightSky = NodeMan.get("NightSkyNode");
+                    if (!nightSky || !nightSky.satellites || !nightSky.satellites.TLEData) {
+                        return { success: false, error: "No satellite data loaded. Load satellites first with satellitesLoadLEO." };
+                    }
+                    const searchTerm = String(v.name).toUpperCase();
+                    const matches = [];
+                    for (const satData of nightSky.satellites.TLEData.satData) {
+                        if (satData.name && satData.name.toUpperCase().includes(searchTerm)) {
+                            matches.push(satData.name);
+                            if (matches.length >= 20) break;
+                        }
+                    }
+                    return { 
+                        success: true, 
+                        count: matches.length, 
+                        matches: matches,
+                        note: matches.length >= 20 ? "Results limited to 20. Refine your search." : undefined
+                    };
+                }
+            },
 
             debug: {
                 doc: "Toggle debug mode",
