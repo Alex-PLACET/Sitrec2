@@ -68,7 +68,7 @@ class CSitrecAPI {
             },
 
             pointCameraAtRaDec: {
-                doc: "Set the camera orientation based on Right Ascension and Declination. Use for looking at stars and other fixed sky object (not planets or the sun",
+                doc: "Set the camera orientation based on Right Ascension and Declination. Use for looking at stars and other fixed sky objects (not planets or the Sun).",
                 params: {
                     ra: "Right Ascension in hours (float)",
                     dec: "Declination in degrees (float)",
@@ -284,13 +284,24 @@ class CSitrecAPI {
                 }
             },
 
-            //{ key: "showFlareRegion", name: "Flare Region", object: this, action: () => this.flareRegionGroup.visible = this.showFlareRegion},
             satellitesFlareRegionOn: {
-                doc: "Loads current Starlink satellites.",
+                doc: "Show the satellite flare region visualization.",
                 fn: () => {
                     const nightSky = NodeMan.get("NightSkyNode");
                     if(nightSky) {
-                        nightSky.satellites.updateStarlink();
+                        nightSky.showFlareRegion = true;
+                        nightSky.flareRegionGroup.visible = true;
+                    }
+                }
+            },
+
+            satellitesFlareRegionOff: {
+                doc: "Hide the satellite flare region visualization.",
+                fn: () => {
+                    const nightSky = NodeMan.get("NightSkyNode");
+                    if(nightSky) {
+                        nightSky.showFlareRegion = false;
+                        nightSky.flareRegionGroup.visible = false;
                     }
                 }
             },
