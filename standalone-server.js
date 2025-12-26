@@ -7,8 +7,8 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-const PHP_PORT = process.env.PHP_PORT || 8000;
+const PORT = process.env.SITREC_PORT || process.env.PORT || 3000;
+const PHP_PORT = process.env.SITREC_PHP_PORT || process.env.PHP_PORT || 8000;
 const DIST_DIR = path.resolve(__dirname, 'dist-standalone');
 
 let phpServer = null;
@@ -43,7 +43,7 @@ function startPhpServer() {
             if (message.includes('Address already in use')) {
                 console.error(`❌ Port ${PHP_PORT} is already in use. Please:`);
                 console.error(`   1. Stop any existing PHP server on port ${PHP_PORT}`);
-                console.error(`   2. Or use a different port: PHP_PORT=8001 npm run start-standalone`);
+                console.error(`   2. Or use a different port: SITREC_PHP_PORT=8001 npm run start-standalone`);
                 reject(new Error(`Port ${PHP_PORT} is already in use`));
                 return;
             }

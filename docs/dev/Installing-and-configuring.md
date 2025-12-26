@@ -148,7 +148,12 @@ docker-compose -f docker-compose.dev.yml exec sitrec-dev bash
 docker-compose -f docker-compose.dev.yml restart
 ```
 
-See `sitrec-tools/README-DOCKER.md` for additional development Docker utilities and troubleshooting.
+**Troubleshooting Docker Dev:**
+
+- **Changes not reflecting?** Check browser console for webpack compilation messages, try hard refresh (Cmd+Shift+R or Ctrl+Shift+R)
+- **Port already in use?** Run `lsof -i :8080` or `lsof -i :8081` to find conflicting services
+- **Need to reset everything?** Run `docker-compose -f docker-compose.dev.yml down -v` then rebuild with `--no-cache`
+- **Empty `sitrecServer/config.php` appearing?** This is normal Docker behavior due to overlapping volume mounts - the file is harmless and already in `.gitignore`
 
 # Quick node.js dev server install (Standalone Build)
 
@@ -424,6 +429,17 @@ This will create the folder node_modules, which will (currently) have 218 folder
 
 Sitrec has several build commands for different purposes:
 
+### Webpack Configuration
+
+Sitrec uses separate webpack configs optimized for different environments:
+
+| Config | Cache | File Watching | Use Case |
+|--------|-------|---------------|----------|
+| `webpack.dev.js` | Disabled | Filesystem native | Local development |
+| `webpack.dev.docker.js` | Enabled (filesystem) | Polling (1000ms) | Docker containers |
+
+Local development disables caching to ensure clean rebuilds on every change. Docker uses caching and polling for better performance with volume mounts.
+
 ### Development Builds (for local web server)
 
 **`npm run build`** - Build for local development
@@ -434,9 +450,10 @@ Sitrec has several build commands for different purposes:
 - Requires a local web server (Nginx/Apache) with PHP
 
 **`npm run start`** - Development server with hot reload
-- Uses webpack-dev-server
+- Uses webpack-dev-server on port 3000 (configurable via `SITREC_PORT`)
 - Automatically rebuilds when you change source files
-- Requires a local web server for PHP backend
+- Proxies PHP requests to backend on port 8081 (configurable via `SITREC_BACKEND_PORT`)
+- Requires a local web server (Nginx/Apache) with PHP running on the backend port
 
 **`npm run copy`** - Copy files without rebuilding
 - Uses `webpack.copy-files.js`
@@ -478,6 +495,92 @@ Sitrec has several build commands for different purposes:
 - Fully minified and optimized
 - No source maps or debug info
 - Takes longer to build (~15 seconds vs ~3-4 seconds for dev)
+
+### Port Configuration
+
+All ports can be customized via environment variables:
+
+| Mode | Default Port | Environment Variable | Description |
+|------|-------------|---------------------|-------------|
+| `npm run start` | 3000 | `SITREC_PORT` | Webpack dev server port |
+| `npm run start` | 8081 | `SITREC_BACKEND_PORT` | Backend (nginx/Apache) port for proxying |
+| Standalone | 3000 | `SITREC_PORT` | Express server port |
+| Standalone | 8000 | `SITREC_PHP_PORT` | PHP built-in server port |
+| Serverless | 3000 | `SITREC_PORT` | Express server port |
+| Docker | 6425 | (docker-compose.yml) | Exposed port |
+| Docker Dev | 8080 | (docker-compose.dev.yml) | Webpack dev server |
+| Docker Dev | 8081 | (docker-compose.dev.yml) | Apache/PHP backend |
+
+**Example: Run on different ports**
+```bash
+SITREC_PORT=4000 npm run start                           # Dev server on 4000
+SITREC_PORT=4000 SITREC_PHP_PORT=9000 npm run start-standalone  # Standalone on 4000/9000
+SITREC_BACKEND_PORT=80 npm run start                     # Proxy to nginx on port 80
+```
+
+## Debugging
+
+### Debug Builds
+
+For debugging, use the debug build commands which include enhanced features:
+
+```bash
+npm run dev-standalone-debug     # Build + run with full debugging
+npm run build-standalone-debug   # Build only with debug features
+npm run start-standalone-debug   # Start with Node.js inspector
+```
+
+**Debug build features:**
+- **Source Maps**: `eval-source-map` for accurate debugging in browser DevTools
+- **No Minification**: Code remains readable
+- **Clean Filenames**: No content hashes for easier identification
+- **Node.js Inspector**: Server runs with `--inspect` flag on port 9229
+
+### Browser Debugging (Chrome DevTools)
+
+1. Open your application (e.g., `http://localhost:3000/sitrec`)
+2. Press `F12` to open DevTools
+3. Go to **Sources** tab
+4. Navigate to `webpack://sitrec/src/` to find your source files
+5. Set breakpoints in your original source code
+
+### Node.js Server Debugging
+
+1. Run: `npm run start-standalone-debug`
+2. Look for: `Debugger listening on ws://127.0.0.1:9229/...`
+3. Open Chrome and navigate to: `chrome://inspect`
+4. Click **"Open dedicated DevTools for Node"**
+5. Set breakpoints in `standalone-server.js`
+
+### Debug Endpoints (Standalone/Serverless)
+
+When running standalone or serverless servers, these debug endpoints are available:
+
+| Endpoint | Description |
+|----------|-------------|
+| `/debug/status` | Server configuration and status |
+| `/debug/files` | List all built files and assets |
+| `/api/health` | Health check (serverless only) |
+| `/api/manifest` | Available sitches list (serverless only) |
+
+### VS Code Debugging
+
+Create `.vscode/launch.json` with:
+
+```json
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "Debug Sitrec Standalone",
+            "program": "${workspaceFolder}/standalone-server.js",
+            "console": "integratedTerminal"
+        }
+    ]
+}
+```
 
 ## Build the dev app with node.js and Webpack
 

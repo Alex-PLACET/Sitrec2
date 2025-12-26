@@ -3,6 +3,11 @@ const common = require('./webpack.common.js');
 const InstallPaths = require('./config/config-install');
 const CircularDependencyPlugin = require('circular-dependency-plugin');
 
+// Port for the backend server (nginx/Apache with PHP)
+// Default 8081 for compatibility with Docker dev setup
+const BACKEND_PORT = process.env.SITREC_BACKEND_PORT || 8081;
+const BACKEND_TARGET = `http://localhost:${BACKEND_PORT}`;
+
 module.exports = merge(common({ includeIWER: true }), {
     mode: 'development',
     devtool: 'eval-cheap-module-source-map', // Much faster than inline-source-map, especially on Windows
@@ -14,7 +19,7 @@ module.exports = merge(common({ includeIWER: true }), {
         hot: true, // Hot reload enabled - "Reload site" dialog is handled in index.js via HMR detection
         open: false, // Don't auto-open browser
         host: '0.0.0.0', // Allow external connections
-        port: 8080,
+        port: process.env.SITREC_PORT || process.env.PORT || 3000,
         // File watching for local development
         watchFiles: {
             options: {
@@ -34,26 +39,26 @@ module.exports = merge(common({ includeIWER: true }), {
         proxy: [
             {
                 context: ['/sitrecServer/**'], // paths to proxy - use ** to match all subpaths
-                target: 'http://localhost:8081', // Proxy to Apache
+                target: BACKEND_TARGET, // Proxy to Apache/nginx
                 changeOrigin: true,
                 secure: false,
                 logLevel: 'debug',
             },
             {
                 context: ['/sitrec-videos'],
-                target: 'http://localhost:8081',
+                target: BACKEND_TARGET,
                 changeOrigin: true,
                 secure: false,
             },
             {
                 context: ['/sitrec-cache'],
-                target: 'http://localhost:8081',
+                target: BACKEND_TARGET,
                 changeOrigin: true,
                 secure: false,
             },
             {
                 context: ['/sitrec-terrain/**'],
-                target: 'http://localhost:8081',
+                target: BACKEND_TARGET,
                 changeOrigin: true,
                 secure: false,
             },

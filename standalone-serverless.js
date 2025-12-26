@@ -14,7 +14,7 @@
  * Or for HTTPS: https://localhost:3000/sitrec
  * 
  * Environment variables:
- *   PORT - Server port (default: 3000)
+ *   SITREC_PORT - Server port (default: 3000)
  *   USE_HTTPS - Enable HTTPS (default: false) (Can set this in PHPStorm Configuration.)
  *   CERT_FILE - Path to SSL certificate file (auto-generated if not provided)
  *   KEY_FILE - Path to SSL key file (auto-generated if not provided)
@@ -27,7 +27,7 @@ const https = require('https');
 const { exec } = require('child_process');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.SITREC_PORT || process.env.PORT || 3000;
 const DIST_DIR = path.resolve(__dirname, 'dist-serverless');
 
 // Middleware

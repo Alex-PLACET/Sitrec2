@@ -228,6 +228,51 @@ test.describe.serial('UI Interaction Tests - Playwright', () => {
         await takeSnapshot(sharedPage, 'import-la-features-csv-snapshot', testInfo);
     });
 
+    test('should import STANAG 4676 XML file via File menu', async ({}, testInfo) => {
+        test.setTimeout(60000);
+        
+        await clickMenuTitle(sharedPage, 'File');
+        await sharedPage.waitForTimeout(100);
+
+        const consolePromise = waitForConsoleText(sharedPage, 'parseResult: DONE Parse', 45000);
+
+        const fileChooserPromise = sharedPage.waitForEvent('filechooser');
+        
+        await sharedPage.evaluate(() => {
+            const fileFolder = Array.from(document.querySelectorAll('.lil-gui')).find(gui => {
+                const title = gui.querySelector(':scope > .title');
+                return title && title.textContent.trim() === 'File';
+            });
+            
+            if (!fileFolder) {
+                console.log('File folder not found');
+                return false;
+            }
+            
+            const controllers = fileFolder.querySelectorAll('.controller.function');
+            for (const controller of controllers) {
+                const name = controller.querySelector('.name');
+                if (name && name.textContent.trim() === 'Import File') {
+                    const button = controller.querySelector('button') || controller;
+                    button.click();
+                    return true;
+                }
+            }
+            console.log('Import File button not found');
+            return false;
+        });
+
+        const fileChooser = await fileChooserPromise;
+        await fileChooser.setFiles(['/Users/mick/Dropbox/sitrec-dev/sitrec/data/test/stanag-test-track.xml']);
+
+        await consolePromise;
+
+        await sharedPage.waitForTimeout(3000);
+        await waitForFrames(sharedPage, 50);
+
+        await takeSnapshot(sharedPage, 'import-stanag-xml-snapshot', testInfo);
+    });
+
     test('should produce same result with Ambient Only as setting sun values to zero', async () => {
         test.setTimeout(60000);
         

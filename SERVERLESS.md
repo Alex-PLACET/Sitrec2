@@ -188,7 +188,7 @@ npm run build-serverless
 
 **Solution**:
 ```bash
-PORT=3001 npm run start-serverless
+SITREC_PORT=3001 npm run start-serverless
 ```
 
 ## Development
@@ -226,7 +226,7 @@ Want cloud sync, chat, and more? Check out Phase 2 implementation:
 - AI chat proxy
 - Real-time settings sync
 
-See `../SERVERLESS_IMPLEMENTATION_GUIDE.md` for details.
+See `docs/dev/Installing-and-configuring.md` for full build documentation.
 
 ## Limitations & Constraints
 
@@ -288,4 +288,4 @@ Found a bug? Have suggestions?
 
 **Happy analyzing!** 🎉
 
-For questions about the implementation, see `SERVERLESS_IMPLEMENTATION_GUIDE.md`.
+For full installation documentation, see `docs/dev/Installing-and-configuring.md`.

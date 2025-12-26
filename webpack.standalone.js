@@ -1,5 +1,5 @@
 const { merge } = require('webpack-merge');
-const common = require('./webpack.common.js');
+const commonFn = require('./webpack.common.js');
 const path = require('path');
 const fs = require('fs');
 const CopyPlugin = require("copy-webpack-plugin");
@@ -27,7 +27,9 @@ class CreateDirectoriesPlugin {
     }
 }
 
-module.exports = merge(common({ includeIWER: true }), {
+const commonConfig = commonFn({ includeIWER: true });
+
+module.exports = merge(commonConfig, {
     mode: 'development',
     devtool: 'eval-source-map', // Better for debugging - faster rebuild, good source maps
     optimization: {
@@ -44,7 +46,7 @@ module.exports = merge(common({ includeIWER: true }), {
     },
     plugins: [
         // Filter out the original CopyPlugin to avoid duplicates
-        ...common.plugins.filter(plugin => plugin.constructor.name !== 'CopyPlugin'),
+        ...commonConfig.plugins.filter(plugin => plugin.constructor.name !== 'CopyPlugin'),
         new CopyPlugin({
             patterns: [
                 ...copyPatterns, // Use the same patterns but they'll go to standalonePath

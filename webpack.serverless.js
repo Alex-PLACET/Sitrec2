@@ -3,7 +3,7 @@
 process.env.IS_SERVERLESS_BUILD = 'true';
 
 const { merge } = require('webpack-merge');
-const common = require('./webpack.common.js');
+const commonFn = require('./webpack.common.js');
 const path = require('path');
 const fs = require('fs');
 const CopyPlugin = require("copy-webpack-plugin");
@@ -91,8 +91,9 @@ class CreateDirectoriesPlugin {
 
 module.exports = (env, argv) => {
     const isDevelopment = argv.mode !== 'production';
+    const commonConfig = commonFn({ includeIWER: false });
     
-    return merge(common({ includeIWER: false }), {
+    return merge(commonConfig, {
         mode: argv.mode || 'development',
         devtool: isDevelopment ? 'eval-source-map' : false,
         optimization: {
@@ -107,7 +108,7 @@ module.exports = (env, argv) => {
         },
     plugins: [
         // Filter out the original CopyPlugin and DefinePlugin to override them
-        ...common.plugins.filter(plugin => 
+        ...commonConfig.plugins.filter(plugin => 
             plugin.constructor.name !== 'CopyPlugin' && 
             plugin.constructor.name !== 'DefinePlugin'
         ),
