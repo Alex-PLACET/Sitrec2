@@ -12,6 +12,8 @@
     "test-viewer-ci": "node test-viewer.js --exit",
     "test-all": "npx jest",
     "test-misb": "node ../test-all-misb-files.js",
+    "test-builds": "node test-all-builds.js",
+    "test-builds-quick": "node test-all-builds.js --quick",
     "check-three-imports": "node scripts/check-three-imports.js",
     "start": "npx webpack serve --config webpack.dev.js",
     "build": "npx webpack --config webpack.dev.js",

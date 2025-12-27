@@ -164,12 +164,19 @@ app.get('/sitrecServer/user.php', (req, res) => {
 });
 
 /**
- * Serve static files from build directory (after API routes)
+ * Serve static files from build directory under /sitrec path
+ * This must come before the SPA catch-all to serve JS/CSS/assets first
+ */
+app.use('/sitrec', express.static(DIST_DIR));
+
+/**
+ * Also serve at root for backwards compatibility
  */
 app.use(express.static(DIST_DIR));
 
 /**
- * Serve index.html for SPA routing
+ * SPA catch-all for client-side routing
+ * Only matches paths that don't have file extensions (not static assets)
  */
 app.get('/sitrec', (req, res) => {
     const indexPath = path.join(DIST_DIR, 'index.html');
@@ -180,10 +187,11 @@ app.get('/sitrec', (req, res) => {
     }
 });
 
-/**
- * Catch-all for index.html (SPA support) - handles all /sitrec/* paths
- */
-app.get('/sitrec/*', (req, res) => {
+app.get('/sitrec/*', (req, res, next) => {
+    const reqPath = req.path;
+    if (reqPath.match(/\.(js|css|json|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|map|glb|bin|mp4|webm)$/i)) {
+        return next();
+    }
     const indexPath = path.join(DIST_DIR, 'index.html');
     if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);

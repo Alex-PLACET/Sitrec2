@@ -134,7 +134,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
         });
 
         console.log(process.env.MAPBOX_TOKEN)
-        if (Globals.env.SITREC_USE_CUSTOM_TLE) {
+        if (Globals.env?.SITREC_USE_CUSTOM_TLE) {
 
             const menuName = Globals.env.SITREC_CUSTOM_TLE_MENU_NAME || "Custom Satellites";
             const tooltipText = Globals.env.SITREC_CUSTOM_TLE_TOOLTIP || "Load custom TLE data for satellites from the custom source.";
@@ -146,7 +146,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
 
         }
 
-        if (Globals.env.SITREC_ENABLE_DEFAULT_TLE_SOURCES) {
+        if (Globals.env?.SITREC_ENABLE_DEFAULT_TLE_SOURCES) {
 
             satGUI.add(this.satellites, "updateLEOSats").name("Load LEO Satellites For Date")
                 .onChange(function (x) {
@@ -171,7 +171,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
                 .tooltip("Get the CURRENT (not historical, now, real time) ACTIVE satellite positions. This will download the data from the internet, so it may take a few seconds.\n")
         }
 
-        if (Globals.env.SITREC_ENABLE_DEFAULT_TLE_SOURCES) {
+        if (Globals.env?.SITREC_ENABLE_DEFAULT_TLE_SOURCES) {
 
             satGUI.add(this.satellites, "updateSLOWSats").name("(Experimental) Load SLOW Satellites")
                 .onChange(function (x) {

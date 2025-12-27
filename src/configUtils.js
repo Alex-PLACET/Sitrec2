@@ -155,6 +155,15 @@ export async function setupConfigPaths() {
     SITREC_CACHE = "/cache/";
     SITREC_TERRAIN = "../sitrec-terrain/";
     
+    // Populate Globals.env from compile-time process.env values (injected by dotenv-webpack)
+    Globals.env = {
+        SITREC_USE_CUSTOM_TLE: process.env.SITREC_USE_CUSTOM_TLE,
+        SITREC_CUSTOM_TLE_MENU_NAME: process.env.SITREC_CUSTOM_TLE_MENU_NAME,
+        SITREC_CUSTOM_TLE_TOOLTIP: process.env.SITREC_CUSTOM_TLE_TOOLTIP,
+        SITREC_ENABLE_DEFAULT_TLE_SOURCES: process.env.SITREC_ENABLE_DEFAULT_TLE_SOURCES,
+        MAPBOX_TOKEN: process.env.MAPBOX_TOKEN,
+    };
+    
     // log all the exported variables in serverless mode
     console.log("SITREC_DOMAIN: ", SITREC_DOMAIN);
     console.log("SITREC_APP: ", SITREC_APP);
