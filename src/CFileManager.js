@@ -11,7 +11,7 @@ import {
 } from "./utils";
 import {fileSystemFetch} from "./fileSystemFetch";
 import JSZip from "jszip";
-import {CTrackFileKML, CTrackFileXML, parseSRT, parseXml} from "./KMLUtils";
+import {CTrackFile, CTrackFileKML, CTrackFileSRT, CTrackFileXML, parseXml} from "./KMLUtils";
 import {CRehoster} from "./CRehoster";
 import {CManager} from "./CManager";
 import {CustomManager, Globals, guiMenus, NodeMan, setNewSitchObject, setRenderOne, Sit, TrackManager} from "./Globals";
@@ -1442,23 +1442,15 @@ export class CFileManager extends CManager {
         } else {
             let isATrack = false;
             let isASitch = false;
-            if (fileManagerEntry.dataType === "json"
-                || fileExt === "kml"
-                || fileExt === "srt"
+            
+            // Use polymorphic doesContainTrack() for all CTrackFile types (KML, XML, SRT, etc.)
+            if (parsedFile instanceof CTrackFile) {
+                isATrack = parsedFile.doesContainTrack();
+            } else if (fileManagerEntry.dataType === "json"
                 || ( fileExt === "csv" && fileManagerEntry.dataType !== "Unknown")
                 || fileExt === "klv") {
                 isATrack = true;
             }
-
-            // kml files might not contain a track
-            if (fileExt === "kml") {
-                isATrack = parsedFile.doesContainTrack()
-            }
-
-            if (fileExt === "xml") {
-                isATrack = parsedFile.doesContainTrack();
-            }
-
 
             if (fileManagerEntry.dataType === "sitch") {
                 isASitch = true;
@@ -1466,8 +1458,8 @@ export class CFileManager extends CManager {
 
             if (isATrack) {
                 TrackManager.addTracks([filename], true)
-                if (fileExt === "kml") {
-                    console.log("KML file detected, adding anything else in the file")
+                // Call extractObjects for all CTrackFile types (no-op for most, extracts features for KML)
+                if (parsedFile instanceof CTrackFile) {
                     parsedFile.extractObjects()
                 }
                 return
@@ -1500,8 +1492,8 @@ export class CFileManager extends CManager {
 
             }
 
-            if (fileExt === "kml") {
-                console.log("KML file detected, adding anything else in the file")
+            // Handle CTrackFile types that don't contain tracks but may have other objects
+            if (parsedFile instanceof CTrackFile) {
                 parsedFile.extractObjects()
                 return;
             }
@@ -1763,7 +1755,7 @@ export class CFileManager extends CManager {
                     break;
                 case "srt": // SRT is a subtitle file, but is used by DJI drones to store per-frame coordinates.
                     dataType = "srt";
-                    parsed = parseSRT(decoder.decode(buffer));
+                    parsed = new CTrackFileSRT(decoder.decode(buffer));
                     break;
                 case "json": //
                     dataType = "json";

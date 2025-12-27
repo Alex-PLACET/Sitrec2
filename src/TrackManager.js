@@ -229,21 +229,20 @@ class CTrackManager extends CManager {
         const ext = getFileExtension(fileInfo.filename);
 
         let misb = null;
+        const trackFile = FileManager.get(sourceFile);
 
-        if (ext === "json") {
+        // Use polymorphic toMISB() for all CTrackFile types (KML, XML, SRT, etc.)
+        if (trackFile instanceof CTrackFile) {
+            misb = trackFile.toMISB(trackIndex);
+        } else if (ext === "json") {
             const geo = new CGeoJSON();
-            geo.json = FileManager.get(sourceFile);
+            geo.json = trackFile;
             misb = geo.toMISB(trackIndex);
-        } else if (ext === "kml") {
-            const trackFile = FileManager.get(sourceFile);
-            misb = trackFile.toMISB(trackIndex);
-        } else if (ext === "xml") {
-            const trackFile = FileManager.get(sourceFile);
-            misb = trackFile.toMISB(trackIndex);
-        } else if (ext === "srt" || ext === "klv") {
-            misb = FileManager.get(sourceFile);
+        } else if (ext === "klv") {
+            // KLV files are stored as raw MISB arrays
+            misb = trackFile;
         } else if (ext === "csv") {
-            const complexMisb = FileManager.get(sourceFile);
+            const complexMisb = trackFile;
             misb = extractIndexedMisbCSV(complexMisb, trackIndex)
         } else {
             assert(0, "Unknown file type: " + fileInfo.filename);
@@ -1133,8 +1132,8 @@ class CTrackManager extends CManager {
                     // }
                     // get the file from the file manager
 
-                    // is it a misb file?
-                    if (ext === "srt" || ext === "csv" || ext === "klv") {
+                    // is it a raw MISB file (CSV or KLV)? Note: SRT now uses CTrackFile interface
+                    if (ext === "csv" || ext === "klv") {
                         const misb = FileManager.get(trackFileName)
 
                         assert(misb, `Misb file ${trackFileName} not found when expected in findShortName`)

@@ -1,6 +1,6 @@
 import {CTrackFile} from "./CTrackFile";
-import {MISB, MISBFields} from "../MISBUtils";
-import {atan, degrees, radians, tan} from "../utils";
+import {MISB, MISBFields} from "../MISBFields";
+import {atan, degrees, radians, tan} from "../mathUtils";
 import {timeStrToEpoch} from "../DateTimeUtils";
 
 export const SRT = {
@@ -161,7 +161,8 @@ export class CTrackFileSRT extends CTrackFile {
 
     getShortName(trackIndex = 0, trackFileName = "") {
         if (trackFileName) {
-            return trackFileName;
+            // Strip the extension for consistency with other track types
+            return trackFileName.replace(/\.[^/.]+$/, "");
         }
         return "SRT Track";
     }

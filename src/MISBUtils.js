@@ -1,3 +1,14 @@
+// Re-export MISB and MISBFields from the dependency-free MISBFields.js
+// The constants are now in MISBFields.js for cleaner imports in tests
+export {MISB, MISBFields} from "./MISBFields";
+import {MISB} from "./MISBFields";
+import * as st0601 from './js/misb.js-main/src/st0601.mjs'
+import * as st0903 from './js/misb.js-main/src/st0903.mjs'
+import * as st0104 from './js/misb.js-main/src/st0104.mjs'
+import * as st0806 from './js/misb.js-main/src/st0806.mjs'
+import * as klv from './js/misb.js-main/src/klv.mjs'
+import {showError} from "./showError";
+
 // this MISB object is for the internal representation of the MISB data
 // i.e. it's the index of the data within
 // these are standard MISB 0601 tags (keys) and values as listed in
@@ -11,7 +22,8 @@
 // e.g. SensorRelativeAltitude = is the altitude above start point of the track
 // and is a value supplied by DJI Metadata.
 
-export const MISB = {
+// MISB constant is now imported from MISBFields.js
+const MISB_LEGACY = {
     Checksum: 1,
     UnixTimeStamp: 2,
     MissionID: 3,
@@ -257,7 +269,7 @@ const misbTagInfo = [
 // Some additional fields are listed here:
 // https://impleotv.com/content/misbcore/help//user-guide/st601-supported.html
 
-export const MISBFields = 121;
+// MISBFields is now imported and re-exported from MISBFields.js
 
 // all the MISB identifiers above are the MISB 0601.8 tag's LS Names with spaces removed
 // so to parse a generic CSV file, we first assume the header row is the LS Names
@@ -358,13 +370,6 @@ export function parseMISB1CSV(csv) {
 // console.log(json)
 
 //const { st0601, st0903, st0104, st0806, klv } = require('./js/misb.js-main/index.js')
-
-import * as st0601 from './js/misb.js-main/src/st0601.mjs'
-import * as st0903 from './js/misb.js-main/src/st0903.mjs'
-import * as st0104 from './js/misb.js-main/src/st0104.mjs'
-import * as st0806 from './js/misb.js-main/src/st0806.mjs'
-import * as klv from './js/misb.js-main/src/klv.mjs'
-import {showError} from "./showError";
 
 const standards = [st0601, st0903, st0806, st0104]
 const packets = {}
