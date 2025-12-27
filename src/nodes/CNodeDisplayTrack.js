@@ -257,8 +257,8 @@ export class CNodeDisplayTrack extends CNode3DGroup {
                 new CNodeGUIValue({
                     id: this.id + "timeOffset",
                     value: 0,
-                    start: -60,
-                    end: 60,
+                    start: -600,
+                    end: 600,
                     step: 0.001,
                     desc: "Time offset (sec)",
                     unitType: "none",
