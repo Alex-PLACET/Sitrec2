@@ -263,7 +263,7 @@ test.describe.serial('UI Interaction Tests - Playwright', () => {
         });
 
         const fileChooser = await fileChooserPromise;
-        await fileChooser.setFiles(['/Users/mick/Dropbox/sitrec-dev/sitrec/data/test/stanag-test-track.xml']);
+        await fileChooser.setFiles(['/Users/mick/Dropbox/sitrec-dev/sitrec/data/test/elevated_track.xml']);
 
         await consolePromise;
 

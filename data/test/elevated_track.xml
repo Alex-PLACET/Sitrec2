@@ -1,0 +1,193 @@
+<?xml version="1.0"?>
+<nitsRoot xmlns="urn:nato:niia:stanag:4676:isrtrackingstandard:b:1"
+          xmlns:slab="urn:nato:stanag:4774:confidentialitymetadatalabel:1:0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="urn:nato:stanag:4774:confidentialitymetadatalabel:1:0 .\Stanag_4676B_template.xsd">
+  <slab:originatorConfidentialityLabel>
+    <slab:ConfidentialityInformation>
+      <slab:PolicyIdentifier>Default</slab:PolicyIdentifier>
+      <slab:Classification>UNCLASSIFIED</slab:Classification>
+    </slab:ConfidentialityInformation>
+    <slab:CreationDateTime>2025-12-10T15:06:07</slab:CreationDateTime>
+  </slab:originatorConfidentialityLabel>
+  <profile>STANDALONE</profile>
+  <lidScopeUID/>
+  <numFiles>1</numFiles>
+  <msgCreatedTime>2025-12-10T15:06:07</msgCreatedTime>
+  <nitsVersion>B.1</nitsVersion>
+  <product>
+    <id>SOCET GXP 4.5.1.4.171 </id>
+    <name>GXP InMotion Desktop 2024 4.5.1.4.171 </name>
+  </product>
+  <sensor>
+    <uid>b3b848a5-b6c7-47a7-a49c-311a5076d4d9</uid>
+    <name>FMV</name>
+    <modality>IMAGE_SIGNATURE</modality>
+    <imagingSensor>
+      <motionImageryCoreID>b3b848a5-b6c7-47a7-a49c-311a5076d4d9</motionImageryCoreID>
+      <band>VIS</band>
+      <phenomenology>VIS</phenomenology>
+    </imagingSensor>
+  </sensor>
+  <tracker type="AUTOMATIC_TRACKER">
+    <uid>622a3a5d-d652-4ea9-994b-557fc0801484</uid>
+    <name>SOCET GXP</name>
+    <description>GXP InMotion fast tracks</description>
+    <version>4.5.1.4.171 </version>
+  </tracker>
+  <message numTracks="1">
+    <baseTime>2016-06-29T15:57:36.006Z</baseTime>
+    <relTimeIncrement>0.000001</relTimeIncrement>
+    <detection>
+      <lid>1</lid>
+      <relTime>0</relTime>
+      <sensorUID/>
+    </detection>
+    <track>
+      <uid>da7bd476-c6f9-40ac-b5c7-7050f654d57b</uid>
+      <segment>
+        <uid>da7bd476-c6f9-40ac-b5c7-7050f654d57b</uid>
+        <status>INITIATING</status>
+        <initiationReason>FOUND</initiationReason>
+        <tp posLow="40.45369795658096 -104.88018020218584 1430.7568446667865" posHigh="40.421348598599124 -104.86668420008492 3305.4438118077815" posImage="1685 848" pointType="USER_SELECTED" frameNumber="42">
+          <uid>0af6924c-cd39-45e0-8d3e-7bbcaf95b43d</uid>
+          <relTime>0</relTime>
+          <dynSrcLID>1</dynSrcLID>
+          <processType>AUTOMATIC</processType>
+          <dynamics cs="WGS_84">
+            <pos>40.448281922640632 -104.877919707133 1744.3974248617887</pos>
+          </dynamics>
+          <evidence type="DIRECT">
+            <detectionLID>1</detectionLID>
+          </evidence>
+        </tp>
+        <tp posLow="40.453668708060299 -104.88168456041136 1430.9102330142632" posHigh="40.421837927572916 -104.86351548000233 3306.0355338426307" posImage="1384 807" pointType="USER_SELECTED" frameNumber="178">
+          <uid>26ca6fae-9769-4ff4-9a0e-0f14151464ff</uid>
+          <relTime>4529028</relTime>
+          <dynSrcLID>2</dynSrcLID>
+          <processType>AUTOMATIC</processType>
+          <dynamics cs="WGS_84">
+            <pos>40.448343316955324 -104.87864350364011 1744.3974248608574</pos>
+          </dynamics>
+          <evidence type="DIRECT">
+            <detectionLID>2</detectionLID>
+          </evidence>
+        </tp>
+        <tp posLow="40.453673675594814 -104.88286739259752 1428.947768246755" posHigh="40.422343701832212 -104.86109759147028 3303.8522564005107" posImage="1154 804" pointType="USER_SELECTED" frameNumber="284">
+          <uid>19eeaf6c-3dc9-41e1-96c9-ef1b63b9e6cd</uid>
+          <relTime>8069076</relTime>
+          <dynSrcLID>3</dynSrcLID>
+          <processType>AUTOMATIC</processType>
+          <dynamics cs="WGS_84">
+            <pos>40.448398613640208 -104.87920036777291 1744.3974248608574</pos>
+          </dynamics>
+          <evidence type="DIRECT">
+            <detectionLID>3</detectionLID>
+          </evidence>
+        </tp>
+        <tp posLow="40.453588873535445 -104.88375712062049 1430.5020767766982" posHigh="40.42284798237781 -104.85908479302076 3301.6249395040795" posImage="1019 778" pointType="USER_SELECTED" frameNumber="374">
+          <uid>01655623-97f9-45b3-87bf-15888288d78d</uid>
+          <relTime>11062003</relTime>
+          <dynSrcLID>4</dynSrcLID>
+          <processType>AUTOMATIC</processType>
+          <dynamics cs="WGS_84">
+            <pos>40.448428078131109 -104.87961324781446 1744.3974248589948</pos>
+          </dynamics>
+          <evidence type="DIRECT">
+            <detectionLID>4</detectionLID>
+          </evidence>
+        </tp>
+        <tp posLow="40.453530050158697 -104.8848021194833 1430.5911666946486" posHigh="40.423500912566354 -104.85678161281993 3301.4486645329744" posImage="905 741" pointType="USER_SELECTED" frameNumber="478">
+          <uid>7bc95d6d-3d59-4b9a-bea4-0b25a36d9d57</uid>
+          <relTime>14535538</relTime>
+          <dynSrcLID>5</dynSrcLID>
+          <processType>AUTOMATIC</processType>
+          <dynamics cs="WGS_84">
+            <pos>40.448489445744045 -104.88009648775832 1744.3974248608574</pos>
+          </dynamics>
+          <evidence type="DIRECT">
+            <detectionLID>5</detectionLID>
+          </evidence>
+        </tp>
+        <tp posLow="40.453430213830984 -104.88565193695634 1431.2510710312054" posHigh="40.424113454896407 -104.85481121012108 3302.6541189337149" posImage="820 698" pointType="USER_SELECTED" frameNumber="568">
+          <uid>129cb48d-edad-4c42-8eb4-97c224131525</uid>
+          <relTime>17566169</relTime>
+          <dynSrcLID>6</dynSrcLID>
+          <processType>AUTOMATIC</processType>
+          <dynamics cs="WGS_84">
+            <pos>40.44852096216858 -104.88048501086297 1744.3974248599261</pos>
+          </dynamics>
+          <evidence type="DIRECT">
+            <detectionLID>6</detectionLID>
+          </evidence>
+        </tp>
+        <tp posLow="40.453298768189448 -104.88645156212587 1432.4461748339236" posHigh="40.424744983821753 -104.85291216799416 3303.8599747242406" posImage="741 651" pointType="USER_SELECTED" frameNumber="658">
+          <uid>9c6a5a24-bce9-460f-a964-c9b07e1db12c</uid>
+          <relTime>20562671</relTime>
+          <dynSrcLID>7</dynSrcLID>
+          <processType>AUTOMATIC</processType>
+          <dynamics cs="WGS_84">
+            <pos>40.448535555831327 -104.88085389957698 1744.3974248608574</pos>
+          </dynamics>
+          <evidence type="DIRECT">
+            <detectionLID>7</detectionLID>
+          </evidence>
+        </tp>
+        <tp posLow="40.453144698254192 -104.88741976314806 1432.1667005568743" posHigh="40.425560227793682 -104.85064009430383 3305.0642100805417" posImage="658 615" pointType="USER_SELECTED" frameNumber="768">
+          <uid>e67ac948-ff2e-4b7a-8f7e-ded5c2e54935</uid>
+          <relTime>24209202</relTime>
+          <dynSrcLID>8</dynSrcLID>
+          <processType>AUTOMATIC</processType>
+          <dynamics cs="WGS_84">
+            <pos>40.448542714671952 -104.88128054132943 1744.3974248608574</pos>
+          </dynamics>
+          <evidence type="DIRECT">
+            <detectionLID>8</detectionLID>
+          </evidence>
+        </tp>
+        <tp posLow="40.452963247226613 -104.88845502034978 1434.1956667788327" posHigh="40.426465004663733 -104.8485165921533 3307.5301358746365" posImage="524 572" pointType="USER_SELECTED" frameNumber="876">
+          <uid>04f28b64-3ac4-4b4e-ab66-a957f2b93ddd</uid>
+          <relTime>27813084</relTime>
+          <dynSrcLID>9</dynSrcLID>
+          <processType>AUTOMATIC</processType>
+          <dynamics cs="WGS_84">
+            <pos>40.448572250230555 -104.88183325086315 1744.3974248599261</pos>
+          </dynamics>
+          <evidence type="DIRECT">
+            <detectionLID>9</detectionLID>
+          </evidence>
+        </tp>
+        <tp posLow="40.452835963603846 -104.88943562313918 1434.2989880293608" posHigh="40.427459899211989 -104.8466090712015 3308.9940737104043" posImage="398 532" pointType="USER_SELECTED" frameNumber="981">
+          <uid>65c73c0b-d813-490a-8c1a-597896bdb59d</uid>
+          <relTime>31314204</relTime>
+          <dynSrcLID>10</dynSrcLID>
+          <processType>AUTOMATIC</processType>
+          <dynamics cs="WGS_84">
+            <pos>40.448635410275841 -104.88234237265586 1744.3974248608574</pos>
+          </dynamics>
+          <evidence type="DIRECT">
+            <detectionLID>10</detectionLID>
+          </evidence>
+        </tp>
+        <tp posLow="40.452688857851307 -104.89025485687986 1434.9631353961304" posHigh="40.428687182492446 -104.84468647311122 3308.3328704563901" posImage="265 476" pointType="USER_SELECTED" frameNumber="1096">
+          <uid>4bccd98c-2826-4669-bf65-73764dc795eb</uid>
+          <relTime>35160765</relTime>
+          <dynSrcLID>11</dynSrcLID>
+          <processType>AUTOMATIC</processType>
+          <dynamics cs="WGS_84">
+            <pos>40.44872159056218 -104.88271820500157 1744.3974248608574</pos>
+          </dynamics>
+          <evidence type="DIRECT">
+            <detectionLID>11</detectionLID>
+          </evidence>
+        </tp>
+      </segment>
+      <object>
+        <description>FALSE TARGET</description>
+        <confidence type="PROBABILITY">
+          <value>99</value>
+        </confidence>
+      </object>
+    </track>
+  </message>
+</nitsRoot>
