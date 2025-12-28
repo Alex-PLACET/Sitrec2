@@ -80,19 +80,19 @@ describe('CTrackFileSTANAG', () => {
             expect(misb.length).toBe(11);
         });
 
-        test('first entry has correct latitude from test file', () => {
+        test('first entry has correct latitude from test file (platform/posHigh)', () => {
             const misb = trackFile.toMISB();
-            expect(misb[0][MISB.SensorLatitude]).toBeCloseTo(40.448281922640632, 6);
+            expect(misb[0][MISB.SensorLatitude]).toBeCloseTo(40.421348598599124, 6);
         });
 
-        test('first entry has correct longitude from test file', () => {
+        test('first entry has correct longitude from test file (platform/posHigh)', () => {
             const misb = trackFile.toMISB();
-            expect(misb[0][MISB.SensorLongitude]).toBeCloseTo(-104.877919707133, 6);
+            expect(misb[0][MISB.SensorLongitude]).toBeCloseTo(-104.86668420008492, 6);
         });
 
-        test('first entry has correct altitude from test file', () => {
+        test('first entry has correct altitude from test file (platform/posHigh)', () => {
             const misb = trackFile.toMISB();
-            expect(misb[0][MISB.SensorTrueAltitude]).toBeCloseTo(1744.3974248617887, 2);
+            expect(misb[0][MISB.SensorTrueAltitude]).toBeCloseTo(3305.4438118077815, 2);
         });
 
         test('first entry has timestamp', () => {
@@ -122,76 +122,76 @@ describe('CTrackFileSTANAG', () => {
             warnSpy.mockRestore();
         });
 
-        describe('posLow track (index 1)', () => {
-            test('returns 11 track points for posLow track', () => {
+        describe('normal track (index 1)', () => {
+            test('returns 11 track points for normal track', () => {
                 const misb = trackFile.toMISB(1);
                 expect(Array.isArray(misb)).toBe(true);
                 expect(misb.length).toBe(11);
             });
 
-            test('first posLow entry has correct latitude (ground intersection)', () => {
+            test('first normal entry has correct latitude (target position)', () => {
                 const misb = trackFile.toMISB(1);
-                expect(misb[0][MISB.SensorLatitude]).toBeCloseTo(40.45369795658096, 6);
+                expect(misb[0][MISB.SensorLatitude]).toBeCloseTo(40.448281922640632, 6);
             });
 
-            test('first posLow entry has correct longitude', () => {
+            test('first normal entry has correct longitude', () => {
                 const misb = trackFile.toMISB(1);
-                expect(misb[0][MISB.SensorLongitude]).toBeCloseTo(-104.88018020218584, 6);
+                expect(misb[0][MISB.SensorLongitude]).toBeCloseTo(-104.877919707133, 6);
             });
 
-            test('first posLow entry has correct altitude (lower than main track)', () => {
+            test('first normal entry has correct altitude', () => {
                 const misb = trackFile.toMISB(1);
-                expect(misb[0][MISB.SensorTrueAltitude]).toBeCloseTo(1430.7568446667865, 2);
+                expect(misb[0][MISB.SensorTrueAltitude]).toBeCloseTo(1744.3974248617887, 2);
             });
         });
 
-        describe('posHigh track (index 2)', () => {
-            test('returns 11 track points for posHigh track', () => {
+        describe('ground track (index 2)', () => {
+            test('returns 11 track points for ground track', () => {
                 const misb = trackFile.toMISB(2);
                 expect(Array.isArray(misb)).toBe(true);
                 expect(misb.length).toBe(11);
             });
 
-            test('first posHigh entry has correct latitude (sensor position)', () => {
+            test('first ground entry has correct latitude (ground intersection)', () => {
                 const misb = trackFile.toMISB(2);
-                expect(misb[0][MISB.SensorLatitude]).toBeCloseTo(40.421348598599124, 6);
+                expect(misb[0][MISB.SensorLatitude]).toBeCloseTo(40.45369795658096, 6);
             });
 
-            test('first posHigh entry has correct longitude', () => {
+            test('first ground entry has correct longitude', () => {
                 const misb = trackFile.toMISB(2);
-                expect(misb[0][MISB.SensorLongitude]).toBeCloseTo(-104.86668420008492, 6);
+                expect(misb[0][MISB.SensorLongitude]).toBeCloseTo(-104.88018020218584, 6);
             });
 
-            test('first posHigh entry has correct altitude (higher than main track)', () => {
+            test('first ground entry has correct altitude (lower than other tracks)', () => {
                 const misb = trackFile.toMISB(2);
-                expect(misb[0][MISB.SensorTrueAltitude]).toBeCloseTo(3305.4438118077815, 2);
+                expect(misb[0][MISB.SensorTrueAltitude]).toBeCloseTo(1430.7568446667865, 2);
             });
         });
     });
 
     describe('getShortName', () => {
-        test('returns filename without extension for track 0', () => {
-            expect(trackFile.getShortName(0, 'elevated_track.xml')).toBe('elevated_track');
+        test('returns filename with (Platform) suffix for track 0', () => {
+            expect(trackFile.getShortName(0, 'elevated_track.xml')).toBe('elevated_track (Platform)');
         });
 
-        test('returns filename with (Ground) suffix for track 1', () => {
-            expect(trackFile.getShortName(1, 'elevated_track.xml')).toBe('elevated_track (Ground)');
+        test('returns filename without suffix for track 1 (normal track)', () => {
+            expect(trackFile.getShortName(1, 'elevated_track.xml')).toBe('elevated_track');
         });
 
-        test('returns filename with (Sensor) suffix for track 2', () => {
-            expect(trackFile.getShortName(2, 'elevated_track.xml')).toBe('elevated_track (Sensor)');
+        test('returns filename with (Ground) suffix for track 2', () => {
+            expect(trackFile.getShortName(2, 'elevated_track.xml')).toBe('elevated_track (Ground)');
         });
 
-        test('returns default name when no filename provided', () => {
-            expect(trackFile.getShortName()).toBe('STANAG Track');
+        test('returns default name with (Platform) suffix when no filename provided', () => {
+            expect(trackFile.getShortName()).toBe('STANAG Track (Platform)');
         });
 
-        test('returns default name with suffix for track 1 when no filename', () => {
-            expect(trackFile.getShortName(1)).toBe('STANAG Track (Ground)');
+        test('returns default name without suffix for track 1 when no filename', () => {
+            expect(trackFile.getShortName(1)).toBe('STANAG Track');
         });
 
-        test('returns default name with suffix for track 2 when no filename', () => {
-            expect(trackFile.getShortName(2)).toBe('STANAG Track (Sensor)');
+        test('returns default name with (Ground) suffix for track 2 when no filename', () => {
+            expect(trackFile.getShortName(2)).toBe('STANAG Track (Ground)');
         });
     });
 

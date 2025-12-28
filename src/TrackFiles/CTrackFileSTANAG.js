@@ -83,12 +83,16 @@ export class CTrackFileSTANAG extends CTrackFile {
                 const relTime = tp.relTime?.["#text"] ? Number(tp.relTime["#text"]) : 0;
 
                 let posStr;
-                if (trackIndex === 0) {
+                if (this._hasPosLowHigh()) {
+                    if (trackIndex === 0) {
+                        posStr = tp.posHigh;
+                    } else if (trackIndex === 1) {
+                        posStr = tp.dynamics?.pos?.["#text"];
+                    } else if (trackIndex === 2) {
+                        posStr = tp.posLow;
+                    }
+                } else {
                     posStr = tp.dynamics?.pos?.["#text"];
-                } else if (trackIndex === 1) {
-                    posStr = tp.posLow;
-                } else if (trackIndex === 2) {
-                    posStr = tp.posHigh;
                 }
 
                 if (!posStr) {
@@ -128,10 +132,14 @@ export class CTrackFileSTANAG extends CTrackFile {
 
     getShortName(trackIndex = 0, trackFileName = "") {
         let baseName = trackFileName ? trackFileName.replace(/\.[^/.]+$/, "") : "STANAG Track";
-        if (trackIndex === 1) {
-            return baseName + " (Ground)";
-        } else if (trackIndex === 2) {
-            return baseName + " (Sensor)";
+        if (this._hasPosLowHigh()) {
+            if (trackIndex === 0) {
+                return baseName + " (Platform)";
+            } else if (trackIndex === 1) {
+                return baseName;
+            } else if (trackIndex === 2) {
+                return baseName + " (Ground)";
+            }
         }
         return baseName;
     }
