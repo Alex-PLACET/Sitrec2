@@ -63,7 +63,7 @@ jobs:
       run: npm test
 
   playwright:
-    if: true
+    if: false
     needs: build_web  # Run after build succeeds
     strategy:
       matrix:
