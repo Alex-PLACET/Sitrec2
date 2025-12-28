@@ -29,9 +29,22 @@ export class CTrackFileSTANAG extends CTrackFile {
         }
     }
 
+    _hasPosLowHigh() {
+        try {
+            const track = this.data.nitsRoot?.message?.track;
+            const trackPoints = track?.segment?.tp;
+            if (!trackPoints) return false;
+            const tpArray = Array.isArray(trackPoints) ? trackPoints : [trackPoints];
+            return tpArray.some(tp => tp.posLow || tp.posHigh);
+        } catch (e) {
+            return false;
+        }
+    }
+
     toMISB(trackIndex = 0) {
-        if (trackIndex !== 0) {
-            console.warn("STANAGToMISB: STANAG XML files only contain a single track, index " + trackIndex + " is invalid");
+        const trackCount = this.getTrackCount();
+        if (trackIndex < 0 || trackIndex >= trackCount) {
+            console.warn("STANAGToMISB: Invalid track index " + trackIndex + ", file has " + trackCount + " tracks");
             return false;
         }
 
@@ -68,10 +81,17 @@ export class CTrackFileSTANAG extends CTrackFile {
             for (let i = 0; i < tpArray.length; i++) {
                 const tp = tpArray[i];
                 const relTime = tp.relTime?.["#text"] ? Number(tp.relTime["#text"]) : 0;
-                const posStr = tp.dynamics?.pos?.["#text"];
+
+                let posStr;
+                if (trackIndex === 0) {
+                    posStr = tp.dynamics?.pos?.["#text"];
+                } else if (trackIndex === 1) {
+                    posStr = tp.posLow;
+                } else if (trackIndex === 2) {
+                    posStr = tp.posHigh;
+                }
 
                 if (!posStr) {
-                    console.warn("STANAGToMISB: Track point " + i + " missing position data");
                     continue;
                 }
 
@@ -95,7 +115,7 @@ export class CTrackFileSTANAG extends CTrackFile {
             }
 
             if (misb.length === 0) {
-                console.warn("STANAGToMISB: No valid track points found");
+                console.warn("STANAGToMISB: No valid track points found for track index " + trackIndex);
                 return false;
             }
 
@@ -107,17 +127,23 @@ export class CTrackFileSTANAG extends CTrackFile {
     }
 
     getShortName(trackIndex = 0, trackFileName = "") {
-        if (trackFileName) {
-            return trackFileName.replace(/\.[^/.]+$/, "");
+        let baseName = trackFileName ? trackFileName.replace(/\.[^/.]+$/, "") : "STANAG Track";
+        if (trackIndex === 1) {
+            return baseName + " (Ground)";
+        } else if (trackIndex === 2) {
+            return baseName + " (Sensor)";
         }
-        return "STANAG Track";
+        return baseName;
     }
 
     hasMoreTracks(trackIndex = 0) {
-        return false;
+        return trackIndex < this.getTrackCount() - 1;
     }
 
     getTrackCount() {
+        if (this._hasPosLowHigh()) {
+            return 3;
+        }
         return 1;
     }
 

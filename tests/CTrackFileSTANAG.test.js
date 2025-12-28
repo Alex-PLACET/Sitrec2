@@ -75,8 +75,8 @@ describe('CTrackFileSTANAG', () => {
             expect(misb.length).toBeGreaterThan(0);
         });
 
-        test('returns 11 track points from test file', () => {
-            const misb = trackFile.toMISB();
+        test('returns 11 track points from test file for track 0', () => {
+            const misb = trackFile.toMISB(0);
             expect(misb.length).toBe(11);
         });
 
@@ -110,7 +110,7 @@ describe('CTrackFileSTANAG', () => {
 
         test('returns false for invalid track index', () => {
             const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
-            const result = trackFile.toMISB(1);
+            const result = trackFile.toMISB(3);
             expect(result).toBe(false);
             warnSpy.mockRestore();
         });
@@ -121,29 +121,118 @@ describe('CTrackFileSTANAG', () => {
             expect(invalidTrack.toMISB()).toBe(false);
             warnSpy.mockRestore();
         });
+
+        describe('posLow track (index 1)', () => {
+            test('returns 11 track points for posLow track', () => {
+                const misb = trackFile.toMISB(1);
+                expect(Array.isArray(misb)).toBe(true);
+                expect(misb.length).toBe(11);
+            });
+
+            test('first posLow entry has correct latitude (ground intersection)', () => {
+                const misb = trackFile.toMISB(1);
+                expect(misb[0][MISB.SensorLatitude]).toBeCloseTo(40.45369795658096, 6);
+            });
+
+            test('first posLow entry has correct longitude', () => {
+                const misb = trackFile.toMISB(1);
+                expect(misb[0][MISB.SensorLongitude]).toBeCloseTo(-104.88018020218584, 6);
+            });
+
+            test('first posLow entry has correct altitude (lower than main track)', () => {
+                const misb = trackFile.toMISB(1);
+                expect(misb[0][MISB.SensorTrueAltitude]).toBeCloseTo(1430.7568446667865, 2);
+            });
+        });
+
+        describe('posHigh track (index 2)', () => {
+            test('returns 11 track points for posHigh track', () => {
+                const misb = trackFile.toMISB(2);
+                expect(Array.isArray(misb)).toBe(true);
+                expect(misb.length).toBe(11);
+            });
+
+            test('first posHigh entry has correct latitude (sensor position)', () => {
+                const misb = trackFile.toMISB(2);
+                expect(misb[0][MISB.SensorLatitude]).toBeCloseTo(40.421348598599124, 6);
+            });
+
+            test('first posHigh entry has correct longitude', () => {
+                const misb = trackFile.toMISB(2);
+                expect(misb[0][MISB.SensorLongitude]).toBeCloseTo(-104.86668420008492, 6);
+            });
+
+            test('first posHigh entry has correct altitude (higher than main track)', () => {
+                const misb = trackFile.toMISB(2);
+                expect(misb[0][MISB.SensorTrueAltitude]).toBeCloseTo(3305.4438118077815, 2);
+            });
+        });
     });
 
     describe('getShortName', () => {
-        test('returns filename without extension when provided', () => {
+        test('returns filename without extension for track 0', () => {
             expect(trackFile.getShortName(0, 'elevated_track.xml')).toBe('elevated_track');
+        });
+
+        test('returns filename with (Ground) suffix for track 1', () => {
+            expect(trackFile.getShortName(1, 'elevated_track.xml')).toBe('elevated_track (Ground)');
+        });
+
+        test('returns filename with (Sensor) suffix for track 2', () => {
+            expect(trackFile.getShortName(2, 'elevated_track.xml')).toBe('elevated_track (Sensor)');
         });
 
         test('returns default name when no filename provided', () => {
             expect(trackFile.getShortName()).toBe('STANAG Track');
         });
+
+        test('returns default name with suffix for track 1 when no filename', () => {
+            expect(trackFile.getShortName(1)).toBe('STANAG Track (Ground)');
+        });
+
+        test('returns default name with suffix for track 2 when no filename', () => {
+            expect(trackFile.getShortName(2)).toBe('STANAG Track (Sensor)');
+        });
     });
 
     describe('hasMoreTracks', () => {
-        test('returns false (XML files contain single track)', () => {
-            expect(trackFile.hasMoreTracks()).toBe(false);
-            expect(trackFile.hasMoreTracks(0)).toBe(false);
-            expect(trackFile.hasMoreTracks(1)).toBe(false);
+        test('returns true for track 0 (file has posLow/posHigh)', () => {
+            expect(trackFile.hasMoreTracks(0)).toBe(true);
+        });
+
+        test('returns true for track 1 (file has posHigh)', () => {
+            expect(trackFile.hasMoreTracks(1)).toBe(true);
+        });
+
+        test('returns false for track 2 (last track)', () => {
+            expect(trackFile.hasMoreTracks(2)).toBe(false);
         });
     });
 
     describe('getTrackCount', () => {
-        test('returns 1 (XML files contain single track)', () => {
-            expect(trackFile.getTrackCount()).toBe(1);
+        test('returns 3 (file has posLow/posHigh tracks)', () => {
+            expect(trackFile.getTrackCount()).toBe(3);
+        });
+
+        test('returns 1 for file without posLow/posHigh', () => {
+            const minimalXml = parseXml(`<?xml version="1.0"?>
+                <nitsRoot xmlns="urn:nato:niia:stanag:4676:isrtrackingstandard:b:1">
+                    <message>
+                        <baseTime>2016-06-29T15:57:36.006Z</baseTime>
+                        <track>
+                            <segment>
+                                <tp>
+                                    <relTime>0</relTime>
+                                    <dynamics cs="WGS_84">
+                                        <pos>40.0 -104.0 1000.0</pos>
+                                    </dynamics>
+                                </tp>
+                            </segment>
+                        </track>
+                    </message>
+                </nitsRoot>`);
+            const minimalTrack = new CTrackFileSTANAG(minimalXml);
+            expect(minimalTrack.getTrackCount()).toBe(1);
         });
     });
 
