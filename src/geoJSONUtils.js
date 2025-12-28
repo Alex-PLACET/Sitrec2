@@ -1,4 +1,4 @@
-import {MISB, MISBFields} from "./MISBUtils";
+import {MISB, MISBFields} from "./MISBFields";
 import {assert} from "./assert";
 
 export class CGeoJSON {
