@@ -75,6 +75,22 @@ app.get('/', (req, res) => {
             font-size: 12px;
             border-bottom: 1px solid #3e3e42;
             color: #4ec9b0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .worker-timer {
+            color: #9cdcfe;
+            font-weight: normal;
+            font-size: 11px;
+            white-space: nowrap;
+        }
+        .worker-name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            flex: 1;
+            margin-right: 8px;
         }
         .worker-output {
             flex: 1;
@@ -109,6 +125,7 @@ app.get('/', (req, res) => {
         <h1>🧪 Sitrec Test Viewer (4 Workers)</h1>
         <div id="status" class="status running">
             <span id="statusText">Connecting...</span>
+            <span id="elapsedTime" style="margin-left: 20px; color: #9cdcfe;"></span>
             <div>
                 <button id="abortBtn" onclick="abortTests()" style="background: #f48771; margin-right: 8px;">Abort</button>
                 <button id="clearBtn" onclick="clearOutput()">Clear</button>
@@ -116,19 +133,19 @@ app.get('/', (req, res) => {
         </div>
         <div id="workers">
             <div class="worker-column">
-                <div class="worker-header">Waiting...</div>
+                <div class="worker-header"><span class="worker-name" id="name-0">Waiting...</span><span class="worker-timer" id="timer-0"></span></div>
                 <div class="worker-output" id="worker-1"></div>
             </div>
             <div class="worker-column">
-                <div class="worker-header">Waiting...</div>
+                <div class="worker-header"><span class="worker-name" id="name-1">Waiting...</span><span class="worker-timer" id="timer-1"></span></div>
                 <div class="worker-output" id="worker-2"></div>
             </div>
             <div class="worker-column">
-                <div class="worker-header">Waiting...</div>
+                <div class="worker-header"><span class="worker-name" id="name-2">Waiting...</span><span class="worker-timer" id="timer-2"></span></div>
                 <div class="worker-output" id="worker-3"></div>
             </div>
             <div class="worker-column">
-                <div class="worker-header">Waiting...</div>
+                <div class="worker-header"><span class="worker-name" id="name-3">Waiting...</span><span class="worker-timer" id="timer-3"></span></div>
                 <div class="worker-output" id="worker-4"></div>
             </div>
         </div>
@@ -136,6 +153,7 @@ app.get('/', (req, res) => {
     <script>
         const status = document.getElementById('status');
         const statusText = document.getElementById('statusText');
+        const elapsedTimeEl = document.getElementById('elapsedTime');
         const abortBtn = document.getElementById('abortBtn');
         const workers = [
             document.getElementById('worker-1'),
@@ -151,7 +169,43 @@ app.get('/', (req, res) => {
             document.querySelector('.worker-column:nth-child(4) .worker-header')
         ];
         
+        const workerTimers = [
+            document.getElementById('timer-0'),
+            document.getElementById('timer-1'),
+            document.getElementById('timer-2'),
+            document.getElementById('timer-3')
+        ];
+        
+        const workerNames = [
+            document.getElementById('name-0'),
+            document.getElementById('name-1'),
+            document.getElementById('name-2'),
+            document.getElementById('name-3')
+        ];
+        
         const workerAutoScroll = [true, true, true, true];
+        const workerStartTimes = [null, null, null, null];
+        let globalStartTime = null;
+        let timerInterval = null;
+        
+        function formatTime(ms) {
+            const seconds = Math.floor(ms / 1000);
+            const minutes = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return minutes > 0 ? minutes + 'm ' + secs + 's' : secs + 's';
+        }
+        
+        function updateTimers() {
+            const now = Date.now();
+            if (globalStartTime) {
+                elapsedTimeEl.textContent = 'Total: ' + formatTime(now - globalStartTime);
+            }
+            for (let i = 0; i < 4; i++) {
+                if (workerStartTimes[i]) {
+                    workerTimers[i].textContent = formatTime(now - workerStartTimes[i]);
+                }
+            }
+        }
         
         workers.forEach((worker, idx) => {
             worker.addEventListener('scroll', () => {
@@ -165,6 +219,8 @@ app.get('/', (req, res) => {
         ws.onopen = () => {
             statusText.textContent = 'Running tests...';
             status.className = 'status running';
+            globalStartTime = Date.now();
+            timerInterval = setInterval(updateTimers, 1000);
         };
         
         ws.onmessage = (event) => {
@@ -173,7 +229,9 @@ app.get('/', (req, res) => {
             if (data.type === 'workerName') {
                 const workerIdx = data.worker;
                 const testName = data.name;
-                workerHeaders[workerIdx].textContent = testName;
+                workerNames[workerIdx].textContent = testName;
+                workerStartTimes[workerIdx] = Date.now();
+                workerTimers[workerIdx].textContent = '0s';
             } else if (data.type === 'output') {
                 let line = data.text;
                 const workerIdx = data.worker || 0;
@@ -200,14 +258,17 @@ app.get('/', (req, res) => {
             } else if (data.type === 'complete') {
                 const hasFailures = data.code !== 0;
                 status.className = hasFailures ? 'status error' : 'status complete';
+                const totalTime = globalStartTime ? ' (' + formatTime(Date.now() - globalStartTime) + ')' : '';
                 statusText.textContent = hasFailures 
-                    ? '❌ Tests completed with failures' 
-                    : '✅ All tests passed!';
+                    ? '❌ Tests completed with failures' + totalTime
+                    : '✅ All tests passed!' + totalTime;
                 abortBtn.disabled = true;
+                if (timerInterval) clearInterval(timerInterval);
             } else if (data.type === 'aborted') {
                 status.className = 'status error';
                 statusText.textContent = '🛑 Tests aborted by user';
                 abortBtn.disabled = true;
+                if (timerInterval) clearInterval(timerInterval);
             } else if (data.type === 'redirect') {
                 statusText.textContent = '✅ Tests passed! Redirecting to deployed site...';
                 setTimeout(() => {
@@ -302,7 +363,8 @@ wss.on('connection', (ws) => {
     let isAborting = false;
     const testToWorkerMap = new Map();
     const workerTestNames = new Map();
-    let nextWorker = 0;
+    const pendingTests = new Map(); // testNum -> testName (tests waiting for worker assignment)
+    let lastTestName = null; // Last test name seen (for worker assignment)
     let lastSeenWorker = 0;
     
     // Handle incoming messages from client
@@ -325,16 +387,23 @@ wss.on('connection', (ws) => {
         // Ignore errors - quarantine may not exist on all files
     });
     
-    // Run tests
-    testProcess = spawn('npx', ['playwright', 'test'], {
+    // Run tests with line reporter for progress tracking
+    testProcess = spawn('npx', ['playwright', 'test', '--reporter=line'], {
         cwd: __dirname,
         shell: true,
         env: { ...process.env, FORCE_COLOR: '0' }
     });
 
     testProcess.stdout.on('data', (data) => {
-        const text = data.toString();
+        const text = data.toString().replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
         process.stdout.write(text);
+        
+        // Check for bare test line (starts with [chromium], not [N/M] [chromium])
+        // This indicates test is about to run on a worker
+        const bareTestMatch = text.match(/^\[chromium\]\s+›.*?›\s+([^›]+?)\s*$/m);
+        if (bareTestMatch) {
+            lastTestName = bareTestMatch[1].trim();
+        }
         
         // Check for worker ID prefix: [WORKER-0], [WORKER-1], etc.
         const workerMatch = text.match(/\[WORKER-(\d+)\]/);
@@ -343,6 +412,17 @@ wss.on('connection', (ws) => {
         if (workerMatch) {
             targetWorker = parseInt(workerMatch[1]);
             lastSeenWorker = targetWorker;
+            
+            // If we have a pending test name, assign it to this worker
+            if (lastTestName) {
+                workerTestNames.set(targetWorker, lastTestName);
+                ws.send(JSON.stringify({ 
+                    type: 'workerName', 
+                    worker: targetWorker,
+                    name: lastTestName
+                }));
+                lastTestName = null;
+            }
         }
         
         // Parse test count: "Running 14 tests using 4 workers"
@@ -361,7 +441,33 @@ wss.on('connection', (ws) => {
             return;
         }
         
-        // Parse test progress: "  ✓  1 [chromium] › ... › test name (time)"
+        // Parse test START: "[1/10] [chromium] › file.test.js:10:5 › Test Suite › test name"
+        // This happens BEFORE we know which worker runs it
+        const startMatch = text.match(/\[(\d+)\/(\d+)\]\s+\[chromium\].*?›\s+([^›]+?)\s*$/m);
+        if (startMatch) {
+            const testNum = parseInt(startMatch[1]);
+            const total = parseInt(startMatch[2]);
+            const testName = startMatch[3].trim();
+            
+            if (total > totalTests) totalTests = total;
+            
+            // Store pending test - worker will be assigned when we see WORKER-X output
+            pendingTests.set(testNum, testName);
+            
+            ws.send(JSON.stringify({ 
+                type: 'status', 
+                current: testNum - 1, 
+                total: totalTests
+            }));
+            
+            // Send to all workers initially (we don't know which one yet)
+            for (let i = 0; i < 4; i++) {
+                ws.send(JSON.stringify({ type: 'output', text, worker: i }));
+            }
+            return;
+        }
+        
+        // Parse test COMPLETION: "  ✓  1 [chromium] › ... › test name (time)"
         // Try to match "for X" pattern first
         let testMatch = text.match(/[✓✗]\s+(\d+)\s+\[chromium\].*?for\s+(.+?)(?:\s+\(|$)/);
         if (!testMatch) {
@@ -371,24 +477,13 @@ wss.on('connection', (ws) => {
         
         if (testMatch) {
             const testNum = parseInt(testMatch[1]);
-            const testName = testMatch[2].trim();
             currentTest = testNum;
             
-            // Assign worker to test if not already assigned
-            if (!testToWorkerMap.has(testNum)) {
-                testToWorkerMap.set(testNum, targetWorker);
-                workerTestNames.set(targetWorker, testName);
-                
-                // Send worker name update
-                ws.send(JSON.stringify({ 
-                    type: 'workerName', 
-                    worker: targetWorker,
-                    name: testName
-                }));
+            // Get the worker this test was assigned to
+            if (testToWorkerMap.has(testNum)) {
+                targetWorker = testToWorkerMap.get(testNum);
+                lastSeenWorker = targetWorker;
             }
-            
-            targetWorker = testToWorkerMap.get(testNum);
-            lastSeenWorker = targetWorker;
             
             ws.send(JSON.stringify({ 
                 type: 'status', 
