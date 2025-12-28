@@ -2,7 +2,37 @@
  * @jest-environment jsdom
  */
 import {CTrackFileMISB} from '../src/TrackFiles/CTrackFileMISB';
-import {MISB, MISBFields} from '../src/MISBFields';
+import {MISB, MISBFields, misbTagInfo} from '../src/MISBFields';
+import fs from 'fs';
+import path from 'path';
+import csv from '../src/utils/CSVParser';
+
+function parseMISBCSVForTest(csvData) {
+    const rows = csvData.length;
+    let MISBArray = new Array(rows - 1);
+    for (let i = 1; i < rows; i++) {
+        MISBArray[i - 1] = new Array(MISBFields).fill(null);
+    }
+    for (let col = 0; col < csvData[0].length; col++) {
+        const header = csvData[0][col].replace(/\s/g, "").toLowerCase();
+        const field = Object.keys(MISB).find(key => key.toLowerCase() === header);
+        if (field !== undefined && MISB[field] !== undefined) {
+            const fieldIndex = MISB[field];
+            const tagInfo = misbTagInfo && misbTagInfo[fieldIndex];
+            const isNumber = tagInfo ? tagInfo.isNumber : false;
+            for (let row = 1; row < rows; row++) {
+                let value = csvData[row][col];
+                if (value === "null" || value === null || value === "") {
+                    value = null;
+                } else if (isNumber) {
+                    value = Number(value);
+                }
+                MISBArray[row - 1][fieldIndex] = value;
+            }
+        }
+    }
+    return MISBArray;
+}
 
 function createTestMISBArray(withCenter = false, withAngles = false) {
     const rows = [];
@@ -238,5 +268,97 @@ describe('CTrackFileMISB', () => {
         test('does not throw', () => {
             expect(() => trackFile.extractObjects()).not.toThrow();
         });
+    });
+});
+
+describe('CTrackFileMISB exported CSV comparison', () => {
+    const csvPath = path.join(__dirname, '../data/test/MISB-DATATrackData_N97826.csv');
+
+    let csvMisb;
+    let csvTrackFile;
+
+    beforeAll(() => {
+        const csvText = fs.readFileSync(csvPath, 'utf-8');
+        const csvParsed = csv.toArrays(csvText);
+        csvMisb = parseMISBCSVForTest(csvParsed);
+        csvTrackFile = new CTrackFileMISB(csvMisb);
+    });
+
+    test('CSV file loads successfully', () => {
+        expect(csvMisb).toBeDefined();
+        expect(csvMisb.length).toBeGreaterThan(0);
+    });
+
+    test('CSV has expected number of rows (711 from the exported KLV)', () => {
+        expect(csvMisb.length).toBe(711);
+    });
+
+    test('CSV has valid timestamps', () => {
+        expect(Number(csvMisb[0][MISB.UnixTimeStamp])).toBe(1348087826484970);
+    });
+
+    test('CSV has valid sensor positions', () => {
+        expect(Number(csvMisb[0][MISB.SensorLatitude])).toBeCloseTo(41.09574003196121, 10);
+        expect(Number(csvMisb[0][MISB.SensorLongitude])).toBeCloseTo(-104.87021569389394, 10);
+        expect(Number(csvMisb[0][MISB.SensorTrueAltitude])).toBeCloseTo(2933.0312046997788, 6);
+    });
+
+    test('CSV has valid center positions', () => {
+        expect(Number(csvMisb[0][MISB.FrameCenterLatitude])).toBeCloseTo(41.10680242586267, 10);
+        expect(Number(csvMisb[0][MISB.FrameCenterLongitude])).toBeCloseTo(-104.85100629965356, 10);
+    });
+
+    test('CSV has valid platform angles', () => {
+        expect(Number(csvMisb[0][MISB.PlatformHeadingAngle])).toBeCloseTo(157.60128175783933, 10);
+        expect(Number(csvMisb[0][MISB.PlatformPitchAngle])).toBeCloseTo(3.390606402783291, 10);
+        expect(Number(csvMisb[0][MISB.PlatformRollAngle])).toBeCloseTo(-6.491286965544603, 10);
+    });
+
+    test('CSV has valid sensor angles', () => {
+        expect(Number(csvMisb[0][MISB.SensorRelativeAzimuthAngle])).toBeCloseTo(254.25000015978006, 10);
+        expect(Number(csvMisb[0][MISB.SensorRelativeElevationAngle])).toBeCloseTo(-20.38281248900239, 10);
+    });
+
+    test('CSV has valid FOV', () => {
+        expect(Number(csvMisb[0][MISB.SensorVerticalFieldofView])).toBeCloseTo(1.7221332112611583, 10);
+    });
+
+    test('CSV has tail number N97826', () => {
+        expect(csvMisb[0][MISB.PlatformTailNumber]).toBe('N97826');
+    });
+
+    test('CTrackFileMISB detects center track', () => {
+        expect(csvTrackFile.getTrackCount()).toBe(2);
+        expect(csvTrackFile.hasMoreTracks(0)).toBe(true);
+        expect(csvTrackFile.hasMoreTracks(1)).toBe(false);
+    });
+
+    test('CTrackFileMISB detects angles', () => {
+        expect(csvTrackFile._hasAngles()).toBe(true);
+    });
+
+    test('CTrackFileMISB detects FOV', () => {
+        expect(csvTrackFile._hasFOV()).toBe(true);
+    });
+
+    test('toMISB(0) returns original data', () => {
+        const track0 = csvTrackFile.toMISB(0);
+        expect(track0.length).toBe(711);
+        expect(track0).toBe(csvMisb);
+    });
+
+    test('toMISB(1) returns center track with promoted lat/lon', () => {
+        const centerTrack = csvTrackFile.toMISB(1);
+        expect(centerTrack.length).toBeGreaterThan(0);
+        expect(Number(centerTrack[0][MISB.SensorLatitude])).toBeCloseTo(41.10680242586267, 10);
+        expect(Number(centerTrack[0][MISB.SensorLongitude])).toBeCloseTo(-104.85100629965356, 10);
+    });
+
+    test('getShortName returns tail number N97826', () => {
+        expect(csvTrackFile.getShortName(0)).toBe('N97826');
+    });
+
+    test('getShortName returns Center_N97826 for track 1', () => {
+        expect(csvTrackFile.getShortName(1)).toBe('Center_N97826');
     });
 });

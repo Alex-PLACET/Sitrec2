@@ -1439,8 +1439,10 @@ export class CFileManager extends CManager {
                 // strip the first row
                 // as it's the header
                 // and we don't want to send it to the customAzElController
-                parsedFile = parsedFile.slice(1);
-
+                // Skip slicing for CTrackFile instances (already processed)
+                if (!(parsedFile instanceof CTrackFile)) {
+                    parsedFile = parsedFile.slice(1);
+                }
             }
         }
 
@@ -1726,6 +1728,10 @@ export class CFileManager extends CManager {
                     } else if (dataType === "Airdata") {
                         const airdataMisb = parseAirdataCSV(parsed);
                         parsed = new CTrackFileMISB(airdataMisb);
+                        dataType = "trackfile";
+                    } else if (dataType === "MISB_FULL") {
+                        const misbFullData = parseMISB1CSV(parsed);
+                        parsed = new CTrackFileMISB(misbFullData);
                         dataType = "trackfile";
                     } else if (dataType === "MISB1") {
                         const csvMisb = parseMISB1CSV(parsed);
@@ -2051,6 +2057,13 @@ export function detectCSVType(csv) {
         return "Airdata"
     }
 
+
+    // MISB_FULL is the exported format from CNodeMISBDataTrack.exportMISBCSV
+    // It has all MISB columns with headers matching the MISB field names exactly
+    // First columns are: unknown, Checksum, UnixTimeStamp, MissionID, ...
+    if (csv[0][1] === "Checksum" && csv[0][2] === "UnixTimeStamp" && csv[0][3] === "MissionID") {
+        return "MISB_FULL";
+    }
 
     // MISB1 is some exported verions of MISB KLV as CSV
     // There are a couple of variants of this

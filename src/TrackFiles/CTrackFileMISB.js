@@ -51,7 +51,7 @@ export class CTrackFileMISB extends CTrackFile {
         }
         const firstRow = this.data[0];
         const pitch = firstRow[MISB.PlatformPitchAngle];
-        return typeof pitch === 'number' && !isNaN(pitch);
+        return pitch !== undefined && pitch !== null && !isNaN(Number(pitch));
     }
 
     _hasFOV() {
