@@ -8,7 +8,10 @@ import {parseXml} from '../src/parseXml';
 import {MISB} from '../src/MISBFields';
 
 jest.mock('../src/nodes/CNodeTrack', () => ({
-    CNodeTrackFromLLAArray: jest.fn()
+    CNodeTrackFromLLAArray: jest.fn(() => ({
+        setArray: jest.fn(),
+        recalculateCascade: jest.fn()
+    }))
 }));
 jest.mock('../src/nodes/CNodeDisplayTrack', () => ({
     CNodeDisplayTrack: jest.fn()
@@ -28,11 +31,13 @@ jest.mock('../src/CFeatureManager', () => ({
 const testADSBXPath = path.join(__dirname, '../data/test/ADSBX - 3 tracks  N2983Z-N410WN-N414WN-track-press_alt_uncorrected.kml');
 const testFR24Path = path.join(__dirname, '../data/test/FR24 KML WN276-3d7b69c5.kml');
 const testFlightAwarePath = path.join(__dirname, '../data/test/FlightAware_N494SA_KLAX_KIPL_20250602.kml');
+const testRugeleyPath = path.join(__dirname, '../data/test/Rugeley (Buildings).kml');
 
 describe('CTrackFileKML', () => {
     let adsbxData, adsbxParsed, adsbxTrackFile;
     let fr24Data, fr24Parsed, fr24TrackFile;
     let flightAwareData, flightAwareParsed, flightAwareTrackFile;
+    let rugeleyData, rugeleyParsed, rugeleyTrackFile;
 
     beforeAll(() => {
         adsbxData = fs.readFileSync(testADSBXPath, 'utf-8');
@@ -46,6 +51,10 @@ describe('CTrackFileKML', () => {
         flightAwareData = fs.readFileSync(testFlightAwarePath, 'utf-8');
         flightAwareParsed = parseXml(flightAwareData);
         flightAwareTrackFile = new CTrackFileKML(flightAwareParsed);
+
+        rugeleyData = fs.readFileSync(testRugeleyPath, 'utf-8');
+        rugeleyParsed = parseXml(rugeleyData);
+        rugeleyTrackFile = new CTrackFileKML(rugeleyParsed);
     });
 
     describe('canHandle', () => {
@@ -263,6 +272,61 @@ describe('CTrackFileKML', () => {
     describe('extractObjects', () => {
         test('does not throw for track-only KML', () => {
             expect(() => flightAwareTrackFile.extractObjects()).not.toThrow();
+        });
+
+        test('does not throw for buildings-only KML', () => {
+            expect(() => rugeleyTrackFile.extractObjects()).not.toThrow();
+        });
+
+        test('Rugeley KML canHandle returns true', () => {
+            expect(CTrackFileKML.canHandle('test.kml', rugeleyParsed)).toBe(true);
+        });
+
+        test('Rugeley KML doesContainTrack returns false (no tracks)', () => {
+            expect(rugeleyTrackFile.doesContainTrack()).toBe(false);
+        });
+
+        test('Rugeley KML has correct structure', () => {
+            expect(rugeleyParsed.kml).toBeDefined();
+            expect(rugeleyParsed.kml.Document).toBeDefined();
+            expect(rugeleyParsed.kml.Document.Folder).toBeDefined();
+        });
+
+        test('extractObjects calls mocked constructors for polygons', () => {
+            const {CNodeTrackFromLLAArray} = require('../src/nodes/CNodeTrack');
+            const {CNodeDisplayTrack} = require('../src/nodes/CNodeDisplayTrack');
+            
+            CNodeTrackFromLLAArray.mockClear();
+            CNodeDisplayTrack.mockClear();
+            
+            CNodeTrackFromLLAArray.mockImplementation(() => ({
+                setArray: jest.fn(),
+                recalculateCascade: jest.fn()
+            }));
+            
+            rugeleyTrackFile.extractObjects();
+            
+            expect(CNodeTrackFromLLAArray).toHaveBeenCalled();
+        });
+
+        test('extractObjects calls FeatureManager.addFeature for points', () => {
+            const {FeatureManager} = require('../src/CFeatureManager');
+            FeatureManager.addFeature.mockClear();
+            
+            const {CNodeTrackFromLLAArray} = require('../src/nodes/CNodeTrack');
+            CNodeTrackFromLLAArray.mockImplementation(() => ({
+                setArray: jest.fn(),
+                recalculateCascade: jest.fn()
+            }));
+            
+            rugeleyTrackFile.extractObjects();
+            
+            expect(FeatureManager.addFeature).toHaveBeenCalled();
+            const call = FeatureManager.addFeature.mock.calls[0][0];
+            expect(call.text).toBe('80 Main Road');
+            expect(call.positionLLA).toBeDefined();
+            expect(call.positionLLA.lat).toBeCloseTo(52.74710545963174, 5);
+            expect(call.positionLLA.lon).toBeCloseTo(-1.923823692727803, 5);
         });
     });
 });
