@@ -56,11 +56,16 @@ describe('detectTrackFile', () => {
     let constellationParsed;
 
     beforeAll(() => {
+        jest.spyOn(console, 'warn').mockImplementation(() => {});
         const kmlData = fs.readFileSync(testKMLPath, 'utf-8');
         kmlParsed = parseXml(kmlData);
 
         jsonParsed = JSON.parse(fs.readFileSync(testJSONPath, 'utf-8'));
         constellationParsed = JSON.parse(fs.readFileSync(testConstellationPath, 'utf-8'));
+    });
+
+    afterAll(() => {
+        jest.restoreAllMocks();
     });
 
     describe('registry iteration and class selection', () => {

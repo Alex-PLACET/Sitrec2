@@ -256,14 +256,11 @@ describe('CTrackFileKML', () => {
 
     describe('error handling', () => {
         test('toMISB returns false for invalid track index', () => {
-            const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
             const result = adsbxTrackFile.toMISB(99);
             expect(result).toBe(false);
-            warnSpy.mockRestore();
         });
 
         test('toMISB throws or returns false for KML without tracks', () => {
-            const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
             const emptyKml = new CTrackFileKML({kml: {}});
             try {
                 const result = emptyKml.toMISB();
@@ -271,7 +268,6 @@ describe('CTrackFileKML', () => {
             } catch (e) {
                 expect(e).toBeDefined();
             }
-            warnSpy.mockRestore();
         });
     });
 
