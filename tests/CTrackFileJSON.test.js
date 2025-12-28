@@ -9,11 +9,13 @@ import {MISB} from '../src/MISBFields';
 const testSingleTrackPath = path.join(__dirname, '../data/test/Track_N866TM_.json');
 const testNoTailNumberPath = path.join(__dirname, '../data/test/Track_N866TM_All_No tail number.json');
 const testNoTailOrAircraftPath = path.join(__dirname, '../data/test/Track_N866TM_All_no tail number or aircraft type.json');
+const testConstellationLinesPath = path.join(__dirname, '../data/nightsky/constellations.lines.json');
 
 describe('CTrackFileJSON', () => {
     let singleTrackData, singleTrackFile;
     let noTailNumberData, noTailNumberTrackFile;
     let noTailOrAircraftData, noTailOrAircraftTrackFile;
+    let constellationLinesData;
 
     beforeAll(() => {
         singleTrackData = JSON.parse(fs.readFileSync(testSingleTrackPath, 'utf-8'));
@@ -24,6 +26,8 @@ describe('CTrackFileJSON', () => {
 
         noTailOrAircraftData = JSON.parse(fs.readFileSync(testNoTailOrAircraftPath, 'utf-8'));
         noTailOrAircraftTrackFile = new CTrackFileJSON(noTailOrAircraftData);
+
+        constellationLinesData = JSON.parse(fs.readFileSync(testConstellationLinesPath, 'utf-8'));
     });
 
     describe('canHandle', () => {
@@ -125,6 +129,46 @@ describe('CTrackFileJSON', () => {
 
         test('returns false for STANAG XML data', () => {
             expect(CTrackFileJSON.canHandle('test.xml', {nitsRoot: {}})).toBe(false);
+        });
+
+        test('returns false for constellation lines JSON (MultiLineString geometry)', () => {
+            expect(CTrackFileJSON.canHandle('constellations.lines.json', constellationLinesData)).toBe(false);
+        });
+
+        test('returns false for MultiLineString geometry even with valid properties', () => {
+            const multiLineData = {
+                type: 'FeatureCollection',
+                features: [{
+                    type: 'Feature',
+                    geometry: {type: 'MultiLineString', coordinates: [[[0, 0], [1, 1]]]},
+                    properties: {thresherId: 'test', dtg: '2012-09-19T18:28:01.000Z'}
+                }]
+            };
+            expect(CTrackFileJSON.canHandle('test.json', multiLineData)).toBe(false);
+        });
+
+        test('returns false for LineString geometry', () => {
+            const lineData = {
+                type: 'FeatureCollection',
+                features: [{
+                    type: 'Feature',
+                    geometry: {type: 'LineString', coordinates: [[0, 0], [1, 1]]},
+                    properties: {thresherId: 'test', dtg: '2012-09-19T18:28:01.000Z'}
+                }]
+            };
+            expect(CTrackFileJSON.canHandle('test.json', lineData)).toBe(false);
+        });
+
+        test('returns false for Polygon geometry', () => {
+            const polygonData = {
+                type: 'FeatureCollection',
+                features: [{
+                    type: 'Feature',
+                    geometry: {type: 'Polygon', coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]]},
+                    properties: {thresherId: 'test', dtg: '2012-09-19T18:28:01.000Z'}
+                }]
+            };
+            expect(CTrackFileJSON.canHandle('test.json', polygonData)).toBe(false);
         });
     });
 
