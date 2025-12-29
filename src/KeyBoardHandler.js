@@ -1,4 +1,4 @@
-import {Globals, gui, guiShowHide, mouseOverGUI, NodeMan, setRenderOne, Sit, UndoManager} from "./Globals";
+import {Globals, gui, guiShowHide, NodeMan, setRenderOne, Sit, UndoManager} from "./Globals";
 import {par} from "./par";
 import {closeFullscreen, openFullscreen} from "./utils";
 import {Vector3} from "three";
@@ -248,12 +248,24 @@ export function showHider(_ob, id, visible, key) {
 
 let isFullScreen = false;
 
+function isTextInputFocused() {
+    const activeElement = document.activeElement;
+    if (!activeElement) return false;
+    
+    const tagName = activeElement.tagName.toLowerCase();
+    if (tagName === 'input') {
+        const inputType = (activeElement.type || 'text').toLowerCase();
+        return ['text', 'number', 'email', 'password', 'search', 'tel', 'url'].includes(inputType);
+    }
+    return tagName === 'textarea';
+}
+
 export function initKeyboard() {
     document.onkeydown = function (e) {
 
-        // If mouse is over a GUI element, don't process keyboard shortcuts
-        // This allows normal text operations like Ctrl+C to work in menus
-        if (mouseOverGUI) {
+        // If focus is on a text input, don't process keyboard shortcuts
+        // This allows normal text operations to work in input fields
+        if (isTextInputFocused()) {
             return;
         }
 
