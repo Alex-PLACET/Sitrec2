@@ -1,3 +1,60 @@
+/**
+ * Abstract base class for track file parsers.
+ *
+ * ## Adding a New Track File Type
+ *
+ * 1. **Create subclass** in `src/TrackFiles/` (e.g., `CTrackFileMyFormat.js`):
+ *    ```js
+ *    import {CTrackFile} from "./CTrackFile";
+ *    import {MISB, MISBFields} from "../MISBFields";
+ *
+ *    export class CTrackFileMyFormat extends CTrackFile {
+ *        static canHandle(filename, data) { ... }
+ *        doesContainTrack() { ... }
+ *        toMISB(trackIndex = 0) { ... }
+ *        getShortName(trackIndex = 0, trackFileName = "") { ... }
+ *        hasMoreTracks(trackIndex = 0) { ... }
+ *        getTrackCount() { ... }
+ *        extractObjects() { ... }  // optional, for non-track features
+ *    }
+ *    ```
+ *
+ * 2. **Register in `CFileManager.js`** - Add to the `trackFileClasses` array:
+ *    ```js
+ *    import {CTrackFileMyFormat} from "./TrackFiles/CTrackFileMyFormat";
+ *    const trackFileClasses = [
+ *        CTrackFileKML,
+ *        CTrackFileSTANAG,
+ *        CTrackFileSRT,
+ *        CTrackFileJSON,
+ *        CTrackFileMISB,
+ *        CTrackFileMyFormat,  // Add here
+ *    ];
+ *    ```
+ *    **ORDER MATTERS**: Classes are checked in order. Place more specific handlers before
+ *    generic ones. Only one handler should match any given file.
+ *
+ * 3. **Implement required methods**:
+ *    - `static canHandle(filename, data)` - Return true if this class can parse the data.
+ *      Must be deterministic and not overlap with other handlers.
+ *    - `doesContainTrack()` - Return true if valid track data exists (lat/lon at minimum).
+ *    - `toMISB(trackIndex)` - Convert to MISB array format. Return false on failure.
+ *      MISB array format: `[[timestamp, lat, lon, alt, ...], ...]` using MISB field indices.
+ *    - `getShortName(trackIndex, trackFileName)` - Return display name for the track.
+ *    - `hasMoreTracks(trackIndex)` - Return true if more tracks exist after this index.
+ *    - `getTrackCount()` - Return total number of tracks in the file.
+ *
+ * 4. **Multi-track support**: Some files (KML, MISB) contain multiple tracks.
+ *    - `getTrackCount()` returns total tracks
+ *    - `hasMoreTracks(i)` returns `i < getTrackCount() - 1`
+ *    - `toMISB(trackIndex)` extracts specific track by index
+ *    - `getShortName(trackIndex)` differentiates track names (e.g., "Track", "Center_Track")
+ *
+ * See existing subclasses for examples:
+ * - `CTrackFileSRT` - Simple single-track (DJI drone SRT)
+ * - `CTrackFileMISB` - Multi-track support (primary + center track)
+ * - `CTrackFileKML` - Complex multi-track (ADSB-Exchange format)
+ */
 export class CTrackFile {
     constructor(data) {
         this.data = data;
