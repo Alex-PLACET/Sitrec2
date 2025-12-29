@@ -649,30 +649,25 @@ class CTrackManager extends CManager {
 
 
             } else {
-                console.log("FIRST TRACK LOADED, setting initial terrain")
-                console.log("ALSO setting camera heading to use angles")
-
-
-                // this is the first track loaded.
+                // this is the first track loaded, or a supplementary track (like center track)
                 // so just center on this track
                 if (NodeMan.exists("terrainUI")) {
                     let terrainUINode = NodeMan.get("terrainUI")
                     terrainUINode.zoomToTrack(trackOb.trackNode);
                 }
 
-
-
                 // if it's a simple track with no angles (i.e. not MISB)
                 // then switch to "Use Angles" for the camera heading
                 // which will use the PTZ control as no angles track will be loaded yet
-
-                if (!hasAngles) {
+                // Only do this for the very first track (trackNumber === 1), not for
+                // subsequent tracks from multi-track files like STANAG
+                if (!hasAngles && trackNumber === 1) {
+                    console.log("FIRST TRACK LOADED, setting camera heading to use angles")
                     const headingSwitch = NodeMan.get("CameraLOSController", true);
                     if (headingSwitch) {
                         headingSwitch.selectOption("Use Angles");
                     }
                 }
-
 
             }
 
