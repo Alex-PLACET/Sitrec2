@@ -226,7 +226,7 @@ class CClientNLU {
             {
                 name: "math_expression",
                 test: (text) => {
-                    const cleaned = text.replace(/^(?:what\s+is\s+|calculate\s+|eval(?:uate)?\s+)/i, '').replace(/\?$/, '').trim();
+                    const cleaned = text.replace(/^(?:what(?:'s|\s+is)\s+|calculate\s+|eval(?:uate)?\s+)/i, '').replace(/[?!]$/, '').trim();
                     if (!cleaned || /^[a-z]+$/i.test(cleaned)) return null;
                     try {
                         const result = math.evaluate(cleaned);

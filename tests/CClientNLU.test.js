@@ -473,3 +473,89 @@ describe('CClientNLU response generation', () => {
         expect(response).toBe('Control not found');
     });
 });
+
+describe('CClientNLU edge cases', () => {
+    test('handles UPPERCASE input "SET FOV TO 5"', () => {
+        const result = clientNLU.parse('SET FOV TO 5');
+        expect(result.intent).toBe('SET_VALUE');
+        expect(result.slots.value).toBe(5);
+    });
+
+    test('handles mixed case "Play"', () => {
+        const result = clientNLU.parse('Play');
+        expect(result.intent).toBe('PLAY');
+    });
+
+    test('handles extra whitespace "  set  fov  5  "', () => {
+        const result = clientNLU.parse('  set  fov  5  ');
+        expect(result.intent).toBe('SET_VALUE');
+    });
+
+    test('handles negative numbers "set fov -5"', () => {
+        const result = clientNLU.parse('set fov -5');
+        expect(result.intent).toBe('SET_VALUE');
+        expect(result.slots.value).toBe(-5);
+    });
+
+    test('handles negative math "-3 + 5"', () => {
+        const result = clientNLU.parse('-3 + 5');
+        expect(result.intent).toBe('MATH');
+        expect(result.slots.result).toBe(2);
+    });
+
+    test('handles contraction "what\'s 2+2"', () => {
+        const result = clientNLU.parse("what's 2+2");
+        expect(result.intent).toBe('MATH');
+        expect(result.slots.result).toBe(4);
+    });
+
+    test('handles trailing punctuation "play!"', () => {
+        const result = clientNLU.parse('play!');
+        expect(result.intent).toBe('PLAY');
+    });
+
+    test('handles decimal without leading zero ".5 * 2"', () => {
+        const result = clientNLU.parse('.5 * 2');
+        expect(result.intent).toBe('MATH');
+        expect(result.slots.result).toBe(1);
+    });
+
+    test('handles scientific notation "1e3 + 1"', () => {
+        const result = clientNLU.parse('1e3 + 1');
+        expect(result.intent).toBe('MATH');
+        expect(result.slots.result).toBe(1001);
+    });
+
+    test('rejects division by zero (returns Infinity)', () => {
+        const result = clientNLU.parse('1/0');
+        expect(result.intent).toBe(null);
+    });
+
+    test('rejects sqrt of negative (returns NaN)', () => {
+        const result = clientNLU.parse('sqrt(-1)');
+        expect(result.intent).toBe(null);
+    });
+
+    test('handles empty input', () => {
+        const result = clientNLU.parse('');
+        expect(result.intent).toBe(null);
+        expect(result.confidence).toBe(0);
+    });
+
+    test('handles whitespace-only input', () => {
+        const result = clientNLU.parse('   ');
+        expect(result.intent).toBe(null);
+    });
+
+    test('handles very large numbers "2^50"', () => {
+        const result = clientNLU.parse('2^50');
+        expect(result.intent).toBe('MATH');
+        expect(result.slots.result).toBe(1125899906842624);
+    });
+
+    test('handles parentheses "(2+3)*4"', () => {
+        const result = clientNLU.parse('(2+3)*4');
+        expect(result.intent).toBe('MATH');
+        expect(result.slots.result).toBe(20);
+    });
+});
