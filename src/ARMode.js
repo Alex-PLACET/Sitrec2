@@ -1,5 +1,6 @@
 // AR Mode - Use device orientation to control camera
 // Based on compass/index.html device orientation code
+// i.e. point your phone (or other device) North to face the camera North
 
 import {Globals} from "./Globals";
 import {Euler, MathUtils} from "three";

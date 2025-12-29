@@ -1,3 +1,15 @@
+/*
+    * Parses a string input representing a geographic object with optional name, latitude, longitude, and altitude.
+    * The input format can be:
+    * - "Name lat lon alt"
+    * - "lat lon alt"
+    * - "Name lat,lon,alt"
+    * - "lat,lon,alt"
+    * Altitude can be specified in meters (default) or feet (e.g., "100ft").
+    *
+    * @param {string} inputString - The input string to parse.
+    * @returns {Object|null} An object with properties: name (string|null), lat (number), lon (number), alt (number), hasExplicitAlt (boolean), or null if parsing fails.
+    */
 export function parseObjectInput(inputString) {
     if (!inputString || typeof inputString !== 'string') {
         return null;
