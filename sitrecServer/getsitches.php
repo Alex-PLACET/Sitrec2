@@ -13,6 +13,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/config_paths.php';
 
+define('SITCH_NAME_PATTERN', '/^[A-Za-z0-9_\-\. ,()]+$/');
+
 $storagePath = $UPLOAD_URL; // from config.php
 
 // find all the sitches in the sitrec/data folder and return them as a json object
@@ -274,13 +276,54 @@ if (isset($_GET['get'])) {
         }
 
 
-    } else {
+    } else if ($_GET['get'] == "validate_names") {
+        $invalid = array();
+        $pattern = SITCH_NAME_PATTERN;
+        
+        if (!$useAWS) {
+            if (is_dir($dir)) {
+                $files = @scandir($dir);
+                if ($files !== false) {
+                    foreach ($files as $file) {
+                        if (is_dir($dir . '/' . $file) && $file != '.' && $file != '..') {
+                            if (!preg_match($pattern, $file) || strpos($file, '..') !== false) {
+                                $invalid[] = $file;
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            $objects = $s3->getIterator('ListObjects', array(
+                "Bucket" => $aws['bucket'],
+                "Prefix" => $dir . '/'
+            ));
+            $seen = array();
+            foreach ($objects as $object) {
+                $key = $object['Key'];
+                $startText = $dir . '/';
+                if (strpos($key, $startText) === 0) {
+                    $key = substr($key, strlen($startText));
+                }
+                if ($key != "" && strpos($key, "/") !== false) {
+                    $folder = strtok($key, "/");
+                    if (!isset($seen[$folder])) {
+                        $seen[$folder] = true;
+                        if (!preg_match($pattern, $folder) || strpos($folder, '..') !== false) {
+                            $invalid[] = $folder;
+                        }
+                    }
+                }
+            }
+        }
+        echo json_encode(['invalid' => $invalid, 'pattern' => $pattern]);
+        exit();
 
-        if ($_GET['get'] == "versions") {
+    } else if ($_GET['get'] == "versions") {
             $name = $_GET['name'];
             
             // SECURITY: Validate name to prevent path traversal
-            if (!preg_match('/^[A-Za-z0-9_\-\.]+$/', $name) || strpos($name, '..') !== false) {
+            if (!preg_match(SITCH_NAME_PATTERN, $name) || strpos($name, '..') !== false) {
                 http_response_code(400);
                 echo json_encode(['error' => 'Invalid name parameter']);
                 exit();
@@ -332,8 +375,5 @@ if (isset($_GET['get'])) {
                     exit();
                 }
             }
-        }
     }
 }
-
-
