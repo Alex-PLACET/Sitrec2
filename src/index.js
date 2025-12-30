@@ -269,7 +269,7 @@ if (INCLUDE_IWER_EMULATOR) {
                 window._iwerDevice = xrDevice;
                 Globals.canVR = true;
                 console.log("✓ canVR TRUE. IWER installed. Device available as window._iwerDevice");
-                console.log("✓ To test: Click the 'ENTER VR' button or use the 'Start VR/XR' menu item");
+                console.log("✓ To test: Use the 'Start VR/XR' menu item");
             }).catch(err => {
                 console.warn("Failed to load IWER:", err);
             });
