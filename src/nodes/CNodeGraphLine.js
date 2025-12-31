@@ -38,21 +38,21 @@ export class CNodeGraphLine extends CNodeViewUI {
 
 
         // draw the current value at the current frame position on the curve
-        // we do this for each compareNode
-        // drawing them all lke this can give nasty overlaps
-        // maybe options needed?
-        if (e.compareNode) {
+        // skip values that are the same as preceding ones to avoid duplicates
+        if (e.compareNode && e.compareNode.length > 0) {
+            const shownValues = [];
             for (let i = 0; i < e.compareNode.length; i++) {
                 const value = e.compareNode[i].getValue(par.frame);
                 const valueText = value.toFixed(1);
-                // calculate height of the text in pixels in this context
+                
+                if (shownValues.includes(valueText)) continue;
+                shownValues.push(valueText);
+                
                 const textHeight = c.measureText(valueText).actualBoundingBoxAscent;
-
                 c.font = "14px Arial";
-                c.strokeStyle = e.compareNode[i].color; // ????
-                c.fillText(value.toFixed(1), e.D2CX(par.frame + 1), e.D2CY(value) + textHeight);
+                c.fillStyle = e.compareNode[i].color;
+                c.fillText(valueText, e.D2CX(par.frame + 1), e.D2CY(value) + textHeight);
             }
-
         }
 
 
