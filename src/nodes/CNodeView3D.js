@@ -1,4 +1,5 @@
 import {par} from "../par";
+import {WebMVideoExporter} from "../WebMVideoExporter";
 import {XYZ2EA, XYZJ2PR} from "../SphericalMath";
 import {raDec2Celestial} from "../CelestialMath";
 import {
@@ -10,6 +11,7 @@ import {
     NodeMan,
     setGPUMemoryMonitor,
     setRenderOne,
+    Sit,
     Synth3DManager,
     TrackManager
 } from "../Globals";
@@ -110,6 +112,9 @@ export class CNodeView3D extends CNodeViewCanvas {
                 guiMenus.view.add(this, "startXR").name("Start VR/XR")
                     .tooltip("Start WebXR session for testing (works with Immersive Web Emulator)");
             }
+            
+            guiMenus.view.add(this, "exportVideo").name("Export Look View Video")
+                .tooltip("Export the look view as a video file (WebM format) with all frames");
         }
         this.addSimpleSerial("northUp");
 
@@ -243,6 +248,83 @@ export class CNodeView3D extends CNodeViewCanvas {
             vrButton.click();
         } else {
             console.error("VR button not found");
+        }
+    }
+
+    /**
+     * Export the lookView as a video file
+     * Renders each frame from 0 to Sit.frames-1 and encodes as WebM
+     */
+    async exportVideo() {
+        const totalFrames = Sit.frames;
+        const width = this.canvas.width;
+        const height = this.canvas.height;
+        const fps = Sit.fps;
+        
+        console.log(`Starting video export: ${totalFrames} frames at ${fps} fps, ${width}x${height}`);
+        
+        const savedFrame = par.frame;
+        const savedPaused = par.paused;
+        par.paused = true;
+        
+        const progressDiv = document.createElement('div');
+        progressDiv.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.9);color:white;padding:20px;border-radius:10px;z-index:10000;font-family:Arial;text-align:center;';
+        progressDiv.innerHTML = '<div>Exporting video...</div><div id="exportProgress">0 / ' + totalFrames + '</div>';
+        document.body.appendChild(progressDiv);
+        
+        try {
+            const exporter = new WebMVideoExporter({
+                width,
+                height,
+                fps,
+                bitrate: 5_000_000,
+                keyFrameInterval: 30
+            });
+            
+            await exporter.initialize();
+            
+            for (let frame = 0; frame < totalFrames; frame++) {
+                par.frame = frame;
+                GlobalDateTimeNode.update(frame);
+                
+                for (const entry of Object.values(NodeMan.list)) {
+                    const node = entry.data;
+                    if (node.update !== undefined) {
+                        node.update(frame);
+                    }
+                }
+                
+                this.renderCanvas(frame);
+                await exporter.addFrame(this.canvas, frame);
+                
+                if (frame % 10 === 0) {
+                    document.getElementById('exportProgress').textContent = `${frame + 1} / ${totalFrames}`;
+                    await new Promise(r => setTimeout(r, 0));
+                }
+            }
+            
+            document.getElementById('exportProgress').textContent = 'Creating file...';
+            
+            const webmBlob = await exporter.finalize();
+            
+            const filename = `lookview_${Sit.name || 'export'}_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.webm`;
+            const url = URL.createObjectURL(webmBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            console.log(`Video export complete: ${filename}`);
+            
+        } catch (e) {
+            console.error('Export failed:', e);
+            alert('Video export failed: ' + e.message);
+        } finally {
+            progressDiv.remove();
+            par.frame = savedFrame;
+            par.paused = savedPaused;
+            setRenderOne(true);
         }
     }
 
