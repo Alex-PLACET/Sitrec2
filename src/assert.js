@@ -1,3 +1,5 @@
+import {Globals} from "./Globals";
+
 /*
     Simple assertion function for debugging.
     If the condition is false, it logs a stack trace and an error message,
@@ -15,6 +17,8 @@ export function assert(condition, message = false) {
     if (!condition) {
         console.trace()
         console.error("ASSERT: " + message);
-        debugger;
+        if (!Globals.validationMode) {
+            debugger;
+        }
     }
 }

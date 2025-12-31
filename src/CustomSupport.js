@@ -21,6 +21,7 @@ import {
     guiMenus,
     infoDiv,
     NodeMan,
+    setNewSitchObject,
     setRenderOne,
     setSitchEstablished,
     Sit,
@@ -49,6 +50,7 @@ import {CNodeTrackGUI} from "./nodes/CNodeControllerTrackGUI";
 import {forceUpdateUIText} from "./nodes/CNodeViewUI";
 import {configParams} from "./login";
 import {showError} from "./showError";
+import {textSitchToObject} from "./RegisterSitches";
 import {parseObjectInput as parseObjectInputUtil} from "./utils/parseObjectInput";
 import {initializeSettings, SettingsSaver} from "./SettingsManager";
 import {CNodeCurveEditor2} from "./nodes/CNodeCurveEdit2";
@@ -412,8 +414,10 @@ export class CCustomManager {
         // guiMenus.help.add(this, "showMirrorMenuDemo").name("Mirror Menu Demo").tooltip("Demonstrates how to mirror any GUI menu to create a standalone floating menu");
 
         if (isLocal || Globals.userID === 1) {
-            guiMenus.help.add(this, "openAdminDashboard").name("Admin Dashboard").tooltip("Open the admin dashboard");
-            guiMenus.help.add(this, "validateSitchNames").name("Validate Sitch Names").tooltip("Check all user sitch names against the validation pattern");
+            const adminFolder = guiMenus.help.addFolder("Admin");
+            adminFolder.add(this, "openAdminDashboard").name("Admin Dashboard").tooltip("Open the admin dashboard");
+            adminFolder.add(this, "validateSitchNames").name("Validate Sitch Names").tooltip("Check all user sitch names against the validation pattern");
+            adminFolder.add(this, "validateAllSitches").name("Validate All Sitches").tooltip("Load all saved sitches with local terrain to check for errors");
         }
 
         // TODO - Multiple events passed to EventManager.addEventListener
@@ -2350,6 +2354,127 @@ export class CCustomManager {
 
     validateSitchNames() {
         window.open(SITREC_SERVER + 'getsitches.php?get=validate_names', '_blank');
+    }
+
+    async validateAllSitches() {
+        if (!FileManager.userSaves || FileManager.userSaves.length === 0) {
+            alert("No saved sitches found. Make sure you are logged in and have saved sitches.");
+            return;
+        }
+
+        const sitchesToValidate = FileManager.userSaves.filter(name => name !== "-");
+        if (sitchesToValidate.length === 0) {
+            alert("No sitches to validate.");
+            return;
+        }
+
+        const results = {
+            total: sitchesToValidate.length,
+            passed: [],
+            failed: []
+        };
+
+        console.log(`Starting validation of ${sitchesToValidate.length} sitches...`);
+
+        Globals.validationMode = true;
+        Globals.validationErrors = [];
+
+        const originalConsoleError = console.error;
+        const originalConsoleWarn = console.warn;
+
+        for (let i = 0; i < sitchesToValidate.length; i++) {
+            const sitchName = sitchesToValidate[i];
+            console.log(`\n[${i + 1}/${sitchesToValidate.length}] Validating: ${sitchName}`);
+
+            Globals.validationErrors = [];
+            let sitchErrors = [];
+
+            console.error = (...args) => {
+                const errorMsg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+                sitchErrors.push({type: 'console.error', message: errorMsg});
+                originalConsoleError.apply(console, args);
+            };
+
+            try {
+                const versions = await FileManager.getVersions(sitchName);
+                const latestVersion = versions[versions.length - 1].url;
+                const response = await fetch(latestVersion);
+                const data = await response.arrayBuffer();
+                const decoder = new TextDecoder('utf-8');
+                const decodedString = decoder.decode(data);
+
+                let sitchObject = textSitchToObject(decodedString);
+
+                if (sitchObject.terrainUI) {
+                    sitchObject.terrainUI.mapType = "Local";
+                    sitchObject.terrainUI.elevationType = "Local";
+                } else if (sitchObject.terrain) {
+                    sitchObject.terrain.mapType = "Local";
+                    sitchObject.terrain.elevationType = "Local";
+                }
+
+                await new Promise((resolve, reject) => {
+                    const errorHandler = (event) => {
+                        sitchErrors.push({type: 'uncaught', message: event.message || String(event)});
+                    };
+                    const rejectionHandler = (event) => {
+                        sitchErrors.push({type: 'unhandledRejection', message: event.reason?.message || String(event.reason)});
+                    };
+
+                    window.addEventListener('error', errorHandler);
+                    window.addEventListener('unhandledrejection', rejectionHandler);
+
+                    setNewSitchObject(sitchObject);
+
+                    setTimeout(() => {
+                        window.removeEventListener('error', errorHandler);
+                        window.removeEventListener('unhandledrejection', rejectionHandler);
+                        resolve();
+                    }, 3000);
+                });
+
+                if (sitchErrors.length > 0) {
+                    results.failed.push({name: sitchName, errors: sitchErrors});
+                    console.log(`  FAILED: ${sitchName} - ${sitchErrors.length} error(s)`);
+                } else {
+                    results.passed.push(sitchName);
+                    console.log(`  PASSED: ${sitchName}`);
+                }
+
+            } catch (error) {
+                sitchErrors.push({type: 'exception', message: error.message || String(error)});
+                results.failed.push({name: sitchName, errors: sitchErrors});
+                console.log(`  FAILED: ${sitchName} - ${error.message}`);
+            }
+        }
+
+        console.error = originalConsoleError;
+        console.warn = originalConsoleWarn;
+        Globals.validationMode = false;
+
+        let report = `\n${"=".repeat(60)}\nSITCH VALIDATION REPORT\n${"=".repeat(60)}\n`;
+        report += `Total: ${results.total} | Passed: ${results.passed.length} | Failed: ${results.failed.length}\n`;
+        report += `${"=".repeat(60)}\n`;
+
+        if (results.failed.length > 0) {
+            report += `\nFAILED SITCHES:\n${"-".repeat(40)}\n`;
+            for (const failed of results.failed) {
+                report += `\n${failed.name}:\n`;
+                for (const error of failed.errors) {
+                    report += `  [${error.type}] ${error.message}\n`;
+                }
+            }
+        }
+
+        if (results.passed.length > 0) {
+            report += `\nPASSED SITCHES:\n${"-".repeat(40)}\n`;
+            for (const passed of results.passed) {
+                report += `  ${passed}\n`;
+            }
+        }
+
+        console.log(report);
+        alert(`Validation complete!\n\nPassed: ${results.passed.length}\nFailed: ${results.failed.length}\n\nSee console for detailed report.`);
     }
 
     refreshLookViewTracks() {

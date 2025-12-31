@@ -1,3 +1,5 @@
+import {Globals} from "./Globals";
+
 /**
  * Show a copyable error dialog to the user
  * @param {string} title - Error title
@@ -10,6 +12,11 @@ export function showError(message, error=null) {
     if (typeof message === 'object' && message !== null) {
         error = message;
         message = message.message || JSON.stringify(message);
+    }
+
+    if (Globals.validationMode) {
+        console.error("showError (suppressed dialog): " + message);
+        return;
     }
 
     const title = "Error"
