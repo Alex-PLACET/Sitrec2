@@ -678,6 +678,7 @@ export class CCustomManager {
 
     setupVideoExport() {
         this.videoExportView = "lookView";
+        this.retinaExport = false;
         
         const getExportableViews = () => {
             const views = [];
@@ -700,6 +701,10 @@ export class CCustomManager {
             .name("Export View")
             .tooltip("Select which view to export as video");
 
+        guiMenus.view.add(this, "retinaExport")
+            .name("Retina Export")
+            .tooltip("Export at retina/HiDPI resolution (2x on most displays)");
+
         guiMenus.view.add({
             exportVideo: () => {
                 const view = ViewMan.get(this.videoExportView, false);
@@ -720,11 +725,12 @@ export class CCustomManager {
         const {WebMVideoExporter} = await import("./WebMVideoExporter");
         
         const totalFrames = Sit.frames;
-        const width = ViewMan.widthPx;
-        const height = ViewMan.heightPx;
+        const scale = this.retinaExport ? (window.devicePixelRatio || 1) : 1;
+        const width = Math.round(ViewMan.widthPx * scale);
+        const height = Math.round(ViewMan.heightPx * scale);
         const fps = Sit.fps;
 
-        console.log(`Starting viewport video export: ${totalFrames} frames at ${fps} fps, ${width}x${height}`);
+        console.log(`Starting viewport video export: ${totalFrames} frames at ${fps} fps, ${width}x${height} (scale: ${scale}x)`);
 
         const savedFrame = par.frame;
         const savedPaused = par.paused;
@@ -745,7 +751,7 @@ export class CCustomManager {
                 width,
                 height,
                 fps,
-                bitrate: 8_000_000,
+                bitrate: 8_000_000 * scale * scale,
                 keyFrameInterval: 30
             });
 
@@ -796,9 +802,9 @@ export class CCustomManager {
                 for (const view of nonOverlays) {
                     view.renderCanvas(frame);
                     if (view.canvas) {
-                        const x = view.leftPx;
-                        const y = view.topPx - ViewMan.topPx;
-                        compositeCtx.drawImage(view.canvas, x, y, view.widthPx, view.heightPx);
+                        const x = view.leftPx * scale;
+                        const y = (view.topPx - ViewMan.topPx) * scale;
+                        compositeCtx.drawImage(view.canvas, x, y, view.widthPx * scale, view.heightPx * scale);
                     }
                 }
 
@@ -813,10 +819,10 @@ export class CCustomManager {
                     view.renderCanvas(frame);
                     if (view.canvas) {
                         const parentView = view.overlayView;
-                        const x = parentView.leftPx;
-                        const y = parentView.topPx - ViewMan.topPx;
+                        const x = parentView.leftPx * scale;
+                        const y = (parentView.topPx - ViewMan.topPx) * scale;
                         compositeCtx.globalAlpha = alpha;
-                        compositeCtx.drawImage(view.canvas, x, y, parentView.widthPx, parentView.heightPx);
+                        compositeCtx.drawImage(view.canvas, x, y, parentView.widthPx * scale, parentView.heightPx * scale);
                         compositeCtx.globalAlpha = 1;
                     }
                 }
