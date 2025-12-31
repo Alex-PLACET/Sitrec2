@@ -1956,6 +1956,27 @@ function hasPendingTiles() {
 }
 
 /**
+ * Check if video frames for fixedFrame are still being decoded
+ * @returns {boolean} true if any video view is missing the fixedFrame in cache
+ */
+function hasPendingVideoFrames() {
+    if (Globals.fixedFrame === undefined) {
+        return false;
+    }
+    
+    for (const entry of Object.values(NodeMan.list)) {
+        const node = entry.data;
+        if (node.videoData && node.videoData.isFrameCached) {
+            if (!node.videoData.isFrameCached(Globals.fixedFrame)) {
+                return true;
+            }
+        }
+    }
+    
+    return false;
+}
+
+/**
  * Wait for all pending actions and tile loads to complete
  * Used before transitioning to the next test/situation
  * @returns {Promise} - Resolves when all pending actions and tiles are loaded
@@ -2094,11 +2115,11 @@ function renderMain(elapsed) {
     } else if (Globals.wasPending > 0) {
         Globals.wasPending--;
         if (Globals.wasPending === 0) {
-            // Check for pending tiles before declaring all actions complete
-            if (!hasPendingTiles()) {
+            // Check for pending tiles and video frames before declaring all actions complete
+            if (!hasPendingTiles() && !hasPendingVideoFrames()) {
                 console.log("No pending actions")
             } else {
-                // If there are pending tiles, reset the counter to wait for them
+                // If there are pending tiles or video frames, reset the counter to wait for them
                 Globals.wasPending = 5;
             }
         }

@@ -668,6 +668,15 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
         return this.createBlankFrame();
     }
 
+    isFrameCached(frame) {
+        frame = Math.floor(frame / this.videoSpeed);
+        if (!this.imageCache || frame < 0 || frame >= this.imageCache.length) {
+            return false;
+        }
+        const cachedFrame = this.imageCache[frame];
+        return cachedFrame && cachedFrame.width && cachedFrame.width > 0;
+    }
+
     createBlankFrame() {
         if (!this.videoWidth || !this.videoHeight) {
             const tempCanvas = document.createElement('canvas');
