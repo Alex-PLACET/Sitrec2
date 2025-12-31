@@ -8,6 +8,7 @@ import {EventManager} from "../CEventManager";
 import * as satellite from 'satellite.js';
 import {bestSat, CTLEData} from "../TLEUtils";
 import {degrees} from "../utils";
+import {hideProgress, initProgress, updateProgress} from "../CProgressIndicator";
 import {DebugArrow, DebugArrowAB, getPointBelow, removeDebugArrow} from "../threeExt";
 import * as LAYER from "../LayerMasks";
 import {assert} from "../assert";
@@ -1200,73 +1201,235 @@ export class CSatellite {
      * Internal method to update satellites of a specific type
      */
     updateSats(satType) {
-        // get a copy of the the start time object
-        // (as we need to change it, but don't want to change the global one)
         let startTime = new Date(GlobalDateTimeNode.dateStart);
 
-        // gp_history data has ~3-4 day publication delay
-        // If sitch start time is more recent than 5 days ago, clamp to 5 days ago
-        // to ensure we request data that's actually available
         const now = new Date();
         const someTimeAgo = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000);
         if (startTime > someTimeAgo) {
             startTime = someTimeAgo;
         }
 
-
-        // go back one day so the TLE's are all before the current time
-        // server will add one day to the date to cover things.
-        // Say this is day D, we request D-1
-        // the server will ask for that +2, so we get
-        // D-1 to D+1
-        // but this essentiall gives us D-1 to all of D, which is what we want
-        // this still gives us some times in D that are in the future,
-        // but those are handled by the bestSat function
         startTime.setDate(startTime.getDate() - 1);
 
-        // convert to YYYY-MM-DD
+        this.loadDatedTLEWithRetry(startTime, satType, 0);
+    }
+
+    loadDatedTLEWithRetry(startTime, satType, retryCount) {
+        const maxRetries = 3;
+        const daysBackPerRetry = 3;
+
         const dateStr = startTime.toISOString().split('T')[0];
-        // get the file from the proxyStarlink URL
-        // note this is NOT a dynamic file
-        // it fixed based on the date
-        // so we don't need to rehost it
         const url = SITREC_SERVER + "proxyStarlink.php?request=" + dateStr + "&type=" + satType;
-
-        // TODO: (check if needed) remove the old starlink from the file manager.
-
-
-        console.log("Getting satellites from " + url);
         const id = "starLink_" + dateStr + ".tle";
-        this.loadSatellites(url, id);
+
+        console.log(`Getting satellites from ${url} (attempt ${retryCount + 1})`);
+
+        this.currentTLEAbortController = new AbortController();
+
+        initProgress({
+            title: "Loading TLE Data",
+            filename: `${satType} satellites for ${dateStr}`,
+            showAbort: true,
+            onAbort: () => {
+                if (this.currentTLEAbortController) {
+                    this.currentTLEAbortController.abort();
+                }
+                hideProgress();
+            }
+        });
+
+        if (retryCount > 0) {
+            updateProgress({ retryInfo: { attempt: retryCount, maxRetries, daysBack: retryCount * daysBackPerRetry } });
+        } else {
+            updateProgress({ status: "Connecting to server..." });
+        }
+
+        this.fetchTLEWithProgress(url, this.currentTLEAbortController.signal)
+            .then(response => {
+                if (response.status >= 500) {
+                    throw new Error(`SERVER_ERROR_${response.status}`);
+                }
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                return response;
+            })
+            .then(response => {
+                const contentLength = response.headers.get('content-length');
+                const total = contentLength ? parseInt(contentLength, 10) : 0;
+                return this.readResponseWithProgress(response, total, this.currentTLEAbortController.signal);
+            })
+            .then(buffer => {
+                // Check if response is an error (plain text starting with "ERROR:")
+                const byteView = new Uint8Array(buffer);
+                const isZip = byteView[0] === 0x50 && byteView[1] === 0x4B; // "PK" magic bytes
+                
+                if (!isZip) {
+                    // Likely a text error message
+                    const text = new TextDecoder().decode(buffer).trim();
+                    if (text.startsWith("ERROR:")) {
+                        if (retryCount < maxRetries) {
+                            const newStartTime = new Date(startTime);
+                            newStartTime.setDate(newStartTime.getDate() - daysBackPerRetry);
+                            console.log(`Server error: ${text}`);
+                            console.log(`Retrying with date ${newStartTime.toISOString().split('T')[0]} (attempt ${retryCount + 2}/${maxRetries + 1})`);
+                            this.loadDatedTLEWithRetry(newStartTime, satType, retryCount + 1);
+                            return;
+                        }
+                        hideProgress();
+                        showError("TLE Loading Error: " + text);
+                        return;
+                    }
+                }
+
+                hideProgress();
+                this.processTLEData(id, buffer);
+            })
+            .catch(error => {
+                if (error.name === 'AbortError') {
+                    hideProgress();
+                    console.log("TLE loading aborted by user");
+                    return;
+                }
+
+                if (error.message.startsWith("SERVER_ERROR_") && retryCount < maxRetries) {
+                    const newStartTime = new Date(startTime);
+                    newStartTime.setDate(newStartTime.getDate() - daysBackPerRetry);
+                    console.log(`${error.message}, retrying with date ${newStartTime.toISOString().split('T')[0]} (attempt ${retryCount + 2}/${maxRetries + 1})`);
+                    this.loadDatedTLEWithRetry(newStartTime, satType, retryCount + 1);
+                    return;
+                }
+
+                hideProgress();
+                const displayMsg = error.message.replace("SERVER_ERROR_", "HTTP ");
+                showError("TLE Loading Error: " + displayMsg);
+            });
+    }
+
+    fetchTLEWithProgress(url, signal) {
+        return fetch(url, { signal });
+    }
+
+    async readResponseWithProgress(response, total, signal) {
+        const reader = response.body.getReader();
+        const chunks = [];
+        let loaded = 0;
+
+        try {
+            while (true) {
+                if (signal && signal.aborted) {
+                    reader.cancel();
+                    throw new DOMException('Aborted', 'AbortError');
+                }
+                
+                const { done, value } = await reader.read();
+                if (done) break;
+                
+                chunks.push(value);
+                loaded += value.length;
+                
+                if (total > 0) {
+                    updateProgress({ loaded, total });
+                } else {
+                    updateProgress({ status: `Downloaded ${(loaded / 1024).toFixed(0)} KB...` });
+                }
+            }
+        } catch (e) {
+            reader.cancel();
+            throw e;
+        }
+
+        // Combine chunks into a single ArrayBuffer
+        const allChunks = new Uint8Array(loaded);
+        let position = 0;
+        for (const chunk of chunks) {
+            allChunks.set(chunk, position);
+            position += chunk.length;
+        }
+        
+        return allChunks.buffer;
+    }
+
+    processTLEData(id, buffer) {
+        // Use FileManager.parseResult to handle unzipping, parsing, and routing
+        // The proxyStarlink returns zipped TLE data
+        FileManager.remove(id);
+        FileManager.parseResult(id + ".tle", buffer, null)
+            .then(results => {
+                // parseResult returns an array of results
+                // Mark the files as dynamic links (not static URLs)
+                if (Array.isArray(results)) {
+                    results.forEach(result => {
+                        const fileInfo = FileManager.list[result.filename];
+                        if (fileInfo) {
+                            fileInfo.staticURL = null;
+                            fileInfo.dynamicLink = true;
+                        }
+                    });
+                }
+            })
+            .catch(err => {
+                console.error("Error parsing TLE data:", err);
+                showError("Error parsing TLE data: " + err.message);
+            });
     }
 
     /**
-     * Load satellites from a URL
+     * Load satellites from a URL (non-dated, e.g., current Starlink)
      */
     loadSatellites(url, id) {
-        FileManager.loadAsset(url, id).then((data) => {
-            const fileInfo = FileManager.list[id];
+        this.currentTLEAbortController = new AbortController();
 
-            // Check if the data contains an error message
-            // If so, remove the file entry so retry is possible
-            if (typeof fileInfo.data === 'string' && fileInfo.data.trim().startsWith("ERROR:")) {
-                console.error("loadSatellites: Server returned error, removing file entry for retry");
-                showError("TLE Loading Error: " + fileInfo.data.trim());
-                FileManager.remove(id);
-                return;
+        initProgress({
+            title: "Loading TLE Data",
+            filename: id,
+            showAbort: true,
+            onAbort: () => {
+                if (this.currentTLEAbortController) {
+                    this.currentTLEAbortController.abort();
+                }
+                hideProgress();
             }
-
-            // give it a proper filename so when it's re-loaded
-            // it can be parsed correctly
-            fileInfo.filename = id;
-
-            // kill the static URL to force a rehost with this name
-            fileInfo.staticURL = null;
-
-            fileInfo.dynamicLink = true;
-
-            FileManager.handleParsedFile(id, fileInfo.data);
         });
+
+        updateProgress({ status: "Connecting to server..." });
+
+        this.fetchTLEWithProgress(url, this.currentTLEAbortController.signal)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                const contentLength = response.headers.get('content-length');
+                const total = contentLength ? parseInt(contentLength, 10) : 0;
+                return this.readResponseWithProgress(response, total, this.currentTLEAbortController.signal);
+            })
+            .then(buffer => {
+                hideProgress();
+
+                // Check if response is an error (plain text starting with "ERROR:")
+                const byteView = new Uint8Array(buffer);
+                const isZip = byteView[0] === 0x50 && byteView[1] === 0x4B; // "PK" magic bytes
+                
+                if (!isZip) {
+                    const text = new TextDecoder().decode(buffer).trim();
+                    if (text.startsWith("ERROR:")) {
+                        showError("TLE Loading Error: " + text);
+                        return;
+                    }
+                }
+
+                this.processTLEData(id, buffer);
+            })
+            .catch(error => {
+                hideProgress();
+
+                if (error.name === 'AbortError') {
+                    console.log("TLE loading aborted by user");
+                    return;
+                }
+
+                showError("TLE Loading Error: " + error.message);
+            });
     }
 
     /**

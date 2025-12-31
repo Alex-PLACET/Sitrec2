@@ -1037,6 +1037,10 @@ export function enableAllInput() {
 
 // Event handler to prevent default behavior
 function preventDefaultHandler(e) {
+    // Allow clicks on the abort button in the input blocker overlay
+    if (e.target && e.target.id === 'input-blocker-abort-button') {
+        return;
+    }
     e.preventDefault();
     e.stopPropagation();
 }
