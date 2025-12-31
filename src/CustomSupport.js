@@ -620,6 +620,8 @@ export class CCustomManager {
             }
         })
 
+        this.setupVideoExport();
+
         // Test the debug view after a short delay to ensure it's initialized
         setTimeout(() => {
             if (NodeMan.exists("debugView")) {
@@ -674,6 +676,40 @@ export class CCustomManager {
 
     } // end of setup()
 
+    setupVideoExport() {
+        this.videoExportView = "lookView";
+        
+        const getExportableViews = () => {
+            const views = [];
+            ViewMan.iterate((id, view) => {
+                if (!view.overlayView && view.exportVideo) {
+                    views.push(id);
+                }
+            });
+            return views;
+        };
+
+        const exportableViews = getExportableViews();
+        if (exportableViews.length === 0) return;
+
+        if (!exportableViews.includes(this.videoExportView)) {
+            this.videoExportView = exportableViews[0];
+        }
+
+        guiMenus.view.add(this, "videoExportView", exportableViews)
+            .name("Export View")
+            .tooltip("Select which view to export as video");
+
+        guiMenus.view.add({
+            exportVideo: () => {
+                const view = ViewMan.get(this.videoExportView, false);
+                if (view && view.exportVideo) {
+                    view.exportVideo();
+                }
+            }
+        }, "exportVideo").name("Export Video")
+            .tooltip("Export the selected view as a video file (WebM format) with all frames");
+    }
 
     setupStandaloneMenuExample() {
         // Create a standalone pop-up menu at position (300, 150)

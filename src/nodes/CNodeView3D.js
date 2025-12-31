@@ -112,9 +112,6 @@ export class CNodeView3D extends CNodeViewCanvas {
                 guiMenus.view.add(this, "startXR").name("Start VR/XR")
                     .tooltip("Start WebXR session for testing (works with Immersive Web Emulator)");
             }
-            
-            guiMenus.view.add(this, "exportVideo").name("Export Look View Video")
-                .tooltip("Export the look view as a video file (WebM format) with all frames");
         }
         this.addSimpleSerial("northUp");
 
