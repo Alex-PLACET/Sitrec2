@@ -253,12 +253,14 @@ export class CNodeView3D extends CNodeViewCanvas {
      * Renders each frame from 0 to Sit.frames-1 and encodes as WebM
      */
     async exportVideo() {
-        const totalFrames = Sit.frames;
+        const startFrame = Sit.aFrame;
+        const endFrame = Sit.bFrame;
+        const totalFrames = endFrame - startFrame + 1;
         const width = this.canvas.width;
         const height = this.canvas.height;
         const fps = Sit.fps;
         
-        console.log(`Starting video export: ${totalFrames} frames at ${fps} fps, ${width}x${height}`);
+        console.log(`Starting video export: ${totalFrames} frames (${startFrame}-${endFrame}) at ${fps} fps, ${width}x${height}`);
         
         const savedFrame = par.frame;
         const savedPaused = par.paused;
@@ -280,7 +282,8 @@ export class CNodeView3D extends CNodeViewCanvas {
             
             await exporter.initialize();
             
-            for (let frame = 0; frame < totalFrames; frame++) {
+            for (let i = 0; i < totalFrames; i++) {
+                const frame = startFrame + i;
                 par.frame = frame;
                 GlobalDateTimeNode.update(frame);
                 
@@ -297,8 +300,8 @@ export class CNodeView3D extends CNodeViewCanvas {
                 this.renderCanvas(frame);
                 await exporter.addFrame(this.canvas, frame);
                 
-                if (frame % 10 === 0) {
-                    document.getElementById('exportProgress').textContent = `${frame + 1} / ${totalFrames}`;
+                if (i % 10 === 0) {
+                    document.getElementById('exportProgress').textContent = `${i + 1} / ${totalFrames}`;
                     await new Promise(r => setTimeout(r, 0));
                 }
             }

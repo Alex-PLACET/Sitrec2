@@ -735,13 +735,15 @@ export class CCustomManager {
     async exportViewportVideo() {
         const {WebMVideoExporter} = await import("./WebMVideoExporter");
         
-        const totalFrames = Sit.frames;
+        const startFrame = Sit.aFrame;
+        const endFrame = Sit.bFrame;
+        const totalFrames = endFrame - startFrame + 1;
         const scale = this.retinaExport ? (window.devicePixelRatio || 1) : 1;
         const width = Math.round(ViewMan.widthPx * scale);
         const height = Math.round(ViewMan.heightPx * scale);
         const fps = Sit.fps;
 
-        console.log(`Starting viewport video export: ${totalFrames} frames at ${fps} fps, ${width}x${height} (scale: ${scale}x)`);
+        console.log(`Starting viewport video export: ${totalFrames} frames (${startFrame}-${endFrame}) at ${fps} fps, ${width}x${height} (scale: ${scale}x)`);
 
         const savedFrame = par.frame;
         const savedPaused = par.paused;
@@ -768,7 +770,8 @@ export class CCustomManager {
 
             await exporter.initialize();
 
-            for (let frame = 0; frame < totalFrames; frame++) {
+            for (let i = 0; i < totalFrames; i++) {
+                const frame = startFrame + i;
                 par.frame = frame;
                 GlobalDateTimeNode.update(frame);
 
@@ -852,8 +855,8 @@ export class CCustomManager {
 
                 await exporter.addFrame(compositeCanvas, frame);
 
-                if (frame % 10 === 0) {
-                    document.getElementById('exportProgress').textContent = `${frame + 1} / ${totalFrames}`;
+                if (i % 10 === 0) {
+                    document.getElementById('exportProgress').textContent = `${i + 1} / ${totalFrames}`;
                     await new Promise(r => setTimeout(r, 0));
                 }
             }
