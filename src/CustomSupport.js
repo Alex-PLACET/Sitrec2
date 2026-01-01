@@ -759,13 +759,16 @@ export class CCustomManager {
         compositeCanvas.height = height;
         const compositeCtx = compositeCanvas.getContext('2d');
 
+        const videoStartDate = GlobalDateTimeNode ? GlobalDateTimeNode.frameToDate(startFrame) : null;
+
         try {
             const exporter = new WebMVideoExporter({
                 width,
                 height,
                 fps,
                 bitrate: 8_000_000 * scale * scale,
-                keyFrameInterval: 30
+                keyFrameInterval: 30,
+                videoStartDate
             });
 
             await exporter.initialize();

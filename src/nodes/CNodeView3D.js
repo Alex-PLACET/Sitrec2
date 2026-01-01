@@ -271,13 +271,16 @@ export class CNodeView3D extends CNodeViewCanvas {
         progressDiv.innerHTML = '<div>Exporting video...</div><div id="exportProgress">0 / ' + totalFrames + '</div>';
         document.body.appendChild(progressDiv);
         
+        const videoStartDate = GlobalDateTimeNode ? GlobalDateTimeNode.frameToDate(startFrame) : null;
+        
         try {
             const exporter = new WebMVideoExporter({
                 width,
                 height,
                 fps,
                 bitrate: 5_000_000,
-                keyFrameInterval: 30
+                keyFrameInterval: 30,
+                videoStartDate
             });
             
             await exporter.initialize();
