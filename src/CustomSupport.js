@@ -33,12 +33,13 @@ import {
 import {isKeyHeld, toggler} from "./KeyBoardHandler";
 import {ECEFToLLAVD_Sphere, EUSToECEF, EUSToLLA, LLAToEUS} from "./LLA-ECEF-ENU";
 import {par} from "./par";
-import {GlobalScene} from "./LocalFrame";
+import {GlobalScene, LocalFrame} from "./LocalFrame";
 import {refreshLabelsAfterLoading} from "./nodes/CNodeLabels3D";
 import {assert} from "./assert.js";
 import {getShortURL} from "./urlUtils";
 import {CNode3DObject} from "./nodes/CNode3DObject";
-import {UpdateHUD} from "./JetStuff";
+import {UpdateHUD, UpdatePRFromEA} from "./JetStuff";
+import {Frame2Az, Frame2El} from "./JetUtils";
 import {degrees, getDateTimeFilename} from "./utils";
 import {ViewMan} from "./CViewManager";
 import {EventManager} from "./CEventManager";
@@ -761,6 +762,12 @@ export class CCustomManager {
                 par.frame = frame;
                 GlobalDateTimeNode.update(frame);
 
+                if (Sit.azSlider) {
+                    par.az = Frame2Az(par.frame);
+                    par.el = Frame2El(par.frame);
+                    UpdatePRFromEA();
+                }
+
                 for (const entry of Object.values(NodeMan.list)) {
                     const node = entry.data;
                     if (node.update !== undefined) {
@@ -770,6 +777,9 @@ export class CCustomManager {
                         await node.videoData.waitForFrame(frame);
                     }
                 }
+
+                GlobalScene.updateMatrixWorld(true);
+                if (LocalFrame) LocalFrame.updateMatrixWorld(true);
 
                 compositeCtx.fillStyle = '#000000';
                 compositeCtx.fillRect(0, 0, width, height);
@@ -801,6 +811,9 @@ export class CCustomManager {
 
                 for (const view of nonOverlays) {
                     view.renderCanvas(frame);
+                    if (view.renderer) {
+                        view.renderer.getContext().finish();
+                    }
                     if (view.canvas) {
                         const x = view.leftPx * scale;
                         const y = (view.topPx - ViewMan.topPx) * scale;
