@@ -38,7 +38,7 @@ import {refreshLabelsAfterLoading} from "./nodes/CNodeLabels3D";
 import {assert} from "./assert.js";
 import {getShortURL} from "./urlUtils";
 import {CNode3DObject} from "./nodes/CNode3DObject";
-import {UpdateHUD, UpdatePRFromEA} from "./JetStuff";
+import {UpdateHUD, UpdatePRFromEA, updateSize} from "./JetStuff";
 import {Frame2Az, Frame2El} from "./JetUtils";
 import {closeFullscreen, degrees, getDateTimeFilename, openFullscreen} from "./utils";
 import {ViewMan} from "./CViewManager";
@@ -896,6 +896,16 @@ export class CCustomManager {
                 Globals.menuBar.toggleVisiblity();
             }
             openFullscreen();
+            await new Promise(resolve => {
+                const handler = () => {
+                    document.removeEventListener('fullscreenchange', handler);
+                    document.removeEventListener('webkitfullscreenchange', handler);
+                    updateSize(true);
+                    setTimeout(resolve, 100);
+                };
+                document.addEventListener('fullscreenchange', handler);
+                document.addEventListener('webkitfullscreenchange', handler);
+            });
             await this.exportViewportVideo();
         } finally {
             closeFullscreen();
