@@ -1,5 +1,6 @@
 import {par} from "../par";
 import {WebMVideoExporter} from "../WebMVideoExporter";
+import {drawVideoWatermark} from "../utils";
 import {XYZ2EA, XYZJ2PR} from "../SphericalMath";
 import {raDec2Celestial} from "../CelestialMath";
 import {
@@ -273,6 +274,11 @@ export class CNodeView3D extends CNodeViewCanvas {
         
         const videoStartDate = GlobalDateTimeNode ? GlobalDateTimeNode.frameToDate(startFrame) : null;
         
+        const compositeCanvas = document.createElement('canvas');
+        compositeCanvas.width = width;
+        compositeCanvas.height = height;
+        const compositeCtx = compositeCanvas.getContext('2d');
+        
         try {
             const exporter = new WebMVideoExporter({
                 width,
@@ -301,7 +307,11 @@ export class CNodeView3D extends CNodeViewCanvas {
                 }
                 
                 this.renderCanvas(frame);
-                await exporter.addFrame(this.canvas, frame);
+                
+                compositeCtx.drawImage(this.canvas, 0, 0);
+                drawVideoWatermark(compositeCtx, width);
+                
+                await exporter.addFrame(compositeCanvas, frame);
                 
                 if (i % 10 === 0) {
                     document.getElementById('exportProgress').textContent = `${i + 1} / ${totalFrames}`;

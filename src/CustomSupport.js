@@ -40,7 +40,7 @@ import {getShortURL} from "./urlUtils";
 import {CNode3DObject} from "./nodes/CNode3DObject";
 import {UpdateHUD, UpdatePRFromEA, updateSize} from "./JetStuff";
 import {Frame2Az, Frame2El} from "./JetUtils";
-import {closeFullscreen, degrees, getDateTimeFilename, openFullscreen} from "./utils";
+import {closeFullscreen, degrees, drawVideoWatermark, getDateTimeFilename, openFullscreen} from "./utils";
 import {ViewMan} from "./CViewManager";
 import {EventManager} from "./CEventManager";
 import {isLocal, SITREC_APP, SITREC_SERVER} from "./configUtils";
@@ -855,6 +855,8 @@ export class CCustomManager {
                         compositeCtx.globalAlpha = 1;
                     }
                 }
+
+                drawVideoWatermark(compositeCtx, width);
 
                 await exporter.addFrame(compositeCanvas, frame);
 

@@ -657,6 +657,19 @@ export function closeFullscreen() {
     }
 }
 
+export function drawVideoWatermark(ctx, width) {
+    const watermark = process.env.BUILD_VERSION_STRING;
+    if (watermark) {
+        ctx.save();
+        ctx.font = '12px Arial';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'top';
+        ctx.fillText(watermark, width - 10, 2);
+        ctx.restore();
+    }
+}
+
 function getVersionString() {
     if(typeof document !== 'undefined')
         return MD5(document.lastModified)
