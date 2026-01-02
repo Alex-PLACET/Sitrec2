@@ -1,5 +1,5 @@
 import {par} from "../par";
-import {WebMVideoExporter} from "../WebMVideoExporter";
+import {createVideoExporter, DefaultVideoFormat, getVideoExtension} from "../VideoExporter";
 import {drawVideoWatermark, ExportProgressWidget} from "../utils";
 import {XYZ2EA, XYZJ2PR} from "../SphericalMath";
 import {raDec2Celestial} from "../CelestialMath";
@@ -251,17 +251,18 @@ export class CNodeView3D extends CNodeViewCanvas {
 
     /**
      * Export the lookView as a video file
-     * Renders each frame from 0 to Sit.frames-1 and encodes as WebM
+     * @param {string} formatId - Video format ID (e.g., 'mp4-h264', 'webm-vp8')
      */
-    async exportVideo() {
+    async exportVideo(formatId = DefaultVideoFormat) {
         const startFrame = Sit.aFrame;
         const endFrame = Sit.bFrame;
         const totalFrames = endFrame - startFrame + 1;
         const width = this.canvas.width;
         const height = this.canvas.height;
         const fps = Sit.fps;
+        const extension = getVideoExtension(formatId);
         
-        console.log(`Starting video export: ${totalFrames} frames (${startFrame}-${endFrame}) at ${fps} fps, ${width}x${height}`);
+        console.log(`Starting video export (${formatId}): ${totalFrames} frames (${startFrame}-${endFrame}) at ${fps} fps, ${width}x${height}`);
         
         const savedFrame = par.frame;
         const savedPaused = par.paused;
@@ -277,7 +278,7 @@ export class CNodeView3D extends CNodeViewCanvas {
         const compositeCtx = compositeCanvas.getContext('2d');
         
         try {
-            const exporter = new WebMVideoExporter({
+            const exporter = await createVideoExporter(formatId, {
                 width,
                 height,
                 fps,
@@ -328,13 +329,13 @@ export class CNodeView3D extends CNodeViewCanvas {
             }
             
             if (progress.shouldSave()) {
-                const webmBlob = await exporter.finalize(
+                const blob = await exporter.finalize(
                     (current, total) => progress.setFinalizeProgress(current, total),
                     (status) => progress.setStatus(status)
                 );
                 
-                const filename = `lookview_${Sit.name || 'export'}_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.webm`;
-                const url = URL.createObjectURL(webmBlob);
+                const filename = `lookview_${Sit.name || 'export'}_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.${extension}`;
+                const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
                 a.download = filename;

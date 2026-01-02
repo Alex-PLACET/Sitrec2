@@ -690,6 +690,9 @@ export class CCustomManager {
         this.videoExportView = "lookView";
         this.retinaExport = false;
         
+        const {getVideoFormatOptions, DefaultVideoFormat} = require("./VideoExporter");
+        this.videoFormat = DefaultVideoFormat;
+        
         const getExportableViews = () => {
             const views = [];
             ViewMan.iterate((id, view) => {
@@ -715,25 +718,29 @@ export class CCustomManager {
             .name("Render Video View")
             .tooltip("Select which view to export as video");
 
+        this.renderVideoFolder.add(this, "videoFormat", getVideoFormatOptions())
+            .name("Video Format")
+            .tooltip("Select the output video format. MP4 uses FFmpeg (loaded on first export).");
+
         this.renderVideoFolder.add({
             exportVideo: () => {
                 const view = ViewMan.get(this.videoExportView, false);
                 if (view && view.exportVideo) {
-                    view.exportVideo();
+                    view.exportVideo(this.videoFormat);
                 }
             }
         }, "exportVideo").name("Render Single View Video")
-            .tooltip("Export the selected view as a video file (WebM format) with all frames");
+            .tooltip("Export the selected view as a video file with all frames");
 
         this.renderVideoFolder.add({
             exportViewport: () => this.exportViewportVideo()
         }, "exportViewport").name("Render Viewport Video")
-            .tooltip("Export the entire viewport as a video file (WebM format) with all frames");
+            .tooltip("Export the entire viewport as a video file with all frames");
 
         this.renderVideoFolder.add({
             exportFullscreenViewport: () => this.exportFullscreenViewportVideo()
         }, "exportFullscreenViewport").name("Render Fullscreen Video")
-            .tooltip("Export the entire viewport in fullscreen mode as a video file (WebM format) with all frames");
+            .tooltip("Export the entire viewport in fullscreen mode as a video file with all frames");
 
         this.renderVideoFolder.add(this, "retinaExport")
             .name("Use HD/Retina Export")
@@ -742,7 +749,7 @@ export class CCustomManager {
     }
 
     async exportViewportVideo() {
-        const {WebMVideoExporter} = await import("./WebMVideoExporter");
+        const {createVideoExporter, getVideoExtension} = await import("./VideoExporter");
         
         const startFrame = Sit.aFrame;
         const endFrame = Sit.bFrame;
@@ -751,8 +758,10 @@ export class CCustomManager {
         const width = Math.round(ViewMan.widthPx * scale);
         const height = Math.round(ViewMan.heightPx * scale);
         const fps = Sit.fps;
+        const formatId = this.videoFormat;
+        const extension = getVideoExtension(formatId);
 
-        console.log(`Starting viewport video export: ${totalFrames} frames (${startFrame}-${endFrame}) at ${fps} fps, ${width}x${height} (scale: ${scale}x)`);
+        console.log(`Starting viewport video export (${formatId}): ${totalFrames} frames (${startFrame}-${endFrame}) at ${fps} fps, ${width}x${height} (scale: ${scale}x)`);
 
         const savedFrame = par.frame;
         const savedPaused = par.paused;
@@ -768,7 +777,7 @@ export class CCustomManager {
         const videoStartDate = GlobalDateTimeNode ? GlobalDateTimeNode.frameToDate(startFrame) : null;
 
         try {
-            const exporter = new WebMVideoExporter({
+            const exporter = await createVideoExporter(formatId, {
                 width,
                 height,
                 fps,
@@ -912,13 +921,13 @@ export class CCustomManager {
             }
 
             if (progress.shouldSave()) {
-                const webmBlob = await exporter.finalize(
+                const blob = await exporter.finalize(
                     (current, total) => progress.setFinalizeProgress(current, total),
                     (status) => progress.setStatus(status)
                 );
 
-                const filename = `viewport_${Sit.name || 'export'}_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.webm`;
-                const url = URL.createObjectURL(webmBlob);
+                const filename = `viewport_${Sit.name || 'export'}_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.${extension}`;
+                const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
                 a.download = filename;
