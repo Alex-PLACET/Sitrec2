@@ -50,6 +50,10 @@ export class CNodeMaskOverlay extends CNodeActiveOverlay {
         this.updateVisibility();
         if (this.overlayView && this.overlayView.div) {
             this.overlayView.div.style.cursor = editing ? 'none' : '';
+            const handles = this.overlayView.div.querySelectorAll('.resize-handle');
+            handles.forEach(handle => {
+                handle.style.pointerEvents = editing ? 'none' : '';
+            });
         }
     }
     
