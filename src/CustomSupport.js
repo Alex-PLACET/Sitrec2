@@ -49,6 +49,7 @@ import {DebugArrowAB, elevationAtLL} from "./threeExt";
 import {FeatureManager} from "./CFeatureManager";
 import {CNodeTrackGUI} from "./nodes/CNodeControllerTrackGUI";
 import {forceUpdateUIText} from "./nodes/CNodeViewUI";
+import {CNodeView3D} from "./nodes/CNodeView3D";
 import {configParams} from "./login";
 import {showError} from "./showError";
 import {textSitchToObject} from "./RegisterSitches";
@@ -827,6 +828,16 @@ export class CCustomManager {
                 });
 
                 for (const view of nonOverlays) {
+                    if (view.camera && view instanceof CNodeView3D) {
+                        view.camera.updateMatrix();
+                        view.camera.updateMatrixWorld();
+                        for (const entry of Object.values(NodeMan.list)) {
+                            const node = entry.data;
+                            if (node.preRender !== undefined) {
+                                node.preRender(view);
+                            }
+                        }
+                    }
                     view.renderCanvas(frame);
                     if (view.renderer) {
                         view.renderer.getContext().finish();
@@ -845,6 +856,16 @@ export class CCustomManager {
                     if (view.canvas) {
                         const ctx = view.canvas.getContext('2d');
                         ctx.clearRect(0, 0, view.canvas.width, view.canvas.height);
+                    }
+                    if (view.camera && view instanceof CNodeView3D) {
+                        view.camera.updateMatrix();
+                        view.camera.updateMatrixWorld();
+                        for (const entry of Object.values(NodeMan.list)) {
+                            const node = entry.data;
+                            if (node.preRender !== undefined) {
+                                node.preRender(view);
+                            }
+                        }
                     }
                     view.renderCanvas(frame);
                     if (view.canvas) {

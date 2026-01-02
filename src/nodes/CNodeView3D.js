@@ -306,6 +306,15 @@ export class CNodeView3D extends CNodeViewCanvas {
                     }
                 }
                 
+                this.camera.updateMatrix();
+                this.camera.updateMatrixWorld();
+                for (const entry of Object.values(NodeMan.list)) {
+                    const node = entry.data;
+                    if (node.preRender !== undefined) {
+                        node.preRender(this);
+                    }
+                }
+                
                 this.renderCanvas(frame);
                 
                 compositeCtx.drawImage(this.canvas, 0, 0);
