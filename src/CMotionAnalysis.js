@@ -332,7 +332,38 @@ class MotionAnalyzer {
         }
 
         const skipFrames = Math.max(1, Math.round(this.params.frameSkip));
-        const compareIdx = this.frameBuffer.length - 1 - skipFrames;
+        let compareIdx = this.frameBuffer.length - 1 - skipFrames;
+        
+        if (compareIdx < 0 && frame >= skipFrames) {
+            const prevFrame = frame - skipFrames;
+            const prevImage = videoData.getImage(prevFrame);
+            if (prevImage) {
+                const prevCanvas = document.createElement('canvas');
+                prevCanvas.width = prevImage.width || prevImage.videoWidth || width;
+                prevCanvas.height = prevImage.height || prevImage.videoHeight || height;
+                const prevCtx = prevCanvas.getContext('2d');
+                prevCtx.drawImage(prevImage, 0, 0, prevCanvas.width, prevCanvas.height);
+                const prevImageData = prevCtx.getImageData(0, 0, prevCanvas.width, prevCanvas.height);
+                
+                const prevSrc = cv.matFromImageData(prevImageData);
+                const prevGrayRaw = new cv.Mat();
+                cv.cvtColor(prevSrc, prevGrayRaw, cv.COLOR_RGBA2GRAY);
+                prevSrc.delete();
+                
+                const prevGray = new cv.Mat();
+                const blurSize = Math.max(1, Math.floor(this.params.blurSize) | 1);
+                if (blurSize > 1) {
+                    cv.GaussianBlur(prevGrayRaw, prevGray, new cv.Size(blurSize, blurSize), 0);
+                    prevGrayRaw.delete();
+                } else {
+                    prevGrayRaw.copyTo(prevGray);
+                    prevGrayRaw.delete();
+                }
+                
+                this.frameBuffer.unshift({gray: prevGray, frame: prevFrame, width: prevCanvas.width, height: prevCanvas.height});
+                compareIdx = 0;
+            }
+        }
         
         if (compareIdx >= 0) {
             const prevEntry = this.frameBuffer[compareIdx];
