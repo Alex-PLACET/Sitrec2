@@ -56,7 +56,7 @@ import {parseObjectInput as parseObjectInputUtil} from "./utils/parseObjectInput
 import {initializeSettings, SettingsSaver} from "./SettingsManager";
 import {CNodeCurveEditor2} from "./nodes/CNodeCurveEdit2";
 import {createCustomModalWithCopy, saveFilePrompted} from "./FileUtils";
-import {deserializeMotionAnalysis, serializeMotionAnalysis} from "./CMotionAnalysis";
+import {deserializeMotionAnalysis, getMotionAnalysisOverlays, serializeMotionAnalysis} from "./CMotionAnalysis";
 
 export class CCustomManager {
     constructor() {
@@ -854,6 +854,23 @@ export class CCustomManager {
                         compositeCtx.globalAlpha = alpha;
                         compositeCtx.drawImage(view.canvas, x, y, parentView.widthPx * scale, parentView.heightPx * scale);
                         compositeCtx.globalAlpha = 1;
+                    }
+                }
+
+                const motionOverlays = getMotionAnalysisOverlays();
+                if (motionOverlays && motionOverlays.videoView) {
+                    const vv = motionOverlays.videoView;
+                    const x = vv.leftPx * scale;
+                    const y = (vv.topPx - ViewMan.topPx) * scale;
+                    if (motionOverlays.overlay) {
+                        compositeCtx.drawImage(motionOverlays.overlay, x, y, vv.widthPx * scale, vv.heightPx * scale);
+                    }
+                    if (motionOverlays.graphCanvas) {
+                        const gw = 200 * scale;
+                        const gh = 80 * scale;
+                        const gx = x + vv.widthPx * scale - gw - 10 * scale;
+                        const gy = y + vv.heightPx * scale - gh - 10 * scale;
+                        compositeCtx.drawImage(motionOverlays.graphCanvas, gx, gy, gw, gh);
                     }
                 }
 

@@ -837,6 +837,15 @@ function removeParamSliders() {
     paramControllers = [];
 }
 
+export function getMotionAnalysisOverlays() {
+    if (!motionAnalyzer || !motionAnalyzer.active) return null;
+    return {
+        overlay: motionAnalyzer.overlay,
+        graphCanvas: motionAnalyzer.graphCanvas,
+        videoView: motionAnalyzer.videoView,
+    };
+}
+
 export function serializeMotionAnalysis() {
     if (!motionAnalyzer) return null;
     
