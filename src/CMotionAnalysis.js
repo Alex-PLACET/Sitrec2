@@ -1,5 +1,7 @@
 import {guiMenus, NodeMan, setRenderOne} from "./Globals";
 
+import {CNodeMaskOverlay} from "./nodes/CNodeMaskOverlay";
+
 let cv = null;
 let cvLoadPromise = null;
 
@@ -136,10 +138,34 @@ class MotionAnalyzer {
         
         this.lastFlowData = null;
         this.guiFolder = null;
+        
+        this.maskOverlayNode = null;
+        this.maskEnabled = true;
+        this.brushSize = 20;
+    }
+    
+    setMaskEditing(enabled) {
+        if (this.maskOverlayNode) {
+            this.maskOverlayNode.setVisible(enabled);
+            setRenderOne(true);
+        }
+    }
+    
+    clearMask() {
+        if (this.maskOverlayNode) {
+            this.maskOverlayNode.clearMask();
+        }
     }
 
     createOverlay() {
         if (this.overlay) return;
+
+        this.maskOverlayNode = new CNodeMaskOverlay({
+            id: "motionMaskOverlay",
+            overlayView: this.videoView,
+            brushSize: this.brushSize,
+            visible: false,
+        });
 
         this.overlay = document.createElement('canvas');
         this.overlay.style.position = 'absolute';
@@ -174,6 +200,10 @@ class MotionAnalyzer {
         }
         if (this.graphCanvas && this.graphCanvas.parentNode) {
             this.graphCanvas.parentNode.removeChild(this.graphCanvas);
+        }
+        if (this.maskOverlayNode) {
+            this.maskOverlayNode.dispose();
+            this.maskOverlayNode = null;
         }
         this.overlay = null;
         this.overlayCtx = null;
@@ -222,6 +252,11 @@ class MotionAnalyzer {
         tempCanvas.height = image.height || image.videoHeight || height;
         const tempCtx = tempCanvas.getContext('2d');
         tempCtx.drawImage(image, 0, 0, tempCanvas.width, tempCanvas.height);
+        
+        if (this.maskOverlayNode) {
+            this.maskOverlayNode.initMask(tempCanvas.width, tempCanvas.height);
+        }
+        
         const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
 
         const src = cv.matFromImageData(imageData);
@@ -259,6 +294,11 @@ class MotionAnalyzer {
 
         this.drawOverlay(width, height, tempCanvas.width, tempCanvas.height);
         this.drawGraph();
+    }
+
+    isPointMasked(x, y) {
+        if (!this.maskEnabled || !this.maskOverlayNode) return false;
+        return this.maskOverlayNode.isPointMasked(x, y);
     }
 
     computeOpticalFlow(prevGray, gray, imgWidth, imgHeight, skipFrames = 1) {
@@ -299,6 +339,9 @@ class MotionAnalyzer {
             
             const px = prevPtsMat.floatAt(i, 0);
             const py = prevPtsMat.floatAt(i, 1);
+            
+            if (this.isPointMasked(px, py)) continue;
+            
             const nx = nextPtsMat.floatAt(i, 0);
             const ny = nextPtsMat.floatAt(i, 1);
             const dxRaw = nx - px;
@@ -688,6 +731,30 @@ function createParamSliders() {
         .tooltip("Direction smoothing (higher = more smoothing)"));
     paramControllers.push(motionFolder.add(p, 'inlierThreshold', 0.3, 0.9, 0.05).name("Inlier Threshold").onChange(update)
         .tooltip("Threshold for consensus direction agreement"));
+    
+    const maskControls = {
+        editMask: false,
+        clearMask: () => {
+            if (motionAnalyzer) {
+                motionAnalyzer.clearMask();
+            }
+        }
+    };
+    
+    paramControllers.push(motionFolder.add(motionAnalyzer, 'maskEnabled').name("Enable Mask").onChange(update)
+        .tooltip("Enable/disable mask filtering"));
+    
+    paramControllers.push(motionFolder.add(maskControls, 'editMask').name("Edit Mask").onChange((v) => {
+        motionAnalyzer.setMaskEditing(v);
+    }).tooltip("Click and drag to paint mask (Alt/Option to erase)"));
+    
+    if (motionAnalyzer.maskOverlayNode) {
+        paramControllers.push(motionFolder.add(motionAnalyzer.maskOverlayNode, 'brushSize', 5, 50, 1).name("Brush Size").onChange(update)
+            .tooltip("Mask brush size in pixels"));
+    }
+    
+    paramControllers.push(motionFolder.add(maskControls, 'clearMask').name("Clear Mask")
+        .tooltip("Clear all mask data"));
     
     motionFolder.open();
 }

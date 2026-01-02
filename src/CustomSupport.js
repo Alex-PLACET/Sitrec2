@@ -2929,6 +2929,7 @@ export class CCustomManager {
             "aFrame",
             "bFrame",
             "ignores",
+            "motionMask",
         ]
 
         const globalsNeeded = [
