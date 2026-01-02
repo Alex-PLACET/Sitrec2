@@ -98,6 +98,9 @@ export function addGUIMouseTracking(gui) {
     
     gui.domElement.addEventListener('mouseleave', function(e) {
         setMouseOverGUI(false);
+        if (document.activeElement && gui.domElement.contains(document.activeElement)) {
+            document.activeElement.blur();
+        }
     });
 }
 

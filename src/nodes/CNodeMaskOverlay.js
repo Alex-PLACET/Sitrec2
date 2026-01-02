@@ -2,6 +2,7 @@ import {CNodeActiveOverlay} from "./CNodeTrackingOverlay";
 import {setRenderOne, Sit} from "../Globals";
 import {mouseToCanvas} from "../ViewUtils";
 import {undoManager} from "../UndoManager";
+import {isKeyCodeHeld} from "../KeyBoardHandler";
 
 export class CNodeMaskOverlay extends CNodeActiveOverlay {
     constructor(v) {
@@ -25,8 +26,16 @@ export class CNodeMaskOverlay extends CNodeActiveOverlay {
         this.lastMouseX = 0;
         this.lastMouseY = 0;
         this.preDrawMaskData = null;
+        this.lastBrushAdjustTime = 0;
         
         this.loadMask();
+    }
+    
+    setVisible(visible) {
+        super.setVisible(visible);
+        if (this.overlayView && this.overlayView.div) {
+            this.overlayView.div.style.cursor = visible ? 'none' : '';
+        }
     }
     
     notifyMaskChange() {
@@ -249,8 +258,33 @@ export class CNodeMaskOverlay extends CNodeActiveOverlay {
         setRenderOne(true);
     }
     
+    handleBrushSizeKeys() {
+        const now = performance.now();
+        const delay = 50;
+        if (now - this.lastBrushAdjustTime < delay) return;
+
+
+        let step = 1+(Math.sqrt(this.brushSize)/2);
+
+        let changed = false;
+        if (isKeyCodeHeld('BracketLeft')) {
+            this.brushSize = Math.max(1, this.brushSize - step);
+            changed = true;
+        }
+        if (isKeyCodeHeld('BracketRight')) {
+            this.brushSize = Math.min(100, this.brushSize + step);
+            changed = true;
+        }
+        if (changed) {
+            this.lastBrushAdjustTime = now;
+            setRenderOne(true);
+        }
+    }
+    
     renderCanvas(frame) {
         super.renderCanvas(frame);
+        
+        this.handleBrushSizeKeys();
         
         this.ensureMaskInitialized();
         if (!this.maskCanvas) return;

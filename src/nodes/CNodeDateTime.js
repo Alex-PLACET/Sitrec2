@@ -673,12 +673,12 @@ export class CNodeDateTime extends CNode {
             this.AdjustStartTime(1000*speedscale)
         }
 
-        if (isKeyCodeHeld('BracketLeft')) {
-            this.AdjustStartTime(-3000*speedscale)
-        }
-        if (isKeyCodeHeld('BracketRight')) {
-            this.AdjustStartTime(3000*speedscale)
-        }
+        // if (isKeyCodeHeld('BracketLeft')) {
+        //     this.AdjustStartTime(-3000*speedscale)
+        // }
+        // if (isKeyCodeHeld('BracketRight')) {
+        //     this.AdjustStartTime(3000*speedscale)
+        // }
 
 
         this.nowGST = calculateGST(this.nowDate)
