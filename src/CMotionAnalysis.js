@@ -753,7 +753,7 @@ let motionFolder = null;
 export function addMotionAnalysisMenu() {
     if (!guiMenus.view) return;
     
-    motionFolder = guiMenus.view.addFolder("Motion Analysis").close();
+    motionFolder = guiMenus.view.addFolder("Motion Analysis").close().perm();
     
     const menuActions = {
         analyzeMotion: toggleMotionAnalysis
