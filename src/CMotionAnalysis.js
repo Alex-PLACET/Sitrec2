@@ -319,7 +319,6 @@ class MotionAnalyzer {
             cv.GaussianBlur(grayRaw, gray, new cv.Size(blurSize, blurSize), 0);
             grayRaw.delete();
         } else {
-            gray.delete();
             grayRaw.copyTo(gray);
             grayRaw.delete();
         }
