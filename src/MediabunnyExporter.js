@@ -25,7 +25,7 @@ export class MediabunnyExporter {
         const {
             Output,
             Mp4OutputFormat,
-            WebmOutputFormat,
+            WebMOutputFormat,
             BufferTarget,
             EncodedVideoPacketSource,
             EncodedPacket,
@@ -39,7 +39,7 @@ export class MediabunnyExporter {
 
         const formatOptions = this.format === 'mp4'
             ? new Mp4OutputFormat({ fastStart: 'in-memory' })
-            : new WebmOutputFormat();
+            : new WebMOutputFormat();
 
         this.target = new BufferTarget();
         this.output = new Output({

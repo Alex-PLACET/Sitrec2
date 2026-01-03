@@ -69,13 +69,25 @@ export async function checkVideoEncodingSupport() {
         return { supported: false, h264: false, vp8: false, reason: 'VideoEncoder API not available' };
     }
     
-    const h264Result = await checkH264Support(640, 480);
-    
-    const vp8Config = { width: 640, height: 480, framerate: 30, bitrate: 1_000_000, codec: 'vp8' };
-    let vp8 = false;
+    let mp4MuxerAvailable = false;
+    let webmMuxerAvailable = false;
     try {
-        vp8 = (await VideoEncoder.isConfigSupported(vp8Config)).supported;
-    } catch (e) {}
+        const { Mp4OutputFormat, WebMOutputFormat } = await import('mediabunny');
+        mp4MuxerAvailable = typeof Mp4OutputFormat === 'function';
+        webmMuxerAvailable = typeof WebMOutputFormat === 'function';
+    } catch (e) {
+        return { supported: false, h264: false, vp8: false, reason: 'Media muxer library not available' };
+    }
+    
+    const h264Result = mp4MuxerAvailable ? await checkH264Support(640, 480) : { supported: false };
+    
+    let vp8 = false;
+    if (webmMuxerAvailable) {
+        const vp8Config = { width: 640, height: 480, framerate: 30, bitrate: 1_000_000, codec: 'vp8' };
+        try {
+            vp8 = (await VideoEncoder.isConfigSupported(vp8Config)).supported;
+        } catch (e) {}
+    }
     
     if (h264Result.supported || vp8) {
         return { 
@@ -116,6 +128,18 @@ export async function checkCodecAtResolution(formatId, width, height) {
     const format = VideoFormats[formatId];
     if (!format) {
         return { supported: false, reason: `Unknown format: ${formatId}` };
+    }
+    
+    try {
+        const { Mp4OutputFormat, WebMOutputFormat } = await import('mediabunny');
+        if (format.format === 'mp4' && typeof Mp4OutputFormat !== 'function') {
+            return { supported: false, reason: 'MP4 muxer not available' };
+        }
+        if (format.format === 'webm' && typeof WebMOutputFormat !== 'function') {
+            return { supported: false, reason: 'WebM muxer not available' };
+        }
+    } catch (e) {
+        return { supported: false, reason: 'Media muxer library not available' };
     }
     
     const config = {
