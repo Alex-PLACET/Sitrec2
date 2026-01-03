@@ -27,6 +27,7 @@ export async function createVideoExporter(formatId, options) {
         ...options,
         format: format.format,
         codec: format.codec,
+        hardwareAcceleration: options.hardwareAcceleration,
     });
 }
 
@@ -40,4 +41,136 @@ export function getVideoFormatOptions() {
         acc[value.name] = key;
         return acc;
     }, {});
+}
+
+async function checkH264Support(width, height) {
+    const config = {
+        width,
+        height,
+        framerate: 30,
+        bitrate: 1_000_000,
+        codec: 'avc1.640029',
+        avc: { format: 'avc' },
+    };
+    
+    for (const accel of ['prefer-hardware', 'prefer-software', 'no-preference']) {
+        config.hardwareAcceleration = accel;
+        try {
+            if ((await VideoEncoder.isConfigSupported(config)).supported) {
+                return { supported: true, hardwareAcceleration: accel };
+            }
+        } catch (e) {}
+    }
+    return { supported: false };
+}
+
+export async function checkVideoEncodingSupport() {
+    if (typeof VideoEncoder === 'undefined') {
+        return { supported: false, h264: false, vp8: false, reason: 'VideoEncoder API not available' };
+    }
+    
+    const h264Result = await checkH264Support(640, 480);
+    
+    const vp8Config = { width: 640, height: 480, framerate: 30, bitrate: 1_000_000, codec: 'vp8' };
+    let vp8 = false;
+    try {
+        vp8 = (await VideoEncoder.isConfigSupported(vp8Config)).supported;
+    } catch (e) {}
+    
+    if (h264Result.supported || vp8) {
+        return { 
+            supported: true, 
+            h264: h264Result.supported, 
+            h264Acceleration: h264Result.hardwareAcceleration,
+            vp8 
+        };
+    }
+    return { supported: false, h264: false, vp8: false, reason: 'No video codecs available' };
+}
+
+export function getFilteredVideoFormatOptions(encodingSupport) {
+    const options = {};
+    if (encodingSupport.h264) {
+        options[VideoFormats['mp4-h264'].name] = 'mp4-h264';
+    }
+    if (encodingSupport.vp8) {
+        options[VideoFormats['webm-vp8'].name] = 'webm-vp8';
+    }
+    return options;
+}
+
+export function getDefaultVideoFormat(encodingSupport) {
+    if (encodingSupport.h264) return 'mp4-h264';
+    if (encodingSupport.vp8) return 'webm-vp8';
+    return null;
+}
+
+export async function checkCodecAtResolution(formatId, width, height) {
+    if (typeof VideoEncoder === 'undefined') {
+        return { supported: false, reason: 'VideoEncoder API not available' };
+    }
+    
+    const encodedWidth = Math.ceil(width / 2) * 2;
+    const encodedHeight = Math.ceil(height / 2) * 2;
+    
+    const format = VideoFormats[formatId];
+    if (!format) {
+        return { supported: false, reason: `Unknown format: ${formatId}` };
+    }
+    
+    const config = {
+        width: encodedWidth,
+        height: encodedHeight,
+        framerate: 30,
+        bitrate: 5_000_000,
+    };
+    
+    if (format.codec === 'avc') {
+        config.avc = { format: 'avc' };
+        const levels = ['avc1.640029', 'avc1.640032', 'avc1.640033', 'avc1.640034'];
+        for (const accel of ['prefer-hardware', 'prefer-software', 'no-preference']) {
+            config.hardwareAcceleration = accel;
+            for (const level of levels) {
+                config.codec = level;
+                try {
+                    if ((await VideoEncoder.isConfigSupported(config)).supported) {
+                        return { supported: true, hardwareAcceleration: accel };
+                    }
+                } catch (e) {}
+            }
+        }
+        return { supported: false, reason: `H.264 not supported at ${encodedWidth}x${encodedHeight}` };
+    } else {
+        config.codec = format.codec;
+        try {
+            if ((await VideoEncoder.isConfigSupported(config)).supported) {
+                return { supported: true };
+            }
+        } catch (e) {}
+        return { supported: false, reason: `${format.codec} not supported at ${encodedWidth}x${encodedHeight}` };
+    }
+}
+
+export async function getBestFormatForResolution(preferredFormat, width, height) {
+    const preferred = await checkCodecAtResolution(preferredFormat, width, height);
+    if (preferred.supported) {
+        return { 
+            formatId: preferredFormat, 
+            fallback: false,
+            hardwareAcceleration: preferred.hardwareAcceleration,
+        };
+    }
+    
+    const fallbackId = preferredFormat === 'mp4-h264' ? 'webm-vp8' : 'mp4-h264';
+    const fallback = await checkCodecAtResolution(fallbackId, width, height);
+    if (fallback.supported) {
+        return { 
+            formatId: fallbackId, 
+            fallback: true, 
+            reason: preferred.reason,
+            hardwareAcceleration: fallback.hardwareAcceleration,
+        };
+    }
+    
+    return { formatId: null, fallback: false, reason: `No codec supports ${width}x${height}` };
 }

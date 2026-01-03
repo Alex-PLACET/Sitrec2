@@ -7,6 +7,7 @@ export class MediabunnyExporter {
         this.keyFrameInterval = options.keyFrameInterval || 30;
         this.format = options.format || 'mp4';
         this.codec = options.codec || (this.format === 'mp4' ? 'avc' : 'vp8');
+        this.hardwareAcceleration = options.hardwareAcceleration || 'prefer-hardware';
         this.videoStartDate = options.videoStartDate || null;
         this.audioBuffer = options.audioBuffer || null;
         this.audioStartTime = options.audioStartTime || 0;
@@ -88,7 +89,7 @@ export class MediabunnyExporter {
 
         if (this.codec === 'avc') {
             config.avc = { format: 'avc' };
-            config.hardwareAcceleration = 'prefer-hardware';
+            config.hardwareAcceleration = this.hardwareAcceleration;
             const pixels = encodedWidth * encodedHeight;
             let startLevel;
             if (pixels > 8294400) {

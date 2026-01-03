@@ -1,5 +1,5 @@
 import {par} from "../par";
-import {createVideoExporter, DefaultVideoFormat, getVideoExtension} from "../VideoExporter";
+import {createVideoExporter, DefaultVideoFormat, getBestFormatForResolution, getVideoExtension} from "../VideoExporter";
 import {drawVideoWatermark, ExportProgressWidget} from "../utils";
 import {XYZ2EA, XYZJ2PR} from "../SphericalMath";
 import {raDec2Celestial} from "../CelestialMath";
@@ -255,13 +255,24 @@ export class CNodeView3D extends CNodeViewCanvas {
      * @param {string} formatId - Video format ID (e.g., 'mp4-h264', 'webm-vp8')
      * @param {boolean} includeAudio - Whether to include audio track if available
      */
-    async exportVideo(formatId = DefaultVideoFormat, includeAudio = true) {
+    async exportVideo(requestedFormatId = DefaultVideoFormat, includeAudio = true) {
         const startFrame = Sit.aFrame;
         const endFrame = Sit.bFrame;
         const totalFrames = endFrame - startFrame + 1;
         const width = this.canvas.width;
         const height = this.canvas.height;
         const fps = Sit.fps;
+        
+        const bestFormat = await getBestFormatForResolution(requestedFormatId, width, height);
+        if (!bestFormat.formatId) {
+            alert(`Video export failed: ${bestFormat.reason}`);
+            return;
+        }
+        if (bestFormat.fallback) {
+            console.log(`${bestFormat.reason}, falling back to ${bestFormat.formatId}`);
+        }
+        
+        const formatId = bestFormat.formatId;
         const extension = getVideoExtension(formatId);
         
         console.log(`Starting video export (${formatId}): ${totalFrames} frames (${startFrame}-${endFrame}) at ${fps} fps, ${width}x${height}`);
@@ -314,6 +325,7 @@ export class CNodeView3D extends CNodeViewCanvas {
                 audioStartTime,
                 audioDuration,
                 originalFps,
+                hardwareAcceleration: bestFormat.hardwareAcceleration,
             });
             
             await exporter.initialize();

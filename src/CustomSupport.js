@@ -687,13 +687,12 @@ export class CCustomManager {
 
     } // end of setup()
 
-    setupVideoExport() {
+    async setupVideoExport() {
         this.videoExportView = "lookView";
         this.retinaExport = false;
         this.exportAudio = true;
         
-        const {getVideoFormatOptions, DefaultVideoFormat} = require("./VideoExporter");
-        this.videoFormat = DefaultVideoFormat;
+        const {checkVideoEncodingSupport, getFilteredVideoFormatOptions, getDefaultVideoFormat} = require("./VideoExporter");
         
         const getExportableViews = () => {
             const views = [];
@@ -712,6 +711,18 @@ export class CCustomManager {
             this.videoExportView = exportableViews[0];
         }
 
+        const encodingSupport = await checkVideoEncodingSupport();
+        if (!encodingSupport.supported) {
+            guiMenus.view.add({ label: "Video Export Not Available" }, "label")
+                .name("Video Export Not Available")
+                .disable()
+                .tooltip(encodingSupport.reason || "Video encoding is not supported in this browser");
+            return;
+        }
+
+        this.videoFormat = getDefaultVideoFormat(encodingSupport);
+        const formatOptions = getFilteredVideoFormatOptions(encodingSupport);
+
         this.renderVideoFolder = guiMenus.view.addFolder("Video Render & Export").close()
             .tooltip("Options for rendering and exporting video files from Sitrec views or full viewport");
 
@@ -720,9 +731,11 @@ export class CCustomManager {
             .name("Render Video View")
             .tooltip("Select which view to export as video");
 
-        this.renderVideoFolder.add(this, "videoFormat", getVideoFormatOptions())
-            .name("Video Format")
-            .tooltip("Select the output video format. MP4 uses FFmpeg (loaded on first export).");
+        if (Object.keys(formatOptions).length > 1) {
+            this.renderVideoFolder.add(this, "videoFormat", formatOptions)
+                .name("Video Format")
+                .tooltip("Select the output video format");
+        }
 
         this.renderVideoFolder.add({
             exportVideo: () => {
@@ -756,7 +769,7 @@ export class CCustomManager {
     }
 
     async exportViewportVideo() {
-        const {createVideoExporter, getVideoExtension} = await import("./VideoExporter");
+        const {createVideoExporter, getVideoExtension, getBestFormatForResolution} = await import("./VideoExporter");
         
         const startFrame = Sit.aFrame;
         const endFrame = Sit.bFrame;
@@ -765,7 +778,17 @@ export class CCustomManager {
         const width = Math.round(ViewMan.widthPx * scale);
         const height = Math.round(ViewMan.heightPx * scale);
         const fps = Sit.fps;
-        const formatId = this.videoFormat;
+        
+        const bestFormat = await getBestFormatForResolution(this.videoFormat, width, height);
+        if (!bestFormat.formatId) {
+            alert(`Video export failed: ${bestFormat.reason}`);
+            return;
+        }
+        if (bestFormat.fallback) {
+            console.log(`${bestFormat.reason}, falling back to ${bestFormat.formatId}`);
+        }
+        
+        const formatId = bestFormat.formatId;
         const extension = getVideoExtension(formatId);
 
         console.log(`Starting viewport video export (${formatId}): ${totalFrames} frames (${startFrame}-${endFrame}) at ${fps} fps, ${width}x${height} (scale: ${scale}x)`);
@@ -818,6 +841,7 @@ export class CCustomManager {
                 audioStartTime,
                 audioDuration,
                 originalFps,
+                hardwareAcceleration: bestFormat.hardwareAcceleration,
             });
 
             await exporter.initialize();
