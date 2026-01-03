@@ -473,6 +473,11 @@ export class CVideoWebCodecData extends CVideoData {
         infoDiv.innerHTML = d;
     }
 
+    isFrameLoaded(frame) {
+        frame = Math.floor(frame / this.videoSpeed);
+        return this.imageCache[frame] !== undefined && this.imageCache[frame].width !== 0;
+    }
+
     getImage(frame) {
 
         frame = Math.floor(frame / this.videoSpeed); // videoSpeed will normally be 1, but for timelapse will be

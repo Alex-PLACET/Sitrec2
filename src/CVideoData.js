@@ -28,6 +28,11 @@ export class CVideoData {
         return null;
     }
 
+    isFrameLoaded(frame) {
+        const img = this.imageCache[frame];
+        return img && img.width > 0 && img.height > 0;
+    }
+
     update() {
         // nothing to do here
     }

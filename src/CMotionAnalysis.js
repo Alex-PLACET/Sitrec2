@@ -294,7 +294,7 @@ class MotionAnalyzer {
         }
 
         const image = videoData.getImage(frame);
-        if (!image) return;
+        if (!image || !image.width || !image.height) return;
 
         const tempCanvas = document.createElement('canvas');
         tempCanvas.width = image.width || image.videoWidth || width;
@@ -331,12 +331,19 @@ class MotionAnalyzer {
         }
 
         const skipFrames = Math.max(1, Math.round(this.params.frameSkip));
-        let compareIdx = this.frameBuffer.length - 1 - skipFrames;
+        const targetFrame = frame - skipFrames;
+        let compareIdx = this.frameBuffer.findIndex(entry => entry.frame === targetFrame);
         
         if (compareIdx < 0 && frame >= skipFrames) {
-            const prevFrame = frame - skipFrames;
+            const prevFrame = targetFrame;
+            const isLoaded = videoData.isFrameLoaded ? videoData.isFrameLoaded(prevFrame) : true;
+            if (!isLoaded) {
+                gray.delete();
+                setTimeout(() => setRenderOne(true), 100);
+                return;
+            }
             const prevImage = videoData.getImage(prevFrame);
-            if (prevImage) {
+            if (prevImage && prevImage.width && prevImage.height) {
                 const prevCanvas = document.createElement('canvas');
                 prevCanvas.width = prevImage.width || prevImage.videoWidth || width;
                 prevCanvas.height = prevImage.height || prevImage.videoHeight || height;
@@ -367,20 +374,22 @@ class MotionAnalyzer {
         if (compareIdx >= 0) {
             const prevEntry = this.frameBuffer[compareIdx];
             this.computeOpticalFlow(prevEntry.gray, gray, tempCanvas.width, tempCanvas.height, skipFrames);
+            
+            gray.delete();
+
+            this.resultCache.set(frame, {
+                flowData: this.lastFlowData ? {...this.lastFlowData, vectors: [...this.lastFlowData.vectors]} : null,
+                smoothedDirection: {...this.smoothedDirection},
+                angleHistory: [...this.angleHistory],
+                imgWidth: tempCanvas.width,
+                imgHeight: tempCanvas.height,
+            });
+
+            this.drawOverlay(width, height, tempCanvas.width, tempCanvas.height);
+            this.drawGraph();
+        } else {
+            gray.delete();
         }
-
-        gray.delete();
-
-        this.resultCache.set(frame, {
-            flowData: this.lastFlowData ? {...this.lastFlowData, vectors: [...this.lastFlowData.vectors]} : null,
-            smoothedDirection: {...this.smoothedDirection},
-            angleHistory: [...this.angleHistory],
-            imgWidth: tempCanvas.width,
-            imgHeight: tempCanvas.height,
-        });
-
-        this.drawOverlay(width, height, tempCanvas.width, tempCanvas.height);
-        this.drawGraph();
     }
 
     isPointMasked(x, y) {
