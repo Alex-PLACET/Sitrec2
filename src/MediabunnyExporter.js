@@ -88,6 +88,7 @@ export class MediabunnyExporter {
 
         if (this.codec === 'avc') {
             config.avc = { format: 'avc' };
+            config.hardwareAcceleration = 'prefer-hardware';
             const pixels = encodedWidth * encodedHeight;
             let startLevel;
             if (pixels > 8294400) {
@@ -97,9 +98,9 @@ export class MediabunnyExporter {
             } else if (pixels > 2073600) {
                 startLevel = 1; // 5.0 for up to ~2.5K
             } else {
-                startLevel = 0; // 4.0 for up to ~1080p
+                startLevel = 0; // 4.1 for up to ~1080p
             }
-            const levels = ['avc1.640028', 'avc1.640032', 'avc1.640033', 'avc1.640034'];
+            const levels = ['avc1.640029', 'avc1.640032', 'avc1.640033', 'avc1.640034'];
             let supported = false;
             for (let i = startLevel; i < levels.length; i++) {
                 config.codec = levels[i];
