@@ -1349,6 +1349,7 @@ async function initializeOnce() {
     }
 
     addHelpLink("About Sitrec", "README")
+    addHelpLink("What's New", "docs/WhatsNew")
     addHelpLink("User Interface Basics", "docs/UserInterface")
     addHelpLink("How to set up a sitch", "docs/CustomSitchTool")
     addHelpLink("How to Investigate Starlink Flares", "docs/Starlink")
