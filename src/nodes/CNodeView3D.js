@@ -52,6 +52,7 @@ import {
     updateTrackPositionIndicator
 } from "../threeExt";
 import {CNodeViewCanvas} from "./CNodeViewCanvas";
+import {CNode} from "./CNode";
 import {wgs84} from "../LLA-ECEF-ENU";
 import {getCameraNode} from "./CNodeCamera";
 import {CNodeEffect} from "./CNodeEffect";
@@ -326,6 +327,11 @@ export class CNodeView3D extends CNodeViewCanvas {
                 
                 for (const entry of Object.values(NodeMan.list)) {
                     const node = entry.data;
+                    if (node.isController) {
+                        assert(node.update === CNode.prototype.update,
+                            `Controller ${node.id} has overridden update() - move logic to apply()`);
+                        continue;
+                    }
                     if (node.update !== undefined) {
                         node.update(frame);
                     }

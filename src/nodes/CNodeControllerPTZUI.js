@@ -143,8 +143,8 @@ export class CNodeControllerPTZUI extends CNodeControllerAzElZoom {
         this.relative = v.relative ?? false;
     }
 
-    update(f) {
-
+    // Note this has to be in apply, not update, as there are update orders issues
+    apply(f, objectNode ) {
 
         // check if the switch node fovSwitch is present
         // and if set to somthing other than userFOV
@@ -155,7 +155,7 @@ export class CNodeControllerPTZUI extends CNodeControllerAzElZoom {
             this.fov = fovSwitch.getValue(f);
         }
 
-        super.update(f);
+        super.apply(f, objectNode);
     }
 
     refresh(v) {
@@ -188,14 +188,7 @@ export class CNodeControllerCustomAzEl extends CNodeControllerAzElZoom {
 
     }
 
-    // patch that if the relative mode is different from the fallback, we need to recalculate
-    update(f) {
-        if (this.relative !== this.fallback.relative) {
-            this.relative = this.fallback.relative;
-            this.recalculateCascade();
-        }
-        super.update(f);
-    }
+
 
     setAzFile(azFile, azCol) {
         this.azFile = azFile;
@@ -234,7 +227,11 @@ export class CNodeControllerCustomAzEl extends CNodeControllerAzElZoom {
 
 
     apply(f, objectNode ) {
-        // default to the fallback at first, in case we don't have a file for az/el/zoom/fov
+        if (this.relative !== this.fallback.relative) {
+            this.relative = this.fallback.relative;
+            this.recalculateCascade();
+        }
+
         if (this.fallback) {
             this.az = this.fallback.az;
             this.el = this.fallback.el;

@@ -2157,6 +2157,7 @@ function renderMain(elapsed) {
     if (par.paused && !par.renderOne) {
         for (const entry of Object.values(NodeMan.list)) {
             const node = entry.data;
+            if (node.isController) continue;
             if (node.update !== undefined && node.updateWhilePaused) {
                 node.update(par.frame)
             }
@@ -2227,6 +2228,11 @@ function renderMain(elapsed) {
 
             for (const entry of Object.values(NodeMan.list)) {
                 const node = entry.data;
+                if (node.isController) {
+                    assert(node.update === CNode.prototype.update,
+                        `Controller ${node.id} has overridden update() - move logic to apply()`);
+                    continue;
+                }
                 if (node.update !== undefined) {
                     node.update(par.frame)
                 }
