@@ -204,27 +204,187 @@ class MotionAnalyzer {
 
     getMotionDataForAllFrames() {
         const data = [];
-        let lastGoodData = {dx: 0, dy: 0, confidence: 0};
+        const goodFrameIndices = [];
         
         for (let f = 0; f < Sit.frames; f++) {
             const cached = this.resultCache.get(f);
             if (cached && cached.smoothedDirection && !cached.incomplete) {
                 const isGoodFrame = cached.flowData?.isGoodFrame ?? true;
                 if (isGoodFrame) {
-                    lastGoodData = {
+                    data.push({
                         dx: cached.smoothedDirection.x,
                         dy: cached.smoothedDirection.y,
                         confidence: cached.smoothedDirection.confidence,
-                    };
-                    data.push(lastGoodData);
+                        isGood: true,
+                    });
+                    goodFrameIndices.push(f);
                 } else {
-                    data.push({...lastGoodData, confidence: lastGoodData.confidence * 0.5});
+                    data.push({dx: 0, dy: 0, confidence: 0, isGood: false});
                 }
             } else {
-                data.push({dx: 0, dy: 0, confidence: 0});
+                data.push({dx: 0, dy: 0, confidence: 0, isGood: false});
             }
         }
+        
+        if (goodFrameIndices.length === 0) {
+            return data;
+        }
+        
+        for (let f = 0; f < Sit.frames; f++) {
+            if (data[f].isGood) continue;
+            
+            let prevGoodIdx = -1;
+            let nextGoodIdx = -1;
+            
+            for (let i = goodFrameIndices.length - 1; i >= 0; i--) {
+                if (goodFrameIndices[i] < f) {
+                    prevGoodIdx = goodFrameIndices[i];
+                    break;
+                }
+            }
+            for (let i = 0; i < goodFrameIndices.length; i++) {
+                if (goodFrameIndices[i] > f) {
+                    nextGoodIdx = goodFrameIndices[i];
+                    break;
+                }
+            }
+            
+            if (prevGoodIdx < 0 && nextGoodIdx >= 0) {
+                data[f] = {...data[nextGoodIdx], confidence: data[nextGoodIdx].confidence * 0.5};
+            } else if (nextGoodIdx < 0 && prevGoodIdx >= 0) {
+                data[f] = {...data[prevGoodIdx], confidence: data[prevGoodIdx].confidence * 0.5};
+            } else if (prevGoodIdx >= 0 && nextGoodIdx >= 0) {
+                const t = (f - prevGoodIdx) / (nextGoodIdx - prevGoodIdx);
+                const prev = data[prevGoodIdx];
+                const next = data[nextGoodIdx];
+                data[f] = {
+                    dx: prev.dx + t * (next.dx - prev.dx),
+                    dy: prev.dy + t * (next.dy - prev.dy),
+                    confidence: Math.min(prev.confidence, next.confidence) * 0.5,
+                    isGood: false,
+                };
+            }
+        }
+        
         return data;
+    }
+
+    getGapFilledDirection(frame) {
+        let prevGoodIdx = -1;
+        let nextGoodIdx = -1;
+        
+        for (let f = frame - 1; f >= 0; f--) {
+            const cached = this.resultCache.get(f);
+            if (cached && cached.flowData?.isGoodFrame && cached.smoothedDirection) {
+                prevGoodIdx = f;
+                break;
+            }
+        }
+        
+        for (let f = frame + 1; f < Sit.frames; f++) {
+            const cached = this.resultCache.get(f);
+            if (cached && cached.flowData?.isGoodFrame && cached.smoothedDirection) {
+                nextGoodIdx = f;
+                break;
+            }
+        }
+        
+        if (prevGoodIdx < 0 && nextGoodIdx < 0) {
+            return null;
+        }
+        
+        if (prevGoodIdx < 0 && nextGoodIdx >= 0) {
+            const next = this.resultCache.get(nextGoodIdx).smoothedDirection;
+            return {...next, confidence: next.confidence * 0.5};
+        }
+        
+        if (nextGoodIdx < 0 && prevGoodIdx >= 0) {
+            const prev = this.resultCache.get(prevGoodIdx).smoothedDirection;
+            return {...prev, confidence: prev.confidence * 0.5};
+        }
+        
+        const t = (frame - prevGoodIdx) / (nextGoodIdx - prevGoodIdx);
+        const prev = this.resultCache.get(prevGoodIdx).smoothedDirection;
+        const next = this.resultCache.get(nextGoodIdx).smoothedDirection;
+        
+        const x = prev.x + t * (next.x - prev.x);
+        const y = prev.y + t * (next.y - prev.y);
+        return {
+            x, y,
+            angle: Math.atan2(y, x),
+            magnitude: Math.sqrt(x * x + y * y),
+            confidence: Math.min(prev.confidence, next.confidence) * 0.5,
+            rotation: prev.rotation + t * (next.rotation - prev.rotation),
+        };
+    }
+
+    findNextUncachedOrGoodFrame(fromFrame) {
+        const skipFrames = Math.max(1, Math.round(this.params.frameSkip));
+        const startSearch = fromFrame + skipFrames;
+        for (let f = startSearch; f < Sit.frames; f++) {
+            const cached = this.resultCache.get(f);
+            if (!cached) return f;
+            if (cached.flowData?.isGoodFrame) return null;
+        }
+        return null;
+    }
+
+    analyzeFrameForGapFill(targetFrame) {
+        if (!this.active || !cv) return;
+        const videoData = this.videoView?.videoData;
+        if (!videoData) return;
+        
+        const cached = this.resultCache.get(targetFrame);
+        if (cached && !cached.incomplete) return;
+        
+        const image = videoData.getImage(targetFrame);
+        if (!image || !image.width) return;
+        
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = image.width || image.videoWidth;
+        tempCanvas.height = image.height || image.videoHeight;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.drawImage(image, 0, 0, tempCanvas.width, tempCanvas.height);
+        const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+
+        const src = cv.matFromImageData(imageData);
+        const grayRaw = new cv.Mat();
+        cv.cvtColor(src, grayRaw, cv.COLOR_RGBA2GRAY);
+        src.delete();
+
+        const gray = new cv.Mat();
+        const blurSize = Math.max(1, Math.floor(this.params.blurSize) | 1);
+        if (blurSize > 1) {
+            cv.GaussianBlur(grayRaw, gray, new cv.Size(blurSize, blurSize), 0);
+            grayRaw.delete();
+        } else {
+            grayRaw.copyTo(gray);
+            grayRaw.delete();
+        }
+
+        this.frameBuffer.push({gray: gray.clone(), frame: targetFrame, width: tempCanvas.width, height: tempCanvas.height});
+        while (this.frameBuffer.length > this.maxBufferSize) {
+            const old = this.frameBuffer.shift();
+            if (old.gray) old.gray.delete();
+        }
+
+        const skipFrames = Math.max(1, Math.round(this.params.frameSkip));
+        
+        if (this.params.technique === MOTION_TECHNIQUES.LINEAR_TRACKLET) {
+            this.computeOpticalFlowLinearTracklet(targetFrame, tempCanvas.width, tempCanvas.height, skipFrames);
+        }
+        
+        gray.delete();
+
+        this.resultCache.set(targetFrame, {
+            flowData: this.lastFlowData ? {...this.lastFlowData, vectors: [...this.lastFlowData.vectors]} : null,
+            smoothedDirection: {...this.smoothedDirection},
+            angleHistory: [...this.angleHistory],
+            imgWidth: tempCanvas.width,
+            imgHeight: tempCanvas.height,
+        });
+
+        setRenderOne(true);
     }
 
     getImageDimensions() {
@@ -379,7 +539,17 @@ class MotionAnalyzer {
         const cached = this.resultCache.get(frame);
         if (cached && !cached.incomplete) {
             this.lastFlowData = cached.flowData;
-            this.smoothedDirection = {...cached.smoothedDirection};
+            const isGoodFrame = cached.flowData?.isGoodFrame ?? true;
+            if (isGoodFrame) {
+                this.smoothedDirection = {...cached.smoothedDirection};
+            } else {
+                const gapFilled = this.getGapFilledDirection(frame);
+                if (gapFilled) {
+                    this.smoothedDirection = gapFilled;
+                } else {
+                    this.smoothedDirection = {...cached.smoothedDirection};
+                }
+            }
             this.angleHistory = [...cached.angleHistory];
             this.drawOverlay(width, height, cached.imgWidth, cached.imgHeight);
             this.drawGraph();
@@ -497,6 +667,20 @@ class MotionAnalyzer {
                 imgHeight: tempCanvas.height,
             });
 
+            if (!(this.lastFlowData?.isGoodFrame)) {
+                const gapFilled = this.getGapFilledDirection(frame);
+                if (gapFilled) {
+                    this.smoothedDirection = gapFilled;
+                } else {
+                    const nextGoodFrame = this.findNextUncachedOrGoodFrame(frame);
+                    if (nextGoodFrame !== null && nextGoodFrame !== frame) {
+                        setTimeout(() => {
+                            this.analyzeFrameForGapFill(nextGoodFrame);
+                        }, 10);
+                    }
+                }
+            }
+
             this.drawOverlay(width, height, tempCanvas.width, tempCanvas.height);
             this.drawGraph();
             this.updateSliderStatus();
@@ -570,16 +754,25 @@ class MotionAnalyzer {
         const isGoodFrame = this.isGoodQualityFrame(flowVectors, consensus);
         
         if (consensus && isGoodFrame) {
-            const alpha = this.params.smoothingAlpha;
-            this.smoothedDirection.x = alpha * this.smoothedDirection.x + (1 - alpha) * consensus.dx;
-            this.smoothedDirection.y = alpha * this.smoothedDirection.y + (1 - alpha) * consensus.dy;
-            this.smoothedDirection.magnitude = Math.sqrt(
-                this.smoothedDirection.x * this.smoothedDirection.x + 
-                this.smoothedDirection.y * this.smoothedDirection.y
-            );
-            this.smoothedDirection.angle = Math.atan2(this.smoothedDirection.y, this.smoothedDirection.x);
-            this.smoothedDirection.confidence = alpha * this.smoothedDirection.confidence + (1 - alpha) * consensus.confidence;
-            this.smoothedDirection.rotation = consensus.rotation || 0;
+            if (this.smoothedDirection.confidence < 0.01) {
+                this.smoothedDirection.x = consensus.dx;
+                this.smoothedDirection.y = consensus.dy;
+                this.smoothedDirection.magnitude = Math.sqrt(consensus.dx * consensus.dx + consensus.dy * consensus.dy);
+                this.smoothedDirection.angle = Math.atan2(consensus.dy, consensus.dx);
+                this.smoothedDirection.confidence = consensus.confidence;
+                this.smoothedDirection.rotation = consensus.rotation || 0;
+            } else {
+                const alpha = this.params.smoothingAlpha;
+                this.smoothedDirection.x = alpha * this.smoothedDirection.x + (1 - alpha) * consensus.dx;
+                this.smoothedDirection.y = alpha * this.smoothedDirection.y + (1 - alpha) * consensus.dy;
+                this.smoothedDirection.magnitude = Math.sqrt(
+                    this.smoothedDirection.x * this.smoothedDirection.x + 
+                    this.smoothedDirection.y * this.smoothedDirection.y
+                );
+                this.smoothedDirection.angle = Math.atan2(this.smoothedDirection.y, this.smoothedDirection.x);
+                this.smoothedDirection.confidence = alpha * this.smoothedDirection.confidence + (1 - alpha) * consensus.confidence;
+                this.smoothedDirection.rotation = consensus.rotation || 0;
+            }
             if (Globals.regression) console.log(`Motion: technique=Linear Tracklet, consensus=(${consensus.dx.toFixed(2)}, ${consensus.dy.toFixed(2)}), smoothed=(${this.smoothedDirection.x.toFixed(2)}, ${this.smoothedDirection.y.toFixed(2)}), mag=${this.smoothedDirection.magnitude.toFixed(2)}, conf=${this.smoothedDirection.confidence.toFixed(2)}`);
             
             this.angleHistory.push({
@@ -629,16 +822,25 @@ class MotionAnalyzer {
         const isGoodFrame = this.isGoodQualityFrame(flowVectors, consensus);
         
         if (consensus && isGoodFrame) {
-            const alpha = this.params.smoothingAlpha;
-            this.smoothedDirection.x = alpha * this.smoothedDirection.x + (1 - alpha) * consensus.dx;
-            this.smoothedDirection.y = alpha * this.smoothedDirection.y + (1 - alpha) * consensus.dy;
-            this.smoothedDirection.magnitude = Math.sqrt(
-                this.smoothedDirection.x * this.smoothedDirection.x + 
-                this.smoothedDirection.y * this.smoothedDirection.y
-            );
-            this.smoothedDirection.angle = Math.atan2(this.smoothedDirection.y, this.smoothedDirection.x);
-            this.smoothedDirection.confidence = alpha * this.smoothedDirection.confidence + (1 - alpha) * consensus.confidence;
-            this.smoothedDirection.rotation = consensus.rotation || 0;
+            if (this.smoothedDirection.confidence < 0.01) {
+                this.smoothedDirection.x = consensus.dx;
+                this.smoothedDirection.y = consensus.dy;
+                this.smoothedDirection.magnitude = Math.sqrt(consensus.dx * consensus.dx + consensus.dy * consensus.dy);
+                this.smoothedDirection.angle = Math.atan2(consensus.dy, consensus.dx);
+                this.smoothedDirection.confidence = consensus.confidence;
+                this.smoothedDirection.rotation = consensus.rotation || 0;
+            } else {
+                const alpha = this.params.smoothingAlpha;
+                this.smoothedDirection.x = alpha * this.smoothedDirection.x + (1 - alpha) * consensus.dx;
+                this.smoothedDirection.y = alpha * this.smoothedDirection.y + (1 - alpha) * consensus.dy;
+                this.smoothedDirection.magnitude = Math.sqrt(
+                    this.smoothedDirection.x * this.smoothedDirection.x + 
+                    this.smoothedDirection.y * this.smoothedDirection.y
+                );
+                this.smoothedDirection.angle = Math.atan2(this.smoothedDirection.y, this.smoothedDirection.x);
+                this.smoothedDirection.confidence = alpha * this.smoothedDirection.confidence + (1 - alpha) * consensus.confidence;
+                this.smoothedDirection.rotation = consensus.rotation || 0;
+            }
             if (Globals.regression) console.log(`Motion: technique=${this.params.technique}, consensus=(${consensus.dx.toFixed(2)}, ${consensus.dy.toFixed(2)}), smoothed=(${this.smoothedDirection.x.toFixed(2)}, ${this.smoothedDirection.y.toFixed(2)}), mag=${this.smoothedDirection.magnitude.toFixed(2)}, conf=${this.smoothedDirection.confidence.toFixed(2)}`);
             
             this.angleHistory.push({
