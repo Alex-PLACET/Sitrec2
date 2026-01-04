@@ -12,6 +12,7 @@ let cvLoadPromise = null;
 
 const MOTION_TECHNIQUES = {
     SPARSE_CONSENSUS: 'Sparse + Consensus',
+    LINEAR_TRACKLET: 'Linear Tracklet',
     PHASE_CORRELATION: 'Phase Correlation',
     ECC_EUCLIDEAN: 'ECC Euclidean',
     AFFINE_RANSAC: 'Affine RANSAC',
@@ -125,7 +126,7 @@ class MotionAnalyzer {
         this.graphCtx = null;
         
         this.params = {
-            technique: MOTION_TECHNIQUES.SPARSE_CONSENSUS,
+            technique: MOTION_TECHNIQUES.LINEAR_TRACKLET,
             maxFeatures: 300,
             qualityLevel: 0.01,
             minDistance: 10,
@@ -144,6 +145,8 @@ class MotionAnalyzer {
             ransacThreshold: 3.0,
             minVectorCount: 5,
             minConsensusConfidence: 0.1,
+            linearityThreshold: 0.9,
+            spacingThreshold: 0.5,
         };
         
         this.frameBuffer = [];
@@ -481,7 +484,23 @@ class MotionAnalyzer {
             }
         }
         
-        if (compareIdx >= 0) {
+        if (this.params.technique === MOTION_TECHNIQUES.LINEAR_TRACKLET) {
+            this.computeOpticalFlowLinearTracklet(frame, tempCanvas.width, tempCanvas.height, skipFrames);
+            
+            gray.delete();
+
+            this.resultCache.set(frame, {
+                flowData: this.lastFlowData ? {...this.lastFlowData, vectors: [...this.lastFlowData.vectors]} : null,
+                smoothedDirection: {...this.smoothedDirection},
+                angleHistory: [...this.angleHistory],
+                imgWidth: tempCanvas.width,
+                imgHeight: tempCanvas.height,
+            });
+
+            this.drawOverlay(width, height, tempCanvas.width, tempCanvas.height);
+            this.drawGraph();
+            this.updateSliderStatus();
+        } else if (compareIdx >= 0) {
             const prevEntry = this.frameBuffer[compareIdx];
             this.computeOpticalFlow(prevEntry.gray, gray, tempCanvas.width, tempCanvas.height, skipFrames);
             
@@ -532,6 +551,49 @@ class MotionAnalyzer {
     isPointMasked(x, y) {
         if (!this.maskEnabled || !this.maskOverlayNode) return false;
         return this.maskOverlayNode.isPointMasked(x, y);
+    }
+
+    computeOpticalFlowLinearTracklet(frame, imgWidth, imgHeight, skipFrames) {
+        const result = this.computeLinearTracklet(frame, imgWidth, imgHeight, skipFrames);
+        
+        if (!result) {
+            console.log(`Motion: technique=Linear Tracklet, result is null`);
+            this.lastFlowData = {vectors: [], consensus: null, isGoodFrame: false};
+            return;
+        }
+        
+        const {flowVectors, consensus} = result;
+        if (!consensus) {
+            console.log(`Motion: technique=Linear Tracklet, consensus is null, vectors=${flowVectors.length}`);
+        }
+        
+        const isGoodFrame = this.isGoodQualityFrame(flowVectors, consensus);
+        
+        if (consensus && isGoodFrame) {
+            const alpha = this.params.smoothingAlpha;
+            this.smoothedDirection.x = alpha * this.smoothedDirection.x + (1 - alpha) * consensus.dx;
+            this.smoothedDirection.y = alpha * this.smoothedDirection.y + (1 - alpha) * consensus.dy;
+            this.smoothedDirection.magnitude = Math.sqrt(
+                this.smoothedDirection.x * this.smoothedDirection.x + 
+                this.smoothedDirection.y * this.smoothedDirection.y
+            );
+            this.smoothedDirection.angle = Math.atan2(this.smoothedDirection.y, this.smoothedDirection.x);
+            this.smoothedDirection.confidence = alpha * this.smoothedDirection.confidence + (1 - alpha) * consensus.confidence;
+            this.smoothedDirection.rotation = consensus.rotation || 0;
+            if (Globals.regression) console.log(`Motion: technique=Linear Tracklet, consensus=(${consensus.dx.toFixed(2)}, ${consensus.dy.toFixed(2)}), smoothed=(${this.smoothedDirection.x.toFixed(2)}, ${this.smoothedDirection.y.toFixed(2)}), mag=${this.smoothedDirection.magnitude.toFixed(2)}, conf=${this.smoothedDirection.confidence.toFixed(2)}`);
+            
+            this.angleHistory.push({
+                angle: this.smoothedDirection.angle,
+                confidence: this.smoothedDirection.confidence
+            });
+            if (this.angleHistory.length > this.maxHistoryLength) {
+                this.angleHistory.shift();
+            }
+        } else if (!isGoodFrame) {
+            console.log(`Motion: BAD FRAME skipped - vectors=${flowVectors.length}, confidence=${consensus?.confidence?.toFixed(2) ?? 'null'}`);
+        }
+
+        this.lastFlowData = {vectors: flowVectors, consensus, isGoodFrame};
     }
 
     computeOpticalFlow(prevGray, gray, imgWidth, imgHeight, skipFrames = 1) {
@@ -908,6 +970,235 @@ class MotionAnalyzer {
             flowVectors,
             consensus: {dx, dy, confidence, rotation, inlierCount}
         };
+    }
+
+    computeLinearTracklet(frame, imgWidth, imgHeight, skipFrames) {
+        const videoData = this.videoView.videoData;
+        if (!videoData) return {flowVectors: [], consensus: null};
+        
+        const startFrame = frame - skipFrames;
+        if (startFrame < 0) return {flowVectors: [], consensus: null};
+        
+        const grayFrames = [];
+        for (let f = startFrame; f <= frame; f++) {
+            const entry = this.frameBuffer.find(e => e.frame === f);
+            if (entry) {
+                grayFrames.push(entry.gray);
+            } else {
+                const image = videoData.getImage(f);
+                if (!image || !image.width || !image.height) {
+                    for (const g of grayFrames) {
+                        if (!this.frameBuffer.some(e => e.gray === g)) g.delete();
+                    }
+                    return {flowVectors: [], consensus: null};
+                }
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = image.width || image.videoWidth;
+                tempCanvas.height = image.height || image.videoHeight;
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCtx.drawImage(image, 0, 0, tempCanvas.width, tempCanvas.height);
+                const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+                const src = cv.matFromImageData(imageData);
+                const grayRaw = new cv.Mat();
+                cv.cvtColor(src, grayRaw, cv.COLOR_RGBA2GRAY);
+                src.delete();
+                const gray = new cv.Mat();
+                const blurSize = Math.max(1, Math.floor(this.params.blurSize) | 1);
+                if (blurSize > 1) {
+                    cv.GaussianBlur(grayRaw, gray, new cv.Size(blurSize, blurSize), 0);
+                    grayRaw.delete();
+                } else {
+                    grayRaw.copyTo(gray);
+                    grayRaw.delete();
+                }
+                grayFrames.push(gray);
+            }
+        }
+        
+        if (grayFrames.length < 2) {
+            return {flowVectors: [], consensus: null};
+        }
+        
+        const firstGray = grayFrames[0];
+        const corners = new cv.Mat();
+        try {
+            cv.goodFeaturesToTrack(firstGray, corners, this.params.maxFeatures, this.params.qualityLevel, this.params.minDistance);
+        } catch (e) {
+            corners.delete();
+            return {flowVectors: [], consensus: null};
+        }
+        
+        if (corners.rows === 0) {
+            corners.delete();
+            return {flowVectors: [], consensus: null};
+        }
+        
+        const trajectories = [];
+        for (let i = 0; i < corners.rows; i++) {
+            const px = corners.floatAt(i, 0);
+            const py = corners.floatAt(i, 1);
+            if (this.isPointMasked(px, py)) continue;
+            trajectories.push({points: [[px, py]], valid: true, errors: []});
+        }
+        corners.delete();
+        
+        let currentPoints = new cv.Mat(trajectories.length, 1, cv.CV_32FC2);
+        for (let i = 0; i < trajectories.length; i++) {
+            currentPoints.floatPtr(i, 0)[0] = trajectories[i].points[0][0];
+            currentPoints.floatPtr(i, 0)[1] = trajectories[i].points[0][1];
+        }
+        
+        for (let step = 0; step < grayFrames.length - 1; step++) {
+            const prevGray = grayFrames[step];
+            const nextGray = grayFrames[step + 1];
+            
+            const nextPtsMat = new cv.Mat();
+            const status = new cv.Mat();
+            const err = new cv.Mat();
+            
+            try {
+                cv.calcOpticalFlowPyrLK(prevGray, nextGray, currentPoints, nextPtsMat, status, err);
+            } catch (e) {
+                nextPtsMat.delete();
+                status.delete();
+                err.delete();
+                break;
+            }
+            
+            let validIdx = 0;
+            for (let i = 0; i < trajectories.length; i++) {
+                if (!trajectories[i].valid) continue;
+                if (status.data[validIdx] !== 1) {
+                    trajectories[i].valid = false;
+                } else {
+                    const nx = nextPtsMat.floatAt(validIdx, 0);
+                    const ny = nextPtsMat.floatAt(validIdx, 1);
+                    const trackError = err.floatAt(validIdx, 0);
+                    trajectories[i].points.push([nx, ny]);
+                    trajectories[i].errors.push(trackError);
+                    if (trackError > this.params.maxTrackError) {
+                        trajectories[i].valid = false;
+                    }
+                }
+                validIdx++;
+            }
+            
+            const validTrajectories = trajectories.filter(t => t.valid);
+            if (validTrajectories.length === 0) {
+                nextPtsMat.delete();
+                status.delete();
+                err.delete();
+                break;
+            }
+            
+            currentPoints.delete();
+            currentPoints = new cv.Mat(validTrajectories.length, 1, cv.CV_32FC2);
+            let idx = 0;
+            for (const t of trajectories) {
+                if (t.valid) {
+                    const lastPt = t.points[t.points.length - 1];
+                    currentPoints.floatPtr(idx, 0)[0] = lastPt[0];
+                    currentPoints.floatPtr(idx, 0)[1] = lastPt[1];
+                    idx++;
+                }
+            }
+            
+            nextPtsMat.delete();
+            status.delete();
+            err.delete();
+        }
+        
+        currentPoints.delete();
+        
+        for (let i = 0; i < grayFrames.length; i++) {
+            if (!this.frameBuffer.some(e => e.gray === grayFrames[i])) {
+                grayFrames[i].delete();
+            }
+        }
+        
+        const flowVectors = [];
+        const motionScale = 1 / skipFrames;
+        
+        for (const traj of trajectories) {
+            if (!traj.valid || traj.points.length < skipFrames + 1) continue;
+            
+            const start = traj.points[0];
+            const end = traj.points[traj.points.length - 1];
+            const totalDx = end[0] - start[0];
+            const totalDy = end[1] - start[1];
+            const totalDist = Math.sqrt(totalDx * totalDx + totalDy * totalDy);
+            
+            if (totalDist < 0.001) continue;
+            
+            const expectedStepDx = totalDx / skipFrames;
+            const expectedStepDy = totalDy / skipFrames;
+            const expectedStepMag = totalDist / skipFrames;
+            
+            let maxDeviation = 0;
+            let maxSpacingError = 0;
+            
+            for (let i = 1; i < traj.points.length; i++) {
+                const actualDx = traj.points[i][0] - traj.points[i-1][0];
+                const actualDy = traj.points[i][1] - traj.points[i-1][1];
+                const actualMag = Math.sqrt(actualDx * actualDx + actualDy * actualDy);
+                
+                const expectedX = start[0] + expectedStepDx * i;
+                const expectedY = start[1] + expectedStepDy * i;
+                const deviationX = traj.points[i][0] - expectedX;
+                const deviationY = traj.points[i][1] - expectedY;
+                const deviation = Math.sqrt(deviationX * deviationX + deviationY * deviationY);
+                maxDeviation = Math.max(maxDeviation, deviation);
+                
+                if (expectedStepMag > 0.1) {
+                    const spacingError = Math.abs(actualMag - expectedStepMag) / expectedStepMag;
+                    maxSpacingError = Math.max(maxSpacingError, spacingError);
+                }
+            }
+            
+            const linearityScore = totalDist > 0 ? Math.max(0, 1 - maxDeviation / totalDist) : 0;
+            const spacingScore = Math.max(0, 1 - maxSpacingError);
+            
+            if (linearityScore < this.params.linearityThreshold) continue;
+            if (spacingScore < this.params.spacingThreshold) continue;
+            
+            const dx = totalDx * motionScale;
+            const dy = totalDy * motionScale;
+            const mag = Math.sqrt(dx * dx + dy * dy);
+            
+            const key = `${Math.round(start[0] / 20)}_${Math.round(start[1] / 20)}`;
+            let staticScore = this.staticHistory.get(key) || 0;
+            if (mag < this.params.staticThreshold) {
+                staticScore = Math.min(staticScore + 1, this.params.staticFrames);
+            } else {
+                staticScore = Math.max(staticScore - 2, 0);
+            }
+            this.staticHistory.set(key, staticScore);
+            
+            const isStatic = staticScore >= this.params.staticFrames * 0.7;
+            if (isStatic) continue;
+            if (mag < this.params.minMotion || mag > this.params.maxMotion) continue;
+            
+            const avgError = traj.errors.length > 0 ? traj.errors.reduce((a, b) => a + b, 0) / traj.errors.length : 0;
+            const quality = Math.max(0, 1 - avgError / this.params.maxTrackError) * linearityScore * spacingScore;
+            
+            if (quality < this.params.minQuality) continue;
+            
+            flowVectors.push({
+                px: start[0], py: start[1], dx, dy, mag,
+                quality,
+                angle: Math.atan2(dy, dx),
+                trackError: avgError,
+                linearityScore,
+                spacingScore
+            });
+        }
+        
+        if (flowVectors.length < 3) {
+            return {flowVectors: [], consensus: null};
+        }
+        
+        const consensus = this.findConsensusDirection(flowVectors);
+        return {flowVectors, consensus};
     }
 
     computeSparseConsensus(prevGray, gray, imgWidth, imgHeight, skipFrames) {
@@ -1498,8 +1789,11 @@ function createParamSliders() {
         }).tooltip("Motion estimation algorithm"));
     }
     
-    paramControllers.push(motionFolder.add(p, 'frameSkip', 1, 10, 1).name("Frame Skip").onChange(invalidate)
-        .tooltip("Frames between comparisons (higher = detect slower motion)"));
+    const isTracklet = p.technique === MOTION_TECHNIQUES.LINEAR_TRACKLET;
+    paramControllers.push(motionFolder.add(p, 'frameSkip', 1, 10, 1)
+        .name(isTracklet ? "Tracklet Length" : "Frame Skip")
+        .onChange(invalidate)
+        .tooltip(isTracklet ? "Number of frames in tracklet (longer = stricter coherence)" : "Frames between comparisons (higher = detect slower motion)"));
     paramControllers.push(motionFolder.add(p, 'blurSize', 1, 15, 2).name("Blur Size").onChange(invalidate)
         .tooltip("Gaussian blur for macro features (odd numbers)"));
     paramControllers.push(motionFolder.add(p, 'minMotion', 0, 2, 0.1).name("Min Motion").onChange(invalidate)
@@ -1513,7 +1807,7 @@ function createParamSliders() {
     paramControllers.push(motionFolder.add(p, 'minConsensusConfidence', 0, 0.5, 0.01).name("Min Confidence").onChange(invalidate)
         .tooltip("Minimum consensus confidence for a valid frame"));
     
-    const usesFeatures = p.technique === MOTION_TECHNIQUES.SPARSE_CONSENSUS || p.technique === MOTION_TECHNIQUES.AFFINE_RANSAC;
+    const usesFeatures = p.technique === MOTION_TECHNIQUES.SPARSE_CONSENSUS || p.technique === MOTION_TECHNIQUES.AFFINE_RANSAC || p.technique === MOTION_TECHNIQUES.LINEAR_TRACKLET;
     if (usesFeatures) {
         paramControllers.push(motionFolder.add(p, 'maxFeatures', 50, 500, 10).name("Max Features").onChange(invalidate)
             .tooltip("Maximum tracked features"));
@@ -1546,6 +1840,21 @@ function createParamSliders() {
     if (p.technique === MOTION_TECHNIQUES.AFFINE_RANSAC) {
         paramControllers.push(motionFolder.add(p, 'ransacThreshold', 1, 10, 0.5).name("RANSAC Threshold").onChange(invalidate)
             .tooltip("Maximum reprojection error for inliers (pixels)"));
+    }
+    
+    if (p.technique === MOTION_TECHNIQUES.LINEAR_TRACKLET) {
+        paramControllers.push(motionFolder.add(p, 'minQuality', 0, 1, 0.05).name("Min Quality").onChange(invalidate)
+            .tooltip("Minimum quality to display arrow"));
+        paramControllers.push(motionFolder.add(p, 'staticThreshold', 0.1, 2, 0.1).name("Static Threshold").onChange(invalidate)
+            .tooltip("Motion below this is considered static (HUD)"));
+        paramControllers.push(motionFolder.add(p, 'staticFrames', 5, 30, 1).name("Static Frames").onChange(invalidate)
+            .tooltip("Frames to confirm static detection"));
+        paramControllers.push(motionFolder.add(p, 'inlierThreshold', 0.3, 0.9, 0.05).name("Inlier Threshold").onChange(invalidate)
+            .tooltip("Threshold for consensus direction agreement"));
+        paramControllers.push(motionFolder.add(p, 'linearityThreshold', 0.5, 1, 0.05).name("Linearity Threshold").onChange(invalidate)
+            .tooltip("Min trajectory straightness (1=perfect line)"));
+        paramControllers.push(motionFolder.add(p, 'spacingThreshold', 0, 1, 0.05).name("Spacing Threshold").onChange(invalidate)
+            .tooltip("Min step spacing consistency (1=perfectly even)"));
     }
     
     const maskControls = {
