@@ -1,5 +1,6 @@
 import {Globals, guiMenus, NodeMan, registerFrameBlocker, setRenderOne, Sit, unregisterFrameBlocker} from "./Globals";
 import {isLocal} from "./configUtils";
+import {par} from "./par";
 
 import {CNodeMaskOverlay} from "./nodes/CNodeMaskOverlay";
 import {CNodeVelocityFromMotion} from "./nodes/CNodeVelocityFromMotion";
@@ -164,6 +165,12 @@ class MotionAnalyzer {
         this.maskOverlayNode = null;
         this.maskEnabled = true;
         this.brushSize = 20;
+        
+        this.autoMaskWindow = 10;
+        this.autoMaskThreshold = 0.9;
+        this.autoMaskSpread = 5;
+        this.autoMaskTargetColor = {r: 235, g: 235, b: 235};
+        this.autoMaskCloseToTarget = 140;
         
         this.resultCache = new Map();
         this.lastAFrame = null;
@@ -425,6 +432,125 @@ class MotionAnalyzer {
         if (this.maskOverlayNode) {
             this.maskOverlayNode.clearMask();
         }
+    }
+    
+    autoMask() {
+        const videoData = this.videoView?.videoData;
+        if (!videoData) {
+            console.log("AutoMask: no videoData");
+            return;
+        }
+        
+        const currentFrame = Math.floor(par.frame);
+        const endFrame = Math.min(currentFrame + this.autoMaskWindow, Sit.frames - 1);
+        console.log(`AutoMask: currentFrame=${currentFrame}, endFrame=${endFrame}, window=${this.autoMaskWindow}`);
+        
+        if (endFrame <= currentFrame) {
+            console.log("AutoMask: endFrame <= currentFrame");
+            return;
+        }
+        
+        const firstImage = videoData.getImage(currentFrame);
+        console.log(`AutoMask: firstImage=`, firstImage, `width=${firstImage?.width}, videoWidth=${firstImage?.videoWidth}`);
+        if (!firstImage || !firstImage.width) {
+            console.log("AutoMask: no firstImage or no width");
+            return;
+        }
+        
+        const width = firstImage.width || firstImage.videoWidth;
+        const height = firstImage.height || firstImage.videoHeight;
+        console.log(`AutoMask: dimensions ${width}x${height}`);
+        
+        const frames = [];
+        for (let f = currentFrame; f <= endFrame; f++) {
+            const isLoaded = videoData.isFrameLoaded ? videoData.isFrameLoaded(f) : true;
+            if (!isLoaded) {
+                console.log(`AutoMask: frame ${f} not loaded yet`);
+                continue;
+            }
+            const img = videoData.getImage(f);
+            if (!img || !img.width) {
+                console.log(`AutoMask: frame ${f} not available`);
+                continue;
+            }
+            
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            const imageData = ctx.getImageData(0, 0, width, height);
+            const sample = [imageData.data[0], imageData.data[1], imageData.data[2]];
+            console.log(`AutoMask: frame ${f} sample pixel RGB: ${sample}`);
+            frames.push(imageData);
+        }
+        
+        console.log(`AutoMask: loaded ${frames.length} frames`);
+        if (frames.length < 2) {
+            console.log("AutoMask: not enough frames");
+            return;
+        }
+        
+        this.maskOverlayNode.ensureMaskInitialized();
+        if (!this.maskOverlayNode.maskCanvas) {
+            console.log("AutoMask: maskCanvas not initialized");
+            return;
+        }
+        
+        this.maskOverlayNode.maskCtx.clearRect(0, 0, this.maskOverlayNode.maskCanvas.width, this.maskOverlayNode.maskCanvas.height);
+        
+        const threshold = (1 - this.autoMaskThreshold) * 255;
+        const {r: targetR, g: targetG, b: targetB} = this.autoMaskTargetColor;
+        const targetThreshold = this.autoMaskCloseToTarget;
+        console.log(`AutoMask: threshold=${threshold}, targetColor=(${targetR},${targetG},${targetB}), targetThreshold=${targetThreshold}`);
+        const invariantPixels = [];
+        
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const idx = (y * width + x) * 4;
+                const baseR = frames[0].data[idx];
+                const baseG = frames[0].data[idx + 1];
+                const baseB = frames[0].data[idx + 2];
+                
+                const targetDiff = Math.abs(baseR - targetR) + Math.abs(baseG - targetG) + Math.abs(baseB - targetB);
+                if (targetDiff > targetThreshold) {
+                    continue;
+                }
+                
+                let isInvariant = true;
+                for (let f = 1; f < frames.length; f++) {
+                    const r = frames[f].data[idx];
+                    const g = frames[f].data[idx + 1];
+                    const b = frames[f].data[idx + 2];
+                    
+                    const diff = Math.abs(r - baseR) + Math.abs(g - baseG) + Math.abs(b - baseB);
+                    if (diff > threshold * 3) {
+                        isInvariant = false;
+                        break;
+                    }
+                }
+                
+                if (isInvariant) {
+                    invariantPixels.push({x, y});
+                }
+            }
+        }
+        
+        console.log(`AutoMask: found ${invariantPixels.length} invariant pixels`);
+        
+        const ctx = this.maskOverlayNode.maskCtx;
+        ctx.fillStyle = 'rgba(255, 0, 0, 1)';
+        
+        for (const {x, y} of invariantPixels) {
+            ctx.beginPath();
+            ctx.arc(x, y, this.autoMaskSpread, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        this.maskOverlayNode.saveMask();
+        this.onMaskChange();
+        setRenderOne(true);
+        console.log("AutoMask: complete");
     }
 
     createOverlays() {
@@ -2059,6 +2185,8 @@ function createParamSliders() {
             .tooltip("Min step spacing consistency (1=perfectly even)"));
     }
     
+    const maskFolder = motionFolder.addFolder("Masking").close();
+    
     const maskControls = {
         editMask: false,
         clearMask: () => {
@@ -2066,25 +2194,50 @@ function createParamSliders() {
                 motionAnalyzer.clearMask();
                 motionAnalyzer.onMaskChange();
             }
+        },
+        autoMask: () => {
+            if (motionAnalyzer) {
+                motionAnalyzer.autoMask();
+            }
         }
     };
     
-    paramControllers.push(motionFolder.add(motionAnalyzer, 'maskEnabled').name("Enable Mask").onChange(() => {
+    paramControllers.push(maskFolder.add(motionAnalyzer, 'maskEnabled').name("Enable Mask").onChange(() => {
         motionAnalyzer.updateMaskPreview();
         motionAnalyzer.onMaskChange();
     }).tooltip("Enable/disable mask filtering"));
     
-    paramControllers.push(motionFolder.add(maskControls, 'editMask').name("Edit Mask").onChange((v) => {
+    paramControllers.push(maskFolder.add(maskControls, 'editMask').name("Edit Mask").onChange((v) => {
         motionAnalyzer.setMaskEditing(v);
     }).tooltip("Click and drag to paint mask (Alt/Option to erase)"));
     
     if (motionAnalyzer.maskOverlayNode) {
-        paramControllers.push(motionFolder.add(motionAnalyzer.maskOverlayNode, 'brushSize', 5, 50, 1).name("Brush Size").onChange(update)
+        paramControllers.push(maskFolder.add(motionAnalyzer.maskOverlayNode, 'brushSize', 5, 50, 1).name("Brush Size").onChange(update)
             .tooltip("Mask brush size in pixels"));
     }
     
-    paramControllers.push(motionFolder.add(maskControls, 'clearMask').name("Clear Mask")
+    paramControllers.push(maskFolder.add(maskControls, 'clearMask').name("Clear Mask")
         .tooltip("Clear all mask data"));
+    
+    paramControllers.push(maskFolder.add(maskControls, 'autoMask').name("Auto Mask")
+        .tooltip("Auto-generate mask from static pixels over frame window"));
+    
+    const runAutoMask = () => motionAnalyzer.autoMask();
+    
+    paramControllers.push(maskFolder.add(motionAnalyzer, 'autoMaskWindow', 10, 30, 1).name("Auto Window")
+        .onChange(runAutoMask).tooltip("Number of frames to analyze for auto mask"));
+    
+    paramControllers.push(maskFolder.add(motionAnalyzer, 'autoMaskThreshold', 0.9, 1, 0.001).name("Auto Threshold")
+        .onChange(runAutoMask).tooltip("Color similarity threshold (higher = stricter)"));
+    
+    paramControllers.push(maskFolder.add(motionAnalyzer, 'autoMaskSpread', 1, 10, 0.1).name("Auto Spread")
+        .onChange(runAutoMask).tooltip("Radius of mask circle at each invariant pixel"));
+    
+    paramControllers.push(maskFolder.addColor(motionAnalyzer, 'autoMaskTargetColor', 255).name("Target Color")
+        .onChange(runAutoMask).tooltip("Target color for auto mask"));
+    
+    paramControllers.push(maskFolder.add(motionAnalyzer, 'autoMaskCloseToTarget', 0, 255, 1).name("Color Tolerance")
+        .onChange(runAutoMask).tooltip("How close pixel must be to target color (lower = stricter)"));
     
     motionFolder.open();
 }
@@ -2117,6 +2270,11 @@ export function serializeMotionAnalysis() {
         params: {...motionAnalyzer.params},
         maskEnabled: motionAnalyzer.maskEnabled,
         brushSize: motionAnalyzer.brushSize,
+        autoMaskWindow: motionAnalyzer.autoMaskWindow,
+        autoMaskThreshold: motionAnalyzer.autoMaskThreshold,
+        autoMaskSpread: motionAnalyzer.autoMaskSpread,
+        autoMaskTargetColor: {...motionAnalyzer.autoMaskTargetColor},
+        autoMaskCloseToTarget: motionAnalyzer.autoMaskCloseToTarget,
         maskData: motionAnalyzer.maskOverlayNode?.maskData ?? null,
     };
 }
@@ -2141,6 +2299,21 @@ export function deserializeMotionAnalysis(data) {
             }
             if (data.brushSize !== undefined) {
                 motionAnalyzer.brushSize = data.brushSize;
+            }
+            if (data.autoMaskWindow !== undefined) {
+                motionAnalyzer.autoMaskWindow = data.autoMaskWindow;
+            }
+            if (data.autoMaskThreshold !== undefined) {
+                motionAnalyzer.autoMaskThreshold = data.autoMaskThreshold;
+            }
+            if (data.autoMaskSpread !== undefined) {
+                motionAnalyzer.autoMaskSpread = data.autoMaskSpread;
+            }
+            if (data.autoMaskTargetColor !== undefined) {
+                motionAnalyzer.autoMaskTargetColor = {...data.autoMaskTargetColor};
+            }
+            if (data.autoMaskCloseToTarget !== undefined) {
+                motionAnalyzer.autoMaskCloseToTarget = data.autoMaskCloseToTarget;
             }
             
             motionAnalyzer.start();
