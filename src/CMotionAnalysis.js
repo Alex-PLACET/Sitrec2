@@ -205,7 +205,7 @@ class MotionAnalyzer {
         
         for (let f = 0; f < Sit.frames; f++) {
             const cached = this.resultCache.get(f);
-            if (cached && cached.smoothedDirection) {
+            if (cached && cached.smoothedDirection && !cached.incomplete) {
                 const isGoodFrame = cached.flowData?.isGoodFrame ?? true;
                 if (isGoodFrame) {
                     lastGoodData = {
@@ -329,9 +329,6 @@ class MotionAnalyzer {
         registerFrameBlocker('motionAnalysis', {
             check: (currentFrame, nextFrame) => {
                 if (!this.active) return false;
-                // Block advancement only if CURRENT frame is not yet cached
-                // This allows advancing to uncached frames (which will then be analyzed)
-                // but prevents skipping ahead before current frame is analyzed
                 const current = Math.floor(currentFrame);
                 if (current < 0 || current >= Sit.frames) return false;
                 return !this.resultCache.has(current);
@@ -350,6 +347,7 @@ class MotionAnalyzer {
     }
 
     analyze(frame) {
+        frame = Math.floor(frame);
         if (!this.active || !cv) return;
 
         const videoData = this.videoView.videoData;
@@ -376,7 +374,7 @@ class MotionAnalyzer {
         }
 
         const cached = this.resultCache.get(frame);
-        if (cached) {
+        if (cached && !cached.incomplete) {
             this.lastFlowData = cached.flowData;
             this.smoothedDirection = {...cached.smoothedDirection};
             this.angleHistory = [...cached.angleHistory];
@@ -388,6 +386,15 @@ class MotionAnalyzer {
         const image = videoData.getImage(frame);
         if (!image || !image.width || !image.height) {
             this.overlayCtx.clearRect(0, 0, width, height);
+            this.resultCache.set(frame, {
+                flowData: null,
+                smoothedDirection: {...this.smoothedDirection},
+                angleHistory: [...this.angleHistory],
+                imgWidth: 0,
+                imgHeight: 0,
+                incomplete: true,
+            });
+            setTimeout(() => setRenderOne(true), 100);
             return;
         }
 
@@ -434,6 +441,14 @@ class MotionAnalyzer {
             const isLoaded = videoData.isFrameLoaded ? videoData.isFrameLoaded(prevFrame) : true;
             if (!isLoaded) {
                 gray.delete();
+                this.resultCache.set(frame, {
+                    flowData: null,
+                    smoothedDirection: {...this.smoothedDirection},
+                    angleHistory: [...this.angleHistory],
+                    imgWidth: tempCanvas.width,
+                    imgHeight: tempCanvas.height,
+                    incomplete: true,
+                });
                 setTimeout(() => setRenderOne(true), 100);
                 return;
             }
