@@ -1887,10 +1887,11 @@ export function resetMotionAnalysis() {
         motionAnalyzer.stop();
         motionAnalyzer = null;
     }
+    removeParamSliders();
     renderHooked = false;
-    analyzeMenuItem = null;
-    motionFolder = null;
-    paramControllers = [];
+    if (analyzeMenuItem) {
+        analyzeMenuItem.name("Analyze Motion");
+    }
 }
 
 export function toggleMotionAnalysis() {
@@ -2091,17 +2092,35 @@ export function addMotionAnalysisMenu() {
 
     analyzeMenuItem = motionFolder.add(menuActions, 'analyzeMotion')
         .name("Analyze Motion")
-        .tooltip("Toggle real-time motion analysis overlay on video");
+        .tooltip("Toggle real-time motion analysis overlay on video")
+        .perm();
 
     createTrackMenuItem = motionFolder.add(menuActions, 'createTrack')
         .name("Create Track from Motion")
-        .tooltip("Analyze all frames and create a ground track from motion vectors");
+        .tooltip("Analyze all frames and create a ground track from motion vectors")
+        .perm();
 }
 
 function createParamSliders() {
     if (!motionFolder || !motionAnalyzer) return;
     
     removeParamSliders();
+    
+    if (motionAnalyzer.autoMaskWindow === undefined) {
+        motionAnalyzer.autoMaskWindow = 10;
+    }
+    if (motionAnalyzer.autoMaskThreshold === undefined) {
+        motionAnalyzer.autoMaskThreshold = 0.9;
+    }
+    if (motionAnalyzer.autoMaskSpread === undefined) {
+        motionAnalyzer.autoMaskSpread = 5;
+    }
+    if (!motionAnalyzer.autoMaskTargetColor || typeof motionAnalyzer.autoMaskTargetColor !== 'object') {
+        motionAnalyzer.autoMaskTargetColor = {r: 235, g: 235, b: 235};
+    }
+    if (motionAnalyzer.autoMaskCloseToTarget === undefined) {
+        motionAnalyzer.autoMaskCloseToTarget = 140;
+    }
     
     const p = motionAnalyzer.params;
     const invalidate = () => motionAnalyzer.onParamChange();
