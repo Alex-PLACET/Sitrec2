@@ -1,4 +1,5 @@
 import {Globals, guiMenus, NodeMan, registerFrameBlocker, setRenderOne, Sit, unregisterFrameBlocker} from "./Globals";
+import {isLocal} from "./configUtils";
 
 import {CNodeMaskOverlay} from "./nodes/CNodeMaskOverlay";
 import {CNodeVelocityFromMotion} from "./nodes/CNodeVelocityFromMotion";
@@ -141,6 +142,8 @@ class MotionAnalyzer {
             eccIterations: 50,
             eccEpsilon: 0.001,
             ransacThreshold: 3.0,
+            minVectorCount: 5,
+            minConsensusConfidence: 0.1,
         };
         
         this.frameBuffer = [];
@@ -198,14 +201,22 @@ class MotionAnalyzer {
 
     getMotionDataForAllFrames() {
         const data = [];
+        let lastGoodData = {dx: 0, dy: 0, confidence: 0};
+        
         for (let f = 0; f < Sit.frames; f++) {
             const cached = this.resultCache.get(f);
             if (cached && cached.smoothedDirection) {
-                data.push({
-                    dx: cached.smoothedDirection.x,
-                    dy: cached.smoothedDirection.y,
-                    confidence: cached.smoothedDirection.confidence,
-                });
+                const isGoodFrame = cached.flowData?.isGoodFrame ?? true;
+                if (isGoodFrame) {
+                    lastGoodData = {
+                        dx: cached.smoothedDirection.x,
+                        dy: cached.smoothedDirection.y,
+                        confidence: cached.smoothedDirection.confidence,
+                    };
+                    data.push(lastGoodData);
+                } else {
+                    data.push({...lastGoodData, confidence: lastGoodData.confidence * 0.5});
+                }
             } else {
                 data.push({dx: 0, dy: 0, confidence: 0});
             }
@@ -529,7 +540,7 @@ class MotionAnalyzer {
         
         if (!result) {
             console.log(`Motion: technique=${this.params.technique}, result is null`);
-            this.lastFlowData = {vectors: [], consensus: null};
+            this.lastFlowData = {vectors: [], consensus: null, isGoodFrame: false};
             return;
         }
         
@@ -538,7 +549,9 @@ class MotionAnalyzer {
             console.log(`Motion: technique=${this.params.technique}, consensus is null, vectors=${flowVectors.length}`);
         }
         
-        if (consensus) {
+        const isGoodFrame = this.isGoodQualityFrame(flowVectors, consensus);
+        
+        if (consensus && isGoodFrame) {
             const alpha = this.params.smoothingAlpha;
             this.smoothedDirection.x = alpha * this.smoothedDirection.x + (1 - alpha) * consensus.dx;
             this.smoothedDirection.y = alpha * this.smoothedDirection.y + (1 - alpha) * consensus.dy;
@@ -558,9 +571,11 @@ class MotionAnalyzer {
             if (this.angleHistory.length > this.maxHistoryLength) {
                 this.angleHistory.shift();
             }
+        } else if (!isGoodFrame) {
+            console.log(`Motion: BAD FRAME skipped - vectors=${flowVectors.length}, confidence=${consensus?.confidence?.toFixed(2) ?? 'null'}`);
         }
 
-        this.lastFlowData = {vectors: flowVectors, consensus};
+        this.lastFlowData = {vectors: flowVectors, consensus, isGoodFrame};
     }
 
     computePhaseCorrelation(prevGray, gray, imgWidth, imgHeight, skipFrames) {
@@ -1092,6 +1107,13 @@ class MotionAnalyzer {
         return {dx, dy, confidence, inlierCount: inliers.length};
     }
 
+    isGoodQualityFrame(flowVectors, consensus) {
+        if (!consensus) return false;
+        if (flowVectors.length < this.params.minVectorCount) return false;
+        if (consensus.confidence < this.params.minConsensusConfidence) return false;
+        return true;
+    }
+
     drawOverlay(width, height, imgWidth, imgHeight) {
         const ctx = this.overlayCtx;
         ctx.clearRect(0, 0, width, height);
@@ -1133,9 +1155,18 @@ class MotionAnalyzer {
         const showArrow = this.smoothedDirection.magnitude > 0.1 && this.smoothedDirection.confidence > 0.01;
         const [centerX, centerY] = this.videoView.videoToCanvasCoords(imgWidth / 2, imgHeight / 2);
         
-        ctx.fillStyle = 'rgba(255, 255, 0, 0.8)';
+        const isGoodFrame = this.lastFlowData?.isGoodFrame ?? true;
+        const vectorCount = this.lastFlowData?.vectors?.length ?? 0;
+        const consensusConf = this.lastFlowData?.consensus?.confidence ?? 0;
+        
         ctx.font = '10px monospace';
-        ctx.fillText(`mag=${this.smoothedDirection.magnitude.toFixed(2)} conf=${this.smoothedDirection.confidence.toFixed(2)}`, centerX - 60, centerY + 50);
+        if (isGoodFrame) {
+            ctx.fillStyle = 'rgba(255, 255, 0, 0.8)';
+            ctx.fillText(`mag=${this.smoothedDirection.magnitude.toFixed(2)} conf=${this.smoothedDirection.confidence.toFixed(2)} vec=${vectorCount}`, centerX - 60, centerY + 50);
+        } else {
+            ctx.fillStyle = 'rgba(255, 100, 100, 0.9)';
+            ctx.fillText(`BAD FRAME - vec=${vectorCount} conf=${consensusConf.toFixed(2)} (using last good)`, centerX - 100, centerY + 50);
+        }
         
         if (showArrow) {
             const arrowLen = Math.min(width, height) * 0.15 * Math.min(1, this.smoothedDirection.magnitude / 5);
@@ -1442,13 +1473,15 @@ function createParamSliders() {
     const invalidate = () => motionAnalyzer.onParamChange();
     const update = () => setRenderOne(true);
     
-    const techniqueOptions = Object.values(MOTION_TECHNIQUES);
-    paramControllers.push(motionFolder.add(p, 'technique', techniqueOptions).name("Technique").onChange((newTechnique) => {
-        console.log("Technique changed to:", newTechnique);
-        invalidate();
-        removeParamSliders();
-        createParamSliders();
-    }).tooltip("Motion estimation algorithm"));
+    if (isLocal || Globals.userID === 1) {
+        const techniqueOptions = Object.values(MOTION_TECHNIQUES);
+        paramControllers.push(motionFolder.add(p, 'technique', techniqueOptions).name("Technique").onChange((newTechnique) => {
+            console.log("Technique changed to:", newTechnique);
+            invalidate();
+            removeParamSliders();
+            createParamSliders();
+        }).tooltip("Motion estimation algorithm"));
+    }
     
     paramControllers.push(motionFolder.add(p, 'frameSkip', 1, 10, 1).name("Frame Skip").onChange(invalidate)
         .tooltip("Frames between comparisons (higher = detect slower motion)"));
@@ -1460,6 +1493,10 @@ function createParamSliders() {
         .tooltip("Maximum motion magnitude"));
     paramControllers.push(motionFolder.add(p, 'smoothingAlpha', 0.5, 0.99, 0.01).name("Smoothing").onChange(invalidate)
         .tooltip("Direction smoothing (higher = more smoothing)"));
+    paramControllers.push(motionFolder.add(p, 'minVectorCount', 1, 50, 1).name("Min Vector Count").onChange(invalidate)
+        .tooltip("Minimum number of motion vectors for a valid frame"));
+    paramControllers.push(motionFolder.add(p, 'minConsensusConfidence', 0, 0.5, 0.01).name("Min Confidence").onChange(invalidate)
+        .tooltip("Minimum consensus confidence for a valid frame"));
     
     const usesFeatures = p.technique === MOTION_TECHNIQUES.SPARSE_CONSENSUS || p.technique === MOTION_TECHNIQUES.AFFINE_RANSAC;
     if (usesFeatures) {
