@@ -32,16 +32,43 @@ Example entry format:
 
 ---
 
-## Version 2.19.6+ (2026-01-03) - Development
-
-### New Features
-- Added **Sitch Duration** field in Time menu showing duration as HH:MM:SS.sss, synchronized with Sitch Frames
-- **Panorama exporting** for 360-degree views
+## Version 2.20.0+ (2026-01-05) - Development
 
 ### Improvements
-- Elastic GUI sliders now expand their range when typing a value outside the current range
+- Panorama frame step control for more precise panorama creation
 
 ### Bug Fixes
+- Fixed mouse scroll wheel leaking through GUI to video zoom
+
+---
+
+## Version 2.20.0 (2026-01-04)
+
+### New Features
+- **Animated panorama exporting** for video-based 360-degree views
+- **Auto masking** for motion analysis regions
+- **Multiple motion analysis techniques** with selectable methods
+- **Motion analysis cache status indicator** with automatic frame advance until cache is full
+- **Automatic encoding fallback** to software encoding when hardware encoding fails
+- **Chatbot documentation access** allowing AI assistant to reference docs
+
+### Improvements
+- Renamed "Pano Video" to "Animated Pano" for clarity
+- Better interpolating over gaps and smoothing with incomplete data
+- Much more accurate linear tracklet method for motion tracking
+- Using last-known-good frame to handle frames with no tracking data
+- Prefer software WebM encoding on Firefox for better compatibility
+- Added **Sitch Duration** field in Time menu showing duration as HH:MM:SS.sss
+- Elastic GUI sliders now expand their range when typing a value outside the current range
+- Basic panorama exporting for 360-degree views
+
+### Bug Fixes
+- Fixed motion analysis menu loading on older sitches
+- Fixed startup frame issues
+- Fixed motion tracking using incorrect frames if frame not yet loaded
+- Fixed motion tracking arrows not redrawing when paused and resizing
+- Fixed WebM exporter
+- Fixed panorama creation using video playback correctly
 - Fixed menu position jumping in legacy sitches when hiding empty menus
 
 ---
