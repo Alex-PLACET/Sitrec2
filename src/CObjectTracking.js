@@ -114,10 +114,10 @@ class ObjectTracker {
     getImageDimensions() {
         const videoData = this.videoView?.videoData;
         if (!videoData) return {width: 1920, height: 1080};
-        const image = videoData.getImage(0);
+        // Get dimensions from videoData properties without requesting a specific frame
         return {
-            width: image?.width || image?.videoWidth || 1920,
-            height: image?.height || image?.videoHeight || 1080,
+            width: videoData.videoWidth || 1920,
+            height: videoData.videoHeight || 1080,
         };
     }
     
