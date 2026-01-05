@@ -2100,6 +2100,7 @@ let exportPanoMenuItem = null;
 let exportPanoVideoMenuItem = null;
 let panoCrop = 10;
 let useMaskInPano = true;
+let panoFrameStep = 1;
 
 async function exportMotionPanorama() {
     const videoView = NodeMan.get("video", false);
@@ -2143,7 +2144,8 @@ async function exportMotionPanorama() {
 
     const startFrame = Sit.aFrame;
     const endFrame = Sit.bFrame;
-    const totalFrames = endFrame - startFrame + 1;
+    const frameStep = panoFrameStep;
+    const totalFrames = Math.ceil((endFrame - startFrame + 1) / frameStep);
 
     const motionData = motionAnalyzer.getMotionDataForAllFrames();
 
@@ -2151,11 +2153,13 @@ async function exportMotionPanorama() {
     let cumX = 0, cumY = 0;
     
     for (let i = 0; i < totalFrames; i++) {
-        const frame = startFrame + i;
+        const frame = startFrame + i * frameStep;
         if (i > 0) {
-            const md = motionData[frame];
-            cumX -= md.dx;
-            cumY -= md.dy;
+            for (let f = frame - frameStep + 1; f <= frame; f++) {
+                const md = motionData[f];
+                cumX -= md.dx;
+                cumY -= md.dy;
+            }
         }
         frameData.push({frame, px: cumX, py: cumY});
     }
@@ -2691,8 +2695,13 @@ export function addMotionAnalysisMenu() {
 
     const panoParams = {
         get panoCrop() { return panoCrop; }, set panoCrop(v) { panoCrop = v; },
-        get useMaskInPano() { return useMaskInPano; }, set useMaskInPano(v) { useMaskInPano = v; }
+        get useMaskInPano() { return useMaskInPano; }, set useMaskInPano(v) { useMaskInPano = v; },
+        get panoFrameStep() { return panoFrameStep; }, set panoFrameStep(v) { panoFrameStep = v; }
     };
+    motionFolder.add(panoParams, 'panoFrameStep', 1, 60, 1)
+        .name("Pano Frame Step")
+        .tooltip("How many frames to step between each panorama frame (1 = every frame)")
+        .perm();
     motionFolder.add(panoParams, 'panoCrop', 0, 100, 1)
         .name("Panorama Crop")
         .tooltip("Pixels to crop from each edge of video frames")
