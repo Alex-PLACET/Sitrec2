@@ -1,4 +1,4 @@
-import {guiMenus, NodeMan, setRenderOne,} from "./Globals";
+import {Globals, guiMenus, NodeMan, setRenderOne, Sit} from "./Globals";
 import {par} from "./par";
 import {getCV, loadOpenCV} from "./openCVLoader";
 
@@ -27,6 +27,7 @@ class ObjectTracker {
         this.trackerType = 'CSRT';
         
         this.guiFolder = null;
+        this.savedPaused = true;
     }
     
     createOverlay() {
@@ -133,12 +134,18 @@ class ObjectTracker {
         this.enabled = false;
         this.tracking = false;
         this.hideOverlay();
+        this.clearSliderStatus();
     }
     
     startTracking() {
         if (!this.enabled) return;
         this.tracking = true;
         this.initializeTracker();
+        this.updateSliderStatus();
+        
+        this.savedPaused = par.paused;
+        Globals.justVideoAnalysis = true;
+        par.paused = false;
     }
     
     stopTracking() {
@@ -146,6 +153,14 @@ class ObjectTracker {
         if (this.tracker) {
             this.tracker = null;
         }
+        par.paused = this.savedPaused;
+        Globals.justVideoAnalysis = false;
+    }
+    
+    onTrackingComplete() {
+        this.stopTracking();
+        if (startMenuItem) startMenuItem.name("Start Tracking");
+        setRenderOne(true);
     }
     
     initializeTracker() {
@@ -163,6 +178,12 @@ class ObjectTracker {
         if (!this.tracking || !this.enabled || !cv) return;
         
         frame = Math.floor(frame);
+        
+        const bFrame = Sit.bFrame ?? (Sit.frames - 1);
+        if (frame >= bFrame) {
+            this.onTrackingComplete();
+            return;
+        }
         
         if (this.trackedPositions.has(frame)) {
             const pos = this.trackedPositions.get(frame);
@@ -231,6 +252,7 @@ class ObjectTracker {
         this.trackX = bestX;
         this.trackY = bestY;
         this.trackedPositions.set(frame, {x: this.trackX, y: this.trackY});
+        this.updateSliderStatus();
         
         prevMat.delete();
         currMat.delete();
@@ -311,7 +333,32 @@ class ObjectTracker {
         this.trackedPositions.clear();
         const frame = Math.floor(par.frame);
         this.trackedPositions.set(frame, {x: this.trackX, y: this.trackY});
+        this.updateSliderStatus();
         setRenderOne(true);
+    }
+    
+    getCacheStatusArray() {
+        const status = new Array(Sit.frames).fill(0);
+        for (const f of this.trackedPositions.keys()) {
+            if (f >= 0 && f < Sit.frames) {
+                status[f] = 1;
+            }
+        }
+        return status;
+    }
+    
+    updateSliderStatus() {
+        const slider = NodeMan.get("FrameSlider", false);
+        if (slider) {
+            slider.setStatusOverlay(this.getCacheStatusArray(), 2);
+        }
+    }
+    
+    clearSliderStatus() {
+        const slider = NodeMan.get("FrameSlider", false);
+        if (slider) {
+            slider.clearStatusOverlay();
+        }
     }
 }
 
@@ -374,8 +421,10 @@ function toggleEnableTracking() {
 
 function toggleStartTracking() {
     if (!objectTracker || !objectTracker.enabled) {
-        alert("Please enable tracking first");
-        return;
+        toggleEnableTracking();
+        if (!objectTracker || !objectTracker.enabled) {
+            return;
+        }
     }
     
     if (objectTracker.tracking) {
