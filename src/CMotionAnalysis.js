@@ -2365,7 +2365,7 @@ async function exportPanoVideo() {
             await loadOpenCV();
         } catch (e) {
             alert("Failed to load OpenCV: " + e.message);
-            if (exportPanoVideoMenuItem) exportPanoVideoMenuItem.name("Export Pano Video");
+            if (exportPanoVideoMenuItem) exportPanoVideoMenuItem.name("Export Animated Pano");
             return;
         }
     }
