@@ -4,6 +4,8 @@ import {getCV, loadOpenCV} from "./openCVLoader";
 
 let cv = null;
 
+// Auto Tracking - Automatic object tracking using OpenCV template matching or centroid tracking
+// This is distinct from Manual Tracking (CNodeTrackingOverlay) which requires manual keyframe placement
 class ObjectTracker {
     constructor(videoView) {
         this.videoView = videoView;
@@ -33,6 +35,10 @@ class ObjectTracker {
         this.guiFolder = null;
         this.savedPaused = true;
         this.savedFrame = undefined;
+
+        // Track video dimensions to detect when video changes
+        this.lastVideoWidth = 0;
+        this.lastVideoHeight = 0;
     }
     
     createOverlay() {
@@ -223,7 +229,7 @@ class ObjectTracker {
     
     onTrackingComplete() {
         this.stopTracking();
-        if (startMenuItem) startMenuItem.name("Start Tracking");
+        if (startMenuItem) startMenuItem.name("Start Auto Tracking");
         setRenderOne(true);
     }
     
@@ -422,22 +428,39 @@ class ObjectTracker {
     
     renderOverlay(frame) {
         if (!this.enabled || !this.overlay) return;
-        
+
         const width = this.videoView.widthPx;
         const height = this.videoView.heightPx;
-        
+
         if (this.overlay.width !== width || this.overlay.height !== height) {
             this.overlay.width = width;
             this.overlay.height = height;
         }
-        
+
         const ctx = this.overlayCtx;
         ctx.clearRect(0, 0, width, height);
-        
+
+        // Check if video dimensions have changed (e.g., new video loaded)
+        const videoDims = this.getImageDimensions();
+        if (videoDims.width !== this.lastVideoWidth || videoDims.height !== this.lastVideoHeight) {
+            // Video dimensions changed - recenter cursor
+            if (videoDims.width > 0 && videoDims.height > 0) {
+                this.trackX = videoDims.width / 2;
+                this.trackY = videoDims.height / 2;
+                this.lastVideoWidth = videoDims.width;
+                this.lastVideoHeight = videoDims.height;
+                // Clear any old tracking data since it's for a different video
+                if (!this.tracking) {
+                    this.trackedPositions.clear();
+                    this.trackedPositions.set(Math.floor(par.frame), {x: this.trackX, y: this.trackY});
+                }
+            }
+        }
+
         if (this.tracking) {
             this.trackFrame(frame);
         }
-        
+
         const [cx, cy] = this.videoView.videoToCanvasCoords(this.trackX, this.trackY);
         
         const {dWidth} = this.videoView;
@@ -542,10 +565,10 @@ export function resetObjectTracking() {
     }
     renderHooked = false;
     if (enableMenuItem) {
-        enableMenuItem.name("Enable Tracking");
+        enableMenuItem.name("Enable Auto Tracking");
     }
     if (startMenuItem) {
-        startMenuItem.name("Start Tracking");
+        startMenuItem.name("Start Auto Tracking");
     }
     if (stabilizeToggleMenuItem) {
         stabilizeToggleMenuItem.name("Enable Stabilization");
@@ -558,11 +581,11 @@ function toggleEnableTracking() {
         alert("No video view found");
         return;
     }
-    
+
     if (objectTracker && objectTracker.enabled) {
         objectTracker.disable();
-        if (enableMenuItem) enableMenuItem.name("Enable Tracking");
-        if (startMenuItem) startMenuItem.name("Start Tracking");
+        if (enableMenuItem) enableMenuItem.name("Enable Auto Tracking");
+        if (startMenuItem) startMenuItem.name("Start Auto Tracking");
         if (trackingFolder) trackingFolder.close();
         setRenderOne(true);
         return;
@@ -573,7 +596,7 @@ function toggleEnableTracking() {
     }
     
     objectTracker.enable();
-    if (enableMenuItem) enableMenuItem.name("Disable Tracking");
+    if (enableMenuItem) enableMenuItem.name("Disable Auto Tracking");
     
     if (!renderHooked) {
         renderHooked = true;
@@ -599,7 +622,7 @@ function toggleStartTracking() {
     
     if (objectTracker.tracking) {
         objectTracker.stopTracking();
-        if (startMenuItem) startMenuItem.name("Start Tracking");
+        if (startMenuItem) startMenuItem.name("Start Auto Tracking");
         setRenderOne(true);
         return;
     }
@@ -607,7 +630,7 @@ function toggleStartTracking() {
     // Centroid mode doesn't need OpenCV
     if (objectTracker.centerOnBright) {
         objectTracker.startTracking();
-        if (startMenuItem) startMenuItem.name("Stop Tracking");
+        if (startMenuItem) startMenuItem.name("Stop Auto Tracking");
         setRenderOne(true);
         return;
     }
@@ -615,7 +638,7 @@ function toggleStartTracking() {
     // Template matching mode requires OpenCV
     if (cv) {
         objectTracker.startTracking();
-        if (startMenuItem) startMenuItem.name("Stop Tracking");
+        if (startMenuItem) startMenuItem.name("Stop Auto Tracking");
         setRenderOne(true);
         return;
     }
@@ -625,12 +648,12 @@ function toggleStartTracking() {
     loadOpenCV().then(() => {
         cv = getCV();
         objectTracker.startTracking();
-        if (startMenuItem) startMenuItem.name("Stop Tracking");
+        if (startMenuItem) startMenuItem.name("Stop Auto Tracking");
         setRenderOne(true);
     }).catch(e => {
         console.error("Failed to load OpenCV:", e);
         alert("Failed to load OpenCV.js: " + e.message);
-        if (startMenuItem) startMenuItem.name("Start Tracking");
+        if (startMenuItem) startMenuItem.name("Start Auto Tracking");
     });
 }
 
@@ -707,9 +730,9 @@ let stabilizeToggleMenuItem = null;
 
 export function addObjectTrackingMenu() {
     if (!guiMenus.view) return;
-    
-    trackingFolder = guiMenus.view.addFolder("Tracking").close().perm();
-    
+
+    trackingFolder = guiMenus.view.addFolder("Auto Tracking").close().perm();
+
     const menuActions = {
         enableTracking: toggleEnableTracking,
         startTracking: toggleStartTracking,
@@ -717,25 +740,25 @@ export function addObjectTrackingMenu() {
         stabilizeVideo: stabilizeVideo,
         toggleStabilization: toggleStabilization,
     };
-    
+
     enableMenuItem = trackingFolder.add(menuActions, 'enableTracking')
-        .name("Enable Tracking")
-        .tooltip("Toggle display of the tracking cursor on video")
+        .name("Enable Auto Tracking")
+        .tooltip("Toggle display of the auto tracking cursor on video")
         .perm();
-    
+
     startMenuItem = trackingFolder.add(menuActions, 'startTracking')
-        .name("Start Tracking")
-        .tooltip("Start/stop tracking the object inside the cursor as video plays")
+        .name("Start Auto Tracking")
+        .tooltip("Automatically track the object inside the cursor as video plays")
         .perm();
-    
+
     trackingFolder.add(menuActions, 'clearTrack')
         .name("Clear Track")
-        .tooltip("Clear all tracked positions and start fresh")
+        .tooltip("Clear all auto-tracked positions and start fresh")
         .perm();
 
     trackingFolder.add(menuActions, 'stabilizeVideo')
         .name("Stabilize")
-        .tooltip("Apply tracked positions to stabilize the video")
+        .tooltip("Apply auto-tracked positions to stabilize the video")
         .perm();
 
     stabilizeToggleMenuItem = trackingFolder.add(menuActions, 'toggleStabilization')

@@ -1,5 +1,6 @@
-// A tracking view will overlay the video and show the tracking data
-// testing XX
+// Manual Tracking - A tracking view that overlays the video and shows manual tracking data
+// User manually places keyframes to track objects
+// This is distinct from Auto Tracking (CObjectTracking) which automatically tracks objects
 //
 
 import {CNodeViewUI} from "./CNodeViewUI";
@@ -262,13 +263,13 @@ export class CNodeTrackingOverlay extends CNodeActiveOverlay {
 
         this.showTracking = true;
 
-        this.gui.add(this, "resetDraggable").name("Reset Object Tracking")
-            .tooltip("Reset the object tracking to an empty state, removing all keyframes and draggable items")
-      //  this.gui.add(this, "showTracking").name("Show Object Tracking").listen();
+        this.gui.add(this, "resetDraggable").name("Reset Manual Tracking")
+            .tooltip("Reset manual tracking to an empty state, removing all keyframes and draggable items")
+      //  this.gui.add(this, "showTracking").name("Show Manual Tracking").listen();
 
 
         this.limitAB = true;
-        this.gui.add(this, "limitAB").name("Limit AB to Video Tracking").listen().onChange(() => {
+        this.gui.add(this, "limitAB").name("Limit AB to Manual Tracking").listen().onChange(() => {
 
             if (this.limitAB && this.keyframes.length > 0) {
                 this.applyLimitAB();
