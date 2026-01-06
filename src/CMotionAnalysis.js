@@ -21,6 +21,171 @@ import {getCV, loadOpenCV} from "./openCVLoader";
 
 let cv = null;
 
+async function ensureOpenCVAndAnalyzer(menuItem, loadingText, defaultText) {
+    const videoView = NodeMan.get("video", false);
+    if (!videoView) {
+        alert("No video view found.");
+        return null;
+    }
+
+    const videoData = videoView.videoData;
+    if (!videoData) {
+        alert("No video data found.");
+        return null;
+    }
+
+    if (!cv) {
+        if (menuItem) menuItem.name(loadingText);
+        try {
+            await loadOpenCV();
+            cv = getCV();
+        } catch (e) {
+            alert("Failed to load OpenCV: " + e.message);
+            if (menuItem) menuItem.name(defaultText);
+            return null;
+        }
+    }
+
+    if (!motionAnalyzer) {
+        motionAnalyzer = new MotionAnalyzer(videoView);
+    }
+    motionAnalyzer.active = true;
+    motionAnalyzer.createOverlays();
+
+    return {videoView, videoData};
+}
+
+function calculateFrameOffsets(motionData, startFrame, endFrame, frameStep = 1) {
+    const totalFrames = Math.ceil((endFrame - startFrame + 1) / frameStep);
+    const frameData = [];
+    let cumX = 0, cumY = 0;
+    
+    for (let i = 0; i < totalFrames; i++) {
+        const frame = startFrame + i * frameStep;
+        if (i > 0) {
+            if (frameStep === 1) {
+                const md = motionData[frame];
+                cumX -= md.dx;
+                cumY -= md.dy;
+            } else {
+                for (let f = frame - frameStep + 1; f <= frame; f++) {
+                    const md = motionData[f];
+                    cumX -= md.dx;
+                    cumY -= md.dy;
+                }
+            }
+        }
+        frameData.push({frame, px: cumX, py: cumY});
+    }
+
+    let minPx = Infinity, maxPx = -Infinity;
+    let minPy = Infinity, maxPy = -Infinity;
+    for (const fd of frameData) {
+        minPx = Math.min(minPx, fd.px);
+        maxPx = Math.max(maxPx, fd.px);
+        minPy = Math.min(minPy, fd.py);
+        maxPy = Math.max(maxPy, fd.py);
+    }
+
+    return {frameData, totalFrames, minPx, maxPx, minPy, maxPy};
+}
+
+function calculatePanoDimensions(videoData, startFrame, minPx, maxPx, minPy, maxPy, crop) {
+    const firstImage = videoData.getImage(startFrame);
+    const frameWidth = firstImage.width || firstImage.videoWidth || 1920;
+    const frameHeight = firstImage.height || firstImage.videoHeight || 1080;
+    const croppedWidth = frameWidth - 2 * crop;
+    const croppedHeight = frameHeight - 2 * crop;
+
+    const pxRange = maxPx - minPx;
+    const pyRange = maxPy - minPy;
+
+    let panoWidthPx = Math.ceil(pxRange + croppedWidth);
+    let panoHeightPx = Math.ceil(pyRange + croppedHeight);
+
+    let scale = 1;
+    if (panoWidthPx > MAX_PANORAMA_WIDTH) {
+        scale = MAX_PANORAMA_WIDTH / panoWidthPx;
+        panoWidthPx = MAX_PANORAMA_WIDTH;
+        panoHeightPx = Math.ceil(panoHeightPx * scale);
+    }
+
+    return {
+        frameWidth, frameHeight,
+        croppedWidth, croppedHeight,
+        panoWidthPx, panoHeightPx,
+        scale,
+        scaledFrameWidth: Math.ceil(croppedWidth * scale),
+        scaledFrameHeight: Math.ceil(croppedHeight * scale),
+    };
+}
+
+function drawFrameToPano(panoCtx, image, x, y, crop, croppedWidth, croppedHeight, scaledFrameWidth, scaledFrameHeight, useMask, tempCanvas, tempCtx, maskImageData, frameWidth, frameHeight) {
+    if (useMask && maskImageData) {
+        tempCtx.clearRect(0, 0, frameWidth, frameHeight);
+        tempCtx.drawImage(image, 0, 0);
+        const frameImgData = tempCtx.getImageData(crop, crop, croppedWidth, croppedHeight);
+        const framePixels = frameImgData.data;
+        const maskPixels = maskImageData.data;
+        const maskWidth = maskImageData.width;
+        
+        for (let py = 0; py < croppedHeight; py++) {
+            for (let px = 0; px < croppedWidth; px++) {
+                const maskX = px + crop;
+                const maskY = py + crop;
+                if (maskX < maskWidth && maskY < maskImageData.height) {
+                    const maskIdx = (maskY * maskWidth + maskX) * 4;
+                    if (maskPixels[maskIdx + 3] > 128) {
+                        const frameIdx = (py * croppedWidth + px) * 4;
+                        framePixels[frameIdx + 3] = 0;
+                    }
+                }
+            }
+        }
+        
+        tempCtx.putImageData(frameImgData, crop, crop);
+        panoCtx.drawImage(
+            tempCanvas,
+            crop, crop, croppedWidth, croppedHeight,
+            x, y, scaledFrameWidth, scaledFrameHeight
+        );
+    } else {
+        panoCtx.drawImage(
+            image,
+            crop, crop, croppedWidth, croppedHeight,
+            x, y, scaledFrameWidth, scaledFrameHeight
+        );
+    }
+}
+
+function imageToGrayscale(image, blurSize) {
+    const width = image.width || image.videoWidth;
+    const height = image.height || image.videoHeight;
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = width;
+    tempCanvas.height = height;
+    const tempCtx = tempCanvas.getContext('2d');
+    tempCtx.drawImage(image, 0, 0, width, height);
+    const imageData = tempCtx.getImageData(0, 0, width, height);
+
+    const src = cv.matFromImageData(imageData);
+    const grayRaw = new cv.Mat();
+    cv.cvtColor(src, grayRaw, cv.COLOR_RGBA2GRAY);
+    src.delete();
+
+    const gray = new cv.Mat();
+    const blur = Math.max(1, Math.floor(blurSize) | 1);
+    if (blur > 1) {
+        cv.GaussianBlur(grayRaw, gray, new cv.Size(blur, blur), 0);
+        grayRaw.delete();
+    } else {
+        grayRaw.copyTo(gray);
+        grayRaw.delete();
+    }
+
+    return {gray, width, height};
+}
+
 const MOTION_TECHNIQUES = {
     SPARSE_CONSENSUS: 'Sparse + Consensus',
     LINEAR_TRACKLET: 'Linear Tracklet',
@@ -264,29 +429,9 @@ class MotionAnalyzer {
         const image = videoData.getImage(targetFrame);
         if (!image || !image.width) return;
         
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = image.width || image.videoWidth;
-        tempCanvas.height = image.height || image.videoHeight;
-        const tempCtx = tempCanvas.getContext('2d');
-        tempCtx.drawImage(image, 0, 0, tempCanvas.width, tempCanvas.height);
-        const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+        const {gray, width, height} = imageToGrayscale(image, this.params.blurSize);
 
-        const src = cv.matFromImageData(imageData);
-        const grayRaw = new cv.Mat();
-        cv.cvtColor(src, grayRaw, cv.COLOR_RGBA2GRAY);
-        src.delete();
-
-        const gray = new cv.Mat();
-        const blurSize = Math.max(1, Math.floor(this.params.blurSize) | 1);
-        if (blurSize > 1) {
-            cv.GaussianBlur(grayRaw, gray, new cv.Size(blurSize, blurSize), 0);
-            grayRaw.delete();
-        } else {
-            grayRaw.copyTo(gray);
-            grayRaw.delete();
-        }
-
-        this.frameBuffer.push({gray: gray.clone(), frame: targetFrame, width: tempCanvas.width, height: tempCanvas.height});
+        this.frameBuffer.push({gray: gray.clone(), frame: targetFrame, width, height});
         while (this.frameBuffer.length > this.maxBufferSize) {
             const old = this.frameBuffer.shift();
             if (old.gray) old.gray.delete();
@@ -295,7 +440,7 @@ class MotionAnalyzer {
         const skipFrames = Math.max(1, Math.round(this.params.frameSkip));
         
         if (this.params.technique === MOTION_TECHNIQUES.LINEAR_TRACKLET) {
-            this.computeOpticalFlowLinearTracklet(targetFrame, tempCanvas.width, tempCanvas.height, skipFrames);
+            this.computeOpticalFlowLinearTracklet(targetFrame, width, height, skipFrames);
         }
         
         gray.delete();
@@ -304,8 +449,8 @@ class MotionAnalyzer {
             flowData: this.lastFlowData ? {...this.lastFlowData, vectors: [...this.lastFlowData.vectors]} : null,
             smoothedDirection: {...this.smoothedDirection},
             angleHistory: [...this.angleHistory],
-            imgWidth: tempCanvas.width,
-            imgHeight: tempCanvas.height,
+            imgWidth: width,
+            imgHeight: height,
         });
 
         setRenderOne(true);
@@ -616,34 +761,13 @@ class MotionAnalyzer {
             return;
         }
 
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = image.width || image.videoWidth || width;
-        tempCanvas.height = image.height || image.videoHeight || height;
-        const tempCtx = tempCanvas.getContext('2d');
-        tempCtx.drawImage(image, 0, 0, tempCanvas.width, tempCanvas.height);
+        const {gray, width: imgWidth, height: imgHeight} = imageToGrayscale(image, this.params.blurSize);
         
         if (this.maskOverlayNode) {
-            this.maskOverlayNode.initMask(tempCanvas.width, tempCanvas.height);
-        }
-        
-        const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-
-        const src = cv.matFromImageData(imageData);
-        const grayRaw = new cv.Mat();
-        cv.cvtColor(src, grayRaw, cv.COLOR_RGBA2GRAY);
-        src.delete();
-
-        const gray = new cv.Mat();
-        const blurSize = Math.max(1, Math.floor(this.params.blurSize) | 1);
-        if (blurSize > 1) {
-            cv.GaussianBlur(grayRaw, gray, new cv.Size(blurSize, blurSize), 0);
-            grayRaw.delete();
-        } else {
-            grayRaw.copyTo(gray);
-            grayRaw.delete();
+            this.maskOverlayNode.initMask(imgWidth, imgHeight);
         }
 
-        this.frameBuffer.push({gray: gray.clone(), frame, width: tempCanvas.width, height: tempCanvas.height});
+        this.frameBuffer.push({gray: gray.clone(), frame, width: imgWidth, height: imgHeight});
         
         while (this.frameBuffer.length > this.maxBufferSize) {
             const old = this.frameBuffer.shift();
@@ -663,8 +787,8 @@ class MotionAnalyzer {
                     flowData: null,
                     smoothedDirection: {...this.smoothedDirection},
                     angleHistory: [...this.angleHistory],
-                    imgWidth: tempCanvas.width,
-                    imgHeight: tempCanvas.height,
+                    imgWidth,
+                    imgHeight,
                     incomplete: true,
                 });
                 setTimeout(() => setRenderOne(true), 100);
@@ -672,35 +796,14 @@ class MotionAnalyzer {
             }
             const prevImage = videoData.getImage(prevFrame);
             if (prevImage && prevImage.width && prevImage.height) {
-                const prevCanvas = document.createElement('canvas');
-                prevCanvas.width = prevImage.width || prevImage.videoWidth || width;
-                prevCanvas.height = prevImage.height || prevImage.videoHeight || height;
-                const prevCtx = prevCanvas.getContext('2d');
-                prevCtx.drawImage(prevImage, 0, 0, prevCanvas.width, prevCanvas.height);
-                const prevImageData = prevCtx.getImageData(0, 0, prevCanvas.width, prevCanvas.height);
-                
-                const prevSrc = cv.matFromImageData(prevImageData);
-                const prevGrayRaw = new cv.Mat();
-                cv.cvtColor(prevSrc, prevGrayRaw, cv.COLOR_RGBA2GRAY);
-                prevSrc.delete();
-                
-                const prevGray = new cv.Mat();
-                const blurSize = Math.max(1, Math.floor(this.params.blurSize) | 1);
-                if (blurSize > 1) {
-                    cv.GaussianBlur(prevGrayRaw, prevGray, new cv.Size(blurSize, blurSize), 0);
-                    prevGrayRaw.delete();
-                } else {
-                    prevGrayRaw.copyTo(prevGray);
-                    prevGrayRaw.delete();
-                }
-                
-                this.frameBuffer.unshift({gray: prevGray, frame: prevFrame, width: prevCanvas.width, height: prevCanvas.height});
+                const {gray: prevGray, width: prevWidth, height: prevHeight} = imageToGrayscale(prevImage, this.params.blurSize);
+                this.frameBuffer.unshift({gray: prevGray, frame: prevFrame, width: prevWidth, height: prevHeight});
                 compareIdx = 0;
             }
         }
         
         if (this.params.technique === MOTION_TECHNIQUES.LINEAR_TRACKLET) {
-            this.computeOpticalFlowLinearTracklet(frame, tempCanvas.width, tempCanvas.height, skipFrames);
+            this.computeOpticalFlowLinearTracklet(frame, imgWidth, imgHeight, skipFrames);
             
             gray.delete();
 
@@ -708,8 +811,8 @@ class MotionAnalyzer {
                 flowData: this.lastFlowData ? {...this.lastFlowData, vectors: [...this.lastFlowData.vectors]} : null,
                 smoothedDirection: {...this.smoothedDirection},
                 angleHistory: [...this.angleHistory],
-                imgWidth: tempCanvas.width,
-                imgHeight: tempCanvas.height,
+                imgWidth,
+                imgHeight,
             });
 
             if (!(this.lastFlowData?.isGoodFrame)) {
@@ -726,12 +829,12 @@ class MotionAnalyzer {
                 }
             }
 
-            this.drawOverlay(width, height, tempCanvas.width, tempCanvas.height);
+            this.drawOverlay(width, height, imgWidth, imgHeight);
             this.drawGraph();
             this.updateSliderStatus();
         } else if (compareIdx >= 0) {
             const prevEntry = this.frameBuffer[compareIdx];
-            this.computeOpticalFlow(prevEntry.gray, gray, tempCanvas.width, tempCanvas.height, skipFrames);
+            this.computeOpticalFlow(prevEntry.gray, gray, imgWidth, imgHeight, skipFrames);
             
             gray.delete();
 
@@ -739,11 +842,11 @@ class MotionAnalyzer {
                 flowData: this.lastFlowData ? {...this.lastFlowData, vectors: [...this.lastFlowData.vectors]} : null,
                 smoothedDirection: {...this.smoothedDirection},
                 angleHistory: [...this.angleHistory],
-                imgWidth: tempCanvas.width,
-                imgHeight: tempCanvas.height,
+                imgWidth,
+                imgHeight,
             });
 
-            this.drawOverlay(width, height, tempCanvas.width, tempCanvas.height);
+            this.drawOverlay(width, height, imgWidth, imgHeight);
             this.drawGraph();
             this.updateSliderStatus();
         } else {
@@ -753,11 +856,11 @@ class MotionAnalyzer {
                 flowData: null,
                 smoothedDirection: {...this.smoothedDirection},
                 angleHistory: [...this.angleHistory],
-                imgWidth: tempCanvas.width,
-                imgHeight: tempCanvas.height,
+                imgWidth,
+                imgHeight,
             });
             
-            this.drawOverlay(width, height, tempCanvas.width, tempCanvas.height);
+            this.drawOverlay(width, height, imgWidth, imgHeight);
             this.drawGraph();
             this.updateSliderStatus();
         }
@@ -1239,25 +1342,7 @@ class MotionAnalyzer {
                     }
                     return {flowVectors: [], consensus: null};
                 }
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = image.width || image.videoWidth;
-                tempCanvas.height = image.height || image.videoHeight;
-                const tempCtx = tempCanvas.getContext('2d');
-                tempCtx.drawImage(image, 0, 0, tempCanvas.width, tempCanvas.height);
-                const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-                const src = cv.matFromImageData(imageData);
-                const grayRaw = new cv.Mat();
-                cv.cvtColor(src, grayRaw, cv.COLOR_RGBA2GRAY);
-                src.delete();
-                const gray = new cv.Mat();
-                const blurSize = Math.max(1, Math.floor(this.params.blurSize) | 1);
-                if (blurSize > 1) {
-                    cv.GaussianBlur(grayRaw, gray, new cv.Size(blurSize, blurSize), 0);
-                    grayRaw.delete();
-                } else {
-                    grayRaw.copyTo(gray);
-                    grayRaw.delete();
-                }
+                const {gray} = imageToGrayscale(image, this.params.blurSize);
                 grayFrames.push(gray);
             }
         }
@@ -1911,29 +1996,8 @@ async function analyzeAllFrames(progressCallback) {
 }
 
 async function createTrackFromMotion() {
-    const videoView = NodeMan.get("video", false);
-    if (!videoView) {
-        alert("No video view found.");
-        return;
-    }
-
-    if (!cv) {
-        if (createTrackMenuItem) createTrackMenuItem.name("Loading OpenCV...");
-        try {
-            await loadOpenCV();
-            cv = getCV();
-        } catch (e) {
-            alert("Failed to load OpenCV: " + e.message);
-            if (createTrackMenuItem) createTrackMenuItem.name("Create Track from Motion");
-            return;
-        }
-    }
-
-    if (!motionAnalyzer) {
-        motionAnalyzer = new MotionAnalyzer(videoView);
-    }
-    motionAnalyzer.active = true;
-    motionAnalyzer.createOverlays();
+    const result = await ensureOpenCVAndAnalyzer(createTrackMenuItem, "Loading OpenCV...", "Create Track from Motion");
+    if (!result) return;
 
     if (createTrackMenuItem) createTrackMenuItem.name("Analyzing... 0%");
     
@@ -2016,35 +2080,9 @@ let useMaskInPano = true;
 let panoFrameStep = 1;
 
 async function exportMotionPanorama() {
-    const videoView = NodeMan.get("video", false);
-    if (!videoView) {
-        alert("No video view found.");
-        return;
-    }
-
-    const videoData = videoView.videoData;
-    if (!videoData) {
-        alert("No video data found.");
-        return;
-    }
-
-    if (!cv) {
-        if (exportPanoMenuItem) exportPanoMenuItem.name("Loading OpenCV...");
-        try {
-            await loadOpenCV();
-            cv = getCV();
-        } catch (e) {
-            alert("Failed to load OpenCV: " + e.message);
-            if (exportPanoMenuItem) exportPanoMenuItem.name("Export Motion Panorama");
-            return;
-        }
-    }
-
-    if (!motionAnalyzer) {
-        motionAnalyzer = new MotionAnalyzer(videoView);
-    }
-    motionAnalyzer.active = true;
-    motionAnalyzer.createOverlays();
+    const result = await ensureOpenCVAndAnalyzer(exportPanoMenuItem, "Loading OpenCV...", "Export Motion Panorama");
+    if (!result) return;
+    const {videoData} = result;
 
     if (!motionAnalyzer.isCacheFull()) {
         if (exportPanoMenuItem) exportPanoMenuItem.name("Analyzing... 0%");
@@ -2058,63 +2096,14 @@ async function exportMotionPanorama() {
 
     const startFrame = Sit.aFrame;
     const endFrame = Sit.bFrame;
-    const frameStep = panoFrameStep;
-    const totalFrames = Math.ceil((endFrame - startFrame + 1) / frameStep);
-
+    const crop = panoCrop;
     const motionData = motionAnalyzer.getMotionDataForAllFrames();
 
-    const frameData = [];
-    let cumX = 0, cumY = 0;
-    
-    for (let i = 0; i < totalFrames; i++) {
-        const frame = startFrame + i * frameStep;
-        if (i > 0) {
-            for (let f = frame - frameStep + 1; f <= frame; f++) {
-                const md = motionData[f];
-                cumX -= md.dx;
-                cumY -= md.dy;
-            }
-        }
-        frameData.push({frame, px: cumX, py: cumY});
-    }
-
-    let minPx = Infinity, maxPx = -Infinity;
-    let minPy = Infinity, maxPy = -Infinity;
-
-    for (const fd of frameData) {
-        minPx = Math.min(minPx, fd.px);
-        maxPx = Math.max(maxPx, fd.px);
-        minPy = Math.min(minPy, fd.py);
-        maxPy = Math.max(maxPy, fd.py);
-    }
-
-    const firstImage = videoData.getImage(startFrame);
-    const frameWidth = firstImage.width || firstImage.videoWidth || 1920;
-    const frameHeight = firstImage.height || firstImage.videoHeight || 1080;
-
-    const crop = panoCrop;
-    const croppedWidth = frameWidth - 2 * crop;
-    const croppedHeight = frameHeight - 2 * crop;
+    const {frameData, totalFrames, minPx, maxPx, minPy, maxPy} = calculateFrameOffsets(motionData, startFrame, endFrame, panoFrameStep);
+    const {frameWidth, frameHeight, croppedWidth, croppedHeight, panoWidthPx, panoHeightPx, scale, scaledFrameWidth, scaledFrameHeight} = calculatePanoDimensions(videoData, startFrame, minPx, maxPx, minPy, maxPy, crop);
 
     console.log(`Motion Panorama: X range ${minPx.toFixed(1)} to ${maxPx.toFixed(1)} px (${(maxPx-minPx).toFixed(1)}px)`);
     console.log(`Motion Panorama: Y range ${minPy.toFixed(1)} to ${maxPy.toFixed(1)} px (${(maxPy-minPy).toFixed(1)}px)`);
-
-    const pxRange = maxPx - minPx;
-    const pyRange = maxPy - minPy;
-
-    let panoWidthPx = Math.ceil(pxRange + croppedWidth);
-    let panoHeightPx = Math.ceil(pyRange + croppedHeight);
-
-    let scale = 1;
-    if (panoWidthPx > MAX_PANORAMA_WIDTH) {
-        scale = MAX_PANORAMA_WIDTH / panoWidthPx;
-        panoWidthPx = MAX_PANORAMA_WIDTH;
-        panoHeightPx = Math.ceil(panoHeightPx * scale);
-    }
-
-    const scaledFrameWidth = Math.ceil(croppedWidth * scale);
-    const scaledFrameHeight = Math.ceil(croppedHeight * scale);
-
     console.log(`Motion Panorama: ${panoWidthPx}x${panoHeightPx}px, scale=${scale.toFixed(3)}`);
 
     const panoCanvas = document.createElement('canvas');
@@ -2195,41 +2184,7 @@ async function exportMotionPanorama() {
         const x = (fd.px - minPx) * scale;
         const y = (fd.py - minPy) * scale;
 
-        if (useMask && maskImageData) {
-            tempCtx.clearRect(0, 0, frameWidth, frameHeight);
-            tempCtx.drawImage(image, 0, 0);
-            const frameImgData = tempCtx.getImageData(crop, crop, croppedWidth, croppedHeight);
-            const framePixels = frameImgData.data;
-            const maskPixels = maskImageData.data;
-            const maskWidth = maskImageData.width;
-            
-            for (let py = 0; py < croppedHeight; py++) {
-                for (let px = 0; px < croppedWidth; px++) {
-                    const maskX = px + crop;
-                    const maskY = py + crop;
-                    if (maskX < maskWidth && maskY < maskImageData.height) {
-                        const maskIdx = (maskY * maskWidth + maskX) * 4;
-                        if (maskPixels[maskIdx + 3] > 128) {
-                            const frameIdx = (py * croppedWidth + px) * 4;
-                            framePixels[frameIdx + 3] = 0;
-                        }
-                    }
-                }
-            }
-            
-            tempCtx.putImageData(frameImgData, crop, crop);
-            panoCtx.drawImage(
-                tempCanvas,
-                crop, crop, croppedWidth, croppedHeight,
-                x, y, scaledFrameWidth, scaledFrameHeight
-            );
-        } else {
-            panoCtx.drawImage(
-                image,
-                crop, crop, croppedWidth, croppedHeight,
-                x, y, scaledFrameWidth, scaledFrameHeight
-            );
-        }
+        drawFrameToPano(panoCtx, image, x, y, crop, croppedWidth, croppedHeight, scaledFrameWidth, scaledFrameHeight, useMask, tempCanvas, tempCtx, maskImageData, frameWidth, frameHeight);
 
         if (i % previewEveryNFrames === 0) {
             const pct = Math.round(100 * i / totalFrames);
@@ -2265,35 +2220,9 @@ async function exportMotionPanorama() {
 }
 
 async function exportPanoVideo() {
-    const videoView = NodeMan.get("video", false);
-    if (!videoView) {
-        alert("No video view found.");
-        return;
-    }
-
-    const videoData = videoView.videoData;
-    if (!videoData) {
-        alert("No video data found.");
-        return;
-    }
-
-    if (!cv) {
-        if (exportPanoVideoMenuItem) exportPanoVideoMenuItem.name("Loading OpenCV...");
-        try {
-            await loadOpenCV();
-            cv = getCV();
-        } catch (e) {
-            alert("Failed to load OpenCV: " + e.message);
-            if (exportPanoVideoMenuItem) exportPanoVideoMenuItem.name("Export Animated Pano");
-            return;
-        }
-    }
-
-    if (!motionAnalyzer) {
-        motionAnalyzer = new MotionAnalyzer(videoView);
-    }
-    motionAnalyzer.active = true;
-    motionAnalyzer.createOverlays();
+    const result = await ensureOpenCVAndAnalyzer(exportPanoVideoMenuItem, "Loading OpenCV...", "Export Animated Pano");
+    if (!result) return;
+    const {videoData} = result;
 
     if (!motionAnalyzer.isCacheFull()) {
         if (exportPanoVideoMenuItem) exportPanoVideoMenuItem.name("Analyzing... 0%");
@@ -2307,56 +2236,11 @@ async function exportPanoVideo() {
 
     const startFrame = Sit.aFrame;
     const endFrame = Sit.bFrame;
-    const totalFrames = endFrame - startFrame + 1;
-
+    const crop = panoCrop;
     const motionData = motionAnalyzer.getMotionDataForAllFrames();
 
-    const frameData = [];
-    let cumX = 0, cumY = 0;
-    
-    for (let i = 0; i < totalFrames; i++) {
-        const frame = startFrame + i;
-        if (i > 0) {
-            const md = motionData[frame];
-            cumX -= md.dx;
-            cumY -= md.dy;
-        }
-        frameData.push({frame, px: cumX, py: cumY});
-    }
-
-    let minPx = Infinity, maxPx = -Infinity;
-    let minPy = Infinity, maxPy = -Infinity;
-
-    for (const fd of frameData) {
-        minPx = Math.min(minPx, fd.px);
-        maxPx = Math.max(maxPx, fd.px);
-        minPy = Math.min(minPy, fd.py);
-        maxPy = Math.max(maxPy, fd.py);
-    }
-
-    const firstImage = videoData.getImage(startFrame);
-    const frameWidth = firstImage.width || firstImage.videoWidth || 1920;
-    const frameHeight = firstImage.height || firstImage.videoHeight || 1080;
-
-    const crop = panoCrop;
-    const croppedWidth = frameWidth - 2 * crop;
-    const croppedHeight = frameHeight - 2 * crop;
-
-    const pxRange = maxPx - minPx;
-    const pyRange = maxPy - minPy;
-
-    let panoWidthPx = Math.ceil(pxRange + croppedWidth);
-    let panoHeightPx = Math.ceil(pyRange + croppedHeight);
-
-    let panoScale = 1;
-    if (panoWidthPx > MAX_PANORAMA_WIDTH) {
-        panoScale = MAX_PANORAMA_WIDTH / panoWidthPx;
-        panoWidthPx = MAX_PANORAMA_WIDTH;
-        panoHeightPx = Math.ceil(panoHeightPx * panoScale);
-    }
-
-    const scaledFrameWidth = Math.ceil(croppedWidth * panoScale);
-    const scaledFrameHeight = Math.ceil(croppedHeight * panoScale);
+    const {frameData, totalFrames, minPx, maxPx, minPy, maxPy} = calculateFrameOffsets(motionData, startFrame, endFrame, 1);
+    const {frameWidth, frameHeight, croppedWidth, croppedHeight, panoWidthPx, panoHeightPx, scale: panoScale, scaledFrameWidth, scaledFrameHeight} = calculatePanoDimensions(videoData, startFrame, minPx, maxPx, minPy, maxPy, crop);
 
     const panoCanvas = document.createElement('canvas');
     panoCanvas.width = panoWidthPx;
@@ -2396,41 +2280,7 @@ async function exportPanoVideo() {
         const x = (fd.px - minPx) * panoScale;
         const y = (fd.py - minPy) * panoScale;
 
-        if (useMask && maskImageData) {
-            tempCtx.clearRect(0, 0, frameWidth, frameHeight);
-            tempCtx.drawImage(image, 0, 0);
-            const frameImgData = tempCtx.getImageData(crop, crop, croppedWidth, croppedHeight);
-            const framePixels = frameImgData.data;
-            const maskPixels = maskImageData.data;
-            const maskWidth = maskImageData.width;
-            
-            for (let py = 0; py < croppedHeight; py++) {
-                for (let px = 0; px < croppedWidth; px++) {
-                    const maskX = px + crop;
-                    const maskY = py + crop;
-                    if (maskX < maskWidth && maskY < maskImageData.height) {
-                        const maskIdx = (maskY * maskWidth + maskX) * 4;
-                        if (maskPixels[maskIdx + 3] > 128) {
-                            const frameIdx = (py * croppedWidth + px) * 4;
-                            framePixels[frameIdx + 3] = 0;
-                        }
-                    }
-                }
-            }
-            
-            tempCtx.putImageData(frameImgData, crop, crop);
-            panoCtx.drawImage(
-                tempCanvas,
-                crop, crop, croppedWidth, croppedHeight,
-                x, y, scaledFrameWidth, scaledFrameHeight
-            );
-        } else {
-            panoCtx.drawImage(
-                image,
-                crop, crop, croppedWidth, croppedHeight,
-                x, y, scaledFrameWidth, scaledFrameHeight
-            );
-        }
+        drawFrameToPano(panoCtx, image, x, y, crop, croppedWidth, croppedHeight, scaledFrameWidth, scaledFrameHeight, useMask, tempCanvas, tempCtx, maskImageData, frameWidth, frameHeight);
 
         if (i % 20 === 0) {
             const pct = Math.round(100 * i / totalFrames);
@@ -2577,35 +2427,9 @@ async function exportPanoVideo() {
 }
 
 async function stabilizeVideoFromMotion() {
-    const videoView = NodeMan.get("video", false);
-    if (!videoView) {
-        alert("No video view found.");
-        return;
-    }
-
-    const videoData = videoView.videoData;
-    if (!videoData) {
-        alert("No video data found.");
-        return;
-    }
-
-    if (!cv) {
-        if (stabilizeMenuItem) stabilizeMenuItem.name("Loading OpenCV...");
-        try {
-            await loadOpenCV();
-            cv = getCV();
-        } catch (e) {
-            alert("Failed to load OpenCV: " + e.message);
-            if (stabilizeMenuItem) stabilizeMenuItem.name("Stabilize Video");
-            return;
-        }
-    }
-
-    if (!motionAnalyzer) {
-        motionAnalyzer = new MotionAnalyzer(videoView);
-    }
-    motionAnalyzer.active = true;
-    motionAnalyzer.createOverlays();
+    const result = await ensureOpenCVAndAnalyzer(stabilizeMenuItem, "Loading OpenCV...", "Stabilize Video");
+    if (!result) return;
+    const {videoData} = result;
 
     if (!motionAnalyzer.isCacheFull()) {
         if (stabilizeMenuItem) stabilizeMenuItem.name("Analyzing... 0%");
