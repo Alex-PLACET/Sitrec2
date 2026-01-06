@@ -2191,6 +2191,7 @@ async function exportMotionPanorama() {
 
     Globals.justVideoAnalysis = true;
     const savedPaused = par.paused;
+    const savedFrame = par.frame;
     par.paused = true;
     const previewEveryNFrames = 20;
     
@@ -2204,7 +2205,11 @@ async function exportMotionPanorama() {
         
         statusText.textContent = `Loading frame ${fd.frame}... (${i+1}/${totalFrames})`;
         
-        const loaded = await videoData.requestFrameSequential(fd.frame);
+        par.frame = fd.frame;
+        GlobalDateTimeNode.update(fd.frame);
+
+        videoData.getImage(fd.frame);
+        const loaded = await videoData.waitForFrame(fd.frame, 5000);
         if (!loaded) {
             console.warn(`Failed to load frame ${fd.frame}, skipping`);
             skippedFrames++;
@@ -2236,6 +2241,7 @@ async function exportMotionPanorama() {
     statusText.textContent = 'Saving...';
     Globals.justVideoAnalysis = false;
     par.paused = savedPaused;
+    par.frame = savedFrame;
     
     if (exportPanoMenuItem) exportPanoMenuItem.name("Saving...");
 
@@ -2302,12 +2308,17 @@ async function exportPanoVideo() {
 
     Globals.justVideoAnalysis = true;
     const savedPaused = par.paused;
+    const savedFrame = par.frame;
     par.paused = true;
     
     for (let i = 0; i < totalFrames; i++) {
         const fd = frameData[i];
         
-        const loaded = await videoData.requestFrameSequential(fd.frame);
+        par.frame = fd.frame;
+        GlobalDateTimeNode.update(fd.frame);
+
+        videoData.getImage(fd.frame);
+        const loaded = await videoData.waitForFrame(fd.frame, 5000);
         if (!loaded) continue;
         
         const image = videoData.getImageNoPurge(fd.frame);
@@ -2381,8 +2392,6 @@ async function exportPanoVideo() {
     compositeCanvas.height = outputHeight;
     const compositeCtx = compositeCanvas.getContext('2d');
 
-    const savedFrame = par.frame;
-
     try {
         const exporter = await createVideoExporter(bestFormat.formatId, {
             width: outputWidth,
@@ -2402,7 +2411,8 @@ async function exportPanoVideo() {
             par.frame = fd.frame;
             GlobalDateTimeNode.update(fd.frame);
 
-            const loaded = await videoData.requestFrameSequential(fd.frame);
+            videoData.getImage(fd.frame);
+            const loaded = await videoData.waitForFrame(fd.frame, 5000);
             if (!loaded) continue;
 
             const image = videoData.getImageNoPurge(fd.frame);
