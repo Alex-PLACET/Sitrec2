@@ -18,8 +18,47 @@ import {CNodeTrackFromVelocity} from "./nodes/CNodeTrackFromVelocity";
 import {CNodeDisplayTrack} from "./nodes/CNodeDisplayTrack";
 import {Color} from "three";
 import {getCV, loadOpenCV} from "./openCVLoader";
+import {applyConvolution} from "./nodes/CNodeVideoView";
 
 let cv = null;
+let analyzeWithEffects = false;
+let exportWithEffects = false;
+
+function getVideoEffectsFilterString() {
+    let filter = '';
+    const contrast = NodeMan.get("videoContrast", false);
+    const brightness = NodeMan.get("videoBrightness", false);
+    const blur = NodeMan.get("videoBlur", false);
+    const greyscale = NodeMan.get("videoGreyscale", false);
+    const hue = NodeMan.get("videoHue", false);
+    const invert = NodeMan.get("videoInvert", false);
+    const saturate = NodeMan.get("videoSaturate", false);
+    
+    if (contrast && contrast.v0 !== 1) filter += `contrast(${contrast.v0}) `;
+    if (brightness && brightness.v0 !== 1) filter += `brightness(${brightness.v0}) `;
+    if (blur && blur.v0 !== 0) filter += `blur(${blur.v0}px) `;
+    if (greyscale && greyscale.v0 !== 0) filter += `grayscale(${greyscale.v0}) `;
+    if (hue && hue.v0 !== 0) filter += `hue-rotate(${hue.v0}deg) `;
+    if (invert && invert.v0 !== 0) filter += `invert(${invert.v0}) `;
+    if (saturate && saturate.v0 !== 1) filter += `saturate(${saturate.v0}) `;
+    
+    return filter || 'none';
+}
+
+function applyVideoEffectsToCanvas(ctx, width, height) {
+    const convolutionFilter = NodeMan.get("videoConvolutionFilter", false);
+    if (convolutionFilter && convolutionFilter.value !== 'none') {
+        const sharpenAmount = NodeMan.get("videoSharpenAmount", false);
+        const edgeDetectThreshold = NodeMan.get("videoEdgeDetectThreshold", false);
+        const embossDepth = NodeMan.get("videoEmbossDepth", false);
+        const params = {
+            amount: sharpenAmount?.v0 ?? 1,
+            threshold: edgeDetectThreshold?.v0 ?? 0,
+            strength: convolutionFilter.value === 'emboss' ? (embossDepth?.v0 ?? 1) : 1
+        };
+        applyConvolution(ctx, width, height, convolutionFilter.value, params);
+    }
+}
 
 async function ensureOpenCVAndAnalyzer(menuItem, loadingText, defaultText) {
     const videoView = NodeMan.get("video", false);
@@ -121,9 +160,23 @@ function calculatePanoDimensions(videoData, startFrame, minPx, maxPx, minPy, max
 }
 
 function drawFrameToPano(panoCtx, image, x, y, crop, croppedWidth, croppedHeight, scaledFrameWidth, scaledFrameHeight, useMask, tempCanvas, tempCtx, maskImageData, frameWidth, frameHeight) {
+    let sourceImage = image;
+    
+    if (exportWithEffects) {
+        const effectsCanvas = document.createElement('canvas');
+        effectsCanvas.width = frameWidth;
+        effectsCanvas.height = frameHeight;
+        const effectsCtx = effectsCanvas.getContext('2d');
+        effectsCtx.filter = getVideoEffectsFilterString();
+        effectsCtx.drawImage(image, 0, 0);
+        effectsCtx.filter = 'none';
+        applyVideoEffectsToCanvas(effectsCtx, frameWidth, frameHeight);
+        sourceImage = effectsCanvas;
+    }
+    
     if (useMask && maskImageData) {
         tempCtx.clearRect(0, 0, frameWidth, frameHeight);
-        tempCtx.drawImage(image, 0, 0);
+        tempCtx.drawImage(sourceImage, 0, 0);
         const frameImgData = tempCtx.getImageData(crop, crop, croppedWidth, croppedHeight);
         const framePixels = frameImgData.data;
         const maskPixels = maskImageData.data;
@@ -151,7 +204,7 @@ function drawFrameToPano(panoCtx, image, x, y, crop, croppedWidth, croppedHeight
         );
     } else {
         panoCtx.drawImage(
-            image,
+            sourceImage,
             crop, crop, croppedWidth, croppedHeight,
             x, y, scaledFrameWidth, scaledFrameHeight
         );
@@ -165,7 +218,17 @@ function imageToGrayscale(image, blurSize) {
     tempCanvas.width = width;
     tempCanvas.height = height;
     const tempCtx = tempCanvas.getContext('2d');
+    
+    if (analyzeWithEffects) {
+        tempCtx.filter = getVideoEffectsFilterString();
+    }
     tempCtx.drawImage(image, 0, 0, width, height);
+    tempCtx.filter = 'none';
+    
+    if (analyzeWithEffects) {
+        applyVideoEffectsToCanvas(tempCtx, width, height);
+    }
+    
     const imageData = tempCtx.getImageData(0, 0, width, height);
 
     const src = cv.matFromImageData(imageData);
@@ -2426,8 +2489,21 @@ async function exportPanoVideo() {
             const frameX = offsetX + (fd.px - minPx) * panoScale * videoFrameScaleInPano;
             const frameY = offsetY + (fd.py - minPy) * panoScale * videoFrameScaleInPano;
 
+            let overlayImage = image;
+            if (exportWithEffects) {
+                const effectsCanvas = document.createElement('canvas');
+                effectsCanvas.width = frameWidth;
+                effectsCanvas.height = frameHeight;
+                const effectsCtx = effectsCanvas.getContext('2d');
+                effectsCtx.filter = getVideoEffectsFilterString();
+                effectsCtx.drawImage(image, 0, 0);
+                effectsCtx.filter = 'none';
+                applyVideoEffectsToCanvas(effectsCtx, frameWidth, frameHeight);
+                overlayImage = effectsCanvas;
+            }
+
             compositeCtx.drawImage(
-                image,
+                overlayImage,
                 crop, crop, croppedWidth, croppedHeight,
                 frameX, frameY, videoFrameWidth, videoFrameHeight
             );
@@ -2576,7 +2652,9 @@ export function addMotionAnalysisMenu() {
     const panoParams = {
         get panoCrop() { return panoCrop; }, set panoCrop(v) { panoCrop = v; },
         get useMaskInPano() { return useMaskInPano; }, set useMaskInPano(v) { useMaskInPano = v; },
-        get panoFrameStep() { return panoFrameStep; }, set panoFrameStep(v) { panoFrameStep = v; }
+        get panoFrameStep() { return panoFrameStep; }, set panoFrameStep(v) { panoFrameStep = v; },
+        get analyzeWithEffects() { return analyzeWithEffects; }, set analyzeWithEffects(v) { analyzeWithEffects = v; },
+        get exportWithEffects() { return exportWithEffects; }, set exportWithEffects(v) { exportWithEffects = v; }
     };
     motionFolder.add(panoParams, 'panoFrameStep', 1, 60, 1)
         .name("Pano Frame Step")
@@ -2589,6 +2667,14 @@ export function addMotionAnalysisMenu() {
     motionFolder.add(panoParams, 'useMaskInPano')
         .name("Use Mask in Pano")
         .tooltip("Apply motion tracking mask as transparency when rendering panorama")
+        .perm();
+    motionFolder.add(panoParams, 'analyzeWithEffects')
+        .name("Analyze With Effects")
+        .tooltip("Apply video adjustments (contrast, etc.) to frames used for motion analysis")
+        .perm();
+    motionFolder.add(panoParams, 'exportWithEffects')
+        .name("Export With Effects")
+        .tooltip("Apply video adjustments to panorama exports")
         .perm();
 }
 
