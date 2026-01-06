@@ -910,7 +910,11 @@ class MotionAnalyzer {
                 this.smoothedDirection.confidence = consensus.confidence;
                 this.smoothedDirection.rotation = consensus.rotation || 0;
             } else {
-                const alpha = this.params.smoothingAlpha;
+                const baseAlpha = this.params.smoothingAlpha;
+                const consensusMag = Math.sqrt(consensus.dx * consensus.dx + consensus.dy * consensus.dy);
+                const prevMag = this.smoothedDirection.magnitude;
+                const magRatio = prevMag > 0.01 ? consensusMag / prevMag : 1;
+                const alpha = magRatio < 0.5 ? baseAlpha * 0.5 : baseAlpha;
                 this.smoothedDirection.x = alpha * this.smoothedDirection.x + (1 - alpha) * consensus.dx;
                 this.smoothedDirection.y = alpha * this.smoothedDirection.y + (1 - alpha) * consensus.dy;
                 this.smoothedDirection.magnitude = Math.sqrt(
@@ -978,7 +982,11 @@ class MotionAnalyzer {
                 this.smoothedDirection.confidence = consensus.confidence;
                 this.smoothedDirection.rotation = consensus.rotation || 0;
             } else {
-                const alpha = this.params.smoothingAlpha;
+                const baseAlpha = this.params.smoothingAlpha;
+                const consensusMag = Math.sqrt(consensus.dx * consensus.dx + consensus.dy * consensus.dy);
+                const prevMag = this.smoothedDirection.magnitude;
+                const magRatio = prevMag > 0.01 ? consensusMag / prevMag : 1;
+                const alpha = magRatio < 0.5 ? baseAlpha * 0.5 : baseAlpha;
                 this.smoothedDirection.x = alpha * this.smoothedDirection.x + (1 - alpha) * consensus.dx;
                 this.smoothedDirection.y = alpha * this.smoothedDirection.y + (1 - alpha) * consensus.dy;
                 this.smoothedDirection.magnitude = Math.sqrt(
@@ -1365,6 +1373,14 @@ class MotionAnalyzer {
             return {flowVectors: [], consensus: null};
         }
         
+        try {
+            const winSize = new cv.Size(5, 5);
+            const zeroZone = new cv.Size(-1, -1);
+            const criteria = new cv.TermCriteria(cv.TermCriteria_EPS + cv.TermCriteria_COUNT, 30, 0.01);
+            cv.cornerSubPix(firstGray, corners, winSize, zeroZone, criteria);
+        } catch (e) {
+        }
+        
         const trajectories = [];
         for (let i = 0; i < corners.rows; i++) {
             const px = corners.floatAt(i, 0);
@@ -1490,8 +1506,15 @@ class MotionAnalyzer {
             const linearityScore = totalDist > 0 ? Math.max(0, 1 - maxDeviation / totalDist) : 0;
             const spacingScore = Math.max(0, 1 - maxSpacingError);
             
-            if (linearityScore < this.params.linearityThreshold) continue;
-            if (spacingScore < this.params.spacingThreshold) continue;
+            const adaptedLinearityThreshold = totalDist < 1.0 
+                ? this.params.linearityThreshold * 0.6 
+                : this.params.linearityThreshold;
+            const adaptedSpacingThreshold = totalDist < 1.0 
+                ? this.params.spacingThreshold * 0.6 
+                : this.params.spacingThreshold;
+            
+            if (linearityScore < adaptedLinearityThreshold) continue;
+            if (spacingScore < adaptedSpacingThreshold) continue;
             
             const dx = totalDx * motionScale;
             const dy = totalDy * motionScale;
@@ -1508,10 +1531,14 @@ class MotionAnalyzer {
             
             const isStatic = staticScore >= this.params.staticFrames * 0.7;
             if (isStatic) continue;
-            if (mag < this.params.minMotion || mag > this.params.maxMotion) continue;
+            if (mag > this.params.maxMotion) continue;
+            const noiseFloor = 0.02;
+            if (mag < noiseFloor) continue;
             
             const avgError = traj.errors.length > 0 ? traj.errors.reduce((a, b) => a + b, 0) / traj.errors.length : 0;
-            const quality = Math.max(0, 1 - avgError / this.params.maxTrackError) * linearityScore * spacingScore;
+            const belowMinMotion = mag < this.params.minMotion;
+            const slowMotionPenalty = belowMinMotion ? 0.7 : 1.0;
+            const quality = Math.max(0, 1 - avgError / this.params.maxTrackError) * linearityScore * spacingScore * slowMotionPenalty;
             
             if (quality < this.params.minQuality) continue;
             
@@ -1558,12 +1585,17 @@ class MotionAnalyzer {
             
             const isStatic = staticScore >= this.params.staticFrames * 0.7;
             if (isStatic) continue;
-            if (mag < this.params.minMotion || mag > this.params.maxMotion) continue;
-            if (qualities[i] < this.params.minQuality) continue;
+            if (mag > this.params.maxMotion) continue;
+            const noiseFloor = 0.02;
+            if (mag < noiseFloor) continue;
+            const belowMinMotion = mag < this.params.minMotion;
+            const slowMotionPenalty = belowMinMotion ? 0.7 : 1.0;
+            const adjustedQuality = qualities[i] * slowMotionPenalty;
+            if (adjustedQuality < this.params.minQuality) continue;
             
             flowVectors.push({
                 px, py, dx, dy, mag,
-                quality: qualities[i],
+                quality: adjustedQuality,
                 angle: Math.atan2(dy, dx),
                 trackError: trackErrors[i]
             });
@@ -1705,7 +1737,7 @@ class MotionAnalyzer {
                 bins[(i + 1) % numBins]
             ].flat();
             
-            const score = neighbors.reduce((sum, v) => sum + v.quality * v.mag, 0);
+            const score = neighbors.reduce((sum, v) => sum + v.quality * Math.max(v.mag, 0.1), 0);
             if (score > bestScore) {
                 bestScore = score;
                 bestBin = i;
@@ -1724,7 +1756,7 @@ class MotionAnalyzer {
 
         let sumDx = 0, sumDy = 0, sumWeight = 0;
         for (const v of inliers) {
-            const weight = v.quality * v.mag;
+            const weight = v.quality;
             sumDx += v.dx * weight;
             sumDy += v.dy * weight;
             sumWeight += weight;
@@ -1734,11 +1766,15 @@ class MotionAnalyzer {
 
         const dx = sumDx / sumWeight;
         const dy = sumDy / sumWeight;
-        const confidence = Math.min(1, inliers.length / vectors.length + 0.2) * 
-                          Math.min(1, sumWeight / (vectors.length * 2));
+        const inlierRatio = inliers.length / vectors.length;
+        const avgQuality = sumWeight / inliers.length;
+        const confidence = Math.min(1, inlierRatio + 0.2) * Math.min(1, avgQuality + 0.3);
 
         for (const v of vectors) {
-            const dotProduct = (v.dx * dx + v.dy * dy) / (v.mag * Math.sqrt(dx*dx + dy*dy) + 0.001);
+            const consensusMag = Math.sqrt(dx*dx + dy*dy);
+            const dotProduct = consensusMag > 0.001 
+                ? (v.dx * dx + v.dy * dy) / (v.mag * consensusMag + 0.001)
+                : 1;
             v.isInlier = dotProduct > this.params.inlierThreshold;
         }
 
@@ -2075,7 +2111,7 @@ let exportPanoMenuItem = null;
 let exportPanoVideoMenuItem = null;
 let stabilizeMenuItem = null;
 let stabilizationEnabled = false;
-let panoCrop = 10;
+let panoCrop = 0;
 let useMaskInPano = true;
 let panoFrameStep = 1;
 
