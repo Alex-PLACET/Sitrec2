@@ -2008,6 +2008,8 @@ const PANO_VIDEO_4K_WIDTH = 3840;
 const PANO_VIDEO_4K_HEIGHT = 2160;
 let exportPanoMenuItem = null;
 let exportPanoVideoMenuItem = null;
+let stabilizeMenuItem = null;
+let stabilizationEnabled = false;
 let panoCrop = 10;
 let useMaskInPano = true;
 let panoFrameStep = 1;
@@ -2571,6 +2573,94 @@ async function exportPanoVideo() {
     }
 }
 
+async function stabilizeVideoFromMotion() {
+    const videoView = NodeMan.get("video", false);
+    if (!videoView) {
+        alert("No video view found.");
+        return;
+    }
+
+    const videoData = videoView.videoData;
+    if (!videoData) {
+        alert("No video data found.");
+        return;
+    }
+
+    if (!cv) {
+        if (stabilizeMenuItem) stabilizeMenuItem.name("Loading OpenCV...");
+        try {
+            cv = await loadOpenCV();
+        } catch (e) {
+            alert("Failed to load OpenCV: " + e.message);
+            if (stabilizeMenuItem) stabilizeMenuItem.name("Stabilize Video");
+            return;
+        }
+    }
+
+    if (!motionAnalyzer) {
+        motionAnalyzer = new MotionAnalyzer(videoView);
+    }
+    motionAnalyzer.active = true;
+    motionAnalyzer.createOverlays();
+
+    if (!motionAnalyzer.isCacheFull()) {
+        if (stabilizeMenuItem) stabilizeMenuItem.name("Analyzing... 0%");
+        await analyzeAllFrames((current, total) => {
+            const pct = Math.round(100 * current / total);
+            if (stabilizeMenuItem) stabilizeMenuItem.name(`Analyzing... ${pct}%`);
+        });
+    }
+
+    if (stabilizeMenuItem) stabilizeMenuItem.name("Building stabilization...");
+
+    const motionData = motionAnalyzer.getMotionDataForAllFrames();
+
+    // Calculate cumulative offsets from per-frame motion vectors
+    // This reverses the camera motion to stabilize the video
+    const stabilizationData = new Map();
+    let cumX = 0, cumY = 0;
+
+    for (let f = 0; f < motionData.length; f++) {
+        // Negate motion to cancel it out (same logic as panorama)
+        cumX -= motionData[f].dx;
+        cumY -= motionData[f].dy;
+        stabilizationData.set(f, {x: cumX, y: cumY});
+    }
+
+    // For full-frame stabilization, reference point is (0,0)
+    // and we use direct offset mode
+    const referencePoint = {x: 0, y: 0};
+
+    videoData.setStabilizationData(stabilizationData, referencePoint, true); // true = direct offset mode
+    videoData.setStabilizationEnabled(true);
+    stabilizationEnabled = true;
+
+    if (stabilizeMenuItem) stabilizeMenuItem.name("Disable Stabilization");
+    console.log(`Video stabilization enabled with ${stabilizationData.size} frames of motion data`);
+}
+
+function toggleStabilization() {
+    const videoView = NodeMan.get("video", false);
+    if (!videoView || !videoView.videoData) return;
+
+    if (stabilizationEnabled) {
+        videoView.videoData.setStabilizationEnabled(false);
+        stabilizationEnabled = false;
+        if (stabilizeMenuItem) stabilizeMenuItem.name("Stabilize Video");
+        console.log("Video stabilization disabled");
+    } else {
+        // If we have cached motion data, re-enable; otherwise run full analysis
+        if (videoView.videoData.stabilizationData && videoView.videoData.stabilizationData.size > 0) {
+            videoView.videoData.setStabilizationEnabled(true);
+            stabilizationEnabled = true;
+            if (stabilizeMenuItem) stabilizeMenuItem.name("Disable Stabilization");
+            console.log("Video stabilization re-enabled");
+        } else {
+            stabilizeVideoFromMotion();
+        }
+    }
+}
+
 export function addMotionAnalysisMenu() {
     if (!guiMenus.view) return;
     
@@ -2581,6 +2671,7 @@ export function addMotionAnalysisMenu() {
         createTrack: createTrackFromMotion,
         exportPanorama: exportMotionPanorama,
         exportPanoVideo: exportPanoVideo,
+        stabilizeVideo: toggleStabilization,
     };
 
     analyzeMenuItem = motionFolder.add(menuActions, 'analyzeMotion')
@@ -2601,6 +2692,11 @@ export function addMotionAnalysisMenu() {
     exportPanoVideoMenuItem = motionFolder.add(menuActions, 'exportPanoVideo')
         .name("Export Pano Video")
         .tooltip("Create a 4K video showing the panorama with video frame overlay")
+        .perm();
+
+    stabilizeMenuItem = motionFolder.add(menuActions, 'stabilizeVideo')
+        .name("Stabilize Video")
+        .tooltip("Stabilize video using global motion analysis (removes camera shake)")
         .perm();
 
     const panoParams = {

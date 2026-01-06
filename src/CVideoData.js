@@ -22,6 +22,7 @@ export class CVideoData {
         this.stabilizationEnabled = false;
         this.stabilizationData = null;  // Map of frame -> {x, y} offsets
         this.stabilizationReferencePoint = null; // {x, y} - the fixed point
+        this.stabilizationDirectOffset = false;  // true = use offsets directly (motion analysis)
         this.stabilizedImageCache = [];  // Cache for stabilized frames
 
         this.flushEntireCache();
@@ -57,9 +58,12 @@ export class CVideoData {
     }
 
     // Set stabilization data from tracking
-    setStabilizationData(trackingData, referencePoint) {
+    // directOffset: if true, trackingData contains direct pixel offsets to apply
+    //               if false, trackingData contains tracked positions to center on referencePoint
+    setStabilizationData(trackingData, referencePoint, directOffset = false) {
         this.stabilizationData = new Map(trackingData);
         this.stabilizationReferencePoint = referencePoint;
+        this.stabilizationDirectOffset = directOffset;
         // Clear stabilized cache when data changes
         this.stabilizedImageCache = [];
     }
@@ -90,9 +94,17 @@ export class CVideoData {
             return originalImage;
         }
 
-        // Calculate shift needed to keep tracked point at reference position
-        const shiftX = this.stabilizationReferencePoint.x - trackPos.x;
-        const shiftY = this.stabilizationReferencePoint.y - trackPos.y;
+        // Calculate shift based on mode
+        let shiftX, shiftY;
+        if (this.stabilizationDirectOffset) {
+            // Direct offset mode (motion analysis): offsets are cumulative motion to cancel
+            shiftX = trackPos.x;
+            shiftY = trackPos.y;
+        } else {
+            // Point tracking mode: shift to keep tracked point at reference position
+            shiftX = this.stabilizationReferencePoint.x - trackPos.x;
+            shiftY = this.stabilizationReferencePoint.y - trackPos.y;
+        }
 
         // Create shifted image
         const canvas = document.createElement('canvas');

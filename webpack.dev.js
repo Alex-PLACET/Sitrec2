@@ -2,6 +2,7 @@ const { merge } = require('webpack-merge');
 const common = require('./webpack.common.js');
 const InstallPaths = require('./config/config-install');
 const CircularDependencyPlugin = require('circular-dependency-plugin');
+const { createProxyMiddleware } = require('http-proxy-middleware');
 
 // Port for the backend server (nginx/Apache with PHP)
 // Default 8081 for compatibility with Docker dev setup
@@ -36,6 +37,27 @@ module.exports = merge(common({ includeIWER: true }), {
             ]
         },
         allowedHosts: 'all',
+        // Insert PHP proxy BEFORE static file serving to prevent raw PHP being served
+        setupMiddlewares: (middlewares, devServer) => {
+            // Create proxy middleware for PHP paths
+            const phpProxy = createProxyMiddleware({
+                target: BACKEND_TARGET,
+                changeOrigin: true,
+                secure: false,
+            });
+
+            // Insert at the very beginning - before static middleware
+            middlewares.unshift({
+                name: 'php-proxy',
+                middleware: (req, res, next) => {
+                    if (req.url.startsWith('/sitrecServer')) {
+                        return phpProxy(req, res, next);
+                    }
+                    next();
+                }
+            });
+            return middlewares;
+        },
         proxy: [
             {
                 context: ['/sitrecServer/**'], // paths to proxy - use ** to match all subpaths
