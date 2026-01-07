@@ -19,7 +19,7 @@ import {CNodeDisplayTrack} from "./nodes/CNodeDisplayTrack";
 import {Color} from "three";
 import {getCV, loadOpenCV} from "./openCVLoader";
 import {applyConvolution} from "./nodes/CNodeVideoView";
-import {isAlignWithFlowEnabled, setAlignWithFlow, setMotionAnalyzerRef} from "./FlowAlignment";
+import {getFlowAlignRotation, isAlignWithFlowEnabled, setAlignWithFlow, setMotionAnalyzerRef} from "./FlowAlignment";
 
 let cv = null;
 let analyzeWithEffects = false;
@@ -819,6 +819,8 @@ class MotionAnalyzer {
             this.overlay.width = width;
             this.overlay.height = height;
         }
+
+        this.currentFlowRotation = getFlowAlignRotation(frame);
 
         const cached = this.resultCache.get(frame);
         if (cached && !cached.incomplete) {
@@ -1888,6 +1890,14 @@ class MotionAnalyzer {
 
         if (!this.lastFlowData) return;
 
+        const flowRotation = this.currentFlowRotation || 0;
+        if (flowRotation !== 0) {
+            ctx.save();
+            ctx.translate(width / 2, height / 2);
+            ctx.rotate(flowRotation);
+            ctx.translate(-width / 2, -height / 2);
+        }
+
         const arrowScale = 3;
 
         for (const v of this.lastFlowData.vectors) {
@@ -1966,6 +1976,10 @@ class MotionAnalyzer {
             const angleDeg = (rawAngle + 90) % 360;
             ctx.fillText(`${angleDeg.toFixed(1)}° (${(this.smoothedDirection.confidence * 100).toFixed(0)}%)`, 
                         centerX + dx + 10, centerY + dy);
+        }
+
+        if (flowRotation !== 0) {
+            ctx.restore();
         }
     }
 

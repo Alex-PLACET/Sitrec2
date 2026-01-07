@@ -3,6 +3,8 @@ import {setRenderOne} from "../Globals";
 import {mouseToCanvas} from "../ViewUtils";
 import {undoManager} from "../UndoManager";
 import {isKeyCodeHeld} from "../KeyBoardHandler";
+import {getFlowAlignRotation} from "../FlowAlignment";
+import {par} from "../par";
 
 export class CNodeMaskOverlay extends CNodeActiveOverlay {
     constructor(v) {
@@ -28,6 +30,18 @@ export class CNodeMaskOverlay extends CNodeActiveOverlay {
         this.visible = false;
         
         this.loadMask();
+    }
+
+    unrotateCanvasCoords(cx, cy) {
+        const rotation = getFlowAlignRotation(par.frame);
+        if (rotation === 0) return [cx, cy];
+        const centerX = this.widthPx / 2;
+        const centerY = this.heightPx / 2;
+        const dx = cx - centerX;
+        const dy = cy - centerY;
+        const cos = Math.cos(-rotation);
+        const sin = Math.sin(-rotation);
+        return [dx * cos - dy * sin + centerX, dx * sin + dy * cos + centerY];
     }
     
     modSerialize() {
@@ -238,7 +252,8 @@ export class CNodeMaskOverlay extends CNodeActiveOverlay {
         if (!this.editing) return false;
         
         const [cx, cy] = mouseToCanvas(this, mouseX, mouseY);
-        const [vX, vY] = this.overlayView.canvasToVideoCoords(cx, cy);
+        const [ucx, ucy] = this.unrotateCanvasCoords(cx, cy);
+        const [vX, vY] = this.overlayView.canvasToVideoCoords(ucx, ucy);
         
         this.ensureMaskInitialized();
         if (this.maskCanvas) {
@@ -262,7 +277,8 @@ export class CNodeMaskOverlay extends CNodeActiveOverlay {
         if (!this.isDrawing) return;
         
         const [cx, cy] = mouseToCanvas(this, mouseX, mouseY);
-        const [vX, vY] = this.overlayView.canvasToVideoCoords(cx, cy);
+        const [ucx, ucy] = this.unrotateCanvasCoords(cx, cy);
+        const [vX, vY] = this.overlayView.canvasToVideoCoords(ucx, ucy);
         
         this.drawLineTo(vX, vY, e.altKey);
         setRenderOne(true);
@@ -352,9 +368,16 @@ export class CNodeMaskOverlay extends CNodeActiveOverlay {
         if (!this.maskCanvas) return;
         
         const ctx = this.ctx;
+        const flowRotation = getFlowAlignRotation(frame);
         
         ctx.save();
         ctx.globalAlpha = this.editing ? 0.4 : 0.2;
+        
+        if (flowRotation !== 0) {
+            ctx.translate(this.widthPx / 2, this.heightPx / 2);
+            ctx.rotate(flowRotation);
+            ctx.translate(-this.widthPx / 2, -this.heightPx / 2);
+        }
         
         this.overlayView.getSourceAndDestCoords();
         const {dx, dy, dWidth, dHeight} = this.overlayView;
@@ -363,11 +386,11 @@ export class CNodeMaskOverlay extends CNodeActiveOverlay {
         ctx.restore();
         
         if (this.editing) {
-            this.drawBrushCursor();
+            this.drawBrushCursor(flowRotation);
         }
     }
     
-    drawBrushCursor() {
+    drawBrushCursor(flowRotation = 0) {
         const ctx = this.ctx;
         const [cx, cy] = mouseToCanvas(this, this.lastMouseX, this.lastMouseY);
         
