@@ -3,6 +3,7 @@ import {createVideoExporter, DefaultVideoFormat, getBestFormatForResolution, get
 import {drawVideoWatermark, ExportProgressWidget} from "../utils";
 import {XYZ2EA, XYZJ2PR} from "../SphericalMath";
 import {raDec2Celestial} from "../CelestialMath";
+import {Frame2Az, Frame2El} from "../JetUtils";
 import {
     CustomManager,
     GlobalDateTimeNode,
@@ -330,12 +331,24 @@ export class CNodeView3D extends CNodeViewCanvas {
             
             await exporter.initialize();
             
+            let UpdatePRFromEA = null;
+            if (Sit.azSlider) {
+                const jetStuff = await import("../JetStuff");
+                UpdatePRFromEA = jetStuff.UpdatePRFromEA;
+            }
+            
             for (let i = 0; i < totalFrames; i++) {
                 if (progress.shouldStop()) break;
                 
                 const frame = startFrame + i;
                 par.frame = frame;
                 GlobalDateTimeNode.update(frame);
+                
+                if (Sit.azSlider) {
+                    par.az = Frame2Az(par.frame);
+                    par.el = Frame2El(par.frame);
+                    UpdatePRFromEA();
+                }
                 
                 for (const entry of Object.values(NodeMan.list)) {
                     const node = entry.data;
