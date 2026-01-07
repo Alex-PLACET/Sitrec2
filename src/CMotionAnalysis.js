@@ -104,6 +104,8 @@ function calculateFrameOffsets(motionData, startFrame, endFrame, frameStep = 1, 
     const cos = Math.cos(rotationAngle);
     const sin = Math.sin(rotationAngle);
     
+    const alignFlow = rotationAngle !== 0;
+    
     for (let i = 0; i < totalFrames; i++) {
         const frame = startFrame + i * frameStep;
         if (i > 0) {
@@ -111,15 +113,27 @@ function calculateFrameOffsets(motionData, startFrame, endFrame, frameStep = 1, 
                 const md = motionData[frame];
                 const dx = -md.dx;
                 const dy = -md.dy;
-                cumX += dx * cos - dy * sin;
-                cumY += dx * sin + dy * cos;
+                if (alignFlow) {
+                     const rotatedX = dx * cos - dy * sin;
+                    const magnitude = Math.sqrt(dx * dx + dy * dy);
+                    cumX += rotatedX >= 0 ? magnitude : -magnitude;
+                } else {
+                    cumX += dx * cos - dy * sin;
+                    cumY += dx * sin + dy * cos;
+                }
             } else {
                 for (let f = frame - frameStep + 1; f <= frame; f++) {
                     const md = motionData[f];
                     const dx = -md.dx;
                     const dy = -md.dy;
-                    cumX += dx * cos - dy * sin;
-                    cumY += dx * sin + dy * cos;
+                    if (alignFlow) {
+                        const rotatedX = dx * cos - dy * sin;
+                        const magnitude = Math.sqrt(dx * dx + dy * dy);
+                        cumX += rotatedX >= 0 ? magnitude : -magnitude;
+                    } else {
+                        cumX += dx * cos - dy * sin;
+                        cumY += dx * sin + dy * cos;
+                    }
                 }
             }
         }
@@ -181,7 +195,7 @@ function calculatePanoDimensions(videoData, startFrame, minPx, maxPx, minPy, max
     };
 }
 
-function drawFrameToPano(panoCtx, image, x, y, crop, croppedWidth, croppedHeight, scaledFrameWidth, scaledFrameHeight, useMask, tempCanvas, tempCtx, maskImageData, frameWidth, frameHeight) {
+function drawFrameToPano(panoCtx, image, x, y, crop, croppedWidth, croppedHeight, scaledFrameWidth, scaledFrameHeight, useMask, tempCanvas, tempCtx, maskImageData, frameWidth, frameHeight, rotation = 0) {
     let sourceImage = image;
     
     if (exportWithEffects) {
@@ -195,6 +209,18 @@ function drawFrameToPano(panoCtx, image, x, y, crop, croppedWidth, croppedHeight
         applyVideoEffectsToCanvas(effectsCtx, frameWidth, frameHeight);
         sourceImage = effectsCanvas;
     }
+    
+    const drawWithRotation = (src, sx, sy, sw, sh, dx, dy, dw, dh) => {
+        if (rotation !== 0) {
+            panoCtx.save();
+            panoCtx.translate(dx + dw / 2, dy + dh / 2);
+            panoCtx.rotate(rotation);
+            panoCtx.drawImage(src, sx, sy, sw, sh, -dw / 2, -dh / 2, dw, dh);
+            panoCtx.restore();
+        } else {
+            panoCtx.drawImage(src, sx, sy, sw, sh, dx, dy, dw, dh);
+        }
+    };
     
     if (useMask && maskImageData) {
         tempCtx.clearRect(0, 0, frameWidth, frameHeight);
@@ -219,17 +245,9 @@ function drawFrameToPano(panoCtx, image, x, y, crop, croppedWidth, croppedHeight
         }
         
         tempCtx.putImageData(frameImgData, crop, crop);
-        panoCtx.drawImage(
-            tempCanvas,
-            crop, crop, croppedWidth, croppedHeight,
-            x, y, scaledFrameWidth, scaledFrameHeight
-        );
+        drawWithRotation(tempCanvas, crop, crop, croppedWidth, croppedHeight, x, y, scaledFrameWidth, scaledFrameHeight);
     } else {
-        panoCtx.drawImage(
-            sourceImage,
-            crop, crop, croppedWidth, croppedHeight,
-            x, y, scaledFrameWidth, scaledFrameHeight
-        );
+        drawWithRotation(sourceImage, crop, crop, croppedWidth, croppedHeight, x, y, scaledFrameWidth, scaledFrameHeight);
     }
 }
 
@@ -2537,7 +2555,7 @@ async function exportMotionPanorama() {
         const x = (fd.px - minPx) * scale;
         const y = (fd.py - minPy) * scale;
 
-        drawFrameToPano(panoCtx, image, x, y, crop, croppedWidth, croppedHeight, scaledFrameWidth, scaledFrameHeight, useMask, tempCanvas, tempCtx, maskImageData, frameWidth, frameHeight);
+        drawFrameToPano(panoCtx, image, x, y, crop, croppedWidth, croppedHeight, scaledFrameWidth, scaledFrameHeight, useMask, tempCanvas, tempCtx, maskImageData, frameWidth, frameHeight, panoRotation);
 
         if (i % previewEveryNFrames === 0) {
             const pct = Math.round(100 * i / totalFrames);
@@ -2640,7 +2658,7 @@ async function exportPanoVideo() {
         const x = (fd.px - minPx) * panoScale;
         const y = (fd.py - minPy) * panoScale;
 
-        drawFrameToPano(panoCtx, image, x, y, crop, croppedWidth, croppedHeight, scaledFrameWidth, scaledFrameHeight, useMask, tempCanvas, tempCtx, maskImageData, frameWidth, frameHeight);
+        drawFrameToPano(panoCtx, image, x, y, crop, croppedWidth, croppedHeight, scaledFrameWidth, scaledFrameHeight, useMask, tempCanvas, tempCtx, maskImageData, frameWidth, frameHeight, panoRotation);
 
         if (i % 20 === 0) {
             const pct = Math.round(100 * i / totalFrames);
@@ -2753,11 +2771,23 @@ async function exportPanoVideo() {
                 overlayImage = effectsCanvas;
             }
 
-            compositeCtx.drawImage(
-                overlayImage,
-                crop, crop, croppedWidth, croppedHeight,
-                frameX, frameY, videoFrameWidth, videoFrameHeight
-            );
+            if (panoRotation !== 0) {
+                compositeCtx.save();
+                compositeCtx.translate(frameX + videoFrameWidth / 2, frameY + videoFrameHeight / 2);
+                compositeCtx.rotate(panoRotation);
+                compositeCtx.drawImage(
+                    overlayImage,
+                    crop, crop, croppedWidth, croppedHeight,
+                    -videoFrameWidth / 2, -videoFrameHeight / 2, videoFrameWidth, videoFrameHeight
+                );
+                compositeCtx.restore();
+            } else {
+                compositeCtx.drawImage(
+                    overlayImage,
+                    crop, crop, croppedWidth, croppedHeight,
+                    frameX, frameY, videoFrameWidth, videoFrameHeight
+                );
+            }
 
             await exporter.addFrame(compositeCanvas, fd.frame);
 
