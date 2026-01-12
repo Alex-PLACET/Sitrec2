@@ -451,7 +451,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
         guiMenus.view.add(Sit, "lockStarPlanetBrightness").name("Lock Star Planet Brightness").listen()
             .tooltip("When checked, the Star Brightness and Planet Brightness sliders are locked together")
 
-        satGUI.add(Sit, "satScale", 0, 6, 0.01).name("Sat Brightness").listen()
+        satGUI.add(Sit, "satScale", 0, 50, 0.01).name("Sat Brightness").listen()
             .tooltip("Scale factor for the brightness of the satellites. 1 is normal, 0 is invisible, 2 is twice as bright, etc.")
 
         satGUI.add(Sit, "flareScale", 0, 1, 0.001).name("Flare Brightness").listen()
