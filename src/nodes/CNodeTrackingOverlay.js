@@ -751,6 +751,7 @@ export class CNodeTrackingOverlay extends CNodeActiveOverlay {
     modSerialize() {
         return {
             ...super.modSerialize(),
+            curveType: this.curveType,
             keyframes: this.keyframes.map(k => {
                 return {
                     x: k.x,
@@ -770,6 +771,9 @@ export class CNodeTrackingOverlay extends CNodeActiveOverlay {
     modDeserialize(v) {
         this.draggable = [];
      //   super.modDeserialize(v);
+        if (v.curveType !== undefined) {
+            this.curveType = v.curveType;
+        }
         this.keyframes = v.keyframes.map(k => {
             const newKeyframe = this.add(new CNodeVideoTrackKeyframe({
                 view: this,
