@@ -283,6 +283,12 @@ export class CNodeTrackingOverlay extends CNodeActiveOverlay {
         })
             .tooltip("Limit the A and B frames to the range of the video tracking keyframes.")
 
+        this.curveType = "Spline";
+        this.gui.add(this, "curveType", ["Spline", "Linear"]).name("Manual Tracking Curve Type").listen().onChange(() => {
+            this.recalculateCascade();
+        })
+            .tooltip("Spline uses smooth cubic spline interpolation. Linear uses straight line segments between keyframes.")
+
 
 
         this.separateVisibility = true; // don't propagate visibility to the overlaid view
@@ -449,41 +455,71 @@ export class CNodeTrackingOverlay extends CNodeActiveOverlay {
             return;
         }
 
-        // Three or more keyframes, use cubic spline interpolation
-
-        // Extract arrays for x and y coordinates and frames
+        // Three or more keyframes
         const frames = this.keyframes.map(k => k.frame);
         const xCoords = this.keyframes.map(k => k.x);
         const yCoords = this.keyframes.map(k => k.y);
 
-        // Calculate cubic spline coefficients
-        const xSpline = this.calculateCubicSpline(frames, xCoords);
-        const ySpline = this.calculateCubicSpline(frames, yCoords);
+        if (this.curveType === "Linear") {
+            // Linear interpolation between keyframes
+            for (let i = 0; i < this.frames; i++) {
+                if (i <= frames[0]) {
+                    // Before/at first keyframe - linear extrapolation from first two keyframes
+                    const t = (i - frames[0]) / (frames[1] - frames[0]);
+                    this.pointsXY[i] = [
+                        xCoords[0] + t * (xCoords[1] - xCoords[0]),
+                        yCoords[0] + t * (yCoords[1] - yCoords[0])
+                    ];
+                } else if (i >= frames[frames.length - 1]) {
+                    // After/at last keyframe - linear extrapolation from last two keyframes
+                    const n = frames.length;
+                    const t = (i - frames[n - 1]) / (frames[n - 1] - frames[n - 2]);
+                    this.pointsXY[i] = [
+                        xCoords[n - 1] + t * (xCoords[n - 1] - xCoords[n - 2]),
+                        yCoords[n - 1] + t * (yCoords[n - 1] - yCoords[n - 2])
+                    ];
+                } else {
+                    // Find which segment we're in
+                    let segIdx = 0;
+                    while (segIdx < frames.length - 1 && i > frames[segIdx + 1]) {
+                        segIdx++;
+                    }
+                    const t = (i - frames[segIdx]) / (frames[segIdx + 1] - frames[segIdx]);
+                    this.pointsXY[i] = [
+                        xCoords[segIdx] + t * (xCoords[segIdx + 1] - xCoords[segIdx]),
+                        yCoords[segIdx] + t * (yCoords[segIdx + 1] - yCoords[segIdx])
+                    ];
+                }
+            }
+        } else {
+            // Cubic spline interpolation
+            const xSpline = this.calculateCubicSpline(frames, xCoords);
+            const ySpline = this.calculateCubicSpline(frames, yCoords);
 
-        // Fill in the points array
-        for (let i = 0; i < this.frames; i++) {
-            if (i < frames[0]) {
-                // Before first keyframe - linear extrapolation
-                const slope = this.getInitialSlope(xSpline, ySpline);
-                const t = i - frames[0];
-                this.pointsXY[i] = [
-                    xCoords[0] + t * slope.x,
-                    yCoords[0] + t * slope.y
-                ];
-            } else if (i > frames[frames.length - 1]) {
-                // After last keyframe - linear extrapolation
-                const slope = this.getFinalSlope(xSpline, ySpline);
-                const t = i - frames[frames.length - 1];
-                this.pointsXY[i] = [
-                    xCoords[xCoords.length - 1] + t * slope.x,
-                    yCoords[yCoords.length - 1] + t * slope.y
-                ];
-            } else {
-                // Within keyframe range - cubic spline interpolation
-                this.pointsXY[i] = [
-                    this.evaluateCubicSpline(i, frames, xSpline),
-                    this.evaluateCubicSpline(i, frames, ySpline)
-                ];
+            for (let i = 0; i < this.frames; i++) {
+                if (i < frames[0]) {
+                    // Before first keyframe - linear extrapolation
+                    const slope = this.getInitialSlope(xSpline, ySpline);
+                    const t = i - frames[0];
+                    this.pointsXY[i] = [
+                        xCoords[0] + t * slope.x,
+                        yCoords[0] + t * slope.y
+                    ];
+                } else if (i > frames[frames.length - 1]) {
+                    // After last keyframe - linear extrapolation
+                    const slope = this.getFinalSlope(xSpline, ySpline);
+                    const t = i - frames[frames.length - 1];
+                    this.pointsXY[i] = [
+                        xCoords[xCoords.length - 1] + t * slope.x,
+                        yCoords[yCoords.length - 1] + t * slope.y
+                    ];
+                } else {
+                    // Within keyframe range - cubic spline interpolation
+                    this.pointsXY[i] = [
+                        this.evaluateCubicSpline(i, frames, xSpline),
+                        this.evaluateCubicSpline(i, frames, ySpline)
+                    ];
+                }
             }
         }
     }
