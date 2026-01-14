@@ -229,7 +229,7 @@ class CNodeSwitch extends CNode {
     }
 
     selectOption(option, quiet=false) {
-        if (this.choise === option) {
+        if (this.choice === option) {
             // if the choice is already set to this option, do nothing
             return;
         }
