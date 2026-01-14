@@ -261,15 +261,17 @@ export class CNodeTrackingOverlay extends CNodeActiveOverlay {
 
         this.setGUI(v,"traverse");
 
+        this.manualTrackingFolder = this.gui.addFolder("Manual Tracking").close();
+
         this.showTracking = true;
 
-        this.gui.add(this, "resetDraggable").name("Reset Manual Tracking")
+        this.manualTrackingFolder.add(this, "resetDraggable").name("Reset")
             .tooltip("Reset manual tracking to an empty state, removing all keyframes and draggable items")
-      //  this.gui.add(this, "showTracking").name("Show Manual Tracking").listen();
+      //  this.manualTrackingFolder.add(this, "showTracking").name("Show Manual Tracking").listen();
 
 
         this.limitAB = true;
-        this.gui.add(this, "limitAB").name("Limit AB to Manual Tracking").listen().onChange(() => {
+        this.manualTrackingFolder.add(this, "limitAB").name("Limit AB").listen().onChange(() => {
 
             if (this.limitAB && this.keyframes.length > 0) {
                 this.applyLimitAB();
@@ -284,10 +286,17 @@ export class CNodeTrackingOverlay extends CNodeActiveOverlay {
             .tooltip("Limit the A and B frames to the range of the video tracking keyframes.")
 
         this.curveType = "Spline";
-        this.gui.add(this, "curveType", ["Spline", "Linear"]).name("Manual Tracking Curve Type").listen().onChange(() => {
+        this.manualTrackingFolder.add(this, "curveType", ["Spline", "Linear", "Perspective"]).name("Curve Type").listen().onChange(() => {
+            if (this.curveType === "Perspective") {
+                const traverseSelect = NodeMan.get("LOSTraverseSelectTrack", false);
+                if (traverseSelect && traverseSelect.inputs["Perspective"]) {
+                    traverseSelect.selectOption("Perspective");
+                    traverseSelect.controller.updateDisplay();
+                }
+            }
             this.recalculateCascade();
         })
-            .tooltip("Spline uses smooth cubic spline interpolation. Linear uses straight line segments between keyframes.")
+            .tooltip("Spline uses smooth cubic spline interpolation. Linear uses straight line segments. Perspective requires exactly 3 keyframes and models linear motion with perspective projection.")
 
 
 
@@ -488,6 +497,80 @@ export class CNodeTrackingOverlay extends CNodeActiveOverlay {
                     this.pointsXY[i] = [
                         xCoords[segIdx] + t * (xCoords[segIdx + 1] - xCoords[segIdx]),
                         yCoords[segIdx] + t * (yCoords[segIdx + 1] - yCoords[segIdx])
+                    ];
+                }
+            }
+        } else if (this.curveType === "Perspective") {
+            // Perspective projection model for an object moving linearly in 3D space.
+            // When an object moves at constant velocity, its projected screen position
+            // follows a rational function (not linear) due to perspective division.
+            //
+            // Uses exactly 3 keyframes: A, B, C at times Ta, Tb, Tc
+            //   - (uA, vA), (uB, vB), (uC, vC) are the screen coordinates at each keyframe
+            //   - tau = t - Ta is time relative to the first keyframe
+            //
+            // The perspective projection formula is:
+            //   u(t) = (uA + a1 * tau) / (1 + d * tau)
+            //   v(t) = (vA + b1 * tau) / (1 + d * tau)
+            //
+            // Where:
+            //   - uA, vA: initial screen position at keyframe A
+            //   - a1, b1: linear velocity terms in screen space (before perspective division)
+            //   - d: perspective depth rate - how fast the object approaches/recedes from camera
+            //        d > 0 means object is approaching (denominator decreases, object grows)
+            //        d < 0 means object is receding (denominator increases, object shrinks)
+            //        d = 0 degenerates to linear motion (no perspective effect)
+            //
+            // The denominator (1 + d * tau) represents the relative depth change over time.
+            // When it approaches zero, the object is at or behind the camera.
+            const uA = xCoords[0], uB = xCoords[1], uC = xCoords[2];
+            const vA = yCoords[0], vB = yCoords[1], vC = yCoords[2];
+            const Ta = frames[0], Tb = frames[1], Tc = frames[2];
+
+            const tauB = Tb - Ta;
+            const tauC = Tc - Ta;
+
+            // d = [(uC - uA)/τC - (uB - uA)/τB] / (uB - uC)
+            const denominator = uB - uC;
+            let d, a1, b1;
+
+            if (Math.abs(denominator) < 1e-10) {
+                // Degenerate case: uB ≈ uC, fall back to linear
+                d = 0;
+                a1 = (uB - uA) / tauB;
+                b1 = (vB - vA) / tauB;
+            } else {
+                d = ((uC - uA) / tauC - (uB - uA) / tauB) / denominator;
+                a1 = (uB - uA) / tauB + uB * d;
+                b1 = (vB - vA) / tauB + vB * d;
+            }
+
+            const minDenom = 0.01;
+            let tauEdge, xEdge, yEdge, dxEdge, dyEdge;
+
+            if (Math.abs(d) > 1e-10) {
+                tauEdge = (minDenom - 1) / d;
+                xEdge = (uA + a1 * tauEdge) / minDenom;
+                yEdge = (vA + b1 * tauEdge) / minDenom;
+                dxEdge = (a1 - uA * d) / (minDenom * minDenom);
+                dyEdge = (b1 - vA * d) / (minDenom * minDenom);
+            }
+
+            for (let i = 0; i < this.frames; i++) {
+                const tau = i - Ta;
+                const denom = 1 + d * tau;
+
+                if (denom <= minDenom && Math.abs(d) > 1e-10) {
+                    // Object at or behind camera - use linear extrapolation from valid edge
+                    const deltaTau = tau - tauEdge;
+                    this.pointsXY[i] = [
+                        xEdge + dxEdge * deltaTau,
+                        yEdge + dyEdge * deltaTau
+                    ];
+                } else {
+                    this.pointsXY[i] = [
+                        (uA + a1 * tau) / denom,
+                        (vA + b1 * tau) / denom
                     ];
                 }
             }

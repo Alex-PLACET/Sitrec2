@@ -39,6 +39,7 @@ import {
     CNodeLOSTraverseWind
 } from "./nodes/CNodeLOSTraverseStraightLine";
 import {CNodeLOSTraverseConstantAltitude} from "./nodes/CNodeLOSTraverseConstantAltitude";
+import {CNodeLOSTraversePerspective} from "./nodes/CNodeLOSTraversePerspective";
 import {makeMatLine, updateMatLineResolution} from "./MatLines";
 import {CNodeViewUI} from "./nodes/CNodeViewUI";
 import {
@@ -818,6 +819,14 @@ export function CreateTraverseNodes(idExtra="", los = "JetLOS") {
             LOS: los,
             startDist: "startDistance",
          //   radius: "radiusMiles",
+        },
+    })
+
+    new CNodeLOSTraversePerspective({
+        id: "LOSTraversePerspective"+idExtra,
+        inputs: {
+            LOS: los,
+            startDist: "startDistance",
         },
     })
 

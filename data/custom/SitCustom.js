@@ -679,6 +679,9 @@ sitch = {
 //            "Straight Line Fixed -": "LOSTraverseStraightLineFixed",
             "Windblown Object (on first LOS)": "LOSTraverseWind",
 
+            // use the depth veloicty of the LOS to derive the 3D traverse from 3 points
+            "Perspective": "LOSTraversePerspective"
+
             // the "Windblown Target" traverse has been replaced by the fixedTargetPositionWind track
             // with traverse set to "Target Object"
             //"Windblown Target": "LOSTraverseWindTarget",
