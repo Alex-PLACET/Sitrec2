@@ -2563,7 +2563,7 @@ export class CCustomManager {
             set altitude(v) { this._displayValue = v; }
         };
         clouds.altitudeProxy = altitudeProxy;
-        clouds.altitudeController = editFolder.add(altitudeProxy, 'altitude', 300, 15000, 10)
+        clouds.altitudeController = editFolder.add(altitudeProxy, 'altitude', 0, 40000, 10)
             .name('Altitude')
             .setUnitType('small')
             .onChange(() => {
@@ -2580,7 +2580,7 @@ export class CCustomManager {
             set radius(v) { this._displayValue = v; }
         };
         clouds.radiusProxy = radiusProxy;
-        clouds.radiusController = editFolder.add(radiusProxy, 'radius', 100, 10000, 10)
+        clouds.radiusController = editFolder.add(radiusProxy, 'radius', 100, 100000, 10)
             .name('Radius')
             .setUnitType('small')
             .onChange(() => {
@@ -2613,6 +2613,46 @@ export class CCustomManager {
                 if (clouds.cloudMesh && clouds.cloudMesh.material) {
                     clouds.cloudMesh.material.opacity = clouds.opacity;
                 }
+                setRenderOne(true);
+                this.saveGlobalSettings();
+            });
+        
+        editFolder.add(clouds, 'brightness', 0, 2, 0.05)
+            .name('Brightness')
+            .onChange(() => {
+                clouds.buildCloudMesh();
+                setRenderOne(true);
+                this.saveGlobalSettings();
+            });
+        
+        editFolder.add(clouds, 'depth', 0, 2000, 10)
+            .name('Depth (m)')
+            .onChange(() => {
+                clouds.buildCloudMesh();
+                setRenderOne(true);
+                this.saveGlobalSettings();
+            });
+        
+        editFolder.add(clouds, 'edgeWiggle', 0, 0.5, 0.01)
+            .name('Edge Wiggle')
+            .onChange(() => {
+                clouds.buildCloudMesh();
+                setRenderOne(true);
+                this.saveGlobalSettings();
+            });
+        
+        editFolder.add(clouds, 'edgeFrequency', 1, 20, 1)
+            .name('Edge Frequency')
+            .onChange(() => {
+                clouds.buildCloudMesh();
+                setRenderOne(true);
+                this.saveGlobalSettings();
+            });
+        
+        editFolder.add(clouds, 'seed', 0, 9999, 1)
+            .name('Seed')
+            .onChange(() => {
+                clouds.buildCloudMesh();
                 setRenderOne(true);
                 this.saveGlobalSettings();
             });

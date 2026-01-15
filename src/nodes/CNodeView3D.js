@@ -2460,6 +2460,28 @@ export class CNodeView3D extends CNodeViewCanvas {
                                 return; // Edit mode entered, we're done
                             }
                         }
+                        
+                        // Check if this is a synthetic cloud layer - if so, enter edit mode
+                        if (objectID.startsWith('synthClouds_')) {
+                            const clouds = Synth3DManager.getClouds(objectID);
+                            if (clouds) {
+                                console.log(`Right-clicked on synthetic clouds: ${objectID}, entering edit mode`);
+                                
+                                // First, exit edit mode on the currently edited clouds (if any)
+                                if (Globals.editingClouds && Globals.editingClouds !== clouds) {
+                                    console.log(`  Exiting edit mode on previous clouds: ${Globals.editingClouds.cloudsID}`);
+                                    Globals.editingClouds.setEditMode(false);
+                                }
+                                
+                                // Enter edit mode (this will create handles and set up state)
+                                clouds.setEditMode(true);
+                                
+                                // Show the clouds edit menu at the mouse position
+                                CustomManager.showCloudsEditingMenu(event.clientX, event.clientY, groundPoint);
+                                
+                                return; // Edit mode entered, we're done
+                            }
+                        }
 
                         // Get the node from NodeManager
                         const node = NodeMan.get(objectID);

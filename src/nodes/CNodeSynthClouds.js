@@ -1,6 +1,7 @@
 import {CNode3DGroup} from "./CNode3DGroup";
 import {
     BufferGeometry,
+    Color,
     DoubleSide,
     Float32BufferAttribute,
     Mesh,
@@ -29,6 +30,18 @@ function getRandomFloat(min, max) {
     return rng() * (max - min) + min;
 }
 
+function getEdgeRadius(angle, baseRadius, wiggle, frequency, seed) {
+    if (wiggle <= 0) return baseRadius;
+    const rngEdge = seedrandom(seed.toString() + '_edge');
+    let offset = 0;
+    for (let i = 1; i <= frequency; i++) {
+        const phase = rngEdge() * Math.PI * 2;
+        const amp = (1 / i) * wiggle * baseRadius;
+        offset += Math.sin(angle * i + phase) * amp;
+    }
+    return baseRadius + offset;
+}
+
 export class CNodeSynthClouds extends CNode3DGroup {
     constructor(v) {
         super(v);
@@ -40,10 +53,14 @@ export class CNodeSynthClouds extends CNode3DGroup {
         this.centerLon = v.centerLon;
         this.altitude = v.altitude !== undefined ? v.altitude : f2m(10000);
         this.radius = v.radius !== undefined ? v.radius : 500;
+        this.depth = v.depth !== undefined ? v.depth : 0;
+        this.edgeWiggle = v.edgeWiggle !== undefined ? v.edgeWiggle : 0;
+        this.edgeFrequency = v.edgeFrequency !== undefined ? v.edgeFrequency : 5;
         this.cloudSize = v.cloudSize !== undefined ? v.cloudSize : 200;
         this.density = v.density !== undefined ? v.density : 0.5;
         this.opacity = v.opacity !== undefined ? v.opacity : 0.8;
-        this.seed = v.seed !== undefined ? v.seed : Math.floor(Math.random() * 10000);
+        this.brightness = v.brightness !== undefined ? v.brightness : 1.0;
+        this.seed = v.seed !== undefined ? v.seed : 0;
         
         this.cloudMesh = null;
         this.cloudGeometry = null;
@@ -92,15 +109,18 @@ export class CNodeSynthClouds extends CNode3DGroup {
         const w = this.cloudSize;
         const h = this.cloudSize * 0.5;
         const xz = w / Math.sqrt(2);
+        const halfDepth = this.depth / 2;
         
         let index = 0;
         for (let i = 0; i < numClouds; i++) {
             const angle = getRandomFloat(0, Math.PI * 2);
-            const dist = Math.sqrt(getRandomFloat(0, 1)) * this.radius;
+            const maxRadius = getEdgeRadius(angle, this.radius, this.edgeWiggle, this.edgeFrequency, this.seed);
+            const dist = Math.sqrt(getRandomFloat(0, 1)) * maxRadius;
             
             const offsetX = Math.cos(angle) * dist;
             const offsetZ = Math.sin(angle) * dist;
-            const heightVariation = getRandomFloat(-h * 0.3, h * 0.3);
+            const depthOffset = halfDepth > 0 ? getRandomFloat(-halfDepth, halfDepth) : 0;
+            const heightVariation = getRandomFloat(-h * 0.3, h * 0.3) + depthOffset;
             
             const pos = centerEUS.clone()
                 .add(east.clone().multiplyScalar(offsetX))
@@ -143,12 +163,18 @@ export class CNodeSynthClouds extends CNode3DGroup {
         this.cloudGeometry.setAttribute('normal', new Float32BufferAttribute(normals, 3));
         this.cloudGeometry.setAttribute('uv', new Float32BufferAttribute(uvs, 2));
         
+        const baseColor = Math.min(this.brightness, 1.0);
+        const emissiveIntensity = Math.max(0, this.brightness - 1.0);
+        
         const cloudMaterial = new MeshStandardMaterial({
             map: this.cloudTexture,
             transparent: true,
             opacity: this.opacity,
             side: DoubleSide,
             depthWrite: false,
+            color: new Color(baseColor, baseColor, baseColor),
+            emissive: new Color(1, 1, 1),
+            emissiveIntensity: emissiveIntensity,
         });
         
         this.cloudMesh = new Mesh(this.cloudGeometry, cloudMaterial);
@@ -472,6 +498,10 @@ export class CNodeSynthClouds extends CNode3DGroup {
         });
         
         const actions = {
+            edit: () => {
+                this.setEditMode(true);
+                CustomManager.showCloudsEditingMenu(100, 100, null);
+            },
             delete: () => {
                 if (confirm(`Delete cloud layer "${this.name}"?`)) {
                     if (UndoManager) {
@@ -493,6 +523,7 @@ export class CNodeSynthClouds extends CNode3DGroup {
                 }
             }
         };
+        this.guiFolder.add(actions, 'edit').name('Edit');
         this.guiFolder.add(actions, 'delete').name('Delete Clouds');
     }
     
@@ -513,9 +544,13 @@ export class CNodeSynthClouds extends CNode3DGroup {
             centerLon: this.centerLon,
             altitude: this.altitude,
             radius: this.radius,
+            depth: this.depth,
+            edgeWiggle: this.edgeWiggle,
+            edgeFrequency: this.edgeFrequency,
             cloudSize: this.cloudSize,
             density: this.density,
             opacity: this.opacity,
+            brightness: this.brightness,
             seed: this.seed
         };
     }
@@ -528,9 +563,13 @@ export class CNodeSynthClouds extends CNode3DGroup {
             centerLon: data.centerLon,
             altitude: data.altitude,
             radius: data.radius,
+            depth: data.depth,
+            edgeWiggle: data.edgeWiggle,
+            edgeFrequency: data.edgeFrequency,
             cloudSize: data.cloudSize,
             density: data.density,
             opacity: data.opacity,
+            brightness: data.brightness,
             seed: data.seed
         });
     }
