@@ -307,7 +307,32 @@ class CNodeView extends CNode {
     }
 
     preRenderCameraUpdate() {
-        this.camera.aspect = this.widthPx / this.heightPx;
+        const newAspect = this.widthPx / this.heightPx;
+        
+        // Ensure WebGL canvas backing store matches the intended dimensions before rendering.
+        // This fixes a race condition when view presets change rapidly:
+        // - widthPx/heightPx update immediately when preset changes
+        // - But changedSize() uses a 100ms debounce before calling renderer.setSize()
+        //   (the debounce prevents flickering during continuous window resize drag)
+        // - If presets change faster than 100ms, the canvas has stale dimensions
+        // - Result: camera aspect is correct but canvas backing store is wrong size,
+        //   causing CSS to scale the mismatched canvas and distort the view
+        // Solution: Check dimensions before render and fix any mismatch immediately.
+        // Note: Skip this for canvasWidth mode where dimensions intentionally differ.
+        if (this.renderer && !this.in.canvasWidth) {
+            const pixelRatio = this.renderer.getPixelRatio();
+            const canvasW = this.renderer.domElement.width;
+            const canvasH = this.renderer.domElement.height;
+            const expectedW = Math.floor(this.widthPx * pixelRatio);
+            const expectedH = Math.floor(this.heightPx * pixelRatio);
+            if (canvasW !== expectedW || canvasH !== expectedH) {
+                this.renderer.setSize(this.widthPx, this.heightPx);
+                this._lastRendererWidth = this.widthPx;
+                this._lastRendererHeight = this.heightPx;
+            }
+        }
+        
+        this.camera.aspect = newAspect;
         this.camera.updateProjectionMatrix();
 
         // do any custom projection modifications

@@ -1656,11 +1656,6 @@ export class CNodeView3D extends CNodeViewCanvas {
         if (globalProfiler) globalProfiler.push('#1f77b4', 'cameraSetup');
         sharedUniforms.nearPlane.value = this.camera.near;
         sharedUniforms.farPlane.value = this.camera.far;
-
-        //this.camera.aspect = this.widthPx / this.heightPx;
-        this.camera.aspect = this.canvas.width / this.canvas.height;
-
-        this.camera.updateProjectionMatrix();
         if (globalProfiler) globalProfiler.pop();
 
         // Profile: Camera Controls
