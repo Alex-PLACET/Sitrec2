@@ -2610,8 +2610,8 @@ export class CCustomManager {
         editFolder.add(clouds, 'opacity', 0.1, 1.0, 0.05)
             .name('Opacity')
             .onChange(() => {
-                if (clouds.cloudMesh && clouds.cloudMesh.material) {
-                    clouds.cloudMesh.material.opacity = clouds.opacity;
+                if (clouds.cloudMesh && clouds.cloudMesh.material && clouds.cloudMesh.material.uniforms) {
+                    clouds.cloudMesh.material.uniforms.opacity.value = clouds.opacity;
                 }
                 setRenderOne(true);
                 this.saveGlobalSettings();

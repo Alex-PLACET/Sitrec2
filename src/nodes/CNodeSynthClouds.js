@@ -1,15 +1,15 @@
 import {CNode3DGroup} from "./CNode3DGroup";
 import {
-    BufferAttribute,
-    BufferGeometry,
     Color,
     DoubleSide,
-    Float32BufferAttribute,
+    InstancedBufferAttribute,
+    InstancedBufferGeometry,
     Mesh,
     MeshBasicMaterial,
-    MeshStandardMaterial,
     Plane,
+    PlaneGeometry,
     Raycaster,
+    ShaderMaterial,
     SphereGeometry,
     TextureLoader,
     Vector3
@@ -19,11 +19,12 @@ import {dropFromDistance, getLocalUpVector} from "../SphericalMath";
 import {EUSToLLA, LLAToEUS} from "../LLA-ECEF-ENU";
 import {makeMouseRay} from "../mouseMoveView";
 import {ViewMan} from "../CViewManager";
-import {CustomManager, Globals, guiMenus, setRenderOne, Synth3DManager, UndoManager} from "../Globals";
+import {CustomManager, Globals, guiMenus, NodeMan, setRenderOne, Synth3DManager, UndoManager} from "../Globals";
 import {mouseInViewOnly} from "../ViewUtils";
 import {f2m} from "../utils";
 import {SITREC_APP} from "../configUtils";
 import seedrandom from "seedrandom";
+import {sharedUniforms} from "../js/map33/material/SharedUniforms";
 
 let rng;
 
@@ -109,27 +110,18 @@ export class CNodeSynthClouds extends CNode3DGroup {
         rng = seedrandom(this.seed.toString());
         
         const numClouds = Math.floor(this.density * this.radius * this.radius * 0.0001);
-        const numVertices = numClouds * 4;
-        const numIndices = numClouds * 6;
         
-        const vertices = new Float32Array(numVertices * 3);
-        const normals = new Float32Array(numVertices * 3);
-        const uvs = new Float32Array(numVertices * 2);
-        const indices = new Uint32Array(numIndices);
+        const offsets = new Float32Array(numClouds * 3);
+        const sizes = new Float32Array(numClouds * 2);
         
         const w = this.cloudSize;
         const h = this.cloudSize * 0.5;
-        const xzHalf = w / Math.sqrt(2) / 2;
-        const xzFull = xzHalf * 2;
-        const hHalf = h / 2;
         const hVar = h * 0.3;
         const halfDepth = this.depth / 2;
         
         const ex = east.x, ey = east.y, ez = east.z;
         const nx = north.x, ny = north.y, nz = north.z;
         const ux = this.localUp.x, uy = this.localUp.y, uz = this.localUp.z;
-        
-        let vi = 0, ni = 0, ui = 0, ii = 0;
         
         for (let i = 0; i < numClouds; i++) {
             const angle = rng() * Math.PI * 2;
@@ -142,72 +134,106 @@ export class CNodeSynthClouds extends CNode3DGroup {
             const depthOffset = halfDepth > 0 ? (rng() * this.depth - halfDepth) : 0;
             const heightVariation = (rng() * hVar * 2 - hVar) + depthOffset - drop;
             
-            const px = ex * offsetX + nx * offsetZ + ux * heightVariation;
-            const py = ey * offsetX + ny * offsetZ + uy * heightVariation;
-            const pz = ez * offsetX + nz * offsetZ + uz * heightVariation;
+            const idx3 = i * 3;
+            offsets[idx3] = ex * offsetX + nx * offsetZ + ux * heightVariation;
+            offsets[idx3 + 1] = ey * offsetX + ny * offsetZ + uy * heightVariation;
+            offsets[idx3 + 2] = ez * offsetX + nz * offsetZ + uz * heightVariation;
             
-            const edx = ex * xzHalf, edy = ey * xzHalf, edz = ez * xzHalf;
-            const ndx = nx * xzFull, ndy = ny * xzFull, ndz = nz * xzFull;
-            const udx = ux * hHalf, udy = uy * hHalf, udz = uz * hHalf;
-            
-            vertices[vi++] = px - edx + udx + ndx;
-            vertices[vi++] = py - edy + udy + ndy;
-            vertices[vi++] = pz - edz + udz + ndz;
-            
-            vertices[vi++] = px + edx + udx - ndx;
-            vertices[vi++] = py + edy + udy - ndy;
-            vertices[vi++] = pz + edz + udz - ndz;
-            
-            vertices[vi++] = px - edx - udx + ndx;
-            vertices[vi++] = py - edy - udy + ndy;
-            vertices[vi++] = pz - edz - udz + ndz;
-            
-            vertices[vi++] = px + edx - udx - ndx;
-            vertices[vi++] = py + edy - udy - ndy;
-            vertices[vi++] = pz + edz - udz - ndz;
-            
-            normals[ni++] = ux; normals[ni++] = uy; normals[ni++] = uz;
-            normals[ni++] = ux; normals[ni++] = uy; normals[ni++] = uz;
-            normals[ni++] = ux; normals[ni++] = uy; normals[ni++] = uz;
-            normals[ni++] = ux; normals[ni++] = uy; normals[ni++] = uz;
-            
-            uvs[ui++] = 0; uvs[ui++] = 1;
-            uvs[ui++] = 1; uvs[ui++] = 1;
-            uvs[ui++] = 0; uvs[ui++] = 0;
-            uvs[ui++] = 1; uvs[ui++] = 0;
-            
-            const idx = i * 4;
-            indices[ii++] = idx;
-            indices[ii++] = idx + 2;
-            indices[ii++] = idx + 1;
-            indices[ii++] = idx + 2;
-            indices[ii++] = idx + 3;
-            indices[ii++] = idx + 1;
+            const idx2 = i * 2;
+            sizes[idx2] = w;
+            sizes[idx2 + 1] = h;
         }
         
-        this.cloudGeometry = new BufferGeometry();
-        this.cloudGeometry.setIndex(new BufferAttribute(indices, 1));
-        this.cloudGeometry.setAttribute('position', new Float32BufferAttribute(vertices, 3));
-        this.cloudGeometry.setAttribute('normal', new Float32BufferAttribute(normals, 3));
-        this.cloudGeometry.setAttribute('uv', new Float32BufferAttribute(uvs, 2));
+        const baseQuad = new PlaneGeometry(1, 1);
+        this.cloudGeometry = new InstancedBufferGeometry();
+        this.cloudGeometry.index = baseQuad.index;
+        this.cloudGeometry.setAttribute('position', baseQuad.getAttribute('position'));
+        this.cloudGeometry.setAttribute('uv', baseQuad.getAttribute('uv'));
+        this.cloudGeometry.setAttribute('instanceOffset', new InstancedBufferAttribute(offsets, 3));
+        this.cloudGeometry.setAttribute('instanceSize', new InstancedBufferAttribute(sizes, 2));
+        this.cloudGeometry.instanceCount = numClouds;
         
         const baseColor = Math.min(this.brightness, 1.0);
         const emissiveIntensity = Math.max(0, this.brightness - 1.0);
         
-        const cloudMaterial = new MeshStandardMaterial({
-            map: this.cloudTexture,
+        const cloudMaterial = new ShaderMaterial({
+            uniforms: {
+                map: { value: this.cloudTexture },
+                opacity: { value: this.opacity },
+                color: { value: new Color(baseColor, baseColor, baseColor) },
+                emissive: { value: new Color(emissiveIntensity, emissiveIntensity, emissiveIntensity) },
+                localSun: { value: 1.0 },
+                ...sharedUniforms,
+            },
+            vertexShader: `
+                attribute vec3 instanceOffset;
+                attribute vec2 instanceSize;
+                varying vec2 vUv;
+                varying float vDepth;
+                
+                void main() {
+                    vUv = uv;
+                    
+                    vec3 cameraRight = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
+                    vec3 cameraUp = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
+                    
+                    vec3 vertexPosition = instanceOffset 
+                        + cameraRight * position.x * instanceSize.x 
+                        + cameraUp * position.y * instanceSize.y;
+                    
+                    vec4 mvPosition = modelViewMatrix * vec4(vertexPosition, 1.0);
+                    gl_Position = projectionMatrix * mvPosition;
+                    vDepth = gl_Position.w;
+                }
+            `,
+            fragmentShader: `
+                uniform sampler2D map;
+                uniform float opacity;
+                uniform vec3 color;
+                uniform vec3 emissive;
+                uniform float nearPlane;
+                uniform float farPlane;
+                uniform float localSun;
+                uniform float sunAmbientIntensity;
+                varying vec2 vUv;
+                varying float vDepth;
+                
+                void main() {
+                    vec4 texColor = texture2D(map, vUv);
+                    float alpha = texColor.a * opacity;
+                    if (alpha < 0.01) discard;
+                    
+                    float lighting = mix(sunAmbientIntensity, 1.0, localSun);
+                    vec3 litColor = texColor.rgb * color * lighting + emissive;
+                    gl_FragColor = vec4(litColor, alpha);
+                    
+                    float z = (log2(max(nearPlane, 1.0 + vDepth)) / log2(1.0 + farPlane)) * 2.0 - 1.0;
+                    gl_FragDepthEXT = z * 0.5 + 0.5;
+                }
+            `,
             transparent: true,
-            opacity: this.opacity,
-            side: DoubleSide,
             depthWrite: false,
-            color: new Color(baseColor, baseColor, baseColor),
-            emissive: new Color(1, 1, 1),
-            emissiveIntensity: emissiveIntensity,
+            depthTest: true,
+            side: DoubleSide,
         });
         
         this.cloudMesh = new Mesh(this.cloudGeometry, cloudMaterial);
         this.cloudMesh.layers.mask = LAYER.MASK_WORLD;
+        this.cloudMesh.frustumCulled = false;
         this.group.add(this.cloudMesh);
+    }
+    
+    preRender(view) {
+        if (!this.cloudMesh || !this.cloudMesh.material || !this.cloudMesh.material.uniforms) return;
+        
+        const lightingNode = NodeMan.get("lighting");
+        if (lightingNode.noMainLighting && view.id === "mainView") {
+            this.cloudMesh.material.uniforms.localSun.value = 1.0;
+        } else {
+            const sunNode = NodeMan.get("theSun");
+            const localSun = sunNode.calculateSunAt(this.group.position).sunTotal;
+            this.cloudMesh.material.uniforms.localSun.value = localSun;
+        }
     }
     
     setupEventListeners() {
