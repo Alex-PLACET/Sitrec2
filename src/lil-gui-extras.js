@@ -1,13 +1,13 @@
 // Helper functions for lil-gui
-import GUI, { Controller } from "./js/lil-gui.esm";
+import GUI, {Controller} from "./js/lil-gui.esm";
 //import {updateSize} from "./JetStuff";
-import { Globals, setMouseOverGUI, Units } from "./Globals";
-import { Color } from "three";
-import { assert } from "./assert";
-import { ViewMan } from "./CViewManager";
-import { parseBoolean } from "./utils";
+import {Globals, setMouseOverGUI, Units} from "./Globals";
+import {Color} from "three";
+import {assert} from "./assert";
+import {ViewMan} from "./CViewManager";
+import {parseBoolean} from "./utils";
 import Stats from "stats.js";
-import { toggleControlsVisibility } from "./PageStructure";
+import {toggleControlsVisibility} from "./PageStructure";
 
 // Issue with lil-gui, the OptionController options() method adds a
 // _names array to the controller object, and a _values array
@@ -363,6 +363,15 @@ Controller.prototype.setSIValue = function (siValue) {
     this.object[this.property] = displayValue;
     this.updateDisplay();
     return this;
+}
+
+// Get min/max limits in SI units (meters)
+// Returns { min, max } object
+Controller.prototype.getSILimits = function () {
+    if (this._originalMinSI !== undefined && this._originalMaxSI !== undefined) {
+        return { min: this._originalMinSI, max: this._originalMaxSI };
+    }
+    return { min: this._min, max: this._max };
 }
 
 // Set this button as the double-click action for its parent GUI/folder

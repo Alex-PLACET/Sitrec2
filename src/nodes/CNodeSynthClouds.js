@@ -347,16 +347,17 @@ export class CNodeSynthClouds extends CNode3DGroup {
                     const heightDiff = displacement.dot(this.dragLocalUp);
                     const newAltitude = this.dragInitialAltitude + heightDiff;
                     
-                    if (newAltitude > 100 && newAltitude < 50000) {
+                    const limits = this.altitudeController?.getSILimits() ?? { min: 0, max: 20000 };
+                    if (newAltitude >= limits.min && newAltitude <= limits.max) {
                         this.altitude = newAltitude;
                         this.updateGroupPosition();
                         this.createControlHandles();
                         this.updateGUIControllers();
                     }
                 } else if (this.draggingHandle === 'radius') {
-                    // Calculate new radius based on distance from initial center to current intersection
                     const newRadius = currentIntersection.distanceTo(this.dragInitialCenterEUS);
-                    if (newRadius > 50 && newRadius < 50000) {
+                    const limits = this.radiusController?.getSILimits() ?? { min: 100, max: 100000 };
+                    if (newRadius >= limits.min && newRadius <= limits.max) {
                         this.radius = newRadius;
                         this.buildCloudMesh();
                         this.createControlHandles();
