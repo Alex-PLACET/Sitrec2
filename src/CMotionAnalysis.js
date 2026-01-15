@@ -87,12 +87,7 @@ async function ensureOpenCVAndAnalyzer(menuItem, loadingText, defaultText) {
         }
     }
 
-    if (!motionAnalyzer) {
-        motionAnalyzer = new MotionAnalyzer(videoView);
-    }
-    setMotionAnalyzerRef(motionAnalyzer);
-    motionAnalyzer.active = true;
-    motionAnalyzer.createOverlays();
+    startAnalysis(videoView);
 
     return {videoView, videoData};
 }
@@ -2340,45 +2335,18 @@ export function resetMotionAnalysis() {
     }
 }
 
-export function toggleMotionAnalysis() {
-    const videoView = NodeMan.get("video", false);
-    if (!videoView) {
-        alert("No video view found");
-        return;
-    }
-
+export async function toggleMotionAnalysis() {
     if (motionAnalyzer && motionAnalyzer.active) {
         motionAnalyzer.stop();
         removeParamSliders();
         if (analyzeMenuItem) {
             analyzeMenuItem.name("Analyze Motion");
         }
-        if (motionFolder) {
-            motionFolder.close();
-        }
         setRenderOne(true);
         return;
     }
 
-    if (cv) {
-        startAnalysis(videoView);
-        return;
-    }
-    
-    if (analyzeMenuItem) {
-        analyzeMenuItem.name("Loading OpenCV...");
-    }
-    
-    loadOpenCV().then(() => {
-        cv = getCV();
-        startAnalysis(videoView);
-    }).catch(e => {
-        console.error("Failed to load OpenCV:", e);
-        alert("Failed to load OpenCV.js: " + e.message);
-        if (analyzeMenuItem) {
-            analyzeMenuItem.name("Analyze Motion");
-        }
-    });
+    await ensureOpenCVAndAnalyzer(analyzeMenuItem, "Loading OpenCV...", "Analyze Motion");
 }
 
 let paramControllers = [];
