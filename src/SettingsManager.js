@@ -264,13 +264,18 @@ export async function initializeSettings() {
     // Initialize Globals.settings with defaults
     if (!Globals.settings) {
         Globals.settings = {
-            maxDetails: 15, // Default value
+            maxDetails: 20, // Default value
             fpsLimit: 30, // Frame rate limit (60, 30, 20, or 15)
             tileSegments: 32, // Tile mesh resolution (16-256)
             videoMaxSize: "720P", // Video frame max size (None, 1080P, 720P, 480P, 360P)
             lastBuildingRotation: 0, // Last building rotation in radians (persists across sessions)
             chatModel: "", // AI chat model in "provider:model" format (empty = use first available)
         };
+    }
+
+    if (Globals.regression) {
+        console.log("Regression mode - skipping settings load");
+        return Globals.settings;
     }
     
     // Serverless mode - use IndexedDB
