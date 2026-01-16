@@ -208,6 +208,8 @@ export class CNodeSynthClouds extends CNode3DGroup {
         }
         
         this.cloudCount = cloudIndex;
+        this.combGap = cloudIndex;
+        this.combIndex = 0;
         
         const baseQuad = new PlaneGeometry(1, 1);
         this.cloudGeometry = new InstancedBufferGeometry();
@@ -348,12 +350,12 @@ export class CNodeSynthClouds extends CNode3DGroup {
             }
         }
         
-        for (let i = 0; i < 100; i++) {
-            if (!this.bubbleSortPass(view)) break;
+        for (let i = 0; i < 10; i++) {
+            if (!this.combSortPass(view)) break;
         }
     }
     
-    bubbleSortPass(view) {
+    combSortPass(view) {
         if (!view || !view.camera || !this.instanceOffsets || this.cloudCount < 2) return false;
         if (view.id !== "lookView") return false;
         
@@ -365,10 +367,12 @@ export class CNodeSynthClouds extends CNode3DGroup {
         const sizeAttr = this.cloudGeometry.getAttribute('instanceSize');
         
         let swapped = false;
+        const gap = this.combGap;
         
-        for (let i = 0; i < this.cloudCount - 1; i++) {
+        for (let i = 0; i + gap < this.cloudCount; i++) {
+            const j = i + gap;
             const i3 = i * 3;
-            const j3 = (i + 1) * 3;
+            const j3 = j * 3;
             
             const ax = groupPos.x + offsets[i3];
             const ay = groupPos.y + offsets[i3 + 1];
@@ -383,7 +387,7 @@ export class CNodeSynthClouds extends CNode3DGroup {
             
             if (distA < distB) {
                 const i2 = i * 2;
-                const j2 = (i + 1) * 2;
+                const j2 = j * 2;
                 
                 let tmp = offsets[i3]; offsets[i3] = offsets[j3]; offsets[j3] = tmp;
                 tmp = offsets[i3 + 1]; offsets[i3 + 1] = offsets[j3 + 1]; offsets[j3 + 1] = tmp;
@@ -396,11 +400,13 @@ export class CNodeSynthClouds extends CNode3DGroup {
             }
         }
         
+        this.combGap = Math.max(1, Math.floor(this.combGap / 1.3));
+        
         if (swapped) {
             offsetAttr.needsUpdate = true;
             sizeAttr.needsUpdate = true;
         }
-        return swapped;
+        return swapped || this.combGap > 1;
     }
     
     setupEventListeners() {
