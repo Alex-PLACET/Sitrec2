@@ -152,8 +152,10 @@ export class CNodeSynthClouds extends CNode3DGroup {
         
         const numClouds = Math.floor(this.density * this.radius * this.radius * 0.0001);
         
-        const offsets = new Float32Array(numClouds * 3);
-        const sizes = new Float32Array(numClouds * 2);
+        this.instanceOffsets = new Float32Array(numClouds * 3);
+        this.instanceSizes = new Float32Array(numClouds * 2);
+        const offsets = this.instanceOffsets;
+        const sizes = this.instanceSizes;
         
         const w = this.cloudSize;
         const h = this.cloudSize * 0.5;
@@ -205,16 +207,16 @@ export class CNodeSynthClouds extends CNode3DGroup {
             cloudIndex++;
         }
         
-        const actualCloudCount = cloudIndex;
+        this.cloudCount = cloudIndex;
         
         const baseQuad = new PlaneGeometry(1, 1);
         this.cloudGeometry = new InstancedBufferGeometry();
         this.cloudGeometry.index = baseQuad.index;
         this.cloudGeometry.setAttribute('position', baseQuad.getAttribute('position'));
         this.cloudGeometry.setAttribute('uv', baseQuad.getAttribute('uv'));
-        this.cloudGeometry.setAttribute('instanceOffset', new InstancedBufferAttribute(offsets, 3));
-        this.cloudGeometry.setAttribute('instanceSize', new InstancedBufferAttribute(sizes, 2));
-        this.cloudGeometry.instanceCount = actualCloudCount;
+        this.cloudGeometry.setAttribute('instanceOffset', new InstancedBufferAttribute(this.instanceOffsets, 3));
+        this.cloudGeometry.setAttribute('instanceSize', new InstancedBufferAttribute(this.instanceSizes, 2));
+        this.cloudGeometry.instanceCount = this.cloudCount;
         
         const baseColor = Math.min(this.brightness, 1.0);
         const emissiveIntensity = Math.max(0, this.brightness - 1.0);
@@ -345,6 +347,60 @@ export class CNodeSynthClouds extends CNode3DGroup {
                 this.group.position.copy(this.basePosition).add(offset);
             }
         }
+        
+        for (let i = 0; i < 100; i++) {
+            if (!this.bubbleSortPass(view)) break;
+        }
+    }
+    
+    bubbleSortPass(view) {
+        if (!view || !view.camera || !this.instanceOffsets || this.cloudCount < 2) return false;
+        if (view.id !== "lookView") return false;
+        
+        const camPos = view.camera.position;
+        const groupPos = this.group.position;
+        const offsets = this.instanceOffsets;
+        const sizes = this.instanceSizes;
+        const offsetAttr = this.cloudGeometry.getAttribute('instanceOffset');
+        const sizeAttr = this.cloudGeometry.getAttribute('instanceSize');
+        
+        let swapped = false;
+        
+        for (let i = 0; i < this.cloudCount - 1; i++) {
+            const i3 = i * 3;
+            const j3 = (i + 1) * 3;
+            
+            const ax = groupPos.x + offsets[i3];
+            const ay = groupPos.y + offsets[i3 + 1];
+            const az = groupPos.z + offsets[i3 + 2];
+            
+            const bx = groupPos.x + offsets[j3];
+            const by = groupPos.y + offsets[j3 + 1];
+            const bz = groupPos.z + offsets[j3 + 2];
+            
+            const distA = (ax - camPos.x) ** 2 + (ay - camPos.y) ** 2 + (az - camPos.z) ** 2;
+            const distB = (bx - camPos.x) ** 2 + (by - camPos.y) ** 2 + (bz - camPos.z) ** 2;
+            
+            if (distA < distB) {
+                const i2 = i * 2;
+                const j2 = (i + 1) * 2;
+                
+                let tmp = offsets[i3]; offsets[i3] = offsets[j3]; offsets[j3] = tmp;
+                tmp = offsets[i3 + 1]; offsets[i3 + 1] = offsets[j3 + 1]; offsets[j3 + 1] = tmp;
+                tmp = offsets[i3 + 2]; offsets[i3 + 2] = offsets[j3 + 2]; offsets[j3 + 2] = tmp;
+                
+                tmp = sizes[i2]; sizes[i2] = sizes[j2]; sizes[j2] = tmp;
+                tmp = sizes[i2 + 1]; sizes[i2 + 1] = sizes[j2 + 1]; sizes[j2 + 1] = tmp;
+                
+                swapped = true;
+            }
+        }
+        
+        if (swapped) {
+            offsetAttr.needsUpdate = true;
+            sizeAttr.needsUpdate = true;
+        }
+        return swapped;
     }
     
     setupEventListeners() {
