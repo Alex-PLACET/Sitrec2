@@ -210,6 +210,7 @@ export async function saveSettingsToServer(settings) {
     
     try {
         const sanitized = sanitizeSettings(settings);
+        const testPayload = { ...sanitized, stripthis: "123" };
         
         const response = await fetch('./sitrecServer/settings.php', {
             method: 'POST',
@@ -217,7 +218,7 @@ export async function saveSettingsToServer(settings) {
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ settings: sanitized })
+            body: JSON.stringify({ settings: testPayload })
         });
         
         if (!response.ok) {
@@ -234,6 +235,15 @@ export async function saveSettingsToServer(settings) {
         
         if (data.success) {
             console.log("Saved settings to server:", data.settings);
+            
+            const serverSettings = data.settings;
+            for (const key of Object.keys(sanitized)) {
+                assert(key in serverSettings, 
+                    `Server stripped expected setting '${key}'. Client sent: ${JSON.stringify(sanitized)}, Server returned: ${JSON.stringify(serverSettings)}`);
+            }
+            assert(!('stripthis' in serverSettings), 
+                `Server did NOT strip dummy field 'stripthis'. Server should sanitize unknown fields. Returned: ${JSON.stringify(serverSettings)}`);
+            
             return true;
         }
         

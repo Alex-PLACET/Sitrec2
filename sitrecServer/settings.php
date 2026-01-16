@@ -103,8 +103,19 @@ function sanitizeSettings($settings) {
         $sanitized['lastBuildingRotation'] = floatval($settings['lastBuildingRotation']);
     }
     
-    // Add more settings here as needed
-    // Remember to also update SettingsManager.js!
+    if (isset($settings['tileSegments'])) {
+        $tileSegments = intval($settings['tileSegments']);
+        // Clamp to valid range (16-256)
+        $sanitized['tileSegments'] = max(16, min(256, $tileSegments));
+    }
+    
+    if (isset($settings['chatModel'])) {
+        $chatModel = strval($settings['chatModel']);
+        // Validate format: "provider:model" or empty string
+        if ($chatModel === '' || preg_match('/^[a-zA-Z0-9_-]+:[a-zA-Z0-9._-]+$/', $chatModel)) {
+            $sanitized['chatModel'] = $chatModel;
+        }
+    }
     
     return $sanitized;
 }
