@@ -40,7 +40,7 @@ const CustomCSVFormats = {
         agl:      ["AGL", "ALT (m/agl)"],
         altFeet:  ["ALTITUDE (FT)", "ALT (FT)", "ALTITUDE(FT)", "ALT(FT)"],
         aircraft: ["AIRCRAFT", "AIRCRAFTSPECIFICTYPE"],
-        callsign: ["CALLSIGN", "TAILNUMBER"],
+        callsign: ["CALLSIGN", "TAILNUMBER", "BALLOON_CALLSIGN"],
         az:       ["AZIMUTH", "AZ"],
     }
 }
