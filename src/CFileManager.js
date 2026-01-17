@@ -1573,6 +1573,12 @@ export class CFileManager extends CManager {
                 return;
             }
 
+            // is it a KMZ overlay image? Skip video handling - these are for ground overlays
+            if (fileManagerEntry.dataType === "kmzImage") {
+                console.log("Skipping video handling for KMZ overlay image: " + filename);
+                return;
+            }
+
             // is it an image?
             if (fileExt === "jpg" || fileExt === "jpeg" || fileExt === "png" || fileExt === "gif") {
                 // it's an image, so we want to make a video that's a single frame
@@ -1708,36 +1714,96 @@ export class CFileManager extends CManager {
             const zip = new JSZip();
             // Load the zip file
             return zip.loadAsync(buffer)
-                .then(zipContents => {
-                    // Create a promise for each file in the zip and store them in an array
-                    const filePromises = Object.keys(zipContents.files).map(zipFilename => {
-                        const zipEntry = zipContents.files[zipFilename];
-                        // We only care about actual files (not directories)
-                        // Skip macOS metadata files (__MACOSX directory and ._ prefixed files)
-                        if (!zipEntry.dir && !zipFilename.includes('__MACOSX') && !zipFilename.includes('._')) {
-                            // Get the ArrayBuffer of the unzipped file
-                            return zipEntry.async('arraybuffer')
-                                .then(unzippedBuffer => {
-                                    // Recursively call parseAsset for each unzipped file
-                                    // (note, this will currently only work for single zipped files as
-                                    // the id will be the same for all of them)
-
-                                    // mutiple zip files might have the same containing filename,
-                                    // so we need to prefix the zip filename with the original filename
-                                    // to avoid conflicts
-                                    // (typically for doc.kml insize a .kmz file)
-                                    zipFilename = filename+"_"+zipFilename; // Prefix the zip filename with the original filename
-
-                                    console.log("Unzipped file: " + zipFilename + " for id: " + id + " buffer size: " + unzippedBuffer.byteLength);
-                                    return this.parseAsset(zipFilename, id, unzippedBuffer);
-                                })
-                                .catch(err => {
-                                    console.error("Error parsing unzipped file " + zipFilename + ":", err);
-                                    throw err;
-                                });
+                .then(async (zipContents) => {
+                    const allFiles = Object.keys(zipContents.files).filter(f => {
+                        const entry = zipContents.files[f];
+                        return !entry.dir && !f.includes('__MACOSX') && !f.includes('._');
+                    });
+                    
+                    // For KMZ files, first parse KML to find referenced images
+                    const kmlFiles = allFiles.filter(f => f.toLowerCase().endsWith('.kml'));
+                    const referencedImages = new Set();
+                    
+                    if (filename.toLowerCase().endsWith('.kmz') && kmlFiles.length > 0) {
+                        for (const kmlFile of kmlFiles) {
+                            const kmlBuffer = await zipContents.files[kmlFile].async('arraybuffer');
+                            const decoder = new TextDecoder('utf-8');
+                            const kmlText = decoder.decode(kmlBuffer);
+                            // Extract all href values from the KML
+                            const hrefMatches = kmlText.matchAll(/<href>([^<]+)<\/href>/gi);
+                            for (const match of hrefMatches) {
+                                const href = match[1].trim();
+                                // Only add if it looks like an image file
+                                if (/\.(png|jpg|jpeg|gif|webp)$/i.test(href)) {
+                                    referencedImages.add(href);
+                                    console.log("KMZ: Found referenced image in KML:", href);
+                                }
+                            }
                         }
-                    }).filter(p => p !== undefined);
-                    // Wait for all files to be processed
+                    }
+                    
+                    // Process images referenced by KML first - store them in FileManager
+                    const imageFiles = allFiles.filter(f => {
+                        const baseName = f.split('/').pop();
+                        return referencedImages.has(baseName);
+                    });
+                    
+                    for (const imgFile of imageFiles) {
+                        const baseName = imgFile.split('/').pop();
+                        
+                        // Skip if this image was already loaded (e.g., from serialized files)
+                        if (this.kmzImageMap && this.kmzImageMap[baseName]) {
+                            console.log(`KMZ: Skipping image ${baseName}, already loaded`);
+                            continue;
+                        }
+                        
+                        const imgBuffer = await zipContents.files[imgFile].async('arraybuffer');
+                        const ext = baseName.split('.').pop().toLowerCase();
+                        const mimeType = ext === 'png' ? 'image/png' : 
+                                        ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' :
+                                        ext === 'gif' ? 'image/gif' : 'image/webp';
+                        
+                        const blob = new Blob([imgBuffer], { type: mimeType });
+                        const blobURL = URL.createObjectURL(blob);
+                        
+                        // Store in FileManager with the href as the key
+                        const fileID = `kmz_${filename}_${baseName}`;
+                        this.remove(fileID);
+                        this.add(fileID, imgBuffer, imgBuffer);
+                        this.list[fileID].dynamicLink = true;
+                        this.list[fileID].staticURL = null;
+                        this.list[fileID].filename = baseName;
+                        this.list[fileID].dataType = "kmzImage";
+                        this.list[fileID].blobURL = blobURL;
+                        this.list[fileID].kmzHref = baseName;
+                        
+                        // Also store a mapping from the original href to the blob URL
+                        if (!this.kmzImageMap) this.kmzImageMap = {};
+                        this.kmzImageMap[baseName] = blobURL;
+                        
+                        console.log(`KMZ: Stored image ${baseName} with blobURL ${blobURL}`);
+                    }
+                    
+                    // Now process non-image files (KML, etc.) normally
+                    const nonImageFiles = allFiles.filter(f => {
+                        const baseName = f.split('/').pop();
+                        return !referencedImages.has(baseName);
+                    });
+                    
+                    const filePromises = nonImageFiles.map(zipFilename => {
+                        const zipEntry = zipContents.files[zipFilename];
+                        return zipEntry.async('arraybuffer')
+                            .then(unzippedBuffer => {
+                                let prefixedFilename = filename + "_" + zipFilename;
+                                console.log("Unzipped file: " + prefixedFilename + " for id: " + id + " buffer size: " + unzippedBuffer.byteLength);
+                                return this.parseAsset(prefixedFilename, id, unzippedBuffer);
+                            })
+                            .catch(err => {
+                                console.error("Error parsing unzipped file " + zipFilename + ":", err);
+                                throw err;
+                            });
+                    });
+                    
                     return Promise.all(filePromises);
                 })
                 .catch(error => {

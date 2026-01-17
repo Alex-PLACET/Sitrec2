@@ -1,6 +1,6 @@
 import {CTrackFile} from "./CTrackFile";
 import {MISB, MISBFields} from "../MISBFields";
-import {CustomManager, NodeMan, Sit, Synth3DManager} from "../Globals";
+import {CustomManager, FileManager, NodeMan, Sit, Synth3DManager} from "../Globals";
 import {timeStrToEpoch} from "../DateTimeUtils";
 import {assert} from "../assert.js";
 import {CNodeTrackFromLLAArray} from "../nodes/CNodeTrack";
@@ -503,13 +503,28 @@ export class CTrackFileKML extends CTrackFile {
         const rotation = latLonBox.rotation ? parseFloat(latLonBox.rotation["#text"]) : 0;
 
         let imageURL = "";
+        let imageFileID = null;
         if (obj.Icon && obj.Icon.href) {
-            imageURL = obj.Icon.href["#text"];
+            const href = obj.Icon.href["#text"];
+            // Check if this image was loaded from a KMZ file
+            if (FileManager.kmzImageMap && FileManager.kmzImageMap[href]) {
+                imageURL = FileManager.kmzImageMap[href];
+                // Find the corresponding fileID for rehosting
+                for (const id in FileManager.list) {
+                    if (FileManager.list[id].kmzHref === href) {
+                        imageFileID = id;
+                        break;
+                    }
+                }
+                console.log(`KML: Resolved href "${href}" to blobURL, fileID: ${imageFileID}`);
+            } else {
+                imageURL = href;
+            }
         }
 
         const overlayName = obj.name ? obj.name["#text"] : name || "KML Overlay";
 
-        const ignoreID = `overlay_${north}_${south}_${east}_${west}_${rotation}`;
+        const ignoreID = `overlay_${north}_${south}_${east}_${west}_${rotation}_${overlayName}`;
         if (CustomManager.shouldIgnore(ignoreID)) {
             console.log("Ignoring KML GroundOverlay " + ignoreID);
             return;
@@ -522,6 +537,7 @@ export class CTrackFileKML extends CTrackFile {
             west: west,
             rotation: rotation,
             imageURL: imageURL,
+            imageFileID: imageFileID,
             name: overlayName
         });
 

@@ -117,6 +117,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         
         const loader = new TextureLoader();
         loader.load(this.imageURL, (texture) => {
+            texture.flipY = false;
             this.texture = texture;
             if (this.overlayMaterial) {
                 this.overlayMaterial.uniforms.map.value = texture;

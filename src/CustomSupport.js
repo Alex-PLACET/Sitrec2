@@ -3249,6 +3249,18 @@ export class CCustomManager {
                 }
             }
             out.loadedFiles = files;
+            
+            // Build metadata for files that need special handling on reload
+            let filesMetadata = {};
+            for (let id in FileManager.list) {
+                const file = FileManager.list[id];
+                if (file.dataType === "kmzImage") {
+                    filesMetadata[id] = { dataType: file.dataType, kmzHref: file.kmzHref };
+                }
+            }
+            if (Object.keys(filesMetadata).length > 0) {
+                out.loadedFilesMetadata = filesMetadata;
+            }
         }
 
         // calculate the modifications to be applied to nodes AFTER the files are loaded
@@ -3618,6 +3630,13 @@ export class CCustomManager {
 
         Globals.deserializing = true;
 
+        // Store file metadata for special handling during loading
+        if (sitchData.loadedFilesMetadata) {
+            FileManager.loadedFilesMetadata = sitchData.loadedFilesMetadata;
+        } else {
+            FileManager.loadedFilesMetadata = {};
+        }
+
         const loadingPromises = [];
         if (sitchData.loadedFiles) {
             // load the files as if they have been drag-and-dropped in
@@ -3643,6 +3662,27 @@ export class CCustomManager {
                             const filename = x.filename;
                             const fileID = x.id ?? x.filename; // use filename as fallback id
                             console.log("HANDLING LOADED FILE ID: " + id + " filename: " + filename);
+                            // Restore dataType and other metadata if available
+                            const metadata = FileManager.loadedFilesMetadata[fileID];
+                            if (metadata?.dataType) {
+                                FileManager.list[fileID].dataType = metadata.dataType;
+                                // For kmzImage files, restore kmzHref and populate kmzImageMap
+                                if (metadata.dataType === "kmzImage" && metadata.kmzHref) {
+                                    FileManager.list[fileID].kmzHref = metadata.kmzHref;
+                                    // Create blobURL from buffer if not already set
+                                    if (!FileManager.list[fileID].blobURL) {
+                                        const buffer = FileManager.list[fileID].data;
+                                        const ext = metadata.kmzHref.split('.').pop().toLowerCase();
+                                        const mimeType = ext === 'png' ? 'image/png' : 
+                                                        ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' :
+                                                        ext === 'gif' ? 'image/gif' : 'image/webp';
+                                        const blob = new Blob([buffer], { type: mimeType });
+                                        FileManager.list[fileID].blobURL = URL.createObjectURL(blob);
+                                    }
+                                    if (!FileManager.kmzImageMap) FileManager.kmzImageMap = {};
+                                    FileManager.kmzImageMap[metadata.kmzHref] = FileManager.list[fileID].blobURL;
+                                }
+                            }
                             FileManager.handleParsedFile(fileID, parsedFile);
                         }
 
