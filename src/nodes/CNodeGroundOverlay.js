@@ -67,10 +67,13 @@ export class CNodeGroundOverlay extends CNode3DGroup {
     }
     
     createMaterial() {
+        const depthBias = -0.0001;
+        
         this.overlayMaterial = new ShaderMaterial({
             uniforms: {
                 map: { value: this.texture },
                 opacity: { value: this.opacity },
+                depthBias: { value: depthBias },
                 ...sharedUniforms,
             },
             vertexShader: `
@@ -85,6 +88,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
             fragmentShader: `
                 uniform sampler2D map;
                 uniform float opacity;
+                uniform float depthBias;
                 uniform float nearPlane;
                 uniform float farPlane;
                 varying vec2 vUv;
@@ -96,18 +100,14 @@ export class CNodeGroundOverlay extends CNode3DGroup {
                     vec4 texColor = texture2D(map, vUv);
                     gl_FragColor = vec4(texColor.rgb, texColor.a * opacity);
                     
-                    // Logarithmic depth calculation
                     float z = (log2(max(nearPlane, 1.0 + vDepth)) / log2(1.0 + farPlane)) * 2.0 - 1.0;
-                    gl_FragDepthEXT = z * 0.5 + 0.5;
+                    gl_FragDepthEXT = z * 0.5 + 0.5 + depthBias;
                 }
             `,
             side: DoubleSide,
             transparent: true,
             depthTest: true,
             depthWrite: false,
-            polygonOffset: true,
-            polygonOffsetFactor: -2,
-            polygonOffsetUnits: -8,
             wireframe: this.wireframe,
         });
     }
@@ -349,7 +349,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
     }
     
     createSkirtMesh(positions, uvs, segments, tile, layerMask) {
-        const skirtDepth = tile.size * 0.1;
+        const skirtDepth = Math.max(this.heightOffset * 2, 5);
         
         const tileNorth = tile.map.options.mapProjection.getNorthLatitude(tile.y, tile.z);
         const tileSouth = tile.map.options.mapProjection.getNorthLatitude(tile.y + 1, tile.z);
@@ -407,11 +407,15 @@ export class CNodeGroundOverlay extends CNode3DGroup {
             for (let i = 0; i < edgeLength; i++) {
                 const curr = edgeStartIdx + i * 2;
                 const next = curr + 2;
-                skirtIndices.push(curr, next, curr + 1);
-                skirtIndices.push(curr + 1, next, next + 1);
+                skirtIndices.push(curr, curr + 1, next);
+                skirtIndices.push(curr + 1, next + 1, next);
             }
             
             vertexIndex += (edgeLength + 1) * 2;
+        }
+        
+        if (skirtVertices.length === 0) {
+            return null;
         }
         
         const skirtGeometry = new BufferGeometry();
