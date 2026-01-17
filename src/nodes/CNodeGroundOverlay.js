@@ -470,9 +470,10 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         if (!mapProjection) return;
         if (!tile.mesh || !tile.mesh.geometry || !tile.loaded) return;
         if (!this.tileOverlapsOverlay(tile, mapProjection)) return;
-        if (!this.overlayTileMeshes.has(tile.key())) return;
         
         const layerMask = tile.mesh.layers.mask;
+        if (layerMask === 0) return;
+        
         this.createOverlayTileFromTerrainTile(tile, mapProjection, layerMask);
         setRenderOne(true);
     }
