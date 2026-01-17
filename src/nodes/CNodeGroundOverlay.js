@@ -11,7 +11,7 @@ import {
     Vector3
 } from "three";
 import * as LAYER from "../LayerMasks";
-import {getLocalUpVector} from "../SphericalMath";
+import {getLocalDownVector, getLocalUpVector} from "../SphericalMath";
 import {EUSToLLA, LLAToEUS} from "../LLA-ECEF-ENU";
 import {makeMouseRay} from "../mouseMoveView";
 import {ViewMan} from "../CViewManager";
@@ -106,8 +106,8 @@ export class CNodeGroundOverlay extends CNode3DGroup {
             depthTest: true,
             depthWrite: false,
             polygonOffset: true,
-            polygonOffsetFactor: -1,
-            polygonOffsetUnits: -4,
+            polygonOffsetFactor: -2,
+            polygonOffsetUnits: -8,
             wireframe: this.wireframe,
         });
     }
@@ -170,18 +170,31 @@ export class CNodeGroundOverlay extends CNode3DGroup {
     }
     
     disposeTileMeshes() {
-        this.overlayTileMeshes.forEach(mesh => {
-            this.group.remove(mesh);
-            if (mesh.geometry) mesh.geometry.dispose();
+        this.overlayTileMeshes.forEach(entry => {
+            if (entry.mesh) {
+                this.group.remove(entry.mesh);
+                if (entry.mesh.geometry) entry.mesh.geometry.dispose();
+            }
+            if (entry.skirtMesh) {
+                this.group.remove(entry.skirtMesh);
+                if (entry.skirtMesh.geometry) entry.skirtMesh.geometry.dispose();
+            }
         });
         this.overlayTileMeshes.clear();
     }
     
     disposeTileMesh(tileKey) {
-        const mesh = this.overlayTileMeshes.get(tileKey);
-        if (mesh) {
-            this.group.remove(mesh);
-            if (mesh.geometry) mesh.geometry.dispose();
+        const entry = this.overlayTileMeshes.get(tileKey);
+        if (entry) {
+
+            if (entry.mesh) {
+                this.group.remove(entry.mesh);
+                if (entry.mesh.geometry) entry.mesh.geometry.dispose();
+            }
+            if (entry.skirtMesh) {
+                this.group.remove(entry.skirtMesh);
+                if (entry.skirtMesh.geometry) entry.skirtMesh.geometry.dispose();
+            }
             this.overlayTileMeshes.delete(tileKey);
         }
     }
@@ -287,6 +300,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         const tilePosition = tile.mesh.position;
         const groupPosition = this.group.position;
         
+        const segments = Globals.settings.tileSegments ?? 64;
         const vertexCount = sourcePositions.length / 3;
         const newPositions = new Float32Array(sourcePositions.length);
         const newUVs = new Float32Array(vertexCount * 2);
@@ -325,7 +339,92 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         overlayMesh.frustumCulled = false;
         
         this.group.add(overlayMesh);
-        this.overlayTileMeshes.set(tileKey, overlayMesh);
+        
+        const skirtMesh = this.createSkirtMesh(newPositions, newUVs, segments, tile, layerMask);
+        if (skirtMesh) {
+            this.group.add(skirtMesh);
+        }
+        
+        this.overlayTileMeshes.set(tileKey, {mesh: overlayMesh, skirtMesh});
+    }
+    
+    createSkirtMesh(positions, uvs, segments, tile, layerMask) {
+        const skirtDepth = tile.size * 0.1;
+        
+        const tileNorth = tile.map.options.mapProjection.getNorthLatitude(tile.y, tile.z);
+        const tileSouth = tile.map.options.mapProjection.getNorthLatitude(tile.y + 1, tile.z);
+        const tileWest = tile.map.options.mapProjection.getLeftLongitude(tile.x, tile.z);
+        const tileEast = tile.map.options.mapProjection.getLeftLongitude(tile.x + 1, tile.z);
+        const centerLat = (tileNorth + tileSouth) / 2;
+        const centerLon = (tileWest + tileEast) / 2;
+        const centerPosition = LLAToEUS(centerLat, centerLon, 0);
+        const downVector = getLocalDownVector(centerPosition);
+        
+        const skirtVertices = [];
+        const skirtUvs = [];
+        const skirtIndices = [];
+        
+        const getVertexIndex = (x, y) => (y * (segments + 1) + x);
+        
+        const edges = [
+            {start: [0, 0], end: [segments, 0], direction: [1, 0]},
+            {start: [segments, 0], end: [segments, segments], direction: [0, 1]},
+            {start: [segments, segments], end: [0, segments], direction: [-1, 0]},
+            {start: [0, segments], end: [0, 0], direction: [0, -1]}
+        ];
+        
+        let vertexIndex = 0;
+        
+        for (const edge of edges) {
+            const [startX, startY] = edge.start;
+            const [endX, endY] = edge.end;
+            const [dirX, dirY] = edge.direction;
+            const edgeLength = Math.abs(endX - startX) + Math.abs(endY - startY);
+            
+            for (let i = 0; i <= edgeLength; i++) {
+                const x = startX + dirX * i;
+                const y = startY + dirY * i;
+                const mainIdx = getVertexIndex(x, y);
+                
+                const mainX = positions[mainIdx * 3];
+                const mainY = positions[mainIdx * 3 + 1];
+                const mainZ = positions[mainIdx * 3 + 2];
+                const mainU = uvs[mainIdx * 2];
+                const mainV = uvs[mainIdx * 2 + 1];
+                
+                skirtVertices.push(mainX, mainY, mainZ);
+                skirtUvs.push(mainU, mainV);
+                
+                skirtVertices.push(
+                    mainX + downVector.x * skirtDepth,
+                    mainY + downVector.y * skirtDepth,
+                    mainZ + downVector.z * skirtDepth
+                );
+                skirtUvs.push(mainU, mainV);
+            }
+            
+            const edgeStartIdx = vertexIndex;
+            for (let i = 0; i < edgeLength; i++) {
+                const curr = edgeStartIdx + i * 2;
+                const next = curr + 2;
+                skirtIndices.push(curr, next, curr + 1);
+                skirtIndices.push(curr + 1, next, next + 1);
+            }
+            
+            vertexIndex += (edgeLength + 1) * 2;
+        }
+        
+        const skirtGeometry = new BufferGeometry();
+        skirtGeometry.setAttribute('position', new Float32BufferAttribute(skirtVertices, 3));
+        skirtGeometry.setAttribute('uv', new Float32BufferAttribute(skirtUvs, 2));
+        skirtGeometry.setIndex(skirtIndices);
+        skirtGeometry.computeVertexNormals();
+        
+        const skirtMesh = new Mesh(skirtGeometry, this.overlayMaterial);
+        skirtMesh.layers.mask = layerMask;
+        skirtMesh.frustumCulled = false;
+        
+        return skirtMesh;
     }
     
     updateMesh() {
@@ -425,11 +524,15 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         EventManager.addEventListener("tileChanged", this.onTileChangedBound);
     }
     
-    getMapProjection() {
+    getTerrainMap() {
         if (!NodeMan.exists("TerrainModel")) return null;
         const terrainNode = NodeMan.get("TerrainModel");
         if (!terrainNode.maps || !terrainNode.UI) return null;
-        const terrainMap = terrainNode.maps[terrainNode.UI.mapType]?.map;
+        return terrainNode.maps[terrainNode.UI.mapType]?.map || null;
+    }
+    
+    getMapProjection() {
+        const terrainMap = this.getTerrainMap();
         if (!terrainMap) return null;
         return terrainMap.options?.mapProjection;
     }
@@ -443,30 +546,39 @@ export class CNodeGroundOverlay extends CNode3DGroup {
     }
     
     onTileVisibilityChanged({tile, oldMask, newMask}) {
+        const terrainMap = this.getTerrainMap();
+        if (!terrainMap || tile.map !== terrainMap) {
+            return;
+        }
+        
         const tileKey = tile.key();
         
-        if (oldMask === 0 && newMask !== 0) {
-            const mapProjection = this.getMapProjection();
-            if (!mapProjection) return;
-            if (!tile.mesh || !tile.mesh.geometry || !tile.loaded) return;
-            if (!this.tileOverlapsOverlay(tile, mapProjection)) return;
-            
-            this.createOverlayTileFromTerrainTile(tile, mapProjection, newMask);
-            setRenderOne(true);
-        } else if (oldMask !== 0 && newMask === 0) {
+        if (newMask === 0) {
             this.disposeTileMesh(tileKey);
             setRenderOne(true);
-        } else if (oldMask !== newMask) {
-            const overlayMesh = this.overlayTileMeshes.get(tileKey);
-            if (overlayMesh) {
-                overlayMesh.layers.mask = newMask;
+        } else if (newMask !== 0) {
+            const entry = this.overlayTileMeshes.get(tileKey);
+            if (entry) {
+                if (entry.mesh) entry.mesh.layers.mask = newMask;
+                if (entry.skirtMesh) entry.skirtMesh.layers.mask = newMask;
+                setRenderOne(true);
+            } else {
+                const mapProjection = terrainMap.options?.mapProjection;
+                if (!mapProjection) return;
+                if (!tile.mesh || !tile.mesh.geometry || !tile.loaded) return;
+                if (!this.tileOverlapsOverlay(tile, mapProjection)) return;
+                
+                this.createOverlayTileFromTerrainTile(tile, mapProjection, newMask);
                 setRenderOne(true);
             }
         }
     }
     
     onTileChanged(tile) {
-        const mapProjection = this.getMapProjection();
+        const terrainMap = this.getTerrainMap();
+        if (!terrainMap || tile.map !== terrainMap) return;
+        
+        const mapProjection = terrainMap.options?.mapProjection;
         if (!mapProjection) return;
         if (!tile.mesh || !tile.mesh.geometry || !tile.loaded) return;
         if (!this.tileOverlapsOverlay(tile, mapProjection)) return;
@@ -650,6 +762,8 @@ export class CNodeGroundOverlay extends CNode3DGroup {
             }
         }}, 'remove').name('Delete Overlay');
         
+        this.guiFolder.add({debug: () => this.dumpState()}, 'debug').name('Debug State');
+        
         this.guiFolder.close();
     }
     
@@ -725,6 +839,45 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         });
     }
     
+    dumpState() {
+        console.log(`[Overlay] ===== ${this.overlayID} state =====`);
+        
+        const terrainMap = this.getTerrainMap();
+        const mapProjection = terrainMap?.options?.mapProjection;
+        const terrainTileKeys = new Set();
+        const overlayTileKeys = new Set(this.overlayTileMeshes.keys());
+        const zoomCounts = {};
+        
+        if (terrainMap && mapProjection) {
+            terrainMap.forEachTile((tile) => {
+                if (tile.mesh && tile.mesh.layers.mask !== 0 && tile.loaded) {
+                    if (this.tileOverlapsOverlay(tile, mapProjection)) {
+                        terrainTileKeys.add(tile.key());
+                        zoomCounts[tile.z] = (zoomCounts[tile.z] || 0) + 1;
+                    }
+                }
+            });
+        }
+        
+        const missingOverlays = [...terrainTileKeys].filter(k => !overlayTileKeys.has(k));
+        const extraOverlays = [...overlayTileKeys].filter(k => !terrainTileKeys.has(k));
+        
+        console.log(`[Overlay] Terrain tiles: ${terrainTileKeys.size}, Overlay tiles: ${overlayTileKeys.size}`);
+        console.log(`[Overlay] Zoom distribution:`, zoomCounts);
+        
+        if (missingOverlays.length > 0) {
+            console.warn(`[Overlay] MISSING overlays for terrain tiles:`, missingOverlays);
+        }
+        if (extraOverlays.length > 0) {
+            console.warn(`[Overlay] EXTRA overlay tiles (no terrain):`, extraOverlays);
+        }
+        if (missingOverlays.length === 0 && extraOverlays.length === 0) {
+            console.log(`[Overlay] ✓ In sync`);
+        }
+        
+        console.log(`[Overlay] ===========================`);
+    }
+    
     dispose() {
         document.removeEventListener('pointerdown', this.onPointerDownBound);
         document.removeEventListener('pointermove', this.onPointerMoveBound);
@@ -742,6 +895,9 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         if (this.guiFolder) {
             this.guiFolder.destroy();
         }
+        
+        const ignoreID = `overlay_${this.north}_${this.south}_${this.east}_${this.west}_${this.rotation}`;
+        CustomManager.unignore(ignoreID);
         
         super.dispose();
     }

@@ -3438,6 +3438,16 @@ export class CCustomManager {
         return Sit.ignores.includes(id);
     }
 
+    unignore(id) {
+        if (Sit.ignores === undefined) {
+            return;
+        }
+        const index = Sit.ignores.indexOf(id);
+        if (index !== -1) {
+            Sit.ignores.splice(index, 1);
+        }
+    }
+
     // For saving a modified legacy sitch, like Gimbal, use the original name, with _mod
     // and make the version from the datetime as normal
     serializeMod() {
