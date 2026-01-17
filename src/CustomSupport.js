@@ -63,6 +63,7 @@ import {textSitchToObject} from "./RegisterSitches";
 import {parseObjectInput as parseObjectInputUtil} from "./utils/parseObjectInput";
 import {initializeSettings, SettingsSaver} from "./SettingsManager";
 import {CNodeCurveEditor2} from "./nodes/CNodeCurveEdit2";
+import {CNodeViewDAG} from "./nodes/CNodeViewDAG";
 import {createCustomModalWithCopy, saveFilePrompted} from "./FileUtils";
 import {deserializeMotionAnalysis, getMotionAnalysisOverlays, serializeMotionAnalysis} from "./CMotionAnalysis";
 import {setupPanoramaExport} from "./PanoramaExporter";
@@ -653,6 +654,17 @@ export class CCustomManager {
         // // Example of mirroring the Flow Orbs menu (or effects menu if no Flow Orbs exist)
         // this.setupFlowOrbsMirrorExample();
 
+        if (!NodeMan.exists("dagView") && (isLocal || Globals.userID === 1)) {
+            new CNodeViewDAG({
+                id: "dagView",
+                visible: false,
+                left: 0,
+                top: 0,
+                width: 1,
+                height: 1,
+                draggable: false,
+            });
+        }
 
         // Set up the fovEditor and add it to fovSwitch
         if (!NodeMan.exists("fovEditor")) {

@@ -50,6 +50,7 @@ import {isConsole} from "./configUtils";
 import {CNodeMirrorVideoView} from "./nodes/CNodeMirrorVideoView";
 import {CNodeTerrainUI} from "./nodes/CNodeTerrainUI";
 import {showError} from "./showError";
+import {CNodeViewDAG} from "./nodes/CNodeViewDAG";
 
 export async function SituationSetup(runDeferred = false) {
     console.log("++++++ SituationSetup")
@@ -971,6 +972,19 @@ export async function SetupFromKeyAndData(key, _data, depth=0) {
 
             labelVideo.setVisible(true)
             node = labelVideo;
+            break;
+
+        case "dagView":
+            SSLog();
+            node = new CNodeViewDAG({
+                id: data.id ?? "dagView",
+                visible: data.visible ?? false,
+                left: data.left ?? 0,
+                top: data.top ?? 0,
+                width: data.width ?? 1,
+                height: data.height ?? 1,
+                ...data,
+            });
             break;
 
         case "tilt":
