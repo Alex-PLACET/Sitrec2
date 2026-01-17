@@ -36,7 +36,6 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         this.rotation = v.rotation !== undefined ? v.rotation : 0;
         
         this.imageURL = v.imageURL || "";
-        this.heightOffset = v.heightOffset !== undefined ? v.heightOffset : 1;
         this.wireframe = v.wireframe !== undefined ? v.wireframe : false;
         this.opacity = v.opacity !== undefined ? v.opacity : 1.0;
         
@@ -310,12 +309,15 @@ export class CNodeGroundOverlay extends CNode3DGroup {
             const y = sourcePositions[i * 3 + 1];
             const z = sourcePositions[i * 3 + 2];
             
-            const worldPos = new Vector3(x + tilePosition.x, y + tilePosition.y, z + tilePosition.z);
-            const adjustedPos = pointAbove(worldPos, this.heightOffset);
+            const worldX = x + tilePosition.x;
+            const worldY = y + tilePosition.y;
+            const worldZ = z + tilePosition.z;
             
-            newPositions[i * 3] = adjustedPos.x - groupPosition.x;
-            newPositions[i * 3 + 1] = adjustedPos.y - groupPosition.y;
-            newPositions[i * 3 + 2] = adjustedPos.z - groupPosition.z;
+            newPositions[i * 3] = worldX - groupPosition.x;
+            newPositions[i * 3 + 1] = worldY - groupPosition.y;
+            newPositions[i * 3 + 2] = worldZ - groupPosition.z;
+            
+            const worldPos = new Vector3(worldX, worldY, worldZ);
             
             const lla = EUSToLLA(worldPos);
             const {u, v} = this.latLonToUV(lla.x, lla.y);
@@ -349,7 +351,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
     }
     
     createSkirtMesh(positions, uvs, segments, tile, layerMask) {
-        const skirtDepth = Math.max(this.heightOffset * 2, 5);
+        const skirtDepth = 5;
         
         const tileNorth = tile.map.options.mapProjection.getNorthLatitude(tile.y, tile.z);
         const tileSouth = tile.map.options.mapProjection.getNorthLatitude(tile.y + 1, tile.z);
@@ -446,7 +448,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         
         corners.forEach((pos, index) => {
             const groundPos = getPointBelow(pos);
-            const adjustedPos = pointAbove(groundPos, this.heightOffset + 5);
+            const adjustedPos = pointAbove(groundPos, 5);
             
             const geometry = new SphereGeometry(handleSize, 16, 16);
             const material = new MeshBasicMaterial({color: 0xffff00, transparent: true, opacity: 0.8});
@@ -463,7 +465,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         const centerLon = (this.east + this.west) / 2;
         const centerEUS = LLAToEUS(centerLat, centerLon, 0);
         const groundCenter = getPointBelow(centerEUS);
-        const adjustedCenter = pointAbove(groundCenter, this.heightOffset + 5);
+        const adjustedCenter = pointAbove(groundCenter, 5);
         
         const rotGeometry = new SphereGeometry(handleSize * 0.8, 16, 16);
         const rotMaterial = new MeshBasicMaterial({color: 0x00ffff, transparent: true, opacity: 0.8});
@@ -734,11 +736,6 @@ export class CNodeGroundOverlay extends CNode3DGroup {
             CustomManager.saveGlobalSettings();
         });
         
-        this.guiFolder.add(this, 'heightOffset', 0, 100, 0.1).name('Height Offset').onChange(() => {
-            this.updateMesh();
-            CustomManager.saveGlobalSettings();
-        });
-        
         this.guiFolder.add(this, 'wireframe').name('Wireframe').onChange(() => {
             if (this.overlayMaterial) {
                 this.overlayMaterial.wireframe = this.wireframe;
@@ -821,7 +818,6 @@ export class CNodeGroundOverlay extends CNode3DGroup {
             west: this.west,
             rotation: this.rotation,
             imageURL: this.imageURL,
-            heightOffset: this.heightOffset,
             wireframe: this.wireframe,
             opacity: this.opacity,
         };
@@ -837,7 +833,6 @@ export class CNodeGroundOverlay extends CNode3DGroup {
             west: data.west,
             rotation: data.rotation,
             imageURL: data.imageURL,
-            heightOffset: data.heightOffset,
             wireframe: data.wireframe,
             opacity: data.opacity,
         });
