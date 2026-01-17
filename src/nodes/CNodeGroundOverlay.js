@@ -219,6 +219,14 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         return {u, v};
     }
     
+    updateGroupPosition() {
+        const centerLat = (this.north + this.south) / 2;
+        const centerLon = (this.east + this.west) / 2;
+        const centerEUS = LLAToEUS(centerLat, centerLon, 0);
+        const groundCenter = getPointBelow(centerEUS);
+        this.group.position.copy(groundCenter);
+    }
+    
     buildMesh() {
         this.disposeTileMeshes();
         
@@ -240,6 +248,8 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         if (!mapProjection) {
             return;
         }
+        
+        this.updateGroupPosition();
         
         terrainMap.forEachTile((tile) => {
             if (!tile.mesh || !tile.mesh.geometry || !tile.loaded) {
@@ -275,6 +285,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         const sourcePositions = sourceGeometry.attributes.position.array;
         const sourceIndex = sourceGeometry.index ? sourceGeometry.index.array : null;
         const tilePosition = tile.mesh.position;
+        const groupPosition = this.group.position;
         
         const vertexCount = sourcePositions.length / 3;
         const newPositions = new Float32Array(sourcePositions.length);
@@ -288,9 +299,9 @@ export class CNodeGroundOverlay extends CNode3DGroup {
             const worldPos = new Vector3(x + tilePosition.x, y + tilePosition.y, z + tilePosition.z);
             const adjustedPos = pointAbove(worldPos, this.heightOffset);
             
-            newPositions[i * 3] = adjustedPos.x;
-            newPositions[i * 3 + 1] = adjustedPos.y;
-            newPositions[i * 3 + 2] = adjustedPos.z;
+            newPositions[i * 3] = adjustedPos.x - groupPosition.x;
+            newPositions[i * 3 + 1] = adjustedPos.y - groupPosition.y;
+            newPositions[i * 3 + 2] = adjustedPos.z - groupPosition.z;
             
             const lla = EUSToLLA(worldPos);
             const {u, v} = this.latLonToUV(lla.x, lla.y);
