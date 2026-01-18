@@ -74,18 +74,18 @@ export class CCustomManager {
         document.addEventListener('gui-order-changed', (event) => {
             this.handleGUIOrderChange(event.detail.gui);
         });
-        
+
         // Settings will be initialized in setup() after login check
         this.settingsInitialized = false;
-        
+
         // Settings saver with intelligent debouncing (5 second delay)
         this.settingsSaver = new SettingsSaver(5000);
     }
-    
+
     async initializeSettings() {
         await initializeSettings();
     }
-    
+
     /**
      * Save settings with intelligent debouncing
      * Delegates to SettingsSaver for all debouncing logic
@@ -103,7 +103,7 @@ export class CCustomManager {
     disposeObjectWithControllers(nodeId) {
         const node = NodeMan.get(nodeId, false);
         if (!node) return;
-        
+
         // Dispose all controllers first (they may have their own resources to clean up)
         const controllerIds = [];
         for (const inputId in node.inputs) {
@@ -112,26 +112,26 @@ export class CCustomManager {
                 controllerIds.push(input.id);
             }
         }
-        
+
         // Dispose controllers
         for (const controllerId of controllerIds) {
             NodeMan.disposeRemove(controllerId);
         }
-        
+
         // Finally dispose the object itself
         NodeMan.disposeRemove(nodeId);
     }
-    
+
     setupSettingsMenu() {
         // Create Settings folder in the Sitrec menu
-        const tooltipText = Globals.userID > 0 
+        const tooltipText = Globals.userID > 0
             ? "Per-user settings saved to server (with cookie backup)"
             : "Per-user settings saved in browser cookies";
-        
+
         const settingsFolder = guiMenus.main.addFolder("Settings")
             .tooltip(tooltipText)
             .close();
-        
+
         // Add Max Details slider
         settingsFolder.add(Globals.settings, "maxDetails", 5, 30, 1)
             .name("Max Details")
@@ -141,10 +141,10 @@ export class CCustomManager {
                 const newValue = Math.max(5, Math.min(30, Math.round(value)));
                 Globals.settings.maxDetails = newValue;
             })
-            .onFinishChange(()=>{
+            .onFinishChange(() => {
                 // When we release the slider, force immediate save and recalculate everything
                 this.saveGlobalSettings(true);
-                
+
                 // Recalculate terrain to avoid holes when going from high to low detail
                 const terrainNode = NodeMan.get("terrainUI", false);
                 if (terrainNode) {
@@ -153,7 +153,7 @@ export class CCustomManager {
                 }
             })
             .listen();
-        
+
         // Add FPS Limit dropdown - dropdown doesn't need onFinishChange, immediate save is fine
         settingsFolder.add(Globals.settings, "fpsLimit", [60, 30, 20, 15])
             .name("Frame Rate Limit")
@@ -162,7 +162,7 @@ export class CCustomManager {
                 this.saveGlobalSettings(true);
             })
             .listen();
-        
+
         // Add Tile Segments dropdown
         settingsFolder.add(Globals.settings, "tileSegments", [8, 16, 32, 64, 128])
             .name("Tile Segments")
@@ -170,7 +170,7 @@ export class CCustomManager {
             .onFinishChange(() => {
                 // When selection is finalized, force immediate save and refresh terrain
                 this.saveGlobalSettings(true);
-                
+
                 // Refresh terrain with new mesh resolution
                 const terrainUI = NodeMan.get("terrainUI", false);
                 if (terrainUI) {
@@ -178,7 +178,7 @@ export class CCustomManager {
                 }
             })
             .listen();
-        
+
         // Add Max Resolution dropdown - dropdown doesn't need onFinishChange
         settingsFolder.add(Globals.settings, "videoMaxSize", ["None", "1080P", "720P", "480P", "360P"])
             .name("Max Resolution")
@@ -187,20 +187,20 @@ export class CCustomManager {
                 this.saveGlobalSettings(true);
             })
             .listen();
-        
+
         // Add AI Model selector dropdown (bound directly to Globals.settings.chatModel)
         this.availableChatModels = [];
-        this.chatModelController = settingsFolder.add(Globals.settings, "chatModel", {"Loading...": ""})
+        this.chatModelController = settingsFolder.add(Globals.settings, "chatModel", { "Loading...": "" })
             .name("AI Model")
             .tooltip("Select the AI model for the chat assistant")
             .onChange(() => {
                 this.saveGlobalSettings(true);
             });
-        
+
         // Fetch available models from server
         this.fetchAvailableChatModels();
     }
-    
+
     async fetchAvailableChatModels() {
         try {
             const res = await fetch(SITREC_SERVER + 'chatbot.php?fetchModels=1');
@@ -213,27 +213,27 @@ export class CCustomManager {
             this.updateChatModelSelector();
         }
     }
-    
+
     updateChatModelSelector() {
         if (!this.chatModelController) return;
-        
+
         // Build options object: {label: "provider:model", ...}
         const options = {};
         for (const model of this.availableChatModels) {
             options[model.label] = `${model.provider}:${model.model}`;
         }
-        
+
         if (Object.keys(options).length === 0) {
             options["No models available"] = "";
         }
-        
+
         // Update the controller with new options
         this.chatModelController.options(options);
-        
+
         // Validate saved setting and select appropriate model
         const savedModel = Globals.settings.chatModel;
         const validValues = Object.values(options);
-        
+
         if (savedModel && validValues.includes(savedModel)) {
             // Saved model is valid, use it - just refresh the display
             this.chatModelController.updateDisplay();
@@ -253,7 +253,7 @@ export class CCustomManager {
     handleGUIOrderChange(changedGui) {
         // Find all standalone menus that mirror this GUI or any of its ancestors
         const allContainers = Array.from(document.querySelectorAll('[id^="menuBarDiv_"]'));
-        
+
         allContainers.forEach((container) => {
             const gui = container._gui;
             if (gui && gui._standaloneContainer && gui._mirrorSource) {
@@ -277,7 +277,7 @@ export class CCustomManager {
         if (sourceGui === changedGui) {
             return true;
         }
-        
+
         // Check if changedGui is a child of sourceGui
         let current = changedGui.parent;
         while (current) {
@@ -286,7 +286,7 @@ export class CCustomManager {
             }
             current = current.parent;
         }
-        
+
         // Check if sourceGui is a child of changedGui
         current = sourceGui.parent;
         while (current) {
@@ -295,7 +295,7 @@ export class CCustomManager {
             }
             current = current.parent;
         }
-        
+
         return false;
     }
 
@@ -306,7 +306,7 @@ export class CCustomManager {
 
         // default to paused, as there's nothing to animate yet
         par.paused = true;
-        
+
         // Initialize settings first (after login check)
         // this will only be done once per session
         if (!this.settingsInitialized) {
@@ -342,7 +342,7 @@ export class CCustomManager {
             } else {
                 infoDiv.style.display = 'none';
             }
-        }).tooltip ("Show or hide the keyboard shortcuts overlay")
+        }).tooltip("Show or hide the keyboard shortcuts overlay")
         )
 
         toggler('e', guiMenus.contents.add(this, "toggleExtendToGround")
@@ -540,53 +540,53 @@ export class CCustomManager {
                 // video: {visible: true, left: 0.5, top: 0, width: -1.7927, height: 0.5},
                 // mainView: {visible: true, left: 0.0, top: 0, width: 0.5, height: 1},
                 // lookView: {visible: true, left: 0.5, top: 0.5, width: -1.7927, height: 0.5},
-                mainView: {visible: true, left: 0.0, top: 0, width: 0.5, height: 1},
-                video: {visible: true, left: 0.5, top: 0, width: 0.5, height: 0.5},
-                lookView: {visible: true, left: 0.5, top: 0.5, width: 0.5, height: 0.5},
-                chatView: {left: 0.25, top: 0.10, width: 0.25, height: 0.85,}, // does not work
+                mainView: { visible: true, left: 0.0, top: 0, width: 0.5, height: 1 },
+                video: { visible: true, left: 0.5, top: 0, width: 0.5, height: 0.5 },
+                lookView: { visible: true, left: 0.5, top: 0.5, width: 0.5, height: 0.5 },
+                chatView: { left: 0.25, top: 0.10, width: 0.25, height: 0.85, }, // does not work
             },
 
             SideBySide: {
                 keypress: "2",
-                mainView: {visible: true, left: 0.0, top: 0, width: 0.5, height: 1},
-                video: {visible: false},
-                lookView: {visible: true, left: 0.5, top: 0, width: 0.5, height: 1},
+                mainView: { visible: true, left: 0.0, top: 0, width: 0.5, height: 1 },
+                video: { visible: false },
+                lookView: { visible: true, left: 0.5, top: 0, width: 0.5, height: 1 },
             },
 
             TopandBottom: {
                 keypress: "3",
-                mainView: {visible: true, left: 0.0, top: 0, width: 1, height: 0.5},
-                video: {visible: false},
-                lookView: {visible: true, left: 0.0, top: 0.5, width: 1, height: 0.5},
+                mainView: { visible: true, left: 0.0, top: 0, width: 1, height: 0.5 },
+                video: { visible: false },
+                lookView: { visible: true, left: 0.0, top: 0.5, width: 1, height: 0.5 },
             },
 
             ThreeWide: {
                 keypress: "4",
-                mainView: {visible: true, left: 0.0, top: 0, width: 0.333, height: 1},
-                video: {visible: true, left: 0.333, top: 0, width: 0.333, height: 1},
-                lookView: {visible: true, left: 0.666, top: 0, width: 0.333, height: 1},
+                mainView: { visible: true, left: 0.0, top: 0, width: 0.333, height: 1 },
+                video: { visible: true, left: 0.333, top: 0, width: 0.333, height: 1 },
+                lookView: { visible: true, left: 0.666, top: 0, width: 0.333, height: 1 },
             },
 
             TallVideo: {
                 keypress: "5",
-                mainView: {visible: true, left: 0.0, top: 0, width: 0.50, height: 1},
-                video: {visible: true, left: 0.5, top: 0, width: 0.25, height: 1},
-                lookView: {visible: true, left: 0.75, top: 0, width: 0.25, height: 1},
+                mainView: { visible: true, left: 0.0, top: 0, width: 0.50, height: 1 },
+                video: { visible: true, left: 0.5, top: 0, width: 0.25, height: 1 },
+                lookView: { visible: true, left: 0.75, top: 0, width: 0.25, height: 1 },
 
             },
 
             VideoLookHorizontal: {
                 keypress: "6",
-                mainView: {visible: false},
-                video: {visible: true, left: 0.0, top: 0, width: 1, height: 0.5},
-                lookView: {visible: true, left: 0.0, top: 0.5, width: 1, height: 0.5},
+                mainView: { visible: false },
+                video: { visible: true, left: 0.0, top: 0, width: 1, height: 0.5 },
+                lookView: { visible: true, left: 0.0, top: 0.5, width: 1, height: 0.5 },
             },
 
             VideoLookVertical: {
                 keypress: "7",
-                mainView: {visible: false},
-                video: {visible: true, left: 0.0, top: 0, width: 0.5, height: 1},
-                lookView: {visible: true, left: 0.5, top: 0, width: 0.5, height: 1},
+                mainView: { visible: false },
+                video: { visible: true, left: 0.0, top: 0, width: 0.5, height: 1 },
+                lookView: { visible: true, left: 0.5, top: 0, width: 0.5, height: 1 },
 
             },
         }
@@ -697,8 +697,14 @@ export class CCustomManager {
         this.subSitchFolder = guiMenus.view.addFolder("Sub Sitches").close()
             .tooltip("Manage multiple camera/view configurations within this sitch");
 
-        this.subSitchFolder.add(this, "addSubSitch").name("Add Sub")
-            .tooltip("Duplicate current camera and view settings into a new Sub Sitch");
+        this.subSitchFolder.add(this, "updateSubSitch").name("Update Sub")
+            .tooltip("Update the currently selected Sub Sitch with the current view settings");
+
+        this.subSitchFolder.add(this, "updateAndAddSubSitch").name("Update Current and Add New Sub")
+            .tooltip("Update current Sub Sitch, then duplicate it into a new Sub Sitch");
+
+        this.subSitchFolder.add(this, "discardAndAddSubSitch").name("Discard Current and Add New")
+            .tooltip("Discard changes to current Sub Sitch, and invoke a new Sub Sitch from current state");
 
         this.subSitchFolder.add(this, "renameCurrentSubSitch").name("Rename Current Sub")
             .tooltip("Rename the currently selected Sub Sitch");
@@ -726,10 +732,10 @@ export class CCustomManager {
         // - defaultOn: 1 = enabled by default, 0 = disabled by default
         // - patterns: exact node ID match, or *pattern* for case-insensitive includes
         this.subIncludes = {
-            Views:       [1, "mainView", "lookView", "video", "chatView", "*View*"],
-            Cameras:     [1, "mainCamera", "lookCamera", "fixedCameraPosition", "ptzAngles", "*Camera*"],
+            Views: [1, "mainView", "lookView", "video", "chatView", "*View*"],
+            Cameras: [1, "mainCamera", "lookCamera", "fixedCameraPosition", "ptzAngles", "*Camera*"],
             "Date/Time": [1, "dateTimeStart", "*DateTime*"],
-            Others:      [0, "lighting", "*Lighting*", "*Effect*", "*Target*", "targetObject", "traverseObject"]
+            Others: [0, "lighting", "*Lighting*", "*Effect*", "*Target*", "targetObject", "traverseObject"]
         };
 
         this.subSaveEnabled = {};
@@ -757,7 +763,7 @@ export class CCustomManager {
 
     syncSubSaveDetails() {
         if (this.subSitches.length === 0 || this.currentSubIndex < 0) return;
-        
+
         const currentSub = this.subSitches[this.currentSubIndex];
         if (!currentSub.state || !currentSub.state.mods) return;
 
@@ -827,7 +833,7 @@ export class CCustomManager {
 
     getSubSitchNodes() {
         const nodeIds = [];
-        
+
         NodeMan.iterate((id, node) => {
             if (node.modSerialize !== undefined) {
                 if (this.shouldIncludeNodeForSave(id)) {
@@ -835,7 +841,7 @@ export class CCustomManager {
                 }
             }
         });
-        
+
         return nodeIds;
     }
 
@@ -845,9 +851,9 @@ export class CCustomManager {
             focusTracks: {},
             lockTracks: {}
         };
-        
+
         const nodeIds = this.getSubSitchNodes();
-        
+
         for (const id of nodeIds) {
             const node = NodeMan.get(id, false);
             if (node && node.modSerialize) {
@@ -858,7 +864,7 @@ export class CCustomManager {
                 if (Object.keys(nodeMod).length > 0) {
                     state.mods[id] = nodeMod;
                 }
-                
+
                 if (node.focusTrackName !== undefined) {
                     state.focusTracks[id] = node.focusTrackName;
                 }
@@ -867,15 +873,15 @@ export class CCustomManager {
                 }
             }
         }
-        
+
         return state;
     }
 
     restoreSubSitchState(state) {
         if (!state || !state.mods) return;
-        
+
         Globals.dontRecalculate = true;
-        
+
         const restoredIds = [];
         for (const id in state.mods) {
             if (!this.shouldIncludeNodeForLoad(id)) continue;
@@ -885,7 +891,7 @@ export class CCustomManager {
                 restoredIds.push(id);
             }
         }
-        
+
         for (const id in state.focusTracks) {
             if (!this.shouldIncludeNodeForLoad(id)) continue;
             const node = NodeMan.get(id, false);
@@ -893,7 +899,7 @@ export class CCustomManager {
                 node.focusTrackName = state.focusTracks[id];
             }
         }
-        
+
         for (const id in state.lockTracks) {
             if (!this.shouldIncludeNodeForLoad(id)) continue;
             const node = NodeMan.get(id, false);
@@ -901,31 +907,41 @@ export class CCustomManager {
                 node.lockTrackName = state.lockTracks[id];
             }
         }
-        
+
         Globals.dontRecalculate = false;
-        
+
         for (const id of restoredIds) {
             const node = NodeMan.get(id, false);
             if (node) {
                 node.recalculateCascade();
             }
         }
-        
+
         setRenderOne(true);
     }
 
-    addSubSitch() {
-        this.saveCurrentSubSitch();
-        
-        const state = this.captureSubSitchState();
+    pushNewSubSitch(state) {
         const newIndex = this.subSitches.length + 1;
         this.subSitches.push({
             name: "Sub " + newIndex,
             state: state
         });
-        
+
         this.currentSubIndex = this.subSitches.length - 1;
         this.rebuildSubSitchMenu();
+    }
+
+    updateSubSitch() {
+        this.saveCurrentSubSitch();
+    }
+
+    updateAndAddSubSitch() {
+        this.saveCurrentSubSitch();
+        this.pushNewSubSitch(this.captureSubSitchState());
+    }
+
+    discardAndAddSubSitch() {
+        this.pushNewSubSitch(this.captureSubSitchState());
     }
 
     saveCurrentSubSitch() {
@@ -937,21 +953,21 @@ export class CCustomManager {
     switchToSubSitch(index) {
         if (index < 0 || index >= this.subSitches.length) return;
         if (index === this.currentSubIndex) return;
-        
-        this.saveCurrentSubSitch();
-        
+
+        // this.saveCurrentSubSitch(); // No auto-save on switch
+
         this.currentSubIndex = index;
         this.restoreSubSitchState(this.subSitches[index].state);
-        
+
         this.rebuildSubSitchMenu();
     }
 
     renameCurrentSubSitch() {
         if (this.subSitches.length === 0) return;
-        
+
         const currentSub = this.subSitches[this.currentSubIndex];
         const newName = prompt("Enter new name for Sub Sitch:", currentSub.name);
-        
+
         if (newName && newName.trim()) {
             currentSub.name = newName.trim();
             this.rebuildSubSitchMenu();
@@ -963,16 +979,16 @@ export class CCustomManager {
             alert("Cannot delete the last Sub Sitch.");
             return;
         }
-        
+
         const currentSub = this.subSitches[this.currentSubIndex];
         if (!confirm(`Delete "${currentSub.name}"?`)) return;
-        
+
         this.subSitches.splice(this.currentSubIndex, 1);
-        
+
         if (this.currentSubIndex >= this.subSitches.length) {
             this.currentSubIndex = this.subSitches.length - 1;
         }
-        
+
         this.restoreSubSitchState(this.subSitches[this.currentSubIndex].state);
         this.rebuildSubSitchMenu();
     }
@@ -982,20 +998,20 @@ export class CCustomManager {
             controller.destroy();
         }
         this.subSitchControllers = [];
-        
+
         for (let i = 0; i < this.subSitches.length; i++) {
             const sub = this.subSitches[i];
             const isCurrent = (i === this.currentSubIndex);
             const displayName = isCurrent ? "► " + sub.name : "   " + sub.name;
-            
+
             const switchData = { switch: () => this.switchToSubSitch(i) };
             const controller = this.subSitchFolder.add(switchData, "switch")
                 .name(displayName);
-            
+
             if (isCurrent) {
                 controller.setLabelColor("#80ff80");
             }
-            
+
             this.subSitchControllers.push(controller);
         }
     }
@@ -1010,14 +1026,14 @@ export class CCustomManager {
 
     deserializeSubSitches(data) {
         if (!data || !data.subSitches) return;
-        
+
         this.subSitches = data.subSitches;
         this.currentSubIndex = data.currentSubIndex || 0;
-        
+
         if (this.subSitches.length > 0) {
             this.restoreSubSitchState(this.subSitches[this.currentSubIndex].state);
         }
-        
+
         this.rebuildSubSitchMenu();
     }
 
@@ -1025,9 +1041,9 @@ export class CCustomManager {
         this.videoExportView = "lookView";
         this.retinaExport = false;
         this.exportAudio = true;
-        
-        const {checkVideoEncodingSupport, getFilteredVideoFormatOptions, getDefaultVideoFormat} = require("./VideoExporter");
-        
+
+        const { checkVideoEncodingSupport, getFilteredVideoFormatOptions, getDefaultVideoFormat } = require("./VideoExporter");
+
         const getExportableViews = () => {
             const views = [];
             ViewMan.iterate((id, view) => {
@@ -1103,8 +1119,8 @@ export class CCustomManager {
     }
 
     async exportViewportVideo() {
-        const {createVideoExporter, getVideoExtension, getBestFormatForResolution} = await import("./VideoExporter");
-        
+        const { createVideoExporter, getVideoExtension, getBestFormatForResolution } = await import("./VideoExporter");
+
         const startFrame = Sit.aFrame;
         const endFrame = Sit.bFrame;
         const totalFrames = endFrame - startFrame + 1;
@@ -1112,7 +1128,7 @@ export class CCustomManager {
         const width = Math.round(ViewMan.widthPx * scale);
         const height = Math.round(ViewMan.heightPx * scale);
         const fps = Sit.fps;
-        
+
         const bestFormat = await getBestFormatForResolution(this.videoFormat, width, height);
         if (!bestFormat.formatId) {
             alert(`Video export failed: ${bestFormat.reason}`);
@@ -1121,7 +1137,7 @@ export class CCustomManager {
         if (bestFormat.fallback) {
             console.log(`${bestFormat.reason}, falling back to ${bestFormat.formatId}`);
         }
-        
+
         const formatId = bestFormat.formatId;
         const extension = getVideoExtension(formatId);
 
@@ -1144,11 +1160,11 @@ export class CCustomManager {
         let audioStartTime = 0;
         let audioDuration = null;
         let originalFps = fps;
-        
+
         if (this.exportAudio) {
             for (const entry of Object.values(NodeMan.list)) {
                 const node = entry.data;
-                if (node.videoData && node.videoData.audioHandler && 
+                if (node.videoData && node.videoData.audioHandler &&
                     node.videoData.audioHandler.decodingComplete) {
                     const exportAudioBuffer = node.videoData.audioHandler.getAudioBufferForExport();
                     if (exportAudioBuffer) {
@@ -1182,7 +1198,7 @@ export class CCustomManager {
 
             for (let i = 0; i < totalFrames; i++) {
                 if (progress.shouldStop()) break;
-                
+
                 const frame = startFrame + i;
                 par.frame = frame;
                 GlobalDateTimeNode.update(frame);
@@ -1259,7 +1275,7 @@ export class CCustomManager {
                 for (const view of overlays) {
                     const alpha = view.transparency !== undefined ? view.transparency : 1;
                     if (alpha <= 0) continue;
-                    
+
                     if (view.canvas) {
                         const ctx = view.canvas.getContext('2d');
                         ctx.clearRect(0, 0, view.canvas.width, view.canvas.height);
@@ -1318,7 +1334,7 @@ export class CCustomManager {
                     (status) => progress.setStatus(status)
                 );
 
-                const filename = `viewport_${Sit.name || 'export'}_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.${extension}`;
+                const filename = `viewport_${Sit.name || 'export'}_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.${extension}`;
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
@@ -1371,7 +1387,7 @@ export class CCustomManager {
     setupStandaloneMenuExample() {
         // Create a standalone pop-up menu at position (300, 150)
         const standaloneMenu = Globals.menuBar.createStandaloneMenu("Example Popup", 300, 150);
-        
+
         // Add some example controls to the menu
         const exampleObject = {
             message: "Hello World!",
@@ -1386,22 +1402,22 @@ export class CCustomManager {
                 standaloneMenu.destroy();
             }
         };
-        
+
         // Add various controls to demonstrate functionality
         standaloneMenu.add(exampleObject, "message").name("Text Message");
         standaloneMenu.add(exampleObject, "value", 0, 100).name("Numeric Value");
         standaloneMenu.add(exampleObject, "enabled").name("Toggle Option");
         standaloneMenu.addColor(exampleObject, "color").name("Color Picker");
-        
+
         // Add a folder to show nested structure works
         const subFolder = standaloneMenu.addFolder("Sub Menu");
         subFolder.add(exampleObject, "showMenu").name("Show Info");
         subFolder.add(exampleObject, "closeMenu").name("Close This Menu");
-        
+
         // Open the menu by default to show it
         standaloneMenu.open();
         subFolder.open();
-        
+
         // Store reference for potential cleanup
         this.exampleStandaloneMenu = standaloneMenu;
     }
@@ -1422,23 +1438,23 @@ export class CCustomManager {
         }
 
         const sourceFolder = guiMenus[sourceFolderName];
-        
+
         // Create the standalone menu
         const standaloneMenu = Globals.menuBar.createStandaloneMenu(menuTitle, x, y);
-        
+
         // Set up dynamic mirroring
         this.setupDynamicMirroring(sourceFolder, standaloneMenu);
-        
+
         // Open the menu by default
         standaloneMenu.open();
-        
+
         console.log(`Mirrored GUI folder '${sourceFolderName}' to standalone menu '${menuTitle}'`);
-        
+
         // Add a method to manually refresh the mirror
         standaloneMenu.refreshMirror = () => {
             this.updateMirror(standaloneMenu);
         };
-        
+
         return standaloneMenu;
     }
 
@@ -1449,14 +1465,14 @@ export class CCustomManager {
      */
     setupDynamicMirroring(sourceFolder, standaloneMenu) {
         // console.log('setupDynamicMirroring called for sourceFolder:', sourceFolder._title || 'root');
-        
+
         // Store reference to source for updates
         standaloneMenu._mirrorSource = sourceFolder;
         standaloneMenu._lastMirrorState = null;
-        
+
         // Initial mirror
         this.updateMirror(standaloneMenu);
-        
+
         // Try event-based approach first, fall back to polling if needed
         // console.log('About to call setupEventBasedMirroring');
         if (this.setupEventBasedMirroring(sourceFolder, standaloneMenu)) {
@@ -1469,7 +1485,7 @@ export class CCustomManager {
                 this.updateMirror(standaloneMenu);
             }, checkInterval);
         }
-        
+
         // Clean up when menu is destroyed
         const originalDestroy = standaloneMenu.destroy.bind(standaloneMenu);
         standaloneMenu.destroy = () => {
@@ -1495,10 +1511,10 @@ export class CCustomManager {
         try {
             // Store all hooked methods for cleanup
             const allHookedMethods = [];
-            
+
             // Recursively hook into all folders and sub-folders
             this.hookFolderRecursively(sourceFolder, standaloneMenu, allHookedMethods);
-            
+
             // Store cleanup function
             standaloneMenu._mirrorEventCleanup = () => {
                 // Restore all original methods
@@ -1506,7 +1522,7 @@ export class CCustomManager {
                     folder[methodName] = originalMethod;
                 });
             };
-            
+
             return true;
         } catch (error) {
             console.warn('Failed to set up event-based mirroring:', error);
@@ -1522,56 +1538,56 @@ export class CCustomManager {
      */
     hookFolderRecursively(folder, standaloneMenu, allHookedMethods) {
         // console.log('hookFolderRecursively called for folder:', folder._title || 'root', 'controllers:', folder.controllers.length);
-        
+
         const methodsToHook = ['add', 'addColor', 'addFolder', 'remove'];
-        
+
         // Hook into GUI methods that modify the structure
         methodsToHook.forEach(methodName => {
             if (typeof folder[methodName] === 'function') {
                 const originalMethod = folder[methodName].bind(folder);
-                
+
                 // Store for cleanup
                 allHookedMethods.push({ folder, methodName, originalMethod });
-                
+
                 folder[methodName] = (...args) => {
                     const result = originalMethod(...args);
-                    
+
                     // If we just added a folder, hook into it too
                     if (methodName === 'addFolder' && result) {
                         setTimeout(() => {
                             this.hookFolderRecursively(result, standaloneMenu, allHookedMethods);
                         }, 0);
                     }
-                    
+
                     // If we just added a controller, hook its destroy method and visibility methods
                     if ((methodName === 'add' || methodName === 'addColor') && result && typeof result.destroy === 'function') {
                         if (folder._controllerHookFunction) {
                             folder._controllerHookFunction(result);
                         }
-                        
+
                         // Also hook visibility methods for the new controller
                         setTimeout(() => {
                             this.hookSingleControllerVisibility(result, standaloneMenu, allHookedMethods);
                         }, 0);
                     }
-                    
+
                     // Defer update to next tick to allow GUI to stabilize
                     setTimeout(() => this.updateMirror(standaloneMenu), 0);
                     return result;
                 };
             }
         });
-        
+
         // Hook into controller destroy method for any existing controllers
         // console.log('About to call hookControllerDestroy for folder:', folder._title || 'root');
         this.hookControllerDestroy(folder, standaloneMenu);
-        
+
         // Hook into visibility methods for existing controllers
         this.hookControllerVisibility(folder, standaloneMenu, allHookedMethods);
-        
+
         // Hook into visibility methods for this folder
         this.hookFolderVisibility(folder, standaloneMenu, allHookedMethods);
-        
+
         // Recursively hook into existing sub-folders
         // console.log('Processing sub-folders, count:', folder.folders.length);
         folder.folders.forEach(subfolder => {
@@ -1588,7 +1604,7 @@ export class CCustomManager {
         const hookController = (controller) => {
             if (controller._mirrorHooked) return; // Already hooked
             controller._mirrorHooked = true;
-            
+
             const originalDestroy = controller.destroy.bind(controller);
             controller.destroy = () => {
                 originalDestroy();
@@ -1596,14 +1612,14 @@ export class CCustomManager {
                 setTimeout(() => this.updateMirror(standaloneMenu), 0);
             };
         };
-        
+
         // Hook existing controllers in this folder
         // console.log('hookControllerDestroy: sourceFolder.controllers.length =', sourceFolder.controllers.length);
         sourceFolder.controllers.forEach((controller, index) => {
             // console.log(`Hooking controller ${index}:`, controller);
             hookController(controller);
         });
-        
+
         // Store the hook function so the recursive method can use it for new controllers
         sourceFolder._controllerHookFunction = hookController;
     }
@@ -1620,7 +1636,7 @@ export class CCustomManager {
             if (typeof controller.show === 'function') {
                 const originalShow = controller.show.bind(controller);
                 allHookedMethods.push({ folder: controller, methodName: 'show', originalMethod: originalShow });
-                
+
                 controller.show = (show) => {
                     const result = originalShow(show);
                     setTimeout(() => this.updateMirror(standaloneMenu), 0);
@@ -1641,7 +1657,7 @@ export class CCustomManager {
         if (typeof controller.show === 'function') {
             const originalShow = controller.show.bind(controller);
             allHookedMethods.push({ folder: controller, methodName: 'show', originalMethod: originalShow });
-            
+
             controller.show = (show) => {
                 const result = originalShow(show);
                 setTimeout(() => this.updateMirror(standaloneMenu), 0);
@@ -1663,7 +1679,7 @@ export class CCustomManager {
             const originalShow = folder.show.bind(folder);
             allHookedMethods.push({ folder, methodName: 'show', originalMethod: originalShow });
 
-            folder.show = ( show = true) => {
+            folder.show = (show = true) => {
                 const result = originalShow(show);
                 setTimeout(() => this.updateMirror(standaloneMenu), 0);
                 return result;
@@ -1684,10 +1700,10 @@ export class CCustomManager {
     updateMirror(standaloneMenu) {
         const sourceFolder = standaloneMenu._mirrorSource;
         if (!sourceFolder) return;
-        
+
         // Create a signature of the current source state
         const currentState = this.createGUISignature(sourceFolder);
-        
+
         // Compare with last known state
         if (standaloneMenu._lastMirrorState !== currentState) {
             // State has changed, rebuild the mirror
@@ -1705,7 +1721,7 @@ export class CCustomManager {
      */
     createGUISignature(folder) {
         const parts = [];
-        
+
         // Add controller signatures
         folder.controllers.forEach(controller => {
             const name = controller._name || 'unnamed';
@@ -1713,7 +1729,7 @@ export class CCustomManager {
             const visible = controller._hidden ? 'hidden' : 'visible';
             parts.push(`ctrl:${name}:${type}:${visible}`);
         });
-        
+
         // Add folder signatures recursively
         folder.folders.forEach(subfolder => {
             const name = subfolder._title || 'unnamed';
@@ -1722,8 +1738,8 @@ export class CCustomManager {
             const subSignature = this.createGUISignature(subfolder);
             parts.push(`folder:${name}:${open}:${visible}:${subSignature}`);
         });
-        
-        const sig =  parts.join('|');
+
+        const sig = parts.join('|');
         return sig;
     }
 
@@ -1735,7 +1751,7 @@ export class CCustomManager {
     rebuildMirror(sourceFolder, standaloneMenu) {
         // Clear existing controllers and folders
         this.clearMirror(standaloneMenu);
-        
+
         // Rebuild from source
         this.mirrorGUIControls(sourceFolder, standaloneMenu);
     }
@@ -1750,7 +1766,7 @@ export class CCustomManager {
             const controller = menu.controllers[menu.controllers.length - 1];
             controller.destroy();
         }
-        
+
         // Remove all folders
         while (menu.folders.length > 0) {
             const folder = menu.folders[menu.folders.length - 1];
@@ -1766,7 +1782,7 @@ export class CCustomManager {
     mirrorGUIControls(source, target) {
         // Get all child elements (controllers and folders) in DOM order
         const childElements = this.getGUIChildrenInOrder(source);
-        
+
         // Process each child element in the order they appear in the DOM
         childElements.forEach(child => {
             if (child.type === 'controller') {
@@ -1785,18 +1801,18 @@ export class CCustomManager {
      */
     getGUIChildrenInOrder(gui) {
         const children = [];
-        
+
         try {
             // Try to use DOM order first
             const domBasedOrder = this.getDOMBasedOrder(gui);
             if (domBasedOrder.length === gui.controllers.length + gui.folders.length) {
                 return domBasedOrder;
             }
-            
+
             // Fallback: Use a heuristic that puts folders first if they have specific names
             // This handles the common case where Material folder should appear first
             return this.getHeuristicOrder(gui);
-            
+
         } catch (error) {
             console.warn('Error in ordering, using fallback:', error);
             return this.getFallbackChildrenOrder(gui);
@@ -1810,13 +1826,13 @@ export class CCustomManager {
      */
     getDOMBasedOrder(gui) {
         const children = [];
-        
+
         // Get the DOM element of the GUI
         const domElement = gui.domElement;
         if (!domElement) {
             return [];
         }
-        
+
         // In lil-gui, the actual children are in the $children container
         // Try to find the children container
         let childrenContainer = gui.$children;
@@ -1828,35 +1844,35 @@ export class CCustomManager {
                 childrenContainer = domElement;
             }
         }
-        
+
         // Get all child elements in DOM order from the children container
         const childNodes = Array.from(childrenContainer.children);
-        
+
         childNodes.forEach(childNode => {
             // Check if this DOM element corresponds to a controller
             const controller = gui.controllers.find(ctrl => {
-                return ctrl.domElement === childNode || 
-                       (ctrl.domElement && ctrl.domElement.parentElement === childNode) ||
-                       (ctrl.domElement && childNode.contains && childNode.contains(ctrl.domElement));
+                return ctrl.domElement === childNode ||
+                    (ctrl.domElement && ctrl.domElement.parentElement === childNode) ||
+                    (ctrl.domElement && childNode.contains && childNode.contains(ctrl.domElement));
             });
-            
+
             if (controller) {
                 children.push({ type: 'controller', element: controller });
                 return;
             }
-            
+
             // Check if this DOM element corresponds to a folder
             const folder = gui.folders.find(fld => {
-                return fld.domElement === childNode || 
-                       (fld.domElement && fld.domElement.parentElement === childNode) ||
-                       (fld.domElement && childNode.contains && childNode.contains(fld.domElement));
+                return fld.domElement === childNode ||
+                    (fld.domElement && fld.domElement.parentElement === childNode) ||
+                    (fld.domElement && childNode.contains && childNode.contains(fld.domElement));
             });
-            
+
             if (folder) {
                 children.push({ type: 'folder', element: folder });
             }
         });
-        
+
         return children;
     }
 
@@ -1867,10 +1883,10 @@ export class CCustomManager {
      */
     getHeuristicOrder(gui) {
         const children = [];
-        
+
         // Special handling for common folder names that should appear first
         const priorityFolderNames = ['Material', 'Geometry', 'Transform', 'Animation'];
-        
+
         // Add priority folders first
         priorityFolderNames.forEach(priorityName => {
             const folder = gui.folders.find(f => f._title === priorityName);
@@ -1878,12 +1894,12 @@ export class CCustomManager {
                 children.push({ type: 'folder', element: folder });
             }
         });
-        
+
         // Add controllers
         gui.controllers.forEach(controller => {
             children.push({ type: 'controller', element: controller });
         });
-        
+
         // Add remaining folders
         gui.folders.forEach(folder => {
             // Skip if already added as priority folder
@@ -1891,7 +1907,7 @@ export class CCustomManager {
                 children.push({ type: 'folder', element: folder });
             }
         });
-        
+
         return children;
     }
 
@@ -1902,17 +1918,17 @@ export class CCustomManager {
      */
     getFallbackChildrenOrder(gui) {
         const children = [];
-        
+
         // Add all controllers first
         gui.controllers.forEach(controller => {
             children.push({ type: 'controller', element: controller });
         });
-        
+
         // Add all folders after
         gui.folders.forEach(folder => {
             children.push({ type: 'folder', element: folder });
         });
-        
+
         return children;
     }
 
@@ -1927,10 +1943,10 @@ export class CCustomManager {
             const object = controller.object;
             const property = controller.property;
             const name = controller._name;
-            
+
             // Create the mirrored controller based on type
             let mirroredController;
-            
+
             if (controller.constructor.name === 'ColorController') {
                 mirroredController = target.addColor(object, property);
             } else if (controller.constructor.name === 'OptionController') {
@@ -1947,31 +1963,31 @@ export class CCustomManager {
                 // For boolean and other basic controllers
                 mirroredController = target.add(object, property);
             }
-            
+
             // Copy controller properties
             if (mirroredController) {
                 mirroredController.name(name);
-                
+
                 // Copy tooltip if it exists
                 if (controller._tooltip) {
                     mirroredController.tooltip(controller._tooltip);
                 }
-                
+
                 // Copy listen state
                 if (controller._listening) {
                     mirroredController.listen();
                 }
-                
+
                 // Copy elastic properties for numeric controllers
                 if (controller._elastic && mirroredController.elastic) {
                     mirroredController.elastic(controller._elastic.max, controller._elastic.maxMax, controller._elastic.allowNegative);
                 }
-                
+
                 // Copy onChange handler by referencing the original controller's onChange
                 if (controller._onChange) {
                     mirroredController.onChange(controller._onChange);
                 }
-                
+
                 // Copy visibility state
                 mirroredController.show(!controller._hidden);
             }
@@ -1988,17 +2004,17 @@ export class CCustomManager {
     mirrorFolder(folder, target) {
         const folderName = folder._title;
         const mirroredFolder = target.addFolder(folderName);
-        
+
         // Recursively mirror the folder contents
         this.mirrorGUIControls(folder, mirroredFolder);
-        
+
         // Copy folder open/closed state to match the source
         if (folder._closed) {
             mirroredFolder.close();
         } else {
             mirroredFolder.open();
         }
-        
+
         // Copy folder visibility state
         mirroredFolder.show(!folder._hidden);
     }
@@ -2027,13 +2043,13 @@ export class CCustomManager {
 
         // Create a standalone menu that mirrors the Flow Orbs controls with dynamic updates
         const standaloneMenu = Globals.menuBar.createStandaloneMenu("Mirrored Flow Orbs", 400, 200);
-        
+
         // Set up dynamic mirroring for the Flow Orbs GUI
         this.setupDynamicMirroring(flowOrbsNode.gui, standaloneMenu);
-        
+
         // Store reference for potential cleanup
         this.mirroredFlowOrbsMenu = standaloneMenu;
-        
+
         console.log("Created dynamically mirrored Flow Orbs menu");
     }
 
@@ -2054,15 +2070,15 @@ export class CCustomManager {
 
         // Create a standalone menu
         const standaloneMenu = Globals.menuBar.createStandaloneMenu(menuTitle, x, y);
-        
+
         // Set up dynamic mirroring
         this.setupDynamicMirroring(node.gui, standaloneMenu);
-        
+
         // Add a method to manually refresh the mirror
         standaloneMenu.refreshMirror = () => {
             this.updateMirror(standaloneMenu);
         };
-        
+
         console.log(`Created dynamic mirror for node '${nodeId}' GUI`);
         return standaloneMenu;
     }
@@ -2094,13 +2110,13 @@ export class CCustomManager {
     showMirrorMenuDemo() {
         // Create a modal dialog showing available menus and how to mirror them
         const availableMenus = Object.keys(guiMenus);
-        
+
         let message = "GUI Menu Mirroring Demo\n\n";
         message += "Available menus to mirror:\n";
         availableMenus.forEach(menuName => {
             message += `• ${menuName}\n`;
         });
-        
+
         message += "\nExample usage:\n";
         message += "// Mirror the view menu to a standalone popup\n";
         message += "this.mirrorGUIFolder('view', 'My View Controls', 300, 300);\n\n";
@@ -2109,7 +2125,7 @@ export class CCustomManager {
         message += "The mirrored menu will have all the same controls and functionality as the original,\n";
         message += "but in a draggable standalone window.\n\n";
         message += "Would you like to create a demo mirror of the 'view' menu?";
-        
+
         if (confirm(message)) {
             // Create a demo mirror of the view menu
             const demoMenu = this.mirrorGUIFolder("view", "Demo View Mirror", 500, 300);
@@ -2141,7 +2157,7 @@ export class CCustomManager {
      */
     getNextObjectName() {
         let maxNumber = 0;
-        
+
         // Iterate through all nodes to find existing "Object N" names
         const allNodes = NodeMan.getAllNodes();
         for (const nodeId in allNodes) {
@@ -2158,7 +2174,7 @@ export class CCustomManager {
                 }
             }
         }
-        
+
         return `Object ${maxNumber + 1}`;
     }
 
@@ -2178,14 +2194,14 @@ export class CCustomManager {
             finalAlt = elevationAtLL(lat, lon);
             console.log(`Using terrain elevation: ${finalAlt}m at ${lat}, ${lon}`);
         }
-        
+
         // Convert LLA to EUS coordinates
         const eusPosition = LLAToEUS(lat, lon, finalAlt);
-        
+
         // Generate unique IDs
         const objectID = `syntheticObject_${Date.now()}`;
         const trackID = `syntheticTrack_${Date.now()}`;
-        
+
         // Create the 3D object
         const objectNode = new CNode3DObject({
             id: objectID,
@@ -2195,7 +2211,7 @@ export class CCustomManager {
             material: "phong",
             position: eusPosition,
         });
-        
+
         // Create track and associate with object
         const trackOb = TrackManager.addSyntheticTrack({
             startPoint: eusPosition,
@@ -2205,9 +2221,9 @@ export class CCustomManager {
             color: 0x808080,
             startFrame: par.frame
         });
-        
+
         console.log(`Created object "${name}" at ${lat}, ${lon}, ${finalAlt}m`);
-        
+
         return { objectNode, trackOb, objectID, trackID };
     }
 
@@ -2223,11 +2239,11 @@ export class CCustomManager {
         // South means reducing latitude (approximately -0.0009 degrees per 100m)
         const metersPerDegreeLat = 111320; // meters per degree latitude (approximate)
         const southOffsetDegrees = -100 / metersPerDegreeLat;
-        
+
         const cameraLat = lat + southOffsetDegrees;
         const cameraLon = lon;
         const cameraAlt = alt + 100; // 100m above object
-        
+
         // Try to get mainCamera first, fallback to fixedCameraPosition
         let cameraNode = null;
         if (NodeMan.exists("mainCamera")) {
@@ -2235,7 +2251,7 @@ export class CCustomManager {
         } else if (NodeMan.exists("fixedCameraPosition")) {
             cameraNode = NodeMan.get("fixedCameraPosition");
         }
-        
+
         if (cameraNode) {
             // Use setLLA if available (for position nodes)
             if (typeof cameraNode.setLLA === 'function') {
@@ -2245,7 +2261,7 @@ export class CCustomManager {
                 // Fallback: set camera position directly using EUS coordinates
                 const cameraEUS = LLAToEUS(cameraLat, cameraLon, cameraAlt);
                 const objectEUS = LLAToEUS(lat, lon, alt);
-                
+
                 if (cameraNode.camera) {
                     cameraNode.camera.position.copy(cameraEUS);
                     cameraNode.camera.lookAt(objectEUS);
@@ -2271,51 +2287,51 @@ export class CCustomManager {
             this.showTrackEditingMenu(mouseX, mouseY, groundPoint);
             return;
         }
-        
+
         // Check if we're in building editing mode
         if (Globals.editingBuilding) {
             this.showBuildingEditingMenu(mouseX, mouseY, groundPoint);
             return;
         }
-        
+
         // Check if we're in clouds editing mode
         if (Globals.editingClouds) {
             this.showCloudsEditingMenu(mouseX, mouseY, groundPoint);
             return;
         }
-        
+
         // Convert ground point to LLA
         const groundLLA = EUSToLLA(groundPoint);
         const lat = groundLLA.x;
         const lon = groundLLA.y;
         const alt = groundLLA.z;
-        
+
         // Get ground elevation at this point
         const groundElevation = elevationAtLL(lat, lon);
-        
+
         // Close any existing ground context menu before creating a new one
         if (this.groundContextMenu) {
             this.groundContextMenu.destroy();
             this.groundContextMenu = null;
         }
-        
+
         // Create the context menu using lil-gui standalone menu
         // Pass true for dismissOnOutsideClick so it behaves like a context menu
         const menu = Globals.menuBar.createStandaloneMenu("Ground", mouseX, mouseY, true);
-        
+
         // If menu creation was blocked (persistent menu is open), return early
         if (!menu) {
             return;
         }
-        
+
         menu.open();
-        
+
         // Store reference to track this menu
         this.groundContextMenu = menu;
-        
+
         // Format the location text
         const locationText = `${lat.toFixed(6)}, ${lon.toFixed(6)}, ${alt.toFixed(1)}m`;
-        
+
         // Create an object to hold the menu actions
         const menuData = {
             setCameraAbove: () => {
@@ -2386,7 +2402,7 @@ export class CCustomManager {
                 // Create a 3D object at the clicked point
                 const objectID = `syntheticObject_${Date.now()}`;
                 const trackID = `syntheticTrack_${Date.now()}`;
-                
+
                 // Create a simple grey sphere object (5m radius) with phong material
                 const objectNode = new CNode3DObject({
                     id: objectID,
@@ -2396,7 +2412,7 @@ export class CCustomManager {
                     material: "phong",
                     position: groundPoint,
                 });
-                
+
                 // Create track and associate with object using TrackManager
                 // Controllers (TrackPosition and ObjectTilt) are added automatically by addSyntheticTrack
                 const trackOb = TrackManager.addSyntheticTrack({
@@ -2418,10 +2434,10 @@ export class CCustomManager {
                 // Close the menu first
                 this.groundContextMenu = null;
                 menu.destroy();
-                
+
                 // Create a unique feature ID
                 const featureID = `feature_${Date.now()}`;
-                
+
                 // Create the feature at the ground location
                 const featureNode = FeatureManager.addFeature({
                     id: featureID,
@@ -2432,31 +2448,31 @@ export class CCustomManager {
                         alt: alt  // Will conform to ground
                     }
                 });
-                
+
                 // Open the editing menu with focus on the text field
                 FeatureManager.showFeatureEditMenu(featureNode, mouseX, mouseY, true);
-                
+
                 console.log(`Created feature ${featureID} at ${lat}, ${lon}, ${alt}m`);
             },
             addBuilding: () => {
                 // Close the menu
                 this.groundContextMenu = null;
                 menu.destroy();
-                
+
                 // First, exit edit mode on the currently edited building (if any)
                 if (Globals.editingBuilding) {
                     console.log(`  Exiting edit mode on previous building: ${Globals.editingBuilding.buildingID}`);
                     Globals.editingBuilding.setEditMode(false);
                 }
-                
+
                 // Create a default 7x7x4 building centered at the ground point
                 const building = Synth3DManager.createBuildingAtPoint(groundPoint);
-                
+
                 // Add undo action for building creation
                 if (building && UndoManager) {
                     const buildingID = building.buildingID;
                     const buildingState = building.serialize();
-                    
+
                     UndoManager.add({
                         undo: () => {
                             // Delete the created building
@@ -2469,7 +2485,7 @@ export class CCustomManager {
                         description: `Create building "${building.name}"`
                     });
                 }
-                
+
                 // Immediately enter edit mode and show edit menu
                 if (building) {
                     building.setEditMode(true);
@@ -2480,18 +2496,18 @@ export class CCustomManager {
             addClouds: () => {
                 this.groundContextMenu = null;
                 menu.destroy();
-                
+
                 if (Globals.editingClouds) {
                     console.log(`  Exiting edit mode on previous clouds: ${Globals.editingClouds.cloudsID}`);
                     Globals.editingClouds.setEditMode(false);
                 }
-                
+
                 const clouds = Synth3DManager.createCloudsAtPoint(groundPoint);
-                
+
                 if (clouds && UndoManager) {
                     const cloudsID = clouds.cloudsID;
                     const cloudsState = clouds.serialize();
-                    
+
                     UndoManager.add({
                         undo: () => {
                             Synth3DManager.removeClouds(cloudsID);
@@ -2502,7 +2518,7 @@ export class CCustomManager {
                         description: `Create cloud layer "${clouds.name}"`
                     });
                 }
-                
+
                 if (clouds) {
                     clouds.setEditMode(true);
                     this.showCloudsEditingMenu(mouseX, mouseY, groundPoint);
@@ -2512,18 +2528,18 @@ export class CCustomManager {
             addOverlay: () => {
                 this.groundContextMenu = null;
                 menu.destroy();
-                
+
                 if (Globals.editingOverlay) {
                     console.log(`  Exiting edit mode on previous overlay: ${Globals.editingOverlay.overlayID}`);
                     Globals.editingOverlay.setEditMode(false);
                 }
-                
+
                 const overlay = Synth3DManager.createOverlayAtPoint(groundPoint);
-                
+
                 if (overlay && UndoManager) {
                     const overlayID = overlay.overlayID;
                     const overlayState = overlay.serialize();
-                    
+
                     UndoManager.add({
                         undo: () => {
                             Synth3DManager.removeOverlay(overlayID);
@@ -2534,17 +2550,17 @@ export class CCustomManager {
                         description: `Create ground overlay "${overlay.name}"`
                     });
                 }
-                
+
                 if (overlay) {
                     overlay.setEditMode(true);
                     console.log(`Created overlay at ground point, now in edit mode`);
                 }
             },
         };
-        
+
         // Add location text as custom HTML (bright and selectable)
         menu.addHTML(locationText, "Location");
-        
+
         // Add menu items
         menu.add(menuData, "setCameraAbove").name("Set Camera Above");
         menu.add(menuData, "setCameraOnGround").name("Set Camera on Ground");
@@ -2557,13 +2573,13 @@ export class CCustomManager {
         // Add synthetic track options
         menu.add(menuData, "createTrackWithObject").name("Create Track with Object");
         menu.add(menuData, "createSyntheticTrack").name("Create Track (No Object)");
-        
+
         // Add building creation option
         menu.add(menuData, "addBuilding").name("Add Building");
-        
+
         // Add clouds creation option
         menu.add(menuData, "addClouds").name("Add Clouds");
-        
+
         // Add ground overlay creation option
         menu.add(menuData, "addOverlay").name("Add Ground Overlay");
 
@@ -2588,18 +2604,18 @@ export class CCustomManager {
             console.warn("No track being edited");
             return;
         }
-        
+
         const splineEditor = trackOb.splineEditor;
         const shortName = trackOb.menuText || trackOb.trackID;
-        
+
         // Check if current frame already has a control point
         const currentFrame = par.frame;
         const hasPointAtCurrentFrame = splineEditor.frameNumbers.includes(currentFrame);
-        
+
         // Create the context menu
         const menu = Globals.menuBar.createStandaloneMenu(`Edit: ${shortName}`, mouseX, mouseY);
         menu.open();
-        
+
         // Create menu actions
         const menuData = {
             splitTrack: () => {
@@ -2636,7 +2652,7 @@ export class CCustomManager {
                 // Find the closest point to the clicked position
                 let closestIndex = -1;
                 let closestDistance = Infinity;
-                
+
                 for (let i = 0; i < splineEditor.numPoints; i++) {
                     const pointPos = splineEditor.positions[i];
                     const distance = groundPoint.distanceTo(pointPos);
@@ -2645,7 +2661,7 @@ export class CCustomManager {
                         closestIndex = i;
                     }
                 }
-                
+
                 if (closestIndex >= 0) {
                     // Check if we have enough points to remove one
                     if (splineEditor.numPoints <= splineEditor.minimumPoints) {
@@ -2653,29 +2669,29 @@ export class CCustomManager {
                         menu.destroy();
                         return;
                     }
-                    
+
                     // Remove the point at the found index
                     const frameNumber = splineEditor.frameNumbers[closestIndex];
                     const point = splineEditor.splineHelperObjects[closestIndex];
-                    
+
                     // Detach transform control if it's attached to this point
                     if (splineEditor.transformControl.object === point) {
                         splineEditor.transformControl.detach();
                     }
-                    
+
                     // Remove from scene
                     splineEditor.scene.remove(point);
-                    
+
                     // Remove from arrays
                     splineEditor.frameNumbers.splice(closestIndex, 1);
                     splineEditor.positions.splice(closestIndex, 1);
                     splineEditor.splineHelperObjects.splice(closestIndex, 1);
                     splineEditor.numPoints--;
-                    
+
                     // Update graphics
                     splineEditor.updatePointEditorGraphics();
                     if (splineEditor.onChange) splineEditor.onChange();
-                    
+
                     console.log(`Removed point at frame ${frameNumber} from track ${shortName}`);
                     setRenderOne(true);
                 } else {
@@ -2692,7 +2708,7 @@ export class CCustomManager {
                 menu.destroy();
             }
         };
-        
+
         // Add menu items
         // Only show point-adding options if current frame doesn't already have a control point
         if (!hasPointAtCurrentFrame) {
@@ -2712,47 +2728,47 @@ export class CCustomManager {
             console.warn("No building being edited");
             return;
         }
-        
+
         const buildingName = building.name || building.buildingID;
-        
+
         // Close any existing building edit menu
         if (this.buildingEditMenu) {
             this.buildingEditMenu.destroy();
         }
-        
+
         // Create the persistent edit menu
         const menu = Globals.menuBar.createStandaloneMenu(`Edit: ${buildingName}`, mouseX, mouseY);
         this.buildingEditMenu = menu;
-        
+
         // Add instructions
         menu.addHTML('<div style="color: #aaa; font-size: 11px; padding: 5px;">Click and drag yellow spheres to move vertices</div>', 'Instructions');
-        
+
         // Add material controls
         const materialFolder = menu.addFolder('Material');
-        
+
         materialFolder.add(building, 'materialType', ['basic', 'lambert', 'phong', 'physical'])
             .name('Type')
             .onChange(() => building.rebuildMaterial());
-        
+
         materialFolder.addColor(building, 'wallColor')
             .name('Wall Color')
             .onChange(() => building.rebuildMaterial());
-        
+
         materialFolder.addColor(building, 'roofColor')
             .name('Roof Color')
             .onChange(() => building.rebuildMaterial());
-        
+
         materialFolder.add(building, 'materialOpacity', 0, 1, 0.01)
             .name('Opacity')
             .onChange(() => building.rebuildMaterial());
-        
+
         materialFolder.add(building, 'materialTransparent')
             .name('Transparent')
             .onChange(() => building.rebuildMaterial());
-        
+
         // Add height controls with automatic unit conversion
         const heightFolder = menu.addFolder('Height');
-        
+
         // Create proxy object for roof edge height
         // This stores the value in current display units (ft/m)
         // Building stores SI units (m), so we convert when reading/writing
@@ -2767,7 +2783,7 @@ export class CCustomManager {
                 this._displayValue = displayValue;
             }
         };
-        
+
         // Store controller reference on building so it can be updated
         building.roofEdgeHeightController = heightFolder.add(roofEdgeProxy, 'height', 0.1, 100, 0.01)
             .name('Roof Edge Height')
@@ -2778,10 +2794,10 @@ export class CCustomManager {
                 building.updateRoofEdgeHeight(siValue);
             })
             .listen();
-        
+
         // Store proxy on building so we can update it when building changes
         building.roofEdgeProxy = roofEdgeProxy;
-        
+
         // Create proxy object for ridgeline height (total height from ground)
         // This stores the value in current display units (ft/m)
         const ridgelineHeightProxy = {
@@ -2795,7 +2811,7 @@ export class CCustomManager {
                 this._displayValue = displayValue;
             }
         };
-        
+
         // Store controller reference on building so it can be updated
         building.ridgelineHeightController = heightFolder.add(ridgelineHeightProxy, 'height', 0.1, 100, 0.01)
             .name('Ridgeline Height')
@@ -2807,10 +2823,10 @@ export class CCustomManager {
                 building.updateRooflineHeight(newRooflineHeight);
             })
             .listen();
-        
+
         // Store proxy on building so we can update it when building changes
         building.ridgelineProxy = ridgelineHeightProxy;
-        
+
         // Create proxy object for ridgeline inset
         const ridgelineInsetProxy = {
             _displayValue: building.ridgelineInset,
@@ -2821,7 +2837,7 @@ export class CCustomManager {
                 this._displayValue = displayValue;
             }
         };
-        
+
         // Store controller reference on building so it can be updated
         building.ridgelineInsetController = heightFolder.add(ridgelineInsetProxy, 'inset', 0, 20, 0.01)
             .name('Ridgeline Inset')
@@ -2832,10 +2848,10 @@ export class CCustomManager {
                 building.updateRidgelineInset(siValue);
             })
             .listen();
-        
+
         // Store proxy on building so we can update it when building changes
         building.ridgelineInsetProxy = ridgelineInsetProxy;
-        
+
         // Create proxy object for roof eaves
         const roofEavesProxy = {
             _displayValue: building.roofEaves,
@@ -2846,7 +2862,7 @@ export class CCustomManager {
                 this._displayValue = displayValue;
             }
         };
-        
+
         // Store controller reference on building so it can be updated
         building.roofEavesController = heightFolder.add(roofEavesProxy, 'eaves', 0, 3, 0.01)
             .name('Roof Eaves')
@@ -2857,10 +2873,10 @@ export class CCustomManager {
                 building.updateRoofEaves(siValue);
             })
             .listen();
-        
+
         // Store proxy on building so we can update it when building changes
         building.roofEavesProxy = roofEavesProxy;
-        
+
         // Create menu actions
         const menuData = {
             exitEditMode: () => {
@@ -2876,7 +2892,7 @@ export class CCustomManager {
                     if (UndoManager) {
                         const buildingState = building.serialize();
                         const buildingID = building.buildingID;
-                        
+
                         UndoManager.add({
                             undo: () => {
                                 // Recreate the building
@@ -2889,18 +2905,18 @@ export class CCustomManager {
                             description: `Delete building "${buildingName}"`
                         });
                     }
-                    
+
                     Synth3DManager.removeBuilding(building.buildingID);
                     menu.destroy();
                     this.buildingEditMenu = null;
                 }
             }
         };
-        
+
         // Add action buttons
         menu.add(menuData, "exitEditMode").name("Exit Edit Mode").setDoubleClickAction();
         menu.add(menuData, "deleteBuilding").name("Delete Building").setLabelColor('#ff4444');
-        
+
         // Open the menu
         menu.open();
     }
@@ -2911,20 +2927,20 @@ export class CCustomManager {
             console.warn("No clouds being edited");
             return;
         }
-        
+
         const cloudsName = clouds.name || clouds.cloudsID;
-        
+
         if (this.cloudsEditMenu) {
             this.cloudsEditMenu.destroy();
         }
-        
+
         const menu = Globals.menuBar.createStandaloneMenu(`Edit: ${cloudsName}`, mouseX, mouseY);
         this.cloudsEditMenu = menu;
-        
+
         menu.addHTML('<div style="color: #aaa; font-size: 11px; padding: 5px;">Drag handles to adjust clouds</div>', 'Instructions');
-        
+
         const editFolder = menu.addFolder('Properties');
-        
+
         const altitudeProxy = {
             _displayValue: clouds.altitude,
             get altitude() { return this._displayValue; },
@@ -2941,7 +2957,7 @@ export class CCustomManager {
                 setRenderOne(true);
             })
             .onFinishChange(() => { this.saveGlobalSettings(true); });
-        
+
         const radiusProxy = {
             _displayValue: clouds.radius,
             get radius() { return this._displayValue; },
@@ -2958,7 +2974,7 @@ export class CCustomManager {
                 setRenderOne(true);
             })
             .onFinishChange(() => { this.saveGlobalSettings(true); });
-        
+
         editFolder.add(clouds, 'cloudSize', 50, 1000, 10)
             .name('Cloud Size (m)')
             .onChange(() => {
@@ -2966,7 +2982,7 @@ export class CCustomManager {
                 setRenderOne(true);
             })
             .onFinishChange(() => { this.saveGlobalSettings(true); });
-        
+
         editFolder.add(clouds, 'density', 0.1, 2.0, 0.1)
             .name('Density')
             .onChange(() => {
@@ -2974,7 +2990,7 @@ export class CCustomManager {
                 setRenderOne(true);
             })
             .onFinishChange(() => { this.saveGlobalSettings(true); });
-        
+
         editFolder.add(clouds, 'opacity', 0.1, 1.0, 0.05)
             .name('Opacity')
             .onChange(() => {
@@ -2984,7 +3000,7 @@ export class CCustomManager {
                 setRenderOne(true);
             })
             .onFinishChange(() => { this.saveGlobalSettings(true); });
-        
+
         editFolder.add(clouds, 'brightness', 0, 2, 0.05)
             .name('Brightness')
             .onChange(() => {
@@ -2992,7 +3008,7 @@ export class CCustomManager {
                 setRenderOne(true);
             })
             .onFinishChange(() => { this.saveGlobalSettings(true); });
-        
+
         editFolder.add(clouds, 'depth', 0, 2000, 10)
             .name('Depth (m)')
             .onChange(() => {
@@ -3000,7 +3016,7 @@ export class CCustomManager {
                 setRenderOne(true);
             })
             .onFinishChange(() => { this.saveGlobalSettings(true); });
-        
+
         editFolder.add(clouds, 'edgeWiggle', 0, 0.5, 0.01)
             .name('Edge Wiggle')
             .onChange(() => {
@@ -3008,7 +3024,7 @@ export class CCustomManager {
                 setRenderOne(true);
             })
             .onFinishChange(() => { this.saveGlobalSettings(true); });
-        
+
         editFolder.add(clouds, 'edgeFrequency', 1, 20, 1)
             .name('Edge Frequency')
             .onChange(() => {
@@ -3016,7 +3032,7 @@ export class CCustomManager {
                 setRenderOne(true);
             })
             .onFinishChange(() => { this.saveGlobalSettings(true); });
-        
+
         editFolder.add(clouds, 'seed', 0, 9999, 1)
             .name('Seed')
             .onChange(() => {
@@ -3024,7 +3040,7 @@ export class CCustomManager {
                 setRenderOne(true);
             })
             .onFinishChange(() => { this.saveGlobalSettings(true); });
-        
+
         editFolder.add(clouds, 'feather', 0, 50000, 10)
             .name('Feather (m)')
             .onChange(() => {
@@ -3032,9 +3048,9 @@ export class CCustomManager {
                 setRenderOne(true);
             })
             .onFinishChange(() => { this.saveGlobalSettings(true); });
-        
+
         const windFolder = menu.addFolder('Wind');
-        
+
         const windModes = ["No Wind", "Use Local", "Use Target", "Custom"];
         clouds.windModeController = windFolder.add(clouds, 'windMode', windModes)
             .name('Wind Mode')
@@ -3045,7 +3061,7 @@ export class CCustomManager {
                 setRenderOne(true);
                 this.saveGlobalSettings(true);
             });
-        
+
         clouds.windFromController = windFolder.add(clouds, 'windFrom', 0, 359, 1)
             .name('Wind From (°)')
             .onChange(() => {
@@ -3053,7 +3069,7 @@ export class CCustomManager {
             })
             .onFinishChange(() => { this.saveGlobalSettings(true); });
         clouds.windFromController.show(clouds.windMode === "Custom");
-        
+
         clouds.windKnotsController = windFolder.add(clouds, 'windKnots', 0, 200, 1)
             .name('Wind (knots)')
             .onChange(() => {
@@ -3061,7 +3077,7 @@ export class CCustomManager {
             })
             .onFinishChange(() => { this.saveGlobalSettings(true); });
         clouds.windKnotsController.show(clouds.windMode === "Custom");
-        
+
         const menuData = {
             exitEditMode: () => {
                 clouds.setEditMode(false);
@@ -3074,7 +3090,7 @@ export class CCustomManager {
                     if (UndoManager) {
                         const cloudsState = clouds.serialize();
                         const cloudsID = clouds.cloudsID;
-                        
+
                         UndoManager.add({
                             undo: () => {
                                 Synth3DManager.addClouds(cloudsState);
@@ -3085,17 +3101,17 @@ export class CCustomManager {
                             description: `Delete cloud layer "${cloudsName}"`
                         });
                     }
-                    
+
                     Synth3DManager.removeClouds(clouds.cloudsID);
                     menu.destroy();
                     this.cloudsEditMenu = null;
                 }
             }
         };
-        
+
         menu.add(menuData, "exitEditMode").name("Exit Edit Mode").setDoubleClickAction();
         menu.add(menuData, "deleteClouds").name("Delete Clouds").setLabelColor('#ff4444');
-        
+
         menu.open();
     }
 
@@ -3133,14 +3149,14 @@ export class CCustomManager {
                 nodesToDispose.push(id);
             }
         });
-        
+
         // Dispose objects with their controllers
         for (const objectId of nodesToDispose) {
             this.disposeObjectWithControllers(objectId);
         }
-        
+
         // Then dispose all tracks
-        TrackManager.iterate( (id, track) => {
+        TrackManager.iterate((id, track) => {
             TrackManager.disposeRemove(id)
         })
         setRenderOne(true);
@@ -3205,7 +3221,7 @@ export class CCustomManager {
         this.bestPairs = []
 
         // outer loop, iterate over the track list
-        for (let i = 0; i < trackList.length-1; i++) {
+        for (let i = 0; i < trackList.length - 1; i++) {
             const obj1 = trackList[i];
 
             // inner loop, iterate over the object list
@@ -3273,14 +3289,14 @@ export class CCustomManager {
             const obj1 = this.bestPairs[i].obj1;
             const obj2 = this.bestPairs[i].obj2;
 
-            DebugArrowAB("Best "+i+"A", lookA, obj1.posA, "#FF0000", true, GlobalScene)
-            DebugArrowAB("Best "+i+"B", lookB, obj1.posB, "#FF8080", true, GlobalScene)
+            DebugArrowAB("Best " + i + "A", lookA, obj1.posA, "#FF0000", true, GlobalScene)
+            DebugArrowAB("Best " + i + "B", lookB, obj1.posB, "#FF8080", true, GlobalScene)
 
-            DebugArrowAB("Best "+i+"A", lookA, obj2.posA, "#00ff00", true, GlobalScene)
-            DebugArrowAB("Best "+i+"B", lookB, obj2.posB, "#80ff80", true, GlobalScene)
+            DebugArrowAB("Best " + i + "A", lookA, obj2.posA, "#00ff00", true, GlobalScene)
+            DebugArrowAB("Best " + i + "B", lookB, obj2.posB, "#80ff80", true, GlobalScene)
 
             // and a white arrow between them
-            DebugArrowAB("Best "+i+"AB", obj1.posA, obj2.posA, "#FFFFFF", true, GlobalScene)
+            DebugArrowAB("Best " + i + "AB", obj1.posA, obj2.posA, "#FFFFFF", true, GlobalScene)
 
         }
 
@@ -3353,7 +3369,7 @@ export class CCustomManager {
 
             console.error = (...args) => {
                 const errorMsg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
-                sitchErrors.push({type: 'console.error', message: errorMsg});
+                sitchErrors.push({ type: 'console.error', message: errorMsg });
                 originalConsoleError.apply(console, args);
             };
 
@@ -3377,10 +3393,10 @@ export class CCustomManager {
 
                 await new Promise((resolve, reject) => {
                     const errorHandler = (event) => {
-                        sitchErrors.push({type: 'uncaught', message: event.message || String(event)});
+                        sitchErrors.push({ type: 'uncaught', message: event.message || String(event) });
                     };
                     const rejectionHandler = (event) => {
-                        sitchErrors.push({type: 'unhandledRejection', message: event.reason?.message || String(event.reason)});
+                        sitchErrors.push({ type: 'unhandledRejection', message: event.reason?.message || String(event.reason) });
                     };
 
                     window.addEventListener('error', errorHandler);
@@ -3396,7 +3412,7 @@ export class CCustomManager {
                 });
 
                 if (sitchErrors.length > 0) {
-                    results.failed.push({name: sitchName, errors: sitchErrors});
+                    results.failed.push({ name: sitchName, errors: sitchErrors });
                     console.log(`  FAILED: ${sitchName} - ${sitchErrors.length} error(s)`);
                 } else {
                     results.passed.push(sitchName);
@@ -3404,8 +3420,8 @@ export class CCustomManager {
                 }
 
             } catch (error) {
-                sitchErrors.push({type: 'exception', message: error.message || String(error)});
-                results.failed.push({name: sitchName, errors: sitchErrors});
+                sitchErrors.push({ type: 'exception', message: error.message || String(error) });
+                results.failed.push({ name: sitchName, errors: sitchErrors });
                 console.log(`  FAILED: ${sitchName} - ${error.message}`);
             }
         }
@@ -3481,15 +3497,17 @@ export class CCustomManager {
         if (Sit.canMod) {
             // for a modded sitch, we just need to store the name of the sitch we are modding
             // TODO: are there some things in the Sit object that we need to store?????
-            out = {...out,
-                modding: Sit.name }
+            out = {
+                ...out,
+                modding: Sit.name
+            }
         }
-        else
-        {
+        else {
             // but for a custom sitch, we need to store the whole Sit object (which automatically stores changes)
             out = {
                 ...out,
-                ...Sit}
+                ...Sit
+            }
         }
 
         // the custom sitch is a special case
@@ -3501,12 +3519,12 @@ export class CCustomManager {
                 console.log("Exporting: Found video node")
                 const videoNode = NodeMan.get("video")
                 if (videoNode.staticURL) {
-                    console.log("Exporting: Found video node with staticURL = ",videoNode.staticURL)
+                    console.log("Exporting: Found video node with staticURL = ", videoNode.staticURL)
                     out.videoFile = videoNode.staticURL;
                 } else {
                     console.log("Exporting: Found video node, but no staticURL")
                     if (local && videoNode.fileName) {
-                        console.log("Exporting: LOCAL Found video node with filename = ",videoNode.fileName)
+                        console.log("Exporting: LOCAL Found video node with filename = ", videoNode.fileName)
                         out.videoFile = videoNode.fileName;
                     }
                 }
@@ -3571,7 +3589,7 @@ export class CCustomManager {
                 }
             }
             out.loadedFiles = files;
-            
+
             // Build metadata for files that need special handling on reload
             let filesMetadata = {};
             for (let id in FileManager.list) {
@@ -3599,7 +3617,7 @@ export class CCustomManager {
 
                 // check it has rootTestRemove, and remove it if it's empty
                 // this is a test to ensure serialization of an object incorporates he parents in the hierarchy
-                assert(nodeMod.rootTestRemove !== undefined, "Not incorporating ...super.modSerialzie.  rootTestRemove is not defined for node:" + id+ "Class name "+node.constructor.name)
+                assert(nodeMod.rootTestRemove !== undefined, "Not incorporating ...super.modSerialzie.  rootTestRemove is not defined for node:" + id + "Class name " + node.constructor.name)
                 // remove it
                 delete nodeMod.rootTestRemove
 
@@ -3800,8 +3818,8 @@ export class CCustomManager {
     serialize(name, version, local = false) {
         console.log("Serializing custom sitch")
 
-        assert (Sit.canMod || Sit.isCustom, "one of Sit.canMod or Sit.isCustom must be true to serialize a sitch")
-        assert (!Sit.canMod || !Sit.isCustom, "one of Sit.canMod or Sit.isCustom must be false to serialize a sitch")
+        assert(Sit.canMod || Sit.isCustom, "one of Sit.canMod or Sit.isCustom must be true to serialize a sitch")
+        assert(!Sit.canMod || !Sit.isCustom, "one of Sit.canMod or Sit.isCustom must be false to serialize a sitch")
 
         if (local) {
 
@@ -3857,17 +3875,17 @@ export class CCustomManager {
             // save it with a dialog to select the name
             return new Promise((resolve, reject) => {
                 saveFilePrompted(new Blob([str]), name + ".json").then((filename) => {
-                        console.log("Saved as " + filename)
+                    console.log("Saved as " + filename)
                     // change sit.name to the filename
                     // with .sitch.js removed
                     Sit.sitchName = filename.replace(".json", "")
 
-                    console.log("Setting Sit.sitchName to "+Sit.sitchName)
-                        resolve(filename);
-                    }).catch((error) => {
-                        console.log("Error or cancel in saving file local:", error);
-                        reject(error);
-                    })
+                    console.log("Setting Sit.sitchName to " + Sit.sitchName)
+                    resolve(filename);
+                }).catch((error) => {
+                    console.log("Error or cancel in saving file local:", error);
+                    reject(error);
+                })
             })
 
         }
@@ -3878,7 +3896,7 @@ export class CCustomManager {
             console.log("GETTING CUSTOM SITCH STRING AFTER REHOSTING DYNAMIC LINKS")
             // get the string again, now that dynamic links have been rehosted
             const str = this.getCustomSitchString();
-//            console.log(str)
+            //            console.log(str)
 
             if (name === undefined) {
                 name = "Custom.js"
@@ -3890,7 +3908,7 @@ export class CCustomManager {
 
             return FileManager.rehoster.rehostFile(name, str, version + ".js").then((staticURL) => {
                 console.log("✓ Sitch rehosted as " + staticURL);
-                
+
                 // Defensive check: detect if we got a cached response from a previous upload
                 // This can happen if rehost.php was called multiple times rapidly
                 // and the browser's fetch cache returned a stale response
@@ -3916,7 +3934,7 @@ export class CCustomManager {
                     name = Sit.name + "_mod.js"
                     paramName = "mod"
                 }
-                this.customLink = SITREC_APP + "?"+paramName+"=" + staticURL;
+                this.customLink = SITREC_APP + "?" + paramName + "=" + staticURL;
                 console.log("  Custom link created:", this.customLink);
 
                 //
@@ -4002,9 +4020,9 @@ export class CCustomManager {
                                     if (!FileManager.list[fileID].blobURL) {
                                         const buffer = FileManager.list[fileID].data;
                                         const ext = metadata.kmzHref.split('.').pop().toLowerCase();
-                                        const mimeType = ext === 'png' ? 'image/png' : 
-                                                        ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' :
-                                                        ext === 'gif' ? 'image/gif' : 'image/webp';
+                                        const mimeType = ext === 'png' ? 'image/png' :
+                                            ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' :
+                                                ext === 'gif' ? 'image/gif' : 'image/webp';
                                         const blob = new Blob([buffer], { type: mimeType });
                                         FileManager.list[fileID].blobURL = URL.createObjectURL(blob);
                                     }
@@ -4082,10 +4100,10 @@ export class CCustomManager {
      */
     async deserializeMods(mods) {
         const modIds = Object.keys(mods);
-        
+
         for (let i = 0; i < modIds.length; i++) {
             const id = modIds[i];
-            
+
             if (!NodeMan.exists(id)) {
                 console.warn("Node " + id + " does not exist in the current sitch (deprecated?), so cannot apply mod");
                 continue;
@@ -4093,14 +4111,14 @@ export class CCustomManager {
 
             const node = NodeMan.get(id);
             if (node.modDeserialize !== undefined) {
-//                console.log("Applying mod to node:" + id + " with data:" + mods[id]);
+                //                console.log("Applying mod to node:" + id + " with data:" + mods[id]);
 
                 // bit of a patch, don't deserialise the dateTimeStart node
                 // if we've overridden the time in the URL
                 // see the check for urlParams.get("datetime") in index.js
                 if (id !== "dateTimeStart" || !Globals.timeOverride) {
                     node.modDeserialize(Sit.mods[id]);
-                    
+
                     // if this has triggered an async action, wait for it to finish
                     // e.g. Like the CNode3DModel.loadGLTFModel method
                     // which won't need to load the file, but the parsing is async
@@ -4274,20 +4292,20 @@ export class CCustomManager {
     }
 
 
-// per-frame update code for custom sitches
+    // per-frame update code for custom sitches
     update(f) {
 
 
         UpdateHUD(""
-            +"+/- - Zoom in/out<br>"
-            +"C - Move Camera<br>"
-            +"T - Move Terrain<br>"
-            +"Shift-C - Ground Camera<br>"
-            +"Shift-T - Ground Terrain<br>"
-            +"; - Decrease Start Time<br>"
-            +"' - Increase Start Time<br>"
-            +"[ - Decrease Start Time+<br>"
-            +"] - Increase Start Time+<br>"
+            + "+/- - Zoom in/out<br>"
+            + "C - Move Camera<br>"
+            + "T - Move Terrain<br>"
+            + "Shift-C - Ground Camera<br>"
+            + "Shift-T - Ground Terrain<br>"
+            + "; - Decrease Start Time<br>"
+            + "' - Increase Start Time<br>"
+            + "[ - Decrease Start Time+<br>"
+            + "] - Increase Start Time+<br>"
             + (Globals.onMac ? "Shift/Ctrl/Opt/Cmd - speed<br>" : "Shift/Ctrl/Alt/Win - speed<br>")
 
 
@@ -4374,10 +4392,10 @@ function disableIfNearCameraTrack(node, ob, camera) {
     if (node.cachedBoundingSphere) {
         // Clone the cached bounding sphere (in local coordinates)
         const boundingSphere = node.cachedBoundingSphere.clone();
-        
+
         // Transform to world space using the object's world matrix
         boundingSphere.applyMatrix4(ob.matrixWorld);
-        
+
         // Check if camera is inside the bounding sphere
         const distToCenter = camera.position.distanceTo(boundingSphere.center);
         shouldHide = distToCenter < boundingSphere.radius;
@@ -4386,7 +4404,7 @@ function disableIfNearCameraTrack(node, ob, camera) {
         const dist = ob.position.distanceTo(camera.position);
         shouldHide = dist < 1;
     }
-    
+
     if (shouldHide) {
         ob.customOldVisible = ob.visible;
         ob.visible = false;
