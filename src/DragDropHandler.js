@@ -335,6 +335,16 @@ class CDragDropHandler {
      * @param {File} file - The image file
      */
     async loadImageAsVideoSource(file) {
+        const videoNode = NodeMan.get("video");
+        const hasExistingVideo = videoNode.videoData !== null && videoNode.videoData !== undefined;
+        
+        if (hasExistingVideo) {
+            const action = await videoNode.promptAddOrReplace();
+            if (action === "replace") {
+                videoNode.disposeAllVideos();
+            }
+        }
+
         // Read file as ArrayBuffer for FileManager registration
         const arrayBuffer = await file.arrayBuffer();
 
@@ -351,10 +361,10 @@ class CDragDropHandler {
         return new Promise((resolve, reject) => {
             const img = new Image();
             img.onload = () => {
-                const videoNode = NodeMan.get("video");
                 videoNode.makeImageVideo(file.name, img);
                 // Store reference to the FileManager entry
                 videoNode.imageFileID = file.name;
+                videoNode.addVideoEntry(file.name, undefined, true, file.name);
                 console.log(`Loaded image "${file.name}" as video source (${img.width}x${img.height})`);
                 resolve();
             };

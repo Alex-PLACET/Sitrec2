@@ -77,6 +77,9 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
         this.lastGetImageFrame = 0;
         this.chunks = []; // per frame chunks
         this.groups = []; // groups for frames+delta
+        this.imageCache = []; // decoded frame images
+        this.imageDataCache = []; // image data for pixel access
+        this.frameCache = []; // raw video frames
         this.groupsPending = 0;
         this.nextRequest = null;
         this.requestQueue = [];

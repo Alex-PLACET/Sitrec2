@@ -739,6 +739,22 @@ export async function SetupFromKeyAndData(key, _data, depth=0) {
                     ...data,
                 }
             )
+            
+            // Restore multi-video state if present (new format)
+            // Check for videos array first - this is the new multi-video format
+            if (Sit.videos && Sit.videos.length > 0) {
+                node.pendingVideoRestore = {
+                    videos: Sit.videos,
+                    targetIndex: Sit.currentVideoIndex ?? 0
+                };
+                // Start loading the first video
+                // Note: videoFile might also be set for backwards compat, but we ignore it
+                // when we have a videos array since that's the authoritative source
+                node.loadVideoFromEntry(Sit.videos[0]);
+            } else if (videoFile) {
+                // Legacy single video format - add to videos array for consistency
+                node.addVideoEntry(videoFile, node.staticURL, false);
+            }
             break;
 
         case "focusTracks":

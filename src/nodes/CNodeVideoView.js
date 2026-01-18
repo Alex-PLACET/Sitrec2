@@ -33,7 +33,7 @@ import {par} from "../par";
 import {quickToggle} from "../KeyBoardHandler";
 import {CNodeGUIFlag, CNodeGUIValue} from "./CNodeGUIValue";
 import {CNodeConstant} from "./CNode";
-import {Globals, guiTweaks, NodeMan, setRenderOne, Sit} from "../Globals";
+import {Globals, guiMenus, guiTweaks, NodeMan, setRenderOne, Sit} from "../Globals";
 import {CMouseHandler} from "../CMouseHandler";
 import {CNodeViewUI} from "./CNodeViewUI";
 import {CVideoMp4Data} from "../CVideoMp4Data";
@@ -72,6 +72,10 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
 
         this.lastAudioSyncFrame = -1;
         this.wasPlayingLastFrame = false;
+
+        this.videos = [];
+        this.currentVideoIndex = -1;
+        this.videoSelectorController = null;
 
         this.setupMouseHandler();
 
@@ -112,7 +116,12 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
             Sit.frames = undefined; // need to recalculate this
         }
         this.fileName = fileName;
-        this.disposeVideoData()
+        if (this.pendingVideoRestore) {
+            this.videoData = null;
+            this.staticURL = undefined;
+        } else {
+            this.disposeVideoData()
+        }
 
         // to make the quite test even quicker, we don't lad videos, just amke a red square.
         if (Globals.quickTerrain) {
@@ -123,7 +132,7 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
             ctx.fillStyle = '#FF0000';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             this.videoData = new CVideoImageData({
-                    id: this.id + "_data",
+                    id: this.id + "_data_" + this.videos.length,
                     filename: fileName,
                     img: canvas,
                     deleteAfterUsing: false
@@ -138,15 +147,22 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         Globals.pendingActions++;
         this.videoLoadPending = true;
         
+        const videoIndex = this.videos.length;
+        const videoDataId = this.id + "_data_" + videoIndex;
+        console.log(`[VideoNew] Creating video[${videoIndex}]: "${fileName}", id="${videoDataId}"`);
+        
         // Check if it's an audio-only file based on extension
         if (isAudioOnlyFormat(fileName)) {
-            console.log("Loading audio-only file: " + fileName);
-            this.videoData = new CVideoAudioOnly({id: this.id + "_data", filename: fileName, videoSpeed: this.videoSpeed},
+            console.log(`[VideoNew] Using audio-only handler for video[${videoIndex}]`);
+            this.videoData = new CVideoAudioOnly({id: videoDataId, filename: fileName, videoSpeed: this.videoSpeed},
                 this.loadedCallback.bind(this), this.errorCallback.bind(this))
         } else {
-            this.videoData = new CVideoMp4Data({id: this.id + "_data", file: fileName, videoSpeed: this.videoSpeed},
+            console.log(`[VideoNew] Using CVideoMp4Data for video[${videoIndex}]`);
+            this.videoData = new CVideoMp4Data({id: videoDataId, file: fileName, videoSpeed: this.videoSpeed},
                 this.loadedCallback.bind(this), this.errorCallback.bind(this))
         }
+        
+        console.log(`[VideoNew] Created videoData for video[${videoIndex}]: imageCache.length=${this.videoData?.imageCache?.length}`);
 
         // loaded from a URL, so we can set the staticURL
         this.staticURL = this.fileName;
@@ -204,7 +220,13 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
 
         assert (videoData, "CNodeVideoView loadedCallback called with no videoData, possibly because it's called in the constructor before the this.videoData is assigned");
 
-        console.log("🍿🍿🍿Video loaded, width=" + this.videoWidth + ", height=" + this.videoHeight);
+        const vd = videoData;
+        console.log(`[VideoLoaded] ========== Video Load Complete ==========`);
+        console.log(`[VideoLoaded]   filename: "${vd?.filename}"`);
+        console.log(`[VideoLoaded]   dimensions: ${vd?.videoWidth}x${vd?.videoHeight}`);
+        console.log(`[VideoLoaded]   frames: ${vd?.frames}, groups: ${vd?.groups?.length}, chunks: ${vd?.chunks?.length}`);
+        console.log(`[VideoLoaded]   imageCache: length=${vd?.imageCache?.length}, type=${vd?.imageCache?.constructor?.name}`);
+        console.log(`[VideoLoaded]   this.videos.length: ${this.videos.length}, pendingRestore: ${!!this.pendingVideoRestore}`);
 
         // if we loaded from a mod or custom
         // then we might want to set the frame nubmer
@@ -221,6 +243,124 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
             this.defaultPosition();
         }
 
+        // Handle pending multi-video restore
+        if (this.pendingVideoRestore) {
+            this.continueVideoRestore();
+        }
+    }
+    
+    continueVideoRestore() {
+        if (!this.pendingVideoRestore) return;
+        
+        const { videos, targetIndex } = this.pendingVideoRestore;
+        const loadedCount = this.videos.length;
+        const totalCount = videos.length;
+        
+        console.log(`[VideoRestore] Video loaded callback - loaded=${loadedCount}/${totalCount}, targetIndex=${targetIndex}`);
+        console.log(`[VideoRestore] Current videoData: filename=${this.videoData?.filename}, frames=${this.videoData?.frames}, imageCache.length=${this.videoData?.imageCache?.length}, groups=${this.videoData?.groups?.length}`);
+        
+        // Add the just-loaded video to the array
+        if (loadedCount < totalCount) {
+            const entry = videos[loadedCount];
+            if (entry) {
+                console.log(`[VideoRestore] Adding video[${loadedCount}]: "${entry.fileName}"`);
+                this.addVideoEntry(entry.fileName, entry.staticURL, entry.isImage || false, entry.imageFileID);
+            }
+        }
+        
+        // Check if more videos need to be loaded
+        if (this.videos.length < totalCount) {
+            const nextIdx = this.videos.length;
+            const nextEntry = videos[nextIdx];
+            if (nextEntry) {
+                console.log(`[VideoRestore] Starting load for video[${nextIdx}]: "${nextEntry.fileName}"`);
+                this.loadVideoFromEntry(nextEntry);
+            }
+        } else {
+            // All videos loaded
+            console.log(`[VideoRestore] All ${totalCount} videos loaded. Switching to targetIndex=${targetIndex}`);
+            this.logVideoArrayState();
+            delete this.pendingVideoRestore;
+            if (targetIndex !== this.currentVideoIndex && targetIndex < this.videos.length) {
+                this.selectVideo(targetIndex);
+            }
+        }
+    }
+    
+    logVideoArrayState() {
+        console.log(`[VideoState] videos array (${this.videos.length} entries):`);
+        this.videos.forEach((v, i) => {
+            const vd = v.videoData;
+            console.log(`  [${i}] "${v.fileName}" - hasVideoData=${!!vd}, frames=${vd?.frames}, imageCache=${vd?.imageCache?.length}, groups=${vd?.groups?.length}, loaded=${vd?.loaded}`);
+        });
+        console.log(`[VideoState] currentVideoIndex=${this.currentVideoIndex}, this.videoData.filename=${this.videoData?.filename}`);
+    }
+    
+    isValidVideoURL(url) {
+        if (!url) return false;
+        return url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:');
+    }
+    
+    loadVideoFromEntry(entry) {
+        const nextIdx = this.videos.length;
+        console.log(`[VideoLoad] loadVideoFromEntry[${nextIdx}]: "${entry.fileName}", isImage=${entry.isImage}, staticURL=${entry.staticURL?.substring(0, 50)}...`);
+        
+        if (entry.isImage && entry.imageFileID) {
+            const { FileManager } = require("../Globals");
+            const fileEntry = FileManager.list[entry.imageFileID];
+            if (fileEntry && fileEntry.data) {
+                console.log(`[VideoLoad] Loading image[${nextIdx}] from FileManager`);
+                const ext = entry.fileName.split('.').pop().toLowerCase();
+                const mimeType = ext === 'png' ? 'image/png' :
+                                ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' :
+                                ext === 'gif' ? 'image/gif' :
+                                ext === 'webp' ? 'image/webp' : 'image/png';
+                const blob = new Blob([fileEntry.data], { type: mimeType });
+                const blobURL = URL.createObjectURL(blob);
+                const img = new Image();
+                img.onload = () => {
+                    console.log(`[VideoLoad] Image[${nextIdx}] loaded: ${img.width}x${img.height}`);
+                    this.makeImageVideo(entry.fileName, img);
+                    this.imageFileID = entry.imageFileID;
+                    this.loadedCallback(this.videoData);
+                };
+                img.src = blobURL;
+            } else {
+                console.warn(`[VideoLoad] Cannot restore image[${nextIdx}] "${entry.fileName}" - file data not available`);
+                this.skipCurrentVideoRestore();
+            }
+        } else {
+            const url = entry.staticURL || entry.fileName;
+            if (this.isValidVideoURL(url)) {
+                console.log(`[VideoLoad] Loading video[${nextIdx}] from URL: ${url.substring(0, 80)}...`);
+                this.newVideo(url, false);
+            } else {
+                console.warn(`[VideoLoad] Cannot restore video[${nextIdx}] "${entry.fileName}" - invalid URL (local files must be re-imported)`);
+                this.skipCurrentVideoRestore();
+            }
+        }
+    }
+    
+    skipCurrentVideoRestore() {
+        if (!this.pendingVideoRestore) return;
+        
+        const { videos, targetIndex } = this.pendingVideoRestore;
+        this.pendingVideoRestore.skippedCount = (this.pendingVideoRestore.skippedCount || 0) + 1;
+        const skipped = this.pendingVideoRestore.skippedCount;
+        
+        console.log(`[VideoRestore] Skipped ${skipped} video(s) so far`);
+        
+        if (this.videos.length + skipped < videos.length) {
+            const nextIdx = this.videos.length + skipped;
+            const nextEntry = videos[nextIdx];
+            if (nextEntry) {
+                console.log(`[VideoRestore] Continuing to video[${nextIdx}] after skip`);
+                this.loadVideoFromEntry(nextEntry);
+            }
+        } else {
+            console.warn(`[VideoRestore] Restore complete with ${skipped} video(s) skipped - please re-import local files`);
+            delete this.pendingVideoRestore;
+        }
     }
 
     errorCallback() {
@@ -322,26 +462,201 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
     toSerializeCNodeVideoView = ["posLeft", "posRight", "posTop", "posBot"]
 
     modSerialize() {
-            return {
+            const result = {
                 ...super.modSerialize(),
                 ...this.simpleSerialize(this.toSerializeCNodeVideoView)
-
+            };
+            if (this.videos && this.videos.length > 1) {
+                result.currentVideoIndex = this.currentVideoIndex;
             }
+            return result;
     }
 
     modDeserialize(v) {
         super.modDeserialize(v)
         this.simpleDeserialize(v, this.toSerializeCNodeVideoView)
         this.positioned = true;
+        if (v.currentVideoIndex !== undefined && this.videos && this.videos.length > 1) {
+            this.selectVideo(v.currentVideoIndex);
+        }
     }
 
     disposeVideoData() {
         if (this.videoData) {
-            this.videoData.stopStreaming()
-            this.videoData.dispose();
-            this.videoData = null;
+            const isInArray = this.videos.some(v => v.videoData === this.videoData);
+            if (isInArray) {
+                this.videoData = null;
+            } else {
+                this.videoData.stopStreaming()
+                this.videoData.dispose();
+                this.videoData = null;
+            }
         }
         this.staticURL = undefined; // clear the static URL, so we will rehost any dropped file
+    }
+
+    addVideoEntry(fileName, staticURL = undefined, isImage = false, imageFileID = undefined, videoData = undefined) {
+        const vd = videoData || this.videoData;
+        const newIndex = this.videos.length;
+        console.log(`[VideoEntry] Adding video[${newIndex}]: "${fileName}"`);
+        console.log(`[VideoEntry]   videoData: filename=${vd?.filename}, frames=${vd?.frames}, imageCache.length=${vd?.imageCache?.length}, groups=${vd?.groups?.length}`);
+        
+        const entry = {
+            fileName: fileName,
+            staticURL: staticURL,
+            isImage: isImage,
+            imageFileID: imageFileID,
+            videoData: vd
+        };
+        this.videos.push(entry);
+        this.currentVideoIndex = newIndex;
+        console.log(`[VideoEntry] currentVideoIndex now ${this.currentVideoIndex}`);
+        this.updateVideoSelector();
+        return entry;
+    }
+
+    getCurrentVideoEntry() {
+        if (this.currentVideoIndex >= 0 && this.currentVideoIndex < this.videos.length) {
+            return this.videos[this.currentVideoIndex];
+        }
+        return null;
+    }
+
+    updateCurrentVideoEntry() {
+        const entry = this.getCurrentVideoEntry();
+        if (entry) {
+            entry.staticURL = this.staticURL;
+            entry.fileName = this.fileName;
+            entry.videoData = this.videoData;
+            if (this.imageFileID) {
+                entry.imageFileID = this.imageFileID;
+            }
+        }
+    }
+
+    selectVideo(index) {
+        if (index < 0 || index >= this.videos.length) return;
+        if (index === this.currentVideoIndex) return;
+
+        console.log(`[VideoSwitch] ========== Switching from video[${this.currentVideoIndex}] to video[${index}] ==========`);
+        this.logVideoArrayState();
+
+        this.updateCurrentVideoEntry();
+
+        this.currentVideoIndex = index;
+        const entry = this.videos[index];
+        const vd = entry.videoData;
+
+        console.log(`[VideoSwitch] Target video[${index}]:`);
+        console.log(`[VideoSwitch]   fileName: "${entry.fileName}"`);
+        console.log(`[VideoSwitch]   videoData: filename=${vd?.filename}, frames=${vd?.frames}`);
+        console.log(`[VideoSwitch]   imageCache: length=${vd?.imageCache?.length}, type=${vd?.imageCache?.constructor?.name}`);
+        console.log(`[VideoSwitch]   groups: ${vd?.groups?.length}, chunks: ${vd?.chunks?.length}`);
+        console.log(`[VideoSwitch]   loaded: ${vd?.loaded}, percentLoaded: ${vd?.percentLoaded}`);
+
+        this.fileName = entry.fileName;
+        this.staticURL = entry.staticURL;
+        this.videoData = entry.videoData;
+        if (entry.imageFileID) {
+            this.imageFileID = entry.imageFileID;
+        }
+        
+        this.positioned = false;
+        this.defaultPosition();
+        this._lastSwitchDebug = true;
+        setRenderOne(true);
+        
+        this.updateVideoSelector();
+    }
+
+    getVideoDisplayName(entry, index) {
+        if (!entry || !entry.fileName) return `Video ${index + 1}`;
+        let name = entry.fileName;
+        if (name.includes('/')) {
+            name = name.split('/').pop();
+        }
+        if (name.length > 30) {
+            name = name.substring(0, 27) + "...";
+        }
+        return name;
+    }
+
+    updateVideoSelector() {
+        if (!guiMenus.view) return;
+
+        if (this.videos.length <= 1) {
+            if (this.videoSelectorController) {
+                this.videoSelectorController.destroy();
+                this.videoSelectorController = null;
+            }
+            return;
+        }
+
+        const options = {};
+        for (let i = 0; i < this.videos.length; i++) {
+            options[this.getVideoDisplayName(this.videos[i], i)] = i;
+        }
+
+        if (this.videoSelectorController) {
+            this.videoSelectorController.destroy();
+        }
+
+        this.currentVideoSelection = this.currentVideoIndex;
+        this.videoSelectorController = guiMenus.view.add(this, "currentVideoSelection", options)
+            .name("Current Video")
+            .onChange((value) => {
+                this.selectVideo(value);
+            });
+    }
+
+    async promptAddOrReplace() {
+        return new Promise((resolve) => {
+            const result = confirm(
+                "A video/image is already loaded.\n\n" +
+                "Click OK to ADD this as an additional video/image.\n" +
+                "Click Cancel to REPLACE the current video/image."
+            );
+            resolve(result ? "add" : "replace");
+        });
+    }
+
+    removeVideo(index) {
+        if (index < 0 || index >= this.videos.length) return;
+        
+        const removedEntry = this.videos.splice(index, 1)[0];
+        
+        // Dispose the removed video's data
+        if (removedEntry && removedEntry.videoData) {
+            removedEntry.videoData.stopStreaming?.();
+            removedEntry.videoData.dispose?.();
+        }
+        
+        if (this.videos.length === 0) {
+            this.currentVideoIndex = -1;
+            this.videoData = null;
+        } else if (this.currentVideoIndex >= this.videos.length) {
+            this.currentVideoIndex = this.videos.length - 1;
+            this.selectVideo(this.currentVideoIndex);
+        } else if (index === this.currentVideoIndex) {
+            this.selectVideo(this.currentVideoIndex);
+        } else if (index < this.currentVideoIndex) {
+            this.currentVideoIndex--;
+        }
+        
+        this.updateVideoSelector();
+    }
+    
+    disposeAllVideos() {
+        for (const entry of this.videos) {
+            if (entry.videoData) {
+                entry.videoData.stopStreaming?.();
+                entry.videoData.dispose?.();
+            }
+        }
+        this.videos = [];
+        this.currentVideoIndex = -1;
+        this.videoData = null;
+        this.updateVideoSelector();
     }
 
     /**
@@ -374,8 +689,8 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
      * Critical for stopping audio playback when switching views
      */
     dispose() {
-        // Dispose of video data including audio
-        this.disposeVideoData();
+        // Dispose of all video data including audio
+        this.disposeAllVideos();
         // Call parent dispose
         super.dispose();
     }
@@ -384,9 +699,8 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
 
         this.fileName = filename;
 
-        this.disposeVideoData()
         this.videoData = new CVideoImageData({
-                id: this.id + "_data",
+                id: this.id + "_data_" + this.videos.length,
                 filename:filename,
                 img: img,
                 deleteAfterUsing: deleteAfterUsing
@@ -410,10 +724,18 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         // if no video file, this is just a drop target for now
         if (!this.videoData) return;
 
+        // While loading, don't render video - the loading message is shown via overlay
+        if (this.videoLoadPending) return;
+
         this.syncAudioWithVideo(frame);
 
         this.videoData.update()
         const image = this.videoData.getImage(frame);
+        if (this.videos.length > 1 && this._lastSwitchDebug) {
+            const cachedCount = this.videoData?.imageCache?.filter(x => x && x.width > 0).length || 0;
+            console.log(`[renderCanvas] frame=${frame}, image=`, image, 'cachedFrames:', cachedCount, '/', this.videoData?.imageCache?.length, 'groups:', this.videoData?.groups?.length);
+            this._lastSwitchDebug = false;
+        }
         if (image) {
 
             const ctx = this.ctx;

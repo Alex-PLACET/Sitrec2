@@ -2173,44 +2173,53 @@ export class CFileManager extends CManager {
 
         // first check for video rehosting
         if (rehostVideo) {
-            // is there a video? if so we add it directly, so, like terrain, it starts loading normally
             if (NodeMan.exists("video")) {
                 const videoNode = NodeMan.get("video")
-                console.log("[CFileManager.rehostDynamicLinks] videoNode exists, fileName:", videoNode.fileName);
-                console.log("[CFileManager.rehostDynamicLinks] videoNode.videoData:", videoNode.videoData);
-                console.log("[CFileManager.rehostDynamicLinks] videoNode.videoData.constructor.name:", videoNode.videoData?.constructor?.name);
-                if (videoNode.videoData !== undefined) {
-                    console.log("[CFileManager.rehostDynamicLinks] videoNode.videoData exists, checking videoDroppedData...");
-                    let rehostFilename = videoNode.fileName;
-                    // if more than 100 characters, then crop it to 100 characters plus a date suffix, plus the extension
+                
+                videoNode.updateCurrentVideoEntry();
+                
+                const videosToRehost = videoNode.videos && videoNode.videos.length > 0 
+                    ? videoNode.videos 
+                    : [{ fileName: videoNode.fileName, staticURL: videoNode.staticURL, videoData: videoNode.videoData }];
+                
+                console.log("[CFileManager.rehostDynamicLinks] Rehosting", videosToRehost.length, "video(s)");
+                
+                for (let i = 0; i < videosToRehost.length; i++) {
+                    const entry = videosToRehost[i];
+                    const vData = entry.videoData;
+                    
+                    if (!vData) {
+                        console.log(`[CFileManager.rehostDynamicLinks] Video ${i}: no videoData, skipping`);
+                        continue;
+                    }
+                    
+                    const videoDroppedData = vData.videoDroppedData;
+                    if (!videoDroppedData) {
+                        console.log(`[CFileManager.rehostDynamicLinks] Video ${i}: no videoDroppedData, skipping`);
+                        continue;
+                    }
+                    
+                    if (entry.staticURL) {
+                        console.log(`[CFileManager.rehostDynamicLinks] Video ${i}: already has staticURL, skipping`);
+                        continue;
+                    }
+                    
+                    let rehostFilename = entry.fileName;
                     if (rehostFilename.length > 100) {
                         const extension = getFileExtension(rehostFilename);
                         rehostFilename = rehostFilename.substring(0, 100) + "-" + todayDateStr + "." + extension;
-                        console.warn("Rehosting video with cropped filename: " + rehostFilename);
+                        console.warn(`Rehosting video ${i} with cropped filename: ${rehostFilename}`);
                     }
-
-                    const videoDroppedData = videoNode.videoData.videoDroppedData;
-                    console.log("[CFileManager.rehostDynamicLinks] videoDroppedData:", videoDroppedData ? `exists, size=${videoDroppedData.byteLength}` : "UNDEFINED!");
-
-                    if (videoDroppedData !== undefined) {
-                        // if the videoNode has a staticURL, then we don't need to rehost it
-                        console.log("[CFileManager.rehostDynamicLinks] staticURL:", videoNode.staticURL);
-
-                        if (videoNode.staticURL === undefined || videoNode.staticURL === null) {
-                            console.log("[CFileManager.rehostDynamicLinks] Starting rehost for:", rehostFilename);
-                            // // start rehosting
-                            rehostPromises.push(this.rehoster.rehostFile(rehostFilename, videoDroppedData).then((staticURL) => {
-                                console.log("VIDEO REHOSTED AS PROMISED: " + staticURL)
-                                videoNode.staticURL = staticURL;
-                            }))
-                        } else {
-                            console.log("[CFileManager.rehostDynamicLinks] Skipping rehost, staticURL already set");
+                    
+                    console.log(`[CFileManager.rehostDynamicLinks] Starting rehost for video ${i}: ${rehostFilename}`);
+                    const entryRef = entry;
+                    rehostPromises.push(this.rehoster.rehostFile(rehostFilename, videoDroppedData).then((staticURL) => {
+                        console.log("VIDEO REHOSTED AS PROMISED: " + staticURL)
+                        entryRef.staticURL = staticURL;
+                        if (entryRef === videosToRehost[videoNode.currentVideoIndex]) {
+                            videoNode.staticURL = staticURL;
                         }
-                    } else {
-                        console.log("[CFileManager.rehostDynamicLinks] ERROR: videoDroppedData is undefined, cannot rehost!");
-                    }
-                } else {
-                    console.log("[CFileManager.rehostDynamicLinks] ERROR: videoNode.videoData is undefined!");
+                    }))
                 }
             }
         }

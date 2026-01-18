@@ -117,14 +117,28 @@ export class CNodeVideoWebCodecView extends CNodeVideoView {
 
 
 
-    // for import or drag and drop files.
-    uploadFile(file) {
+    async uploadFile(file) {
+        const hasExistingVideo = this.videoData !== null && this.videoData !== undefined;
+        
+        if (hasExistingVideo) {
+            const action = await this.promptAddOrReplace();
+            if (action === "replace") {
+                this.disposeAllVideos();
+            } else {
+                this.updateCurrentVideoEntry();
+                this.videoData?.stopStreaming?.();
+            }
+        }
 
+        this._doUploadFile(file);
+        this.addVideoEntry(file.name, undefined, false);
+    }
+
+    _doUploadFile(file) {
         this.fileName = file.name;
+        this.staticURL = undefined;
 
-        this.stopStreaming()
         this.addLoadingMessage()
-        this.disposeVideoData()
         
         Globals.pendingActions++;
         this.videoLoadPending = true;
@@ -134,22 +148,20 @@ export class CNodeVideoWebCodecView extends CNodeVideoView {
         if (isAudioOnlyFormat(fileName) || 
             (fileName.endsWith('.mp4') && file.type && file.type.startsWith('audio/'))) {
             console.log("Using audio-only handler for: " + file.name);
-            this.videoData = new CVideoAudioOnly({id: this.id + "_data", dropFile: file},
+            this.videoData = new CVideoAudioOnly({id: this.id + "_data_" + this.videos.length, dropFile: file},
                 this.loadedCallback.bind(this), this.errorCallback.bind(this));
         }
-        // Check if it's an H.264 file and use specialized handler
         else if (fileName.endsWith('.h264') || file.type === 'video/h264') {
             console.log("Using H.264 specialized handler for: " + file.name);
-            this.videoData = new CVideoH264Data({id: this.id + "_data", dropFile: file},
+            this.videoData = new CVideoH264Data({id: this.id + "_data_" + this.videos.length, dropFile: file},
                 this.loadedCallback.bind(this), this.errorCallback.bind(this));
         } else {
-            // Use the standard WebCodec handler for regular video files
-            this.videoData = new CVideoMp4Data({id: this.id + "_data", dropFile: file},
+            this.videoData = new CVideoMp4Data({id: this.id + "_data_" + this.videos.length, dropFile: file},
                 this.loadedCallback.bind(this), this.errorCallback.bind(this));
         }
         
         par.frame = 0;
-        par.paused = false; // unpause, otherwise we see nothing.
+        par.paused = false;
     }
 
 

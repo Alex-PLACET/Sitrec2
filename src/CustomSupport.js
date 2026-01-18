@@ -3524,7 +3524,30 @@ export class CCustomManager {
             if (NodeMan.exists("video")) {
                 console.log("Exporting: Found video node")
                 const videoNode = NodeMan.get("video")
-                if (videoNode.staticURL) {
+                
+                // Serialize multiple videos if present
+                if (videoNode.videos && videoNode.videos.length > 0) {
+                    videoNode.updateCurrentVideoEntry();
+                    const videosToExport = videoNode.videos.map(entry => {
+                        const exported = {
+                            fileName: entry.fileName,
+                            isImage: entry.isImage || false
+                        };
+                        if (entry.staticURL) {
+                            exported.staticURL = entry.staticURL;
+                        } else if (local && entry.fileName) {
+                            exported.staticURL = entry.fileName;
+                        }
+                        if (entry.imageFileID) {
+                            exported.imageFileID = entry.imageFileID;
+                        }
+                        return exported;
+                    });
+                    out.videos = videosToExport;
+                    out.currentVideoIndex = videoNode.currentVideoIndex;
+                    console.log("Exporting: videos array with", videosToExport.length, "entries");
+                } else if (videoNode.staticURL) {
+                    // Fallback for legacy single video
                     console.log("Exporting: Found video node with staticURL = ", videoNode.staticURL)
                     out.videoFile = videoNode.staticURL;
                 } else {
