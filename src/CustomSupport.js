@@ -706,6 +706,7 @@ export class CCustomManager {
         this.subSitchFolder.add(this, "deleteCurrentSubSitch").name("Delete Current Sub")
             .tooltip("Delete the currently selected Sub Sitch");
 
+        this.setupSubSitchDetails();
         this.initializeFirstSubSitch();
     }
 
@@ -719,16 +720,117 @@ export class CCustomManager {
         this.rebuildSubSitchMenu();
     }
 
+    setupSubSitchDetails() {
+        // Node categories for sub-sitch serialization
+        // Format: CategoryName: [defaultOn, ...patterns]
+        // - defaultOn: 1 = enabled by default, 0 = disabled by default
+        // - patterns: exact node ID match, or *pattern* for case-insensitive includes
+        this.subIncludes = {
+            Views:       [1, "mainView", "lookView", "video", "chatView", "*View*"],
+            Cameras:     [1, "mainCamera", "lookCamera", "fixedCameraPosition", "ptzAngles", "*Camera*"],
+            "Date/Time": [1, "dateTimeStart", "*DateTime*"],
+            Others:      [0, "lighting", "*Lighting*", "*Effect*", "*Target*", "targetObject", "traverseObject"]
+        };
+
+        this.subSaveEnabled = {};
+        this.subLoadEnabled = {};
+        for (const key in this.subIncludes) {
+            this.subSaveEnabled[key] = this.subIncludes[key][0] === 1;
+            this.subLoadEnabled[key] = true;
+        }
+
+        this.subSaveFolder = this.subSitchFolder.addFolder("Sub Saving Details").close()
+            .tooltip("Select which node types to include when saving/updating sub sitches");
+        for (const key in this.subIncludes) {
+            this.subSaveFolder.add(this.subSaveEnabled, key).name(key).listen();
+        }
+
+        this.subLoadFolder = this.subSitchFolder.addFolder("Sub Loading Details").close()
+            .tooltip("Select which node types to restore when switching to a sub sitch");
+        for (const key in this.subIncludes) {
+            this.subLoadFolder.add(this.subLoadEnabled, key).name(key).listen();
+        }
+
+        this.subSitchFolder.add(this, "syncSubSaveDetails").name("Sync Sub Save Details")
+            .tooltip("Remove from current sub any nodes not enabled in Sub Saving Details");
+    }
+
+    syncSubSaveDetails() {
+        if (this.subSitches.length === 0 || this.currentSubIndex < 0) return;
+        
+        const currentSub = this.subSitches[this.currentSubIndex];
+        if (!currentSub.state || !currentSub.state.mods) return;
+
+        const newMods = {};
+        const newFocusTracks = {};
+        const newLockTracks = {};
+
+        for (const id in currentSub.state.mods) {
+            if (this.shouldIncludeNodeForSave(id)) {
+                newMods[id] = currentSub.state.mods[id];
+            }
+        }
+
+        for (const id in currentSub.state.focusTracks) {
+            if (this.shouldIncludeNodeForSave(id)) {
+                newFocusTracks[id] = currentSub.state.focusTracks[id];
+            }
+        }
+
+        for (const id in currentSub.state.lockTracks) {
+            if (this.shouldIncludeNodeForSave(id)) {
+                newLockTracks[id] = currentSub.state.lockTracks[id];
+            }
+        }
+
+        currentSub.state.mods = newMods;
+        currentSub.state.focusTracks = newFocusTracks;
+        currentSub.state.lockTracks = newLockTracks;
+    }
+
+    nodeMatchesPattern(nodeId, pattern) {
+        const idLower = nodeId.toLowerCase();
+        if (pattern.startsWith("*") && pattern.endsWith("*")) {
+            const inner = pattern.slice(1, -1).toLowerCase();
+            return idLower.includes(inner);
+        }
+        return nodeId === pattern;
+    }
+
+    nodeMatchesCategory(nodeId, category) {
+        const patterns = this.subIncludes[category];
+        for (let i = 1; i < patterns.length; i++) {
+            if (this.nodeMatchesPattern(nodeId, patterns[i])) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    shouldIncludeNodeForSave(nodeId) {
+        for (const category in this.subIncludes) {
+            if (this.subSaveEnabled[category] && this.nodeMatchesCategory(nodeId, category)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    shouldIncludeNodeForLoad(nodeId) {
+        for (const category in this.subIncludes) {
+            if (this.subLoadEnabled[category] && this.nodeMatchesCategory(nodeId, category)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     getSubSitchNodes() {
         const nodeIds = [];
         
         NodeMan.iterate((id, node) => {
             if (node.modSerialize !== undefined) {
-                if (node.isCamera || 
-                    id === "lookView" || id === "mainView" || 
-                    id === "lookCamera" || id === "mainCamera" ||
-                    id.includes("Camera") || id.includes("View") ||
-                    id === "ptzAngles" || id === "fixedCameraPosition") {
+                if (this.shouldIncludeNodeForSave(id)) {
                     nodeIds.push(id);
                 }
             }
@@ -774,14 +876,18 @@ export class CCustomManager {
         
         Globals.dontRecalculate = true;
         
+        const restoredIds = [];
         for (const id in state.mods) {
+            if (!this.shouldIncludeNodeForLoad(id)) continue;
             const node = NodeMan.get(id, false);
             if (node && node.modDeserialize) {
                 node.modDeserialize(state.mods[id]);
+                restoredIds.push(id);
             }
         }
         
         for (const id in state.focusTracks) {
+            if (!this.shouldIncludeNodeForLoad(id)) continue;
             const node = NodeMan.get(id, false);
             if (node) {
                 node.focusTrackName = state.focusTracks[id];
@@ -789,6 +895,7 @@ export class CCustomManager {
         }
         
         for (const id in state.lockTracks) {
+            if (!this.shouldIncludeNodeForLoad(id)) continue;
             const node = NodeMan.get(id, false);
             if (node) {
                 node.lockTrackName = state.lockTracks[id];
@@ -797,11 +904,12 @@ export class CCustomManager {
         
         Globals.dontRecalculate = false;
         
-        NodeMan.iterate((id, node) => {
-            if (state.mods[id]) {
+        for (const id of restoredIds) {
+            const node = NodeMan.get(id, false);
+            if (node) {
                 node.recalculateCascade();
             }
-        });
+        }
         
         setRenderOne(true);
     }
