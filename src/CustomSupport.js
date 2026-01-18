@@ -1012,6 +1012,12 @@ export class CCustomManager {
                 controller.setLabelColor("#80ff80");
             }
 
+            const idx = i;
+            controller.domElement.addEventListener("dblclick", () => {
+                this.switchToSubSitch(idx);
+                this.renameCurrentSubSitch();
+            });
+
             this.subSitchControllers.push(controller);
         }
     }
