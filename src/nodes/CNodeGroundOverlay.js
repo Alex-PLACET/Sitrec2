@@ -456,16 +456,36 @@ export class CNodeGroundOverlay extends CNode3DGroup {
             this.cornerHandles.push(handle);
         });
 
+        // Position rotation handle 90% towards the north edge (midpoint of north edge)
         const centerLat = (this.north + this.south) / 2;
         const centerLon = (this.east + this.west) / 2;
         const centerEUS = LLAToEUS(centerLat, centerLon, 0);
-        const groundCenter = getPointBelow(centerEUS);
-        const adjustedCenter = pointAbove(groundCenter, 5);
+
+        // Get the midpoint of the north edge (between NW and NE corners)
+        const northMidLat = this.north;
+        const northMidLon = centerLon;
+        const northMidEUS = LLAToEUS(northMidLat, northMidLon, 0);
+
+        // Apply rotation to the north midpoint
+        let rotHandleEUS = northMidEUS.clone();
+        if (this.rotation !== 0) {
+            const offset = northMidEUS.clone().sub(centerEUS);
+            const up = getLocalUpVector(centerEUS);
+            const rotatedOffset = offset.clone().applyAxisAngle(up, radians(this.rotation));
+            rotHandleEUS = centerEUS.clone().add(rotatedOffset);
+        }
+
+        // Position at 90% from center towards north edge
+        const toNorthMid = rotHandleEUS.clone().sub(centerEUS);
+        const rotHandlePos = centerEUS.clone().add(toNorthMid.multiplyScalar(0.9));
+
+        const groundRotHandle = getPointBelow(rotHandlePos);
+        const adjustedRotHandle = pointAbove(groundRotHandle, 5);
 
         const rotMaterial = new MeshBasicMaterial({color: 0x00ffff, depthTest: false, transparent: true, opacity: 0.8});
         this.rotationHandle = new Mesh(handleGeometry.clone(), rotMaterial);
         // Convert world position to local position relative to group
-        this.rotationHandle.position.copy(adjustedCenter).sub(groupPos);
+        this.rotationHandle.position.copy(adjustedRotHandle).sub(groupPos);
         this.rotationHandle.layers.mask = LAYER.MASK_HELPERS;
         this.rotationHandle.userData.handleType = 'rotation';
         this.group.add(this.rotationHandle);
@@ -612,11 +632,38 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         if (handle) {
             this.isDragging = true;
             this.draggingHandle = handle;
-            
+
+            // For rotation handle, store initial state for relative dragging
+            if (handle.type === 'rotation') {
+                this.dragInitialRotation = this.rotation;
+
+                // Get the terrain intersection point for the initial click
+                const mouseYUp = view.heightPx - (event.clientY - view.topPx);
+                const mouseRay = makeMouseRay(view, event.clientX, mouseYUp);
+                this.raycaster.setFromCamera(mouseRay, view.camera);
+
+                const savedMask = this.raycaster.layers.mask;
+                this.raycaster.layers.mask = LAYER.MASK_MAIN | LAYER.MASK_LOOK;
+
+                if (NodeMan.exists("TerrainModel")) {
+                    const terrainNode = NodeMan.get("TerrainModel");
+                    const intersect = terrainNode.getClosestIntersect(this.raycaster);
+                    if (intersect) {
+                        const centerLat = (this.north + this.south) / 2;
+                        const centerLon = (this.east + this.west) / 2;
+                        const lla = EUSToLLA(intersect.point);
+                        // Store the initial angle from center to click point
+                        this.dragInitialAngle = Math.atan2(lla.y - centerLon, lla.x - centerLat);
+                    }
+                }
+
+                this.raycaster.layers.mask = savedMask;
+            }
+
             if (view.controls) {
                 view.controls.enabled = false;
             }
-            
+
             event.stopPropagation();
             event.preventDefault();
         }
@@ -654,56 +701,137 @@ export class CNodeGroundOverlay extends CNode3DGroup {
     
     onPointerMove(event) {
         if (!this.editMode) return;
-        
+
         const view = ViewMan.get("mainView");
         if (!view) return;
-        
+
         if (this.isDragging && this.draggingHandle) {
             const mouseYUp = view.heightPx - (event.clientY - view.topPx);
             const mouseRay = makeMouseRay(view, event.clientX, mouseYUp);
             this.raycaster.setFromCamera(mouseRay, view.camera);
-            
+
             if (NodeMan.exists("TerrainModel")) {
                 const terrainNode = NodeMan.get("TerrainModel");
+
+                // Temporarily change raycaster layer mask to intersect terrain
+                const savedMask = this.raycaster.layers.mask;
+                this.raycaster.layers.mask = LAYER.MASK_MAIN | LAYER.MASK_LOOK;
+
                 const intersect = terrainNode.getClosestIntersect(this.raycaster);
+
+                // Restore raycaster layer mask
+                this.raycaster.layers.mask = savedMask;
+
                 if (intersect) {
                     const lla = EUSToLLA(intersect.point);
-                    
+
                     if (this.draggingHandle.type === 'corner') {
                         this.updateCorner(this.draggingHandle.index, lla.x, lla.y);
                     } else if (this.draggingHandle.type === 'rotation') {
                         const centerLat = (this.north + this.south) / 2;
                         const centerLon = (this.east + this.west) / 2;
-                        const angle = Math.atan2(lla.y - centerLon, lla.x - centerLat);
-                        this.rotation = degrees(angle) - 90;
+                        // Calculate current angle from center to mouse
+                        const currentAngle = Math.atan2(lla.y - centerLon, lla.x - centerLat);
+                        // Apply the delta from initial click angle to initial rotation (negated for correct direction)
+                        const angleDelta = currentAngle - this.dragInitialAngle;
+                        this.rotation = this.dragInitialRotation - degrees(angleDelta);
                     }
-                    
+
                     this.updateMesh();
                     this.updateGUIControllers();
+                    setRenderOne(true);
                 }
             }
         }
     }
     
     updateCorner(cornerIndex, lat, lon) {
-        switch (cornerIndex) {
-            case 0:
-                this.north = lat;
-                this.west = lon;
-                break;
-            case 1:
-                this.north = lat;
-                this.east = lon;
-                break;
-            case 2:
-                this.south = lat;
-                this.east = lon;
-                break;
-            case 3:
-                this.south = lat;
-                this.west = lon;
-                break;
-        }
+        // Get current corner positions in world space (rotated)
+        const corners = this.getCornerPositions();
+
+        // Corner indices: 0=NW, 1=NE, 2=SE, 3=SW
+        // Neighbors and opposite for each corner:
+        const adjacency = [
+            {prev: 3, next: 1, opposite: 2},  // 0 (NW): neighbors SW, NE; opposite SE
+            {prev: 0, next: 2, opposite: 3},  // 1 (NE): neighbors NW, SE; opposite SW
+            {prev: 1, next: 3, opposite: 0},  // 2 (SE): neighbors NE, SW; opposite NW
+            {prev: 2, next: 0, opposite: 1},  // 3 (SW): neighbors SE, NW; opposite NE
+        ];
+
+        const {prev, next, opposite} = adjacency[cornerIndex];
+
+        // The opposite corner stays fixed
+        const fixedCorner = corners[opposite].clone();
+
+        // New position for the dragged corner
+        const newDraggedCorner = LLAToEUS(lat, lon, 0);
+
+        // Calculate displacement of dragged corner
+        const oldDraggedCorner = corners[cornerIndex];
+        const displacement = newDraggedCorner.clone().sub(oldDraggedCorner);
+
+        // Get local up vector for horizontal projection
+        const centerEUS = fixedCorner.clone().add(newDraggedCorner).multiplyScalar(0.5);
+        const localUp = getLocalUpVector(centerEUS);
+
+        // Project displacement to horizontal plane
+        const horizontalDisp = displacement.clone().sub(
+            localUp.clone().multiplyScalar(displacement.dot(localUp))
+        );
+
+        // Move prev neighbor along edge from opposite to prev
+        const edgeToPrev = corners[prev].clone().sub(fixedCorner);
+        const edgeToPrevHoriz = edgeToPrev.clone().sub(
+            localUp.clone().multiplyScalar(edgeToPrev.dot(localUp))
+        );
+        const edgeDirPrev = edgeToPrevHoriz.clone().normalize();
+        const projPrev = horizontalDisp.dot(edgeDirPrev);
+        const newPrevCorner = corners[prev].clone().add(edgeDirPrev.multiplyScalar(projPrev));
+
+        // Move next neighbor along edge from opposite to next
+        const edgeToNext = corners[next].clone().sub(fixedCorner);
+        const edgeToNextHoriz = edgeToNext.clone().sub(
+            localUp.clone().multiplyScalar(edgeToNext.dot(localUp))
+        );
+        const edgeDirNext = edgeToNextHoriz.clone().normalize();
+        const projNext = horizontalDisp.dot(edgeDirNext);
+        const newNextCorner = corners[next].clone().add(edgeDirNext.multiplyScalar(projNext));
+
+        // Now we have 4 new corner positions in world space
+        const newCorners = [];
+        newCorners[cornerIndex] = newDraggedCorner;
+        newCorners[opposite] = fixedCorner;
+        newCorners[prev] = newPrevCorner;
+        newCorners[next] = newNextCorner;
+
+        // Calculate new center
+        const newCenter = newCorners[0].clone()
+            .add(newCorners[1])
+            .add(newCorners[2])
+            .add(newCorners[3])
+            .multiplyScalar(0.25);
+
+        // Unrotate corners around the new center to get the axis-aligned bounds
+        const up = getLocalUpVector(newCenter);
+        const rotationRad = radians(-this.rotation);
+
+        const unrotatedCorners = newCorners.map(corner => {
+            const offset = corner.clone().sub(newCenter);
+            const unrotatedOffset = offset.clone().applyAxisAngle(up, rotationRad);
+            return newCenter.clone().add(unrotatedOffset);
+        });
+
+        // Convert unrotated corners to lat/lon and extract bounds
+        const llas = unrotatedCorners.map(c => EUSToLLA(c));
+
+        // Find the bounds from unrotated corners
+        const lats = llas.map(lla => lla.x);
+        const lons = llas.map(lla => lla.y);
+
+        this.north = Math.max(...lats);
+        this.south = Math.min(...lats);
+        this.east = Math.max(...lons);
+        this.west = Math.min(...lons);
     }
     
     onPointerUp(event) {
