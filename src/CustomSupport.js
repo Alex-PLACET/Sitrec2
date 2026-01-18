@@ -684,8 +684,234 @@ export class CCustomManager {
             }
         }
 
+        this.setupSubSitches();
 
     } // end of setup()
+
+    setupSubSitches() {
+        this.subSitches = [];
+        this.currentSubIndex = 0;
+        this.subSitchFolder = null;
+        this.subSitchControllers = [];
+
+        this.subSitchFolder = guiMenus.view.addFolder("Sub Sitches").close()
+            .tooltip("Manage multiple camera/view configurations within this sitch");
+
+        this.subSitchFolder.add(this, "addSubSitch").name("Add Sub")
+            .tooltip("Duplicate current camera and view settings into a new Sub Sitch");
+
+        this.subSitchFolder.add(this, "renameCurrentSubSitch").name("Rename Current Sub")
+            .tooltip("Rename the currently selected Sub Sitch");
+
+        this.subSitchFolder.add(this, "deleteCurrentSubSitch").name("Delete Current Sub")
+            .tooltip("Delete the currently selected Sub Sitch");
+
+        this.initializeFirstSubSitch();
+    }
+
+    initializeFirstSubSitch() {
+        const state = this.captureSubSitchState();
+        this.subSitches.push({
+            name: "Sub 1",
+            state: state
+        });
+        this.currentSubIndex = 0;
+        this.rebuildSubSitchMenu();
+    }
+
+    getSubSitchNodes() {
+        const nodeIds = [];
+        
+        NodeMan.iterate((id, node) => {
+            if (node.modSerialize !== undefined) {
+                if (node.isCamera || 
+                    id === "lookView" || id === "mainView" || 
+                    id === "lookCamera" || id === "mainCamera" ||
+                    id.includes("Camera") || id.includes("View") ||
+                    id === "ptzAngles" || id === "fixedCameraPosition") {
+                    nodeIds.push(id);
+                }
+            }
+        });
+        
+        return nodeIds;
+    }
+
+    captureSubSitchState() {
+        const state = {
+            mods: {},
+            focusTracks: {},
+            lockTracks: {}
+        };
+        
+        const nodeIds = this.getSubSitchNodes();
+        
+        for (const id of nodeIds) {
+            const node = NodeMan.get(id, false);
+            if (node && node.modSerialize) {
+                const nodeMod = node.modSerialize();
+                if (nodeMod.rootTestRemove !== undefined) {
+                    delete nodeMod.rootTestRemove;
+                }
+                if (Object.keys(nodeMod).length > 0) {
+                    state.mods[id] = nodeMod;
+                }
+                
+                if (node.focusTrackName !== undefined) {
+                    state.focusTracks[id] = node.focusTrackName;
+                }
+                if (node.lockTrackName !== undefined) {
+                    state.lockTracks[id] = node.lockTrackName;
+                }
+            }
+        }
+        
+        return state;
+    }
+
+    restoreSubSitchState(state) {
+        if (!state || !state.mods) return;
+        
+        Globals.dontRecalculate = true;
+        
+        for (const id in state.mods) {
+            const node = NodeMan.get(id, false);
+            if (node && node.modDeserialize) {
+                node.modDeserialize(state.mods[id]);
+            }
+        }
+        
+        for (const id in state.focusTracks) {
+            const node = NodeMan.get(id, false);
+            if (node) {
+                node.focusTrackName = state.focusTracks[id];
+            }
+        }
+        
+        for (const id in state.lockTracks) {
+            const node = NodeMan.get(id, false);
+            if (node) {
+                node.lockTrackName = state.lockTracks[id];
+            }
+        }
+        
+        Globals.dontRecalculate = false;
+        
+        NodeMan.iterate((id, node) => {
+            if (state.mods[id]) {
+                node.recalculateCascade();
+            }
+        });
+        
+        setRenderOne(true);
+    }
+
+    addSubSitch() {
+        this.saveCurrentSubSitch();
+        
+        const state = this.captureSubSitchState();
+        const newIndex = this.subSitches.length + 1;
+        this.subSitches.push({
+            name: "Sub " + newIndex,
+            state: state
+        });
+        
+        this.currentSubIndex = this.subSitches.length - 1;
+        this.rebuildSubSitchMenu();
+    }
+
+    saveCurrentSubSitch() {
+        if (this.subSitches.length > 0 && this.currentSubIndex >= 0) {
+            this.subSitches[this.currentSubIndex].state = this.captureSubSitchState();
+        }
+    }
+
+    switchToSubSitch(index) {
+        if (index < 0 || index >= this.subSitches.length) return;
+        if (index === this.currentSubIndex) return;
+        
+        this.saveCurrentSubSitch();
+        
+        this.currentSubIndex = index;
+        this.restoreSubSitchState(this.subSitches[index].state);
+        
+        this.rebuildSubSitchMenu();
+    }
+
+    renameCurrentSubSitch() {
+        if (this.subSitches.length === 0) return;
+        
+        const currentSub = this.subSitches[this.currentSubIndex];
+        const newName = prompt("Enter new name for Sub Sitch:", currentSub.name);
+        
+        if (newName && newName.trim()) {
+            currentSub.name = newName.trim();
+            this.rebuildSubSitchMenu();
+        }
+    }
+
+    deleteCurrentSubSitch() {
+        if (this.subSitches.length <= 1) {
+            alert("Cannot delete the last Sub Sitch.");
+            return;
+        }
+        
+        const currentSub = this.subSitches[this.currentSubIndex];
+        if (!confirm(`Delete "${currentSub.name}"?`)) return;
+        
+        this.subSitches.splice(this.currentSubIndex, 1);
+        
+        if (this.currentSubIndex >= this.subSitches.length) {
+            this.currentSubIndex = this.subSitches.length - 1;
+        }
+        
+        this.restoreSubSitchState(this.subSitches[this.currentSubIndex].state);
+        this.rebuildSubSitchMenu();
+    }
+
+    rebuildSubSitchMenu() {
+        for (const controller of this.subSitchControllers) {
+            controller.destroy();
+        }
+        this.subSitchControllers = [];
+        
+        for (let i = 0; i < this.subSitches.length; i++) {
+            const sub = this.subSitches[i];
+            const isCurrent = (i === this.currentSubIndex);
+            const displayName = isCurrent ? "► " + sub.name : "   " + sub.name;
+            
+            const switchData = { switch: () => this.switchToSubSitch(i) };
+            const controller = this.subSitchFolder.add(switchData, "switch")
+                .name(displayName);
+            
+            if (isCurrent) {
+                controller.setLabelColor("#80ff80");
+            }
+            
+            this.subSitchControllers.push(controller);
+        }
+    }
+
+    serializeSubSitches() {
+        this.saveCurrentSubSitch();
+        return {
+            subSitches: this.subSitches,
+            currentSubIndex: this.currentSubIndex
+        };
+    }
+
+    deserializeSubSitches(data) {
+        if (!data || !data.subSitches) return;
+        
+        this.subSitches = data.subSitches;
+        this.currentSubIndex = data.currentSubIndex || 0;
+        
+        if (this.subSitches.length > 0) {
+            this.restoreSubSitchState(this.subSitches[this.currentSubIndex].state);
+        }
+        
+        this.rebuildSubSitchMenu();
+    }
 
     async setupVideoExport() {
         this.videoExportView = "lookView";
@@ -3409,6 +3635,9 @@ export class CCustomManager {
         // Serialize motion analysis state
         out.motionAnalysis = serializeMotionAnalysis()
 
+        // Serialize sub sitches
+        out.subSitchesData = this.serializeSubSitches()
+
         // do the export version tracking last, so none of the combining sitches overwrites it
         out.exportVersion = process.env.BUILD_VERSION_STRING
         out.exportTag = process.env.VERSION;
@@ -3832,6 +4061,10 @@ export class CCustomManager {
 
         if (sitchData.motionAnalysis) {
             await deserializeMotionAnalysis(sitchData.motionAnalysis);
+        }
+
+        if (sitchData.subSitchesData) {
+            this.deserializeSubSitches(sitchData.subSitchesData);
         }
 
         Globals.dontRecalculate = false;
