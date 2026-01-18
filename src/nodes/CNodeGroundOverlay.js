@@ -112,7 +112,16 @@ export class CNodeGroundOverlay extends CNode3DGroup {
     }
     
     loadTexture() {
-        if (!this.imageURL) {
+        // Check for blobURL from FileManager if we have an imageFileID
+        let textureURL = this.imageURL;
+        if (this.imageFileID && FileManager.exists(this.imageFileID)) {
+            const fileEntry = FileManager.list[this.imageFileID];
+            if (fileEntry.blobURL) {
+                textureURL = fileEntry.blobURL;
+            }
+        }
+
+        if (!textureURL) {
             // Create default texture: grey background with red circle
             this.texture = this.createDefaultTexture();
             if (this.overlayMaterial) {
@@ -124,7 +133,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         }
 
         const loader = new TextureLoader();
-        loader.load(this.imageURL, (texture) => {
+        loader.load(textureURL, (texture) => {
             texture.flipY = false;
             this.texture = texture;
             if (this.overlayMaterial) {
@@ -133,7 +142,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
             }
             setRenderOne(true);
         }, undefined, (error) => {
-            console.error(`Failed to load overlay texture: ${this.imageURL}`, error);
+            console.error(`Failed to load overlay texture: ${textureURL}`, error);
         });
     }
 
@@ -1057,11 +1066,12 @@ export class CNodeGroundOverlay extends CNode3DGroup {
             west: this.west,
             rotation: this.rotation,
             imageURL: imageURL,
+            imageFileID: this.imageFileID,
             wireframe: this.wireframe,
             opacity: this.opacity,
         };
     }
-    
+
     static deserialize(data) {
         return new CNodeGroundOverlay({
             id: data.id,
@@ -1072,6 +1082,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
             west: data.west,
             rotation: data.rotation,
             imageURL: data.imageURL,
+            imageFileID: data.imageFileID,
             wireframe: data.wireframe,
             opacity: data.opacity,
         });

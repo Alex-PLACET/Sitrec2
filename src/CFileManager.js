@@ -1353,6 +1353,49 @@ export class CFileManager extends CManager {
             return;
         }
 
+        // Handle image files that were imported as video source
+        if (fileManagerEntry.dataType === "videoImage") {
+            // Load image and set as video source
+            const buffer = fileManagerEntry.data || fileManagerEntry.original;
+            if (buffer) {
+                const ext = getFileExtension(filename).toLowerCase();
+                const mimeType = ext === 'png' ? 'image/png' :
+                                ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' :
+                                ext === 'gif' ? 'image/gif' :
+                                ext === 'webp' ? 'image/webp' : 'image/png';
+                const blob = new Blob([buffer], { type: mimeType });
+                const blobURL = URL.createObjectURL(blob);
+
+                const img = new Image();
+                img.onload = () => {
+                    if (NodeMan.exists("video")) {
+                        const videoNode = NodeMan.get("video");
+                        videoNode.makeImageVideo(filename, img);
+                        videoNode.imageFileID = filename;
+                        console.log(`Restored video image "${filename}" (${img.width}x${img.height})`);
+                    }
+                };
+                img.src = blobURL;
+            }
+            return;
+        }
+
+        // Handle image files for ground overlays - just create blobURL
+        // The overlay itself is restored via C3DSynthManager serialization
+        if (fileManagerEntry.dataType === "groundOverlayImage") {
+            const buffer = fileManagerEntry.data || fileManagerEntry.original;
+            if (buffer && !fileManagerEntry.blobURL) {
+                const ext = getFileExtension(filename).toLowerCase();
+                const mimeType = ext === 'png' ? 'image/png' :
+                                ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' :
+                                ext === 'gif' ? 'image/gif' :
+                                ext === 'webp' ? 'image/webp' : 'image/png';
+                const blob = new Blob([buffer], { type: mimeType });
+                fileManagerEntry.blobURL = URL.createObjectURL(blob);
+                console.log(`Created blobURL for ground overlay image "${filename}"`);
+            }
+            return;
+        }
 
         // if it's a CSV, the first check if it contails AZ and EL
         // if it does, then we want to send it to the customAzElController node

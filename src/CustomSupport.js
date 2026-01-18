@@ -3244,6 +3244,10 @@ export class CCustomManager {
                 const file = FileManager.list[id];
                 if (file.dataType === "kmzImage") {
                     filesMetadata[id] = { dataType: file.dataType, kmzHref: file.kmzHref };
+                } else if (file.dataType === "videoImage") {
+                    filesMetadata[id] = { dataType: file.dataType };
+                } else if (file.dataType === "groundOverlayImage") {
+                    filesMetadata[id] = { dataType: file.dataType };
                 }
             }
             if (Object.keys(filesMetadata).length > 0) {
