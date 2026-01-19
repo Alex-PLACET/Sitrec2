@@ -102,6 +102,15 @@ function getUserNames($userIds) {
     return $names;
 }
 
+function renderUserLink($userId, $userNames) {
+    $name = htmlspecialchars($userNames[$userId] ?? 'User');
+    $escapedId = htmlspecialchars($userId);
+    if (is_numeric($userId)) {
+        return '<a href="admin_info.php?user=' . $escapedId . '" class="user-link">' . $name . '</a> <span class="user-id">#' . $escapedId . '</span>';
+    }
+    return $name . ' <span class="user-id">#' . $escapedId . '</span>';
+}
+
 function formatBytes($bytes, $precision = 2) {
     $units = ['B', 'KB', 'MB', 'GB', 'TB'];
     $bytes = max($bytes, 0);
@@ -351,6 +360,8 @@ $userNames = getUserNames($allUserIds);
         td { color: #ccd6f6; }
         tr:hover { background: rgba(255,255,255,0.02); }
         .user-id { color: #8892b0; font-size: 0.85em; }
+        .user-link { color: #ccd6f6; text-decoration: none; }
+        .user-link:hover { color: #64ffda; text-decoration: underline; }
         .highlight { color: #64ffda; font-weight: 600; }
         .prompt-text {
             max-width: 600px;
@@ -491,10 +502,7 @@ $userNames = getUserNames($allUserIds);
                     <tr><th>User</th><th>Requests</th></tr>
                     <?php foreach (array_slice($aiUsage, 0, 10) as $u): ?>
                     <tr>
-                        <td>
-                            <?= htmlspecialchars($userNames[$u['user_id']] ?? 'User') ?>
-                            <span class="user-id">#<?= $u['user_id'] ?></span>
-                        </td>
+                        <td><?= renderUserLink($u['user_id'], $userNames) ?></td>
                         <td class="highlight"><?= number_format($u['hour_count']) ?></td>
                     </tr>
                     <?php endforeach; ?>
@@ -510,10 +518,7 @@ $userNames = getUserNames($allUserIds);
                     <tr><th>User</th><th>Tiles</th></tr>
                     <?php foreach (array_slice($tileUsage, 0, 10) as $u): ?>
                     <tr>
-                        <td>
-                            <?= htmlspecialchars($userNames[$u['user_id']] ?? 'User') ?>
-                            <span class="user-id">#<?= $u['user_id'] ?></span>
-                        </td>
+                        <td><?= renderUserLink($u['user_id'], $userNames) ?></td>
                         <td class="highlight"><?= number_format(array_sum($u['daily'])) ?></td>
                     </tr>
                     <?php endforeach; ?>
@@ -544,10 +549,7 @@ $userNames = getUserNames($allUserIds);
                     <tr><th>User</th><th>Size</th><th>Files</th></tr>
                     <?php foreach ($s3Usage['users'] as $uid => $info): ?>
                     <tr>
-                        <td>
-                            <?= htmlspecialchars($userNames[$uid] ?? 'User') ?>
-                            <span class="user-id">#<?= htmlspecialchars($uid) ?></span>
-                        </td>
+                        <td><?= renderUserLink($uid, $userNames) ?></td>
                         <td class="highlight"><?= formatBytes($info['size']) ?></td>
                         <td><?= number_format($info['files']) ?></td>
                     </tr>
@@ -587,10 +589,7 @@ $userNames = getUserNames($allUserIds);
                         <?php foreach ($aiRequestLogs as $log): ?>
                         <tr>
                             <td><?= date('Y-m-d H:i:s', $log['timestamp']) ?></td>
-                            <td>
-                                <?= htmlspecialchars($userNames[$log['user_id']] ?? 'User') ?>
-                                <span class="user-id">#<?= htmlspecialchars($log['user_id']) ?></span>
-                            </td>
+                            <td><?= renderUserLink($log['user_id'], $userNames) ?></td>
                             <td><span class="model-tag"><?= htmlspecialchars($log['model'] ?? 'default') ?></span></td>
                             <td><div class="prompt-text"><?= htmlspecialchars($log['prompt']) ?></div></td>
                         </tr>
