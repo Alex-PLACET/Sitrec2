@@ -694,16 +694,16 @@ export class CCustomManager {
         this.subSitchFolder = null;
         this.subSitchControllers = [];
 
-        this.subSitchFolder = guiMenus.view.addFolder("Sub Sitches").close()
+        this.subSitchFolder = guiMenus.file.addFolder("Sub Sitches").close()
             .tooltip("Manage multiple camera/view configurations within this sitch");
 
-        this.subSitchFolder.add(this, "updateSubSitch").name("Update Sub")
+        this.subSitchFolder.add(this, "updateSubSitch").name("Update Current Sub")
             .tooltip("Update the currently selected Sub Sitch with the current view settings");
 
         this.subSitchFolder.add(this, "updateAndAddSubSitch").name("Update Current and Add New Sub")
             .tooltip("Update current Sub Sitch, then duplicate it into a new Sub Sitch");
 
-        this.subSitchFolder.add(this, "discardAndAddSubSitch").name("Discard Current and Add New")
+        this.subSitchFolder.add(this, "discardAndAddSubSitch").name("Discard Changes and Add New")
             .tooltip("Discard changes to current Sub Sitch, and invoke a new Sub Sitch from current state");
 
         this.subSitchFolder.add(this, "renameCurrentSubSitch").name("Rename Current Sub")
