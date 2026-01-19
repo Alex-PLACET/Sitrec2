@@ -1596,31 +1596,30 @@ export class CFileManager extends CManager {
                     return;
                 }
 
+                const videoNode = NodeMan.get("video");
+
                 // Check if it's an H.264 stream
                 if (fileExt === "h264") {
                     console.log("H.264 stream detected, attempting to load with specialized handler");
-                    // Create a File-like object from the buffer for the video node
                     const blob = new Blob([parsedFile], { type: 'video/h264' });
                     const file = new File([blob], filename, { type: 'video/h264' });
-                    NodeMan.get("video").uploadFile(file);
+                    videoNode.uploadFile(file, true);
                 } 
                 // Check if it's an audio file (M4A, MP3, etc.)
                 else if (fileExt === "m4a" || fileExt === "mp3") {
                     console.log("Audio file detected: " + filename);
-                    // Create a File-like object from the buffer for the video node
                     const mimeType = fileExt === "mp3" ? 'audio/mpeg' : 'audio/mp4';
                     const blob = new Blob([parsedFile], { type: mimeType });
                     const file = new File([blob], filename, { type: mimeType });
-                    NodeMan.get("video").uploadFile(file);
+                    videoNode.uploadFile(file, true);
                 }
                 // Check if it's a regular video file (MP4, MOV, WEBM, AVI)
                 else if (fileExt === "mp4" || fileExt === "mov" || fileExt === "webm" || fileExt === "avi") {
                     console.log("Video file detected: " + filename);
-                    // Create a File-like object from the buffer for the video node
                     const mimeType = `video/${fileExt === "mov" ? "quicktime" : fileExt}`;
                     const blob = new Blob([parsedFile], { type: mimeType });
                     const file = new File([blob], filename, { type: mimeType });
-                    NodeMan.get("video").uploadFile(file);
+                    videoNode.uploadFile(file, true);
                 }
                 else {
                     console.warn("Unknown video format for: " + filename);

@@ -117,10 +117,10 @@ export class CNodeVideoWebCodecView extends CNodeVideoView {
 
 
 
-    async uploadFile(file) {
+    async uploadFile(file, autoAdd = false) {
         const hasExistingVideo = this.videoData !== null && this.videoData !== undefined;
         
-        if (hasExistingVideo) {
+        if (hasExistingVideo && !autoAdd) {
             const action = await this.promptAddOrReplace();
             if (action === "replace") {
                 this.disposeAllVideos();
@@ -128,6 +128,9 @@ export class CNodeVideoWebCodecView extends CNodeVideoView {
                 this.updateCurrentVideoEntry();
                 this.videoData?.stopStreaming?.();
             }
+        } else if (hasExistingVideo && autoAdd) {
+            this.updateCurrentVideoEntry();
+            this.videoData?.stopStreaming?.();
         }
 
         this._doUploadFile(file);
