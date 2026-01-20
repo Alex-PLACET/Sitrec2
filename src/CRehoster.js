@@ -3,6 +3,21 @@ import {SITREC_SERVER} from "./configUtils";
 import {showError} from "./showError";
 import {initUploadProgress, parseBoolean, updateUploadProgress} from "./utils";
 
+async function computeContentHash(data) {
+    let buffer;
+    if (typeof data === 'string') {
+        buffer = new TextEncoder().encode(data);
+    } else if (data instanceof ArrayBuffer) {
+        buffer = data;
+    } else if (data.buffer instanceof ArrayBuffer) {
+        buffer = data.buffer;
+    } else {
+        return null;
+    }
+    const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.slice(0, 6).map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
 export class CRehoster {
 
@@ -11,7 +26,7 @@ export class CRehoster {
         this.rehostPromises = [];
     }
 
-    async initiateMultipartUpload(filename, version, totalParts) {
+    async initiateMultipartUpload(filename, version, totalParts, contentHash) {
         const serverURL = SITREC_SERVER + 'rehost.php?action=initiateMultipart&unique=' + Date.now();
         
         const requestData = {
@@ -20,6 +35,9 @@ export class CRehoster {
         };
         if (version !== undefined) {
             requestData.version = version;
+        }
+        if (contentHash) {
+            requestData.contentHash = contentHash;
         }
 
         const response = await fetch(serverURL, {
@@ -82,11 +100,19 @@ export class CRehoster {
                 initUploadProgress(filename, data.byteLength);
                 
                 try {
+                    const contentHash = await computeContentHash(data);
                     const uploadStartTime = Date.now();
                     const totalParts = Math.ceil(data.byteLength / CHUNK_SIZE);
                     console.log(`[Multipart Upload] File will be split into ${totalParts} parts of ~${CHUNK_SIZE / 1024 / 1024}MB each, ${PARALLEL_UPLOADS} concurrent uploads`);
 
-                    const { uploadId, uploadUrls, objectUrl } = await this.initiateMultipartUpload(filename, version, totalParts);
+                    const initResult = await this.initiateMultipartUpload(filename, version, totalParts, contentHash);
+                    
+                    if (initResult.exists) {
+                        console.log('File already exists on S3:', initResult.objectUrl);
+                        return initResult.objectUrl.replace(/ /g, "%20");
+                    }
+                    
+                    const { uploadId, uploadUrls, objectUrl } = initResult;
                     console.log(`[Multipart Upload] Initiated with uploadId: ${uploadId}`);
 
                     const uploadedBytesPerPart = new Array(totalParts).fill(0);
@@ -201,9 +227,13 @@ export class CRehoster {
             initUploadProgress(filename, data.byteLength);
             
             try {
+                const contentHash = await computeContentHash(data);
                 let requestData = {
                     filename: filename,
                 };
+                if (contentHash) {
+                    requestData.contentHash = contentHash;
+                }
                 if (version !== undefined) {
                     requestData.version = version;
                 }
@@ -224,6 +254,12 @@ export class CRehoster {
                 }
 
                 let presignedData = await response.json();
+                
+                if (presignedData.exists) {
+                    console.log('File already exists on S3:', presignedData.objectUrl);
+                    return presignedData.objectUrl.replace(/ /g, "%20");
+                }
+                
                 const { presignedUrl, objectUrl } = presignedData;
 
                 await new Promise((resolve, reject) => {

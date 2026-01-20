@@ -60,9 +60,6 @@ export class CNodeVideoWebCodecView extends CNodeVideoView {
             return root + url;
         }
 
-        this.url = getAbsolutePath(this.fileName, SITREC_APP);
-
-
         // add a gui link to the file manager gui
         // this will allow the user to download the file
         // or delete it.
@@ -72,7 +69,6 @@ export class CNodeVideoWebCodecView extends CNodeVideoView {
         // Define an object to hold button functions
         const obj = {
             openURL: () => {
-             //   window.open(this.url, '_blank');
                 // we have a url to the video file and want to let the user download it
                 // so we create a link and click it.
                 // this will download the file.
@@ -80,13 +76,14 @@ export class CNodeVideoWebCodecView extends CNodeVideoView {
                 // Temporarily set flag to allow unload without dialog
                 Globals.allowUnload = true;
                 
+                const url = this.staticURL || getAbsolutePath(this.fileName, SITREC_APP);
                 const link = document.createElement('a');
 
                 // Don't encode the URL if it's already encoded (e.g., from S3)
                 // Only encode if it contains unencoded spaces or special characters
                 // Check if URL is already encoded by looking for % followed by hex digits
-                const isAlreadyEncoded = /%[0-9A-Fa-f]{2}/.test(this.url);
-                link.href = isAlreadyEncoded ? this.url : encodeURI(this.url);
+                const isAlreadyEncoded = /%[0-9A-Fa-f]{2}/.test(url);
+                link.href = isAlreadyEncoded ? url : encodeURI(url);
 
                 link.download = this.fileName;
 

@@ -63,12 +63,19 @@ if (isset($_GET['action']) && $_GET['action'] === 'getPresignedUrl') {
     
     $fileName = basename($requestData['filename']);
     $version = isset($requestData['version']) ? basename($requestData['version']) : null;
+    $contentHash = isset($requestData['contentHash']) ? $requestData['contentHash'] : null;
     
     $fileName = preg_replace('/[^\w\s\.\-\(\)]/', '_', $fileName);
     
     if (!isSafeName($fileName) || ($version && !isSafeName($version))) {
         http_response_code(400);
         echo json_encode(['error' => 'Invalid filename or version']);
+        exit();
+    }
+    
+    if ($contentHash && !preg_match('/^[a-f0-9]+$/', $contentHash)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Invalid content hash']);
         exit();
     }
     
@@ -86,12 +93,29 @@ if (isset($_GET['action']) && $_GET['action'] === 'getPresignedUrl') {
     if ($version) {
         $newFileName = $version;
     } else {
-        $newFileName = $baseName . '-' . uniqid() . '.' . $extension;
+        $uniqueId = $contentHash ? $contentHash : uniqid();
+        $newFileName = $baseName . '-' . $uniqueId . '.' . $extension;
     }
     
     $s3Path = $user_id . '/' . $newFileName;
     if ($version) {
         $s3Path = $user_id . '/' . $fileName . '/' . $newFileName;
+    }
+    
+    if ($contentHash) {
+        try {
+            $s3->headObject([
+                'Bucket' => $aws['bucket'],
+                'Key' => $s3Path
+            ]);
+            $objectUrl = 'https://' . $aws['bucket'] . '.s3.' . $aws['region'] . '.amazonaws.com/' . $s3Path;
+            echo json_encode([
+                'exists' => true,
+                'objectUrl' => $objectUrl
+            ]);
+            exit();
+        } catch (Aws\S3\Exception\S3Exception $e) {
+        }
     }
     
     try {
@@ -133,6 +157,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'initiateMultipart') {
     
     $fileName = basename($requestData['filename']);
     $version = isset($requestData['version']) ? basename($requestData['version']) : null;
+    $contentHash = isset($requestData['contentHash']) ? $requestData['contentHash'] : null;
     $totalParts = (int)$requestData['parts'];
     
     $fileName = preg_replace('/[^\w\s\.\-\(\)]/', '_', $fileName);
@@ -140,6 +165,12 @@ if (isset($_GET['action']) && $_GET['action'] === 'initiateMultipart') {
     if (!isSafeName($fileName) || ($version && !isSafeName($version))) {
         http_response_code(400);
         echo json_encode(['error' => 'Invalid filename or version']);
+        exit();
+    }
+    
+    if ($contentHash && !preg_match('/^[a-f0-9]+$/', $contentHash)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Invalid content hash']);
         exit();
     }
     
@@ -157,12 +188,29 @@ if (isset($_GET['action']) && $_GET['action'] === 'initiateMultipart') {
     if ($version) {
         $newFileName = $version;
     } else {
-        $newFileName = $baseName . '-' . uniqid() . '.' . $extension;
+        $uniqueId = $contentHash ? $contentHash : uniqid();
+        $newFileName = $baseName . '-' . $uniqueId . '.' . $extension;
     }
     
     $s3Path = $user_id . '/' . $newFileName;
     if ($version) {
         $s3Path = $user_id . '/' . $fileName . '/' . $newFileName;
+    }
+    
+    if ($contentHash) {
+        try {
+            $s3->headObject([
+                'Bucket' => $aws['bucket'],
+                'Key' => $s3Path
+            ]);
+            $objectUrl = 'https://' . $aws['bucket'] . '.s3.' . $aws['region'] . '.amazonaws.com/' . $s3Path;
+            echo json_encode([
+                'exists' => true,
+                'objectUrl' => $objectUrl
+            ]);
+            exit();
+        } catch (Aws\S3\Exception\S3Exception $e) {
+        }
     }
     
     try {
