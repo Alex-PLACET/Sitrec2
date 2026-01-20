@@ -32,6 +32,80 @@ Example entry format:
 
 ---
 
+## Version 2.24.1 (2026-01-19)
+
+### New Features
+- **Version history menu** for loading previous saves of a sitch
+- **Spline2 spline type** for manual tracking curves
+
+### Improvements
+- Improved default spline parameters
+- Sitches in load menu now sorted by last save date instead of creation date
+- File content hash calculation moved client-side to work with S3 presigned URLs
+
+---
+
+## Version 2.24.0 (2026-01-19)
+
+### New Features
+- **SubSitches** for saving and restoring sub-states within a sitch
+- **Multi-video handling** with support for multiple video files
+- **Video loading manager** displaying loading status of videos
+
+### Improvements
+- Improved shift-dragging to rotate camera (prevents glitching at zenith, avoids going underground)
+- Double-click Sub triggers rename
+- SubSitch details for selecting what is saved and restored
+- Saving more metadata with file types including original origin from KML overlays
+- Dialog for choosing between video image or image overlay
+
+### Bug Fixes
+- Fixed issues with async loading of multiple videos/images
+- Fixed ground overlay corner dragging
+- Skip "video/image is already loaded" dialog when loading TS file from sitch
+
+---
+
+## Version 2.23.0 (2026-01-17)
+
+### New Features
+- **GeoTiff support** for loading GeoTiff image files
+- **Image ground overlays** integrated with tile system
+- **KMZ file support** with embedded images (e.g., from NASA Worldview/EODIS)
+- **Zaine Triangulation** for Gimbal analysis (in Show/Hide menu)
+- **Admin DAG view** for node tree visualization
+
+### Bug Fixes
+- Fixed z-fighting with custom z-bias for overlay seams
+- Fixed async visibility issue
+- Fixed initial rotation handles
+- Improved overlay visibility
+
+---
+
+## Version 2.22.2 (2026-01-16)
+
+### New Features
+- **PBA track importing** for Pico Balloon Archive data
+
+### Improvements
+- Great circle interpolation for display of large missing track chunks
+- PBA tracks use "balloon_callsign" if available
+- Exporting legacy tracks (e.g. Gimbal) as MISB compliant
+- Increased video load timeout to 2 minutes
+
+### Bug Fixes
+- Fixed missing settings with server sanitization validation
+
+---
+
+## Version 2.22.1 (2026-01-16)
+
+### Improvements
+- Updated documentation
+
+---
+
 ## Version 2.22.0 (2026-01-16)
 
 ### New Features
