@@ -89,6 +89,8 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
         this.blankFrame = null; // Will be created once we know video dimensions
         this.blankFrameCanvas = null; // Temporary canvas for blank frame creation
         this.blankFramePending = false; // Flag indicating blank frame creation is in progress
+        this.lastGoodFrame = null; // Last successfully decoded frame to avoid black frames
+        this.lastGoodFrameIndex = -1; // Cache index of lastGoodFrame for O(1) orphan detection
         this.decodeFrameIndex = 0; // Simple counter for decode order
         this.c_tmp = null; // Temporary canvas (if used)
         this.ctx_tmp = null; // Temporary canvas context (if used)
@@ -289,7 +291,7 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
 
         // Close any existing frame at this position to avoid memory leaks
         const existingFrame = this.imageCache[frameNumber];
-        if (existingFrame && typeof existingFrame.close === 'function') {
+        if (existingFrame && existingFrame !== this.lastGoodFrame && typeof existingFrame.close === 'function') {
             try {
                 existingFrame.close();
             } catch (e) {
@@ -615,6 +617,11 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
                     // release all the frames in this group
                     // Close imageCache (ImageBitmap for WebCodec videos)
                     if (this.imageCache[i]) {
+                        // Don't close the lastGoodFrame - we need it as fallback
+                        if (this.imageCache[i] === this.lastGoodFrame) {
+                            this.imageCache[i] = null;
+                            continue;
+                        }
                         // Only close ImageBitmap objects, not regular images
                         if (this.imageCache[i] instanceof ImageBitmap) {
                             try {
@@ -766,12 +773,45 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
         if (foundFrame && bestFrame >= 0 && bestFrame < this.imageCache.length) {
             const image = this.imageCache[bestFrame];
             if (image && image.width && image.width > 0) {
+                this.setLastGoodFrame(image, bestFrame);
                 return this.getStabilizedImage(frame, image);
             }
         }
 
-        // If no valid frame found, return blank frame
+        // If no valid frame found, return last good frame if available
+        if (this.lastGoodFrame && this.lastGoodFrame.width && this.lastGoodFrame.width > 0) {
+            return this.getStabilizedImage(frame, this.lastGoodFrame);
+        }
+
+        // Only return blank frame as last resort
         return this.createBlankFrame();
+    }
+
+    /**
+     * Set the last good frame for fallback display
+     * Uses O(1) index-based lookup instead of O(n) .includes() scan
+     * @param {ImageBitmap} image - The frame to set as lastGoodFrame
+     * @param {number} frameIndex - The cache index this frame came from
+     */
+    setLastGoodFrame(image, frameIndex) {
+        if (this.lastGoodFrame === image) return;
+
+        // Check if old lastGoodFrame is orphaned (not in imageCache)
+        // O(1) lookup using stored index instead of O(n) .includes() scan
+        if (this.lastGoodFrame && this.imageCache) {
+            const stillInCache = this.lastGoodFrameIndex >= 0 &&
+                                 this.lastGoodFrameIndex < this.imageCache.length &&
+                                 this.imageCache[this.lastGoodFrameIndex] === this.lastGoodFrame;
+            if (!stillInCache && typeof this.lastGoodFrame.close === 'function') {
+                try {
+                    this.lastGoodFrame.close();
+                } catch (e) {
+                    // Already closed
+                }
+            }
+        }
+        this.lastGoodFrame = image;
+        this.lastGoodFrameIndex = frameIndex;
     }
 
     isFrameCached(frame) {
@@ -1033,6 +1073,17 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
     }
 
     flushEntireCache() {
+        // Close lastGoodFrame first since we're clearing everything
+        if (this.lastGoodFrame && typeof this.lastGoodFrame.close === 'function') {
+            try {
+                this.lastGoodFrame.close();
+            } catch (e) {
+                // Ignore
+            }
+        }
+        this.lastGoodFrame = null;
+        this.lastGoodFrameIndex = -1;
+
         if (this.imageCache) {
             // Close all ImageBitmap objects to free memory
             for (let i = 0; i < this.imageCache.length; i++) {
