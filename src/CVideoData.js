@@ -18,12 +18,19 @@ export class CVideoData {
         // just give some defaults. actual images will override
         this.videoWidth = 100
         this.videoHeight = 100
-        
+
         // Original video dimensions (before any resizing due to videoMaxSize setting)
         // These are set once when the video is first loaded and never changed
         // Used for tracking/analysis coordinate conversion
         this.originalVideoWidth = 0
         this.originalVideoHeight = 0
+
+        // Rotation support
+        // metadataRotation: rotation from video container metadata (e.g., phone videos)
+        // userRotation: rotation set by user via UI dropdown
+        // effectiveRotation: combined rotation (metadataRotation + userRotation) % 360
+        this.metadataRotation = 0;  // 0, 90, 180, or 270 degrees
+        this.userRotation = 0;      // 0, 90, 180, or 270 degrees
 
         // Stabilization support
         this.stabilizationEnabled = false;
@@ -34,6 +41,37 @@ export class CVideoData {
 
         this.flushEntireCache();
 
+    }
+
+    /**
+     * Get the effective rotation combining metadata and user rotation
+     * @returns {number} Combined rotation in degrees (0, 90, 180, or 270)
+     */
+    get effectiveRotation() {
+        return (this.metadataRotation + this.userRotation) % 360;
+    }
+
+    /**
+     * Set user rotation and trigger cache flush
+     * @param {number} degrees - Rotation in degrees (0, 90, 180, or 270)
+     */
+    setUserRotation(degrees) {
+        // Normalize to 0, 90, 180, 270
+        degrees = ((degrees % 360) + 360) % 360;
+        if (this.userRotation === degrees) return;
+        this.userRotation = degrees;
+        this.onRotationChanged();
+    }
+
+    /**
+     * Called when rotation changes - flushes caches and disables stabilization
+     * Subclasses can override to add additional cleanup
+     */
+    onRotationChanged() {
+        this.flushEntireCache();
+        // Disable stabilization as offsets are no longer valid after rotation
+        this.setStabilizationEnabled(false);
+        this.stabilizationData = null;
     }
 
     // virtual functions

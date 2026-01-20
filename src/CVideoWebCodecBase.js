@@ -132,6 +132,55 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
     }
 
     /**
+     * Called when rotation changes - reset decoder groups and flush caches
+     * @override
+     */
+    onRotationChanged() {
+        super.onRotationChanged();
+        // Reset decoder groups so frames are re-decoded with new rotation
+        if (this.groups) {
+            for (let group of this.groups) {
+                group.loaded = false;
+                group.pending = 0;
+                group.decodeOrder = [];
+            }
+        }
+        this.groupsPending = 0;
+        this.nextRequest = null;
+        if (this.requestQueue) {
+            this.requestQueue = [];
+        }
+    }
+
+    /**
+     * Apply rotation to an image using canvas 2D transforms
+     * @param {ImageBitmap} image - Source image to rotate
+     * @param {number} degrees - Rotation in degrees (90, 180, or 270)
+     * @returns {Promise<ImageBitmap>} Rotated image as ImageBitmap
+     */
+    applyRotation(image, degrees) {
+        const width = image.width;
+        const height = image.height;
+        // For 90° and 270° rotations, width and height are swapped
+        const swap = (degrees === 90 || degrees === 270);
+        const outW = swap ? height : width;
+        const outH = swap ? width : height;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = outW;
+        canvas.height = outH;
+        const ctx = canvas.getContext('2d');
+
+        // Move to center, rotate, then draw image centered
+        ctx.translate(outW / 2, outH / 2);
+        ctx.rotate(degrees * Math.PI / 180);
+        ctx.translate(-width / 2, -height / 2);
+        ctx.drawImage(image, 0, 0);
+
+        return createImageBitmap(canvas);
+    }
+
+    /**
      * Resize a video frame based on videoMaxSize setting
      * Returns the original frame if no resizing needed
      */
@@ -254,78 +303,99 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
                 return;
             }
 
-            // Resize frame if needed based on videoMaxSize setting
-            const resizePromise = this.resizeFrameIfNeeded(image);
-            
-            // Handle both sync (image returned as-is) and async (Promise from resizing)
-            Promise.resolve(resizePromise).then(processedImage => {
-                // Double-check imageCache still exists after async operations
-                if (!this.imageCache) {
-                    if (typeof processedImage.close === 'function') {
+            // Apply rotation if needed
+            const rotation = this.effectiveRotation;
+            let rotationPromise;
+            if (rotation !== 0) {
+                rotationPromise = this.applyRotation(image, rotation).then(rotatedImage => {
+                    // Close original image to free memory
+                    if (image !== rotatedImage && typeof image.close === 'function') {
                         try {
-                            processedImage.close();
+                            image.close();
                         } catch (e) {
-                            console.warn("Error closing processed image on cache invalidation:", e);
+                            console.warn("Error closing original image after rotation:", e);
                         }
                     }
-                    return;
-                }
+                    return rotatedImage;
+                });
+            } else {
+                rotationPromise = Promise.resolve(image);
+            }
 
-                this.imageCache[frameNumber] = processedImage;
-                if (this.videoWidth !== processedImage.width || this.videoHeight !== processedImage.height) {
-                    console.log("New per-frame video dimensions detected: width=" + processedImage.width + ", height=" + processedImage.height);
-                    this.videoWidth = processedImage.width;
-                    this.videoHeight = processedImage.height;
-                }
+            return rotationPromise.then(rotatedImage => {
+                // Resize frame if needed based on videoMaxSize setting
+                return this.resizeFrameIfNeeded(rotatedImage);
+            });
+        }).then(processedImage => {
+            // Handle the final processed image (rotated and/or resized)
+            if (!processedImage) return;
 
-                if (this.c_tmp === undefined) {
-                    this.c_tmp = document.createElement("canvas");
-                    this.c_tmp.setAttribute("width", this.videoWidth);
-                    this.c_tmp.setAttribute("height", this.videoHeight);
-                    this.ctx_tmp = this.c_tmp.getContext("2d");
+            // Double-check imageCache still exists after async operations
+            if (!this.imageCache) {
+                if (typeof processedImage.close === 'function') {
+                    try {
+                        processedImage.close();
+                    } catch (e) {
+                        console.warn("Error closing processed image on cache invalidation:", e);
+                    }
                 }
+                return;
+            }
 
-                // if it's the last one we wanted, then tell the system to render a frame
-                if (frameNumber === this.lastGetImageFrame) {
-                    setRenderOne(true);
+            this.imageCache[frameNumber] = processedImage;
+            if (this.videoWidth !== processedImage.width || this.videoHeight !== processedImage.height) {
+                console.log("New per-frame video dimensions detected: width=" + processedImage.width + ", height=" + processedImage.height);
+                this.videoWidth = processedImage.width;
+                this.videoHeight = processedImage.height;
+            }
+
+            if (this.c_tmp === undefined) {
+                this.c_tmp = document.createElement("canvas");
+                this.c_tmp.setAttribute("width", this.videoWidth);
+                this.c_tmp.setAttribute("height", this.videoHeight);
+                this.ctx_tmp = this.c_tmp.getContext("2d");
+            }
+
+            // if it's the last one we wanted, then tell the system to render a frame
+            if (frameNumber === this.lastGetImageFrame) {
+                setRenderOne(true);
+            }
+
+            if (!group.decodeOrder) {
+                group.decodeOrder = [];
+            }
+            group.decodeOrder.push(frameNumber);
+
+            if (group.pending <= 0) {
+                console.warn("Decoding more frames than were listed as pending at frame " + frameNumber);
+                return;
+            }
+
+            group.pending--;
+            if (group.pending === 0) {
+                group.loaded = true;
+                this.groupsPending--;
+                this.handleGroupComplete();
+            }
+        }).catch(error => {
+            showError("Error during frame processing/rotation/resizing:", error);
+            // Ensure proper cleanup on error
+            if (this.imageCache && this.imageCache[frameNumber] instanceof ImageBitmap) {
+                try {
+                    this.imageCache[frameNumber].close();
+                } catch (e) {
+                    console.warn("Error closing frame on processing error:", e);
                 }
-
-                if (!group.decodeOrder) {
-                    group.decodeOrder = [];
-                }
-                group.decodeOrder.push(frameNumber);
-
-                if (group.pending <= 0) {
-                    console.warn("Decoding more frames than were listed as pending at frame " + frameNumber);
-                    return;
-                }
-
+                this.imageCache[frameNumber] = null;
+            }
+            // Decrement pending count even on error
+            if (group && group.pending > 0) {
                 group.pending--;
                 if (group.pending === 0) {
-                    group.loaded = true;
+                    group.loaded = false;
                     this.groupsPending--;
-                    this.handleGroupComplete();
                 }
-            }).catch(error => {
-                showError("Error during frame processing/resizing:", error);
-                // Ensure proper cleanup on error
-                if (this.imageCache && this.imageCache[frameNumber] instanceof ImageBitmap) {
-                    try {
-                        this.imageCache[frameNumber].close();
-                    } catch (e) {
-                        console.warn("Error closing frame on processing error:", e);
-                    }
-                    this.imageCache[frameNumber] = null;
-                }
-                // Decrement pending count even on error
-                if (group && group.pending > 0) {
-                    group.pending--;
-                    if (group.pending === 0) {
-                        group.loaded = false;
-                        this.groupsPending--;
-                    }
-                }
-            });
+            }
         }).catch(error => {
             showError("Error creating ImageBitmap:", error);
             // Ensure we still close the videoFrame on error

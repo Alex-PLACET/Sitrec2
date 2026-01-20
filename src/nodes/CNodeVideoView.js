@@ -263,6 +263,9 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
             this.defaultPosition();
         }
 
+        // Setup/update rotation dropdown now that video is loaded
+        this.setupRotationDropdown();
+
         // Handle pending multi-video restore
         // Pass vd (the videoData from callback parameter) since this.videoData may not be set yet
         // (CVideoImageData calls loadedCallback synchronously from within its constructor)
@@ -617,6 +620,7 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         setRenderOne(true);
 
         this.updateVideoSelector();
+        this.updateRotationDropdown();
     }
 
     getVideoDisplayName(entry, index) {
@@ -670,8 +674,58 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
     ensureVideoSelectorUpdated(retries = 10) {
         if (guiMenus.view) {
             this.updateVideoSelector();
+            this.setupRotationDropdown();
         } else if (retries > 0) {
             setTimeout(() => this.ensureVideoSelectorUpdated(retries - 1), 100);
+        }
+    }
+
+    /**
+     * Set up the video rotation dropdown in the View menu
+     * Allows user to rotate video by 0°, 90° CW, 180°, or 90° CCW
+     */
+    setupRotationDropdown() {
+        if (!guiMenus.view) return;
+
+        // Destroy existing controller if it exists
+        if (this.rotationController) {
+            this.rotationController.destroy();
+            this.rotationController = null;
+        }
+
+        // Only show rotation dropdown if we have video data
+        if (!this.videoData) return;
+
+        // Rotation options: display name -> degrees value
+        const rotationOptions = {
+            "0°": 0,
+            "90° CW": 90,
+            "180°": 180,
+            "90° CCW": 270
+        };
+
+        // Get current rotation from video data
+        this.currentRotation = this.videoData.userRotation || 0;
+
+        this.rotationController = guiMenus.view.add(this, "currentRotation", rotationOptions)
+            .name("Video Rotation")
+            .onChange((value) => {
+                if (this.videoData) {
+                    this.videoData.setUserRotation(value);
+                    this.positioned = false;  // Force layout recalculation
+                    setRenderOne(true);
+                }
+            });
+    }
+
+    /**
+     * Update rotation dropdown to reflect current video's rotation
+     * Called when switching between videos
+     */
+    updateRotationDropdown() {
+        if (this.rotationController && this.videoData) {
+            this.currentRotation = this.videoData.userRotation || 0;
+            this.rotationController.updateDisplay();
         }
     }
 

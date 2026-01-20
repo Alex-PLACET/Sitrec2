@@ -170,8 +170,9 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
             this.config = config;
             this.decoder.configure(config);
 
-            // NOT HANDLED YET - get the rotation angle from the video matrix
-            this.angle = getRotationAngleFromVideoMatrix(demuxer.videoTrack.matrix);
+            // Get rotation from video matrix metadata (e.g., from phone videos)
+            // This sets metadataRotation which combines with userRotation via effectiveRotation getter
+            this.metadataRotation = getRotationAngleFromVideoMatrix(demuxer.videoTrack.matrix);
 
             // Store the original fps from the video (will be needed for audio sync)
             this.originalFps = demuxer.source.fps;
