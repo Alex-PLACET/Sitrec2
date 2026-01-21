@@ -165,9 +165,11 @@ export class CStarField {
         const customVertexShader = `
         varying vec3 vColor;
         varying float vFlux;
+        varying float vAlpha;
 
         uniform float cameraFOV;
         uniform float starScale;
+        uniform float minPointSize;
         
         attribute float flux;
 
@@ -175,18 +177,25 @@ export class CStarField {
             vColor = vec3(1.0);
 
             // Size proportional to flux and responsive scaling
-            float size = flux * starScale;
-            vFlux = size;
+            float desiredSize = flux * starScale;
+            float actualSize = max(desiredSize, minPointSize);
+            
+            // Alpha compensation: dim small stars to preserve total brightness
+            float sizeRatio = desiredSize / actualSize;
+            vAlpha = sizeRatio * sizeRatio;
+            
+            vFlux = desiredSize;
 
             vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
             gl_Position = projectionMatrix * mvPosition;
-            gl_PointSize = size;
+            gl_PointSize = actualSize;
         }
     `;
 
         const customFragmentShader = `
         varying vec3 vColor;
         varying float vFlux;
+        varying float vAlpha;
         uniform float uRadius;
 
         void main() {
@@ -199,18 +208,12 @@ export class CStarField {
             vec2 centered = gl_PointCoord - 0.5;
             float dist = length(centered) * 2.0;
             
-            // Discard outside circle
-            if (dist > 1.0) discard;
+            // Solid white inside uRadius, ramp to transparent at edge
+            // smoothstep gives 0 when dist <= uRadius, 1 when dist >= 1.0
+            float alpha = 1.0 - smoothstep(uRadius, 1.0, dist);
             
-            // Core disk (hard center)
-            float core = smoothstep(uRadius, uRadius - 0.05, dist);
-            
-            // Soft outer falloff
-            float falloff = pow(clamp(1.0 - dist, 0.0, 1.0), 2.0);
-            
-            // Combine alpha
-            float alpha = core + (1.0 - core) * falloff * 0.5;
-            alpha = clamp(alpha, 0.0, 1.0);
+            // Apply alpha compensation for subpixel stars
+            alpha *= vAlpha;
             
             gl_FragColor = vec4(vColor, alpha);
         }`;
@@ -222,6 +225,7 @@ export class CStarField {
                 uRadius: { value: 0.4 },
                 cameraFOV: { value: 30 },
                 starScale: { value: Sit.starScale / window.devicePixelRatio },
+                minPointSize: { value: 2.0 },
             },
             transparent: true,
             depthTest: true,
