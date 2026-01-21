@@ -12,7 +12,7 @@
  * - Point sizing based on brightness with configurable min/max limits
  * - Alpha compensation for points clamped to minimum size (preserves visual brightness)
  * - Optional per-point colors or a single shared color
- * - Optional texture-based rendering for softer appearance
+ * - Procedural soft circle rendering with configurable falloff
  * - Optional logarithmic depth buffer for proper depth sorting at planetary scales
  * - Sky brightness attenuation to fade points during daylight
  * 
@@ -51,7 +51,6 @@
  *     mode: 'world',
  *     singleColor: null,  // enables per-point colors
  *     useLogDepth: true,
- *     useTexture: true,
  *     count: 10000,
  *     scene: mainScene
  * });
@@ -60,11 +59,19 @@
  * @extends CNode3D
  */
 
-import {AdditiveBlending, BufferAttribute, BufferGeometry, Color, Points, ShaderMaterial, TextureLoader,} from "three";
+import {
+    BufferAttribute,
+    BufferGeometry,
+    Color,
+    CustomBlending,
+    MaxEquation,
+    OneFactor,
+    Points,
+    ShaderMaterial,
+} from "three";
 import {CNode3D} from "./CNode3D";
 import {NodeMan} from "../Globals";
 import {sharedUniforms} from "../js/map33/material/SharedUniforms";
-import {SITREC_APP} from "../configUtils";
 
 /**
  * GPU-accelerated point light cloud renderer for stars, satellites, and similar objects.
@@ -85,8 +92,6 @@ export class CPointLightCloud extends CNode3D {
      * @param {number} [v.maxPointSize=20.0] - Maximum point size in pixels (used with useSizeRange)
      * @param {number} [v.uRadius=0.4] - Falloff radius for soft edges (0.4=soft, 0.9=hard disk)
      * @param {boolean} [v.useLogDepth=false] - Enable logarithmic depth buffer for planetary-scale rendering
-     * @param {boolean} [v.useTexture=false] - Use texture-based rendering instead of procedural circles
-     * @param {string} [v.texturePath='data/images/nightsky/MickStar.png'] - Path to point texture
      * @param {boolean} [v.useSkyAttenuation=true] - Fade points based on sky brightness (daylight)
      * @param {boolean} [v.useSizeRange=false] - Map brightness to size range instead of alpha
      * @param {number} [v.count] - Number of points to allocate. If provided, buffers are initialized immediately
@@ -116,10 +121,6 @@ export class CPointLightCloud extends CNode3D {
         /** @type {boolean} */
         this.useLogDepth = v.useLogDepth ?? false;
         /** @type {boolean} */
-        this.useTexture = v.useTexture ?? false;
-        /** @type {string} */
-        this.texturePath = v.texturePath ?? 'data/images/nightsky/MickStar.png';
-        /** @type {boolean} */
         this.useSkyAttenuation = v.useSkyAttenuation ?? true;
         /** @type {boolean} */
         this.useSizeRange = v.useSizeRange ?? false;
@@ -130,8 +131,6 @@ export class CPointLightCloud extends CNode3D {
         this.geometry = null;
         /** @type {THREE.ShaderMaterial|null} */
         this.material = null;
-        /** @type {THREE.Texture|null} */
-        this.texture = null;
 
         /** @type {Float32Array|null} */
         this.positionArray = null;
@@ -179,10 +178,6 @@ export class CPointLightCloud extends CNode3D {
     createMaterial() {
         const usesPerPointColor = this.singleColor === null;
 
-        if (this.useTexture) {
-            this.texture = new TextureLoader().load(SITREC_APP + this.texturePath);
-        }
-
         const sizeCalc = this.useSizeRange
             ? `float size = mix(minPointSize, maxPointSize, brightness) * baseScale;
                gl_PointSize = size;
@@ -228,7 +223,6 @@ export class CPointLightCloud extends CNode3D {
 
         const fragmentShader = `
             uniform float uRadius;
-            ${this.useTexture ? 'uniform sampler2D pointTexture;' : ''}
             ${this.useLogDepth ? `
             uniform float nearPlane;
             uniform float farPlane;
@@ -244,19 +238,11 @@ export class CPointLightCloud extends CNode3D {
                     discard;
                 }
                 
-                ${this.useTexture ? `
-                vec2 uv = gl_PointCoord.xy * 2.0 - 1.0;
-                float alpha = 1.0 - dot(uv, uv);
-                if (alpha < 0.0) discard;
-                vec4 textureColor = texture2D(pointTexture, gl_PointCoord);
-                gl_FragColor = vec4(vColor * textureColor.rgb * alpha, alpha * vAlpha);
-                ` : `
                 vec2 centered = gl_PointCoord - 0.5;
                 float dist = length(centered) * 2.0;
                 float alpha = 1.0 - smoothstep(uRadius, 1.0, dist);
                 alpha *= vAlpha;
-                gl_FragColor = vec4(vColor, alpha);
-                `}
+                gl_FragColor = vec4(vColor * alpha, alpha);
                 
                 ${this.useLogDepth ? `
                 float z = (log2(max(nearPlane, 1.0 + vDepth)) / log2(1.0 + farPlane)) * 2.0 - 1.0;
@@ -278,10 +264,6 @@ export class CPointLightCloud extends CNode3D {
             uniforms.uColor = { value: [color.r, color.g, color.b] };
         }
 
-        if (this.useTexture) {
-            uniforms.pointTexture = { value: this.texture };
-        }
-
         if (this.useLogDepth) {
             Object.assign(uniforms, sharedUniforms);
         }
@@ -293,7 +275,10 @@ export class CPointLightCloud extends CNode3D {
             transparent: true,
             depthTest: true,
             depthWrite: false,
-            blending: AdditiveBlending,
+            blending: CustomBlending,
+            blendEquation: MaxEquation,
+            blendSrc: OneFactor,
+            blendDst: OneFactor,
         });
     }
 
@@ -434,10 +419,6 @@ export class CPointLightCloud extends CNode3D {
         if (this.geometry) {
             this.geometry.dispose();
             this.geometry = null;
-        }
-        if (this.texture) {
-            this.texture.dispose();
-            this.texture = null;
         }
         if (this.material) {
             this.material.dispose();

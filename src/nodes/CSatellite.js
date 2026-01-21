@@ -740,8 +740,6 @@ export class CSatellite {
             mode: 'world',
             singleColor: null,  // per-satellite colors
             useLogDepth: true,
-            useTexture: true,
-            texturePath: 'data/images/nightsky/MickStar.png',
             useSkyAttenuation: false,  // satellites handle their own visibility
             useSizeRange: true,
             minPointSize: 0.0,
