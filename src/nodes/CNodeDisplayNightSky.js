@@ -133,6 +133,11 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
             penumbraDepth: 5000
         });
 
+        this.firstRenderTLE = true;
+        EventManager.addEventListener("tleLoaded", () => {
+            this.firstRenderTLE = true;
+        });
+
         console.log(process.env.MAPBOX_TOKEN)
         if (Globals.env?.SITREC_USE_CUSTOM_TLE) {
 
@@ -901,11 +906,9 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
             if (satResult && this.satellites.TLEData.satData.length > 0) {
                 par.validPct = (satResult.validCount / satResult.visibleCount) * 100;
             }
+            
+            this.updateSatelliteBrightness();
         }
-//        console.log (`out of ${numSats}, ${valid} of them are valid`)
-
-
-//        this.updateSatelliteScales(this.camera)
 
         //const fromSun = this.satellites.fromSun
 
@@ -920,244 +923,159 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
 
     }
 
-    updateSatelliteScales(view) {
+    updateSatelliteBrightness() {
+        if (!this.satellites.showSatellites || !this.satellites.TLEData) {
+            return;
+        }
 
-        const camera = view.camera;
-        const isLookView = (view.id === "lookView");
-
-        // for optimization we are not updating every scale on every frame
-        if (camera.satTimeStep === undefined) {
-            camera.satTimeStep = 5; // was 5
-            camera.satStartTime = 0;
-        } else {
-            camera.satStartTime++
-            if (camera.satStartTime >= camera.satTimeStep)
-                camera.satStartTime = 0;
+        if (!this.satellites.lightCloud || !this.satellites.lightCloud.material) {
+            return;
         }
 
         const toSun = this.satellites.toSun;
-        const fromSun = this.satellites.fromSun
-        // For the globe, we position it at the center of a sphere or radius wgs84.RADIUS
-        // but for the purposes of occlusion, we use the POLAR_RADIUS
-        // erring on not missing things
-        // this is a slight fudge, but most major starlink satellites sightings are over the poles
-        // and atmospheric refraction also makes more visible.
-
         const raycaster = new Raycaster();
         raycaster.layers.mask |= LAYER.MASK_MAIN | LAYER.MASK_LOOK;
 
-        var hitPoint = new Vector3();
-        var hitPoint2 = new Vector3();
-        // get the forward vector (-z) of the camera matrix, for perp distance
-        const cameraForward = new Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+        const hitPoint = new Vector3();
+        const hitPoint2 = new Vector3();
+        const magnitudes = this.satellites.lightCloud.brightnessArray;
+        const cameraPos = this.camera.position;
 
-        if (this.satellites.showSatellites && this.satellites.TLEData) {
+        this.satTimeStep = 10;
+        if (this.satStartTime === undefined) {
+            this.satStartTime = 0;
+        } else {
+            this.satStartTime = (this.satStartTime + 1) % this.satTimeStep;
+        }
 
+        for (let i = 0; i < this.satellites.TLEData.satData.length; i++) {
+            const satData = this.satellites.TLEData.satData[i];
 
-            // // we scale ALL the text sprites, as it's per camera
-            // for (let i = 0; i < this.satellites.TLEData.satData.length; i++) {
-            //     const satData = this.satellites.TLEData.satData[i];
-            //     if (satData.visible) {
-            //         const satPosition = satData.eus;
-            //         // scaling based on the view camera
-            //         // whereas later scaling is done with the look Camera?????
-            //         const camToSat = satPosition.clone().sub(camera.position)
-            //         // get the perpendicular distance to the satellite, and use that to scale the name
-            //         const distToSat = camToSat.dot(cameraForward);
-            //         const nameScale = 0.025 * distToSat * tanHalfFOV;
-            //         satData.spriteText.scale.set(nameScale * satData.spriteText.aspect, nameScale, 1);
-            //     } else {
-            //         satData.spriteText.scale.set(0,0,0);
-            //     }
-            // }
-
-
-            // sprites are scaled in pixels, so we need to scale them based on the view height
-
-            let shaderScale = Sit.satScale;
-            shaderScale = view.adjustPointScale(shaderScale * 2);
-
-            if (!isLookView) {
-                shaderScale = 5;
+            if (!satData.visible) {
+                magnitudes[i] = 0;
+                continue;
             }
 
-            if (!this.satellites.lightCloud || !this.satellites.lightCloud.material) {
-                return;
+            if (satData.invalidPosition) {
+                magnitudes[i] = 0;
+                this.satellites.removeSatelliteArrows(satData);
+                this.satellites.removeSatSunArrows(satData);
+                continue;
             }
 
-            this.satellites.lightCloud.material.uniforms.baseScale.value = shaderScale;
+            assert(satData.eus !== undefined, `satData.eus is undefined, i= ${i}`);
 
-            const magnitudes = this.satellites.lightCloud.brightnessArray;
+            // stagger updates unless it has an arrow or this is the first render after TLE load
+            if (!this.firstRenderTLE && (i - this.satStartTime) % this.satTimeStep !== 0 && !satData.hasSunArrow) {
+                magnitudes[i] = satData.lastScale || 0;
+                continue;
+            }
 
-            for (let i = camera.satStartTime; i < this.satellites.TLEData.satData.length; i++) {
-                const satData = this.satellites.TLEData.satData[i];
+            const satPosition = satData.eus;
+            let brightness = 0.04;
+            const darknessMultiplier = 0.3;
+            let fade = 1;
 
-                // bit of a hack for visiblity, just set the scale to 0
-                // and skip the update
-                // TODO: the first few
-                if (!satData.visible) {
-                    magnitudes[i] = 0
-                    continue;
+            raycaster.set(satPosition, toSun);
+            if (intersectSphere2(raycaster.ray, this.globe, hitPoint, hitPoint2)) {
+                const midPoint = hitPoint.clone().add(hitPoint2).multiplyScalar(0.5);
+                const originToMid = midPoint.clone().sub(this.globe.center);
+                const occludedMeters = this.globe.radius - originToMid.length();
+                if (occludedMeters < this.satellites.penumbraDepth) {
+                    fade = 1 - occludedMeters / this.satellites.penumbraDepth;
+                    brightness *= darknessMultiplier + (1 - darknessMultiplier) * fade;
+                } else {
+                    fade = 0;
+                    brightness *= darknessMultiplier;
+                    this.satellites.removeSatSunArrows(satData);
                 }
+            }
 
-                // satellites might have invalid positions if we load a TLE that's not close to the time we are calculating for
-                // this would be updated when updating the satellites position
-                if (satData.invalidPosition) {
-                    this.satellites.removeSatelliteArrows(satData)
-                    this.satellites.removeSatSunArrows(satData)
-                    continue;
-                }
+            if (fade > 0) {
+                const camToSat = satPosition.clone().sub(cameraPos);
+                raycaster.set(cameraPos, camToSat);
+                const belowHorizon = intersectSphere2(raycaster.ray, this.globe, hitPoint, hitPoint2);
 
-                // stagger updates unless it has an arrow.
-                if ((i - camera.satStartTime) % camera.satTimeStep !== 0 && !satData.hasSunArrow) {
-                    //             continue;
-                }
-
-                assert(satData.eus !== undefined, `satData.eus is undefined, i= ${i}, this.satellites.TLEData.satData.length = ${this.satellites.TLEData.satData.length} `)
-
-                const satPosition = satData.eus;
-
-//                let scale = 0.1;                // base value for scale
-                let scale = 0.04;                // base value for scale
-                let darknessMultiplier = 0.3    // if in dark, multiply by this
-                var fade = 1
-
-                raycaster.set(satPosition, toSun)
-                if (intersectSphere2(raycaster.ray, this.globe, hitPoint, hitPoint2)) {
-
-                    const midPoint = hitPoint.clone().add(hitPoint2).multiplyScalar(0.5)
-                    const originToMid = midPoint.clone().sub(this.globe.center)
-                    const occludedMeters = this.globe.radius - originToMid.length()
-                    if (occludedMeters < this.satellites.penumbraDepth) {
-
-                        // fade will give us a value from 1 (no fade) to 0 (occluded)
-                        fade = 1 - occludedMeters / this.satellites.penumbraDepth
-
-                        scale *= darknessMultiplier + (1 - darknessMultiplier) * fade
-                    } else {
-                        fade = 0;
-                        scale *= darknessMultiplier;
-                        this.satellites.removeSatSunArrows(satData);
+                if (!belowHorizon) {
+                    if (satData.number === 25544) {
+                        brightness *= 3;
                     }
-                }
 
-                if (!isLookView) {
-                    scale *= 2;
-                }
+                    const globeToSat = satPosition.clone().sub(this.globe.center).normalize();
+                    const reflected = camToSat.clone().reflect(globeToSat).normalize();
+                    const dot = Math.max(-1, Math.min(1, reflected.dot(toSun)));
+                    const glintAngle = Math.abs(degrees(Math.acos(dot)));
 
-                // fade will be 1 for full visible sats, < 1 as they get hidden
-                if (fade > 0) {
+                    const spread = this.satellites.flareAngle;
+                    const ramp = spread * 0.25;
+                    const middle = spread - ramp;
+                    const glintSize = Sit.flareScale;
 
-                    // checking for flares
-                    // we take the vector from the camera to the sat
-                    // then reflect that about the vecotr from the globe center to the sat
-                    // then measure the angle between that and the toSun vector
-                    // if it's samall (<5°?) them glint
-
-                    const camToSat = satPosition.clone().sub(this.camera.position)
-
-                    // check if it's visible
-                    raycaster.set(this.camera.position, camToSat)
-                    var belowHorizon = intersectSphere2(raycaster.ray, this.globe, hitPoint, hitPoint2)
-                    if (!belowHorizon) {
-
-
-                        const globeToSat = satPosition.clone().sub(this.globe.center).normalize()
-                        const reflected = camToSat.clone().reflect(globeToSat).normalize()
-                        const dot = Math.max(-1, Math.min(1, reflected.dot(toSun)))
-                        const glintAngle = Math.abs(degrees(Math.acos(dot)))
-
-                        const altitudeKM = (satPosition.clone().sub(this.globe.center).length() - wgs84.RADIUS) / 1000
-
-                        // if (altitudeKM < 450) {
-                        //     scale *= 3 // a bit of a dodgy patch to make low atltitde trains stand out.
-                        // }
-
-
-                        // attenuate by distance if in look view
-                        // use
-                        if (isLookView) {
-                            const distToSat = camToSat.length();
-                            scale *= 3000000 / distToSat;
-
-                            // if it's the ISS, scale it up a bit
-                            if (satData.number === 25544) {
-                                scale *= 3; // ISS is quite a bit bigger
-                            }
-                        }
-
-                        const spread = this.satellites.flareAngle
-                        const ramp = spread * 0.25; //
-                        const middle = spread - ramp;  // angle at which the flare is brightest, constant
-                        const glintSize = Sit.flareScale; //
-                        if (glintAngle < spread) {
-                            // we use the square of the angle (measured from the start of the spread)
-                            // as the extra flare, to concentrate it in the middle
-                            //const glintScale = 1 + fade * glintSize * (spread - glintAngle) * (spread - glintAngle) / (spread * spread)
-
-                            //const glintScale = 1 + 4 * fade * glintSize * Math.abs(spread - glintAngle)  / (spread)
-
-                            let glintScale;
-                            let d = Math.abs(glintAngle);
-                            if (d < middle) {
-                                // if the angle is less than the middle, use set to the maximum (glintSize)
-                                glintScale = fade * glintSize;
-                            } else {
-                                d = d - middle; // shift the angle to over the ramp region
-                                glintScale = fade * glintSize * (ramp - d) * (ramp - d) / (ramp * ramp);
-                            }
-
-                            scale += glintScale
-
-                            // arrows from camera to sat, and from sat to sun
-                            var arrowHelper = DebugArrowAB(satData.name, this.camera.position, satPosition, (belowHorizon ? "#303030" : "#FF0000"), true, this.sunArrowGroup, 10, LAYER.MASK_HELPERS)
-                            var arrowHelper2 = DebugArrowAB(satData.name + "sun", satPosition,
-                                satPosition.clone().add(toSun.clone().multiplyScalar(10000000)), "#c08000", true, this.sunArrowGroup, 10, LAYER.MASK_HELPERS)
-                            // var arrowHelper3 = DebugArrowAB(satData.name + "reflected", satPosition,
-                            //     satPosition.clone().add(reflected.clone().multiplyScalar(10000000)), "#00ff00", true, this.sunArrowGroup, 0.025, LAYER.MASK_HELPERS)
-
-                            // and maybe one for flare tracks
-                            if (this.satellites.showFlareTracks) {
-                                // we use the reflected vector, as that's the one that will be seen by the observer
-                                // so we can see the flare track
-                                let A = satData.eusA.clone()
-                                let dir = satData.eusB.clone().sub(satData.eusA).normalize()
-                                DebugArrow(satData.name + "flare", dir, satData.eus, 100000, "#FFFF00", true, this.satelliteFlareTracksGroup, 20, LAYER.MASK_LOOKRENDER)
-                            }
-
-                            satData.hasSunArrow = true;
-                            satData.isFlaring = true;
+                    if (glintAngle < spread) {
+                        let glintScale;
+                        const d = Math.abs(glintAngle);
+                        if (d < middle) {
+                            glintScale = fade * glintSize;
                         } else {
-                            this.satellites.removeSatSunArrows(satData);
-                            satData.isFlaring = false;
-
-                            // do the scale again to incorporate al
-                            // satData.sprite.scale.set(scale, scale, 1);
-
+                            const dOffset = d - middle;
+                            glintScale = fade * glintSize * (ramp - dOffset) * (ramp - dOffset) / (ramp * ramp);
                         }
+                        brightness += glintScale;
+
+                        DebugArrowAB(satData.name, cameraPos, satPosition, "#FF0000", true, this.sunArrowGroup, 10, LAYER.MASK_HELPERS);
+                        DebugArrowAB(satData.name + "sun", satPosition,
+                            satPosition.clone().add(toSun.clone().multiplyScalar(10000000)), "#c08000", true, this.sunArrowGroup, 10, LAYER.MASK_HELPERS);
+
+                        if (this.satellites.showFlareTracks) {
+                            const dir = satData.eusB.clone().sub(satData.eusA).normalize();
+                            DebugArrow(satData.name + "flare", dir, satData.eus, 100000, "#FFFF00", true, this.satelliteFlareTracksGroup, 20, LAYER.MASK_LOOKRENDER);
+                        }
+
+                        satData.hasSunArrow = true;
+                        satData.isFlaring = true;
                     } else {
-
-
                         this.satellites.removeSatSunArrows(satData);
                         satData.isFlaring = false;
                     }
                 } else {
+                    this.satellites.removeSatSunArrows(satData);
                     satData.isFlaring = false;
                 }
-
-
-                if (isLookView && scale < Sit.satCutOff) {
-                    scale = 0;
-                }
-
-                // we store to look view scale, so we can filter out those names
-                if (isLookView) {
-                    satData.lastScale = scale;
-                }
-
-                magnitudes[i] = scale
+            } else {
+                satData.isFlaring = false;
             }
-            this.satellites.lightCloud.markBrightnessNeedUpdate();
+
+            if (brightness < Sit.satCutOff) {
+                brightness = 0;
+            }
+
+            satData.lastScale = brightness;
+            magnitudes[i] = brightness;
+        }
+        this.satellites.lightCloud.markBrightnessNeedUpdate();
+        this.firstRenderTLE = false;
+    }
+
+    updateSatelliteScales(view) {
+        if (!this.satellites.showSatellites || !this.satellites.TLEData) {
+            return;
+        }
+
+        if (!this.satellites.lightCloud || !this.satellites.lightCloud.material) {
+            return;
+        }
+
+        const isLookView = (view.id === "lookView");
+        const uniforms = this.satellites.lightCloud.material.uniforms;
+
+        if (isLookView) {
+            let shaderScale = Sit.satScale;
+            shaderScale = view.adjustPointScale(shaderScale * 2);
+            uniforms.baseScale.value = shaderScale;
+            uniforms.distanceReference.value = 3000000;
+        } else {
+            uniforms.baseScale.value = 10;
+            uniforms.distanceReference.value = 0;
         }
     }
 
@@ -1195,8 +1113,9 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
             if (satData.visible
                 && !satData.invalidPosition
                 && (satData.userFiltered || satData.eus.distanceTo(lookPos) < this.satellites.arrowRange * 1000)
-                && ( (satData.lastScale > 0 && !this.satellites.labelFlares)  // if the scale is > 0, we show the label if not labelFlares
-                    || this.showAllLabels
+//                && ( (satData.lastScale > 0 && !this.satellites.labelFlares)  // if the scale is > 0, we show the label if not labelFlares
+                 && (
+                     this.showAllLabels
                     || (this.satellites.labelFlares && satData.isFlaring)) // if the scale is 0, we don't show the label, unless showAllLabels is true or labelFlares is enabled and satellite is flaring
             ) {
                 //if (satData.visible) {

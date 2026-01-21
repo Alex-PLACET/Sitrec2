@@ -742,6 +742,8 @@ export class CSatellite {
             useLogDepth: true,
             useSkyAttenuation: false,  // satellites handle their own visibility
             useSizeRange: true,
+            useDistanceAttenuation: true,
+            distanceReference: 3000000,
             minPointSize: 0.0,
             maxPointSize: 20.0,
             baseScale: 1.0,
@@ -970,7 +972,6 @@ export class CSatellite {
                 this.lightCloud.setBrightness(i, 0);
                 this.lightCloud.setPosition(i, 1000000000, 0, 0);
             } else {
-                this.lightCloud.setBrightness(i, 0.1);
                 validCount++;
             }
 

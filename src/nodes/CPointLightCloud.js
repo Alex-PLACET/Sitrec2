@@ -124,6 +124,10 @@ export class CPointLightCloud extends CNode3D {
         this.useSkyAttenuation = v.useSkyAttenuation ?? true;
         /** @type {boolean} */
         this.useSizeRange = v.useSizeRange ?? false;
+        /** @type {boolean} */
+        this.useDistanceAttenuation = v.useDistanceAttenuation ?? false;
+        /** @type {number} */
+        this.distanceReference = v.distanceReference ?? 3000000;
 
         /** @type {THREE.Points|null} */
         this.points = null;
@@ -178,11 +182,19 @@ export class CPointLightCloud extends CNode3D {
     createMaterial() {
         const usesPerPointColor = this.singleColor === null;
 
+        const distanceAttenuationCalc = this.useDistanceAttenuation
+            ? `if (distanceReference > 0.0) {
+                   float dist = length(mvPosition.xyz);
+                   float distanceScale = distanceReference / max(dist, 1.0);
+                   effectiveBrightness *= distanceScale;
+               }`
+            : '';
+
         const sizeCalc = this.useSizeRange
-            ? `float size = mix(minPointSize, maxPointSize, brightness) * baseScale;
+            ? `float size = mix(minPointSize, maxPointSize, effectiveBrightness) * baseScale;
                gl_PointSize = size;
                vAlpha = 1.0;`
-            : `float desiredSize = brightness * baseScale;
+            : `float desiredSize = effectiveBrightness * baseScale;
                // Clamp to minimum pixel size to prevent sub-pixel flickering
                gl_PointSize = max(desiredSize, minPointSize);
                // Fade alpha for sub-minimum points to conserve energy
@@ -197,6 +209,7 @@ export class CPointLightCloud extends CNode3D {
             uniform float minPointSize;
             uniform float maxPointSize;
             uniform float cameraFOV;
+            ${this.useDistanceAttenuation ? 'uniform float distanceReference;' : ''}
             ${!usesPerPointColor ? 'uniform vec3 uColor;' : ''}
             
             varying vec3 vColor;
@@ -218,6 +231,8 @@ export class CPointLightCloud extends CNode3D {
                 gl_Position = projectionMatrix * mvPosition;
                 ${this.useLogDepth ? 'vDepth = gl_Position.w;' : ''}
                 
+                float effectiveBrightness = brightness;
+                ${distanceAttenuationCalc}
                 ${sizeCalc}
             }
         `;
@@ -267,6 +282,10 @@ export class CPointLightCloud extends CNode3D {
 
         if (this.useLogDepth) {
             Object.assign(uniforms, sharedUniforms);
+        }
+
+        if (this.useDistanceAttenuation) {
+            uniforms.distanceReference = { value: this.distanceReference };
         }
 
         this.material = new ShaderMaterial({
