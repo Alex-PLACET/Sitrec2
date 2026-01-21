@@ -1064,7 +1064,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
 
                         const globeToSat = satPosition.clone().sub(this.globe.center).normalize()
                         const reflected = camToSat.clone().reflect(globeToSat).normalize()
-                        const dot = reflected.dot(toSun)
+                        const dot = Math.max(-1, Math.min(1, reflected.dot(toSun)))
                         const glintAngle = Math.abs(degrees(Math.acos(dot)))
 
                         const altitudeKM = (satPosition.clone().sub(this.globe.center).length() - wgs84.RADIUS) / 1000
