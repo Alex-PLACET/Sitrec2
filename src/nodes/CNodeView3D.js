@@ -2178,7 +2178,7 @@ export class CNodeView3D extends CNodeViewCanvas {
                 standaloneMenu.add({magnitude: data.mag}, 'magnitude').name('Magnitude').listen().disable();
             }
         } else if (celestialObject.type === 'satellite') {
-            standaloneMenu.add({number: celestialObject.number}, 'number').name('NORAD Number').listen().disable();
+            standaloneMenu.add({noradNum: String(celestialObject.number)}, 'noradNum').name('NORAD Number').listen().disable();
             standaloneMenu.add({name: celestialObject.name}, 'name').name('Name').listen().disable();
         } else if (celestialObject.type === 'star') {
             if (celestialObject.ra !== undefined) {
