@@ -974,9 +974,14 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
 
             // sprites are scaled in pixels, so we need to scale them based on the view height
 
-            let scale = Sit.satScale;
-            scale = view.adjustPointScale(scale * 2);
-            this.satellites.satelliteMaterial.uniforms.satScale.value = scale;
+            let shaderScale = Sit.satScale;
+            shaderScale = view.adjustPointScale(shaderScale * 2);
+
+            if (!isLookView) {
+                shaderScale = 5;
+            }
+
+            this.satellites.satelliteMaterial.uniforms.satScale.value = shaderScale;
 
             const positions = this.satellites.satelliteGeometry.attributes.position.array;
             const magnitudes = this.satellites.satelliteGeometry.attributes.magnitude.array;

@@ -1,4 +1,13 @@
-import {BufferAttribute, BufferGeometry, Color, Points, Raycaster, ShaderMaterial, TextureLoader} from "three";
+import {
+    AdditiveBlending,
+    BufferAttribute,
+    BufferGeometry,
+    Color,
+    Points,
+    Raycaster,
+    ShaderMaterial,
+    TextureLoader
+} from "three";
 import {intersectSphere2, V3} from "../threeUtils";
 import {LLAToEUSRadians} from "../LLA-ECEF-ENU";
 import {SITREC_APP, SITREC_SERVER} from "../configUtils";
@@ -807,7 +816,7 @@ export class CSatellite {
         if (alpha < 0.0) discard;
 
         vec4 textureColor = texture2D(starTexture, gl_PointCoord);
-        gl_FragColor = vec4(vColor, 1.0) * textureColor * alpha;
+        gl_FragColor = vec4(vColor * textureColor.rgb * alpha, alpha);
 
         float z = (log2(max(nearPlane, 1.0 + vDepth)) / log2(1.0 + farPlane)) * 2.0 - 1.0;
         gl_FragDepthEXT = z * 0.5 + 0.5;
@@ -827,6 +836,7 @@ export class CSatellite {
             },
             transparent: true,
             depthTest: true,
+            blending: AdditiveBlending,
         });
 
         // update colors and add the satellite text sprites
