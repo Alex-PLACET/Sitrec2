@@ -981,10 +981,13 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
                 shaderScale = 5;
             }
 
-            this.satellites.satelliteMaterial.uniforms.satScale.value = shaderScale;
+            if (!this.satellites.lightCloud || !this.satellites.lightCloud.material) {
+                return;
+            }
 
-            const positions = this.satellites.satelliteGeometry.attributes.position.array;
-            const magnitudes = this.satellites.satelliteGeometry.attributes.magnitude.array;
+            this.satellites.lightCloud.material.uniforms.baseScale.value = shaderScale;
+
+            const magnitudes = this.satellites.lightCloud.brightnessArray;
 
             for (let i = camera.satStartTime; i < this.satellites.TLEData.satData.length; i++) {
                 const satData = this.satellites.TLEData.satData[i];
@@ -1154,7 +1157,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
 
                 magnitudes[i] = scale
             }
-            this.satellites.satelliteGeometry.attributes.magnitude.needsUpdate = true;
+            this.satellites.lightCloud.markBrightnessNeedUpdate();
         }
     }
 

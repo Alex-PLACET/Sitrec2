@@ -60,6 +60,10 @@ export class CNodeViewEphemeris extends CNodeViewText {
         }
         this.lastUpdateTime = now;
 
+        if (!this.visible) {
+            return;
+        }
+
         this.updateEphemeris();
     }
 

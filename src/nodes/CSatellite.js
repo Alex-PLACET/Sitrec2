@@ -1,17 +1,7 @@
-import {
-    AdditiveBlending,
-    BufferAttribute,
-    BufferGeometry,
-    Color,
-    Points,
-    Raycaster,
-    ShaderMaterial,
-    TextureLoader
-} from "three";
+import {Color, Raycaster} from "three";
 import {intersectSphere2, V3} from "../threeUtils";
 import {LLAToEUSRadians} from "../LLA-ECEF-ENU";
-import {SITREC_APP, SITREC_SERVER} from "../configUtils";
-import {sharedUniforms} from "../js/map33/material/SharedUniforms";
+import {SITREC_SERVER} from "../configUtils";
 import {FileManager, GlobalDateTimeNode, guiMenus, setRenderOne} from "../Globals";
 import {EventManager} from "../CEventManager";
 import * as satellite from 'satellite.js';
@@ -23,6 +13,7 @@ import * as LAYER from "../LayerMasks";
 import {assert} from "../assert";
 import {saveAs} from "file-saver";
 import {showError} from "../showError";
+import {CPointLightCloud} from "./CPointLightCloud";
 
 /**
  * CSatellite handles all satellite-related functionality
@@ -47,10 +38,9 @@ export class CSatellite {
         // TLE Data
         this.TLEData = undefined;
 
-        // Rendering properties
-        this.satelliteGeometry = null;
-        this.satelliteMaterial = null;
-        this.satellites = null; // Points object
+        // Rendering via CPointLightCloud
+        this.lightCloud = null;
+        this.scene = null;
 
         // Flare and sun-related
         this.flareAngle = options.flareAngle ?? 5;
@@ -715,29 +705,11 @@ export class CSatellite {
 
     }
 
-    /**
-     * Remove all satellites from scene
-     */
     removeSatellites() {
         if (this.TLEData !== undefined) {
-
-            if (this.satelliteGeometry) {
-                this.satelliteGeometry.dispose();
-                this.satelliteGeometry = null;
-            }
-            if (this.satelliteMaterial) {
-                if (this.satelliteMaterial.uniforms.starTexture.value) {
-                    this.satelliteMaterial.uniforms.starTexture.value.dispose();
-                }
-                this.satelliteMaterial.dispose();
-                this.satelliteMaterial = null;
-            }
-
-            if (this.satellites) {
-                if (this.satellites.parent) {
-                    this.satellites.parent.remove(this.satellites);
-                }
-                this.satellites = null;
+            if (this.lightCloud) {
+                this.lightCloud.dispose();
+                this.lightCloud = null;
             }
 
             for (const [index, satData] of Object.entries(this.TLEData.satData)) {
@@ -757,134 +729,44 @@ export class CSatellite {
         }
     }
 
-    /**
-     * Add satellites to scene - must be called after replaceTLE
-     */
     addSatellites(scene, textGroup, globeRadius = 1) {
         assert(this.TLEData !== undefined, "addSatellites needs TLEData to be set");
 
-        // Define geometry for satellites
-        this.satelliteGeometry = new BufferGeometry();
-
         const len = this.TLEData.satData.length;
+        this.scene = scene;
 
-        // Allocate arrays for positions and colors
-        let positions = new Float32Array(len * 3); // x, y, z for each satellite
-        let colors = new Float32Array(len * 3); // r, g, b for each satellite
-        let magnitudes = new Float32Array(len); // magnitude for each satellite
-
-        // Custom shaders
-        const customVertexShader = `
-    varying vec3 vColor;
-    uniform float minSize;
-    uniform float maxSize;
-    uniform float cameraFOV;
-    uniform float satScale;
-    attribute float magnitude;
-    attribute vec3 color;
-    varying float vDepth;
-
-    void main() {
-        vColor = color;
-        
-        // if magnitude is 0 then do not draw it
-        if (magnitude == 0.0) {
-            gl_Position = vec4(0,0,0,0);
-            gl_PointSize = 0.0;
-            return;
-        }
-
-        float size = mix(minSize, maxSize, magnitude);
-        size *= satScale;
-
-        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-        gl_Position = projectionMatrix * mvPosition;
-        gl_PointSize = size;
-        vDepth = gl_Position.w;
-    }`;
-
-        const customFragmentShader = `
-    varying vec3 vColor;
-    uniform float nearPlane;
-    uniform float farPlane;
-    varying float vDepth;
-    uniform sampler2D starTexture;
-
-    void main() {
-        vec2 uv = gl_PointCoord.xy * 2.0 - 1.0;
-        float alpha = 1.0 - dot(uv, uv);
-        if (alpha < 0.0) discard;
-
-        vec4 textureColor = texture2D(starTexture, gl_PointCoord);
-        gl_FragColor = vec4(vColor * textureColor.rgb * alpha, alpha);
-
-        float z = (log2(max(nearPlane, 1.0 + vDepth)) / log2(1.0 + farPlane)) * 2.0 - 1.0;
-        gl_FragDepthEXT = z * 0.5 + 0.5;
-    }`;
-
-        // Custom material for satellites
-        this.satelliteMaterial = new ShaderMaterial({
-            vertexShader: customVertexShader,
-            fragmentShader: customFragmentShader,
-            uniforms: {
-                minSize: { value: 0.0 },
-                maxSize: { value: 20.0 },
-                starTexture: { value: new TextureLoader().load(SITREC_APP + 'data/images/nightsky/MickStar.png') },
-                cameraFOV: { value: 30 },
-                satScale: { value: 1.0 },
-                ...sharedUniforms,
-            },
-            transparent: true,
-            depthTest: true,
-            blending: AdditiveBlending,
+        this.lightCloud = new CPointLightCloud({
+            id: "SatelliteLightCloud",
+            mode: 'world',
+            singleColor: null,  // per-satellite colors
+            useLogDepth: true,
+            useTexture: true,
+            texturePath: 'data/images/nightsky/MickStar.png',
+            useSkyAttenuation: false,  // satellites handle their own visibility
+            useSizeRange: true,
+            minPointSize: 0.0,
+            maxPointSize: 20.0,
+            baseScale: 1.0,
+            count: len,
+            scene: scene,
         });
 
-        // update colors and add the satellite text sprites
-        for (let i = 0; i < this.TLEData.satData.length; i++) {
+        for (let i = 0; i < len; i++) {
             const sat = this.TLEData.satData[i];
-
-            // Calculate satellite position
-            const position = V3();
-
-            positions[i * 3] = position.x;
-            positions[i * 3 + 1] = position.y;
-            positions[i * 3 + 2] = position.z;
-
-            magnitudes[i] = 0.1;
-
             sat.eus = V3();
 
-            // color of the sprite is based on the name length
-            var name = sat.name.replace("0 STARLINK", "SL").replace("STARLINK", "SL");
-            name = name.replace(/\s+$/, '');
-
-            let color = new Color(0xF0F0FF); // default blueish white
-            let length = name.length;
+            let color = new Color(0xF0F0FF);
             if (sat.name.includes("STARLINK")) {
-                color = new Color(0xFFFFC0);
-                if (length > 7) {
-                    color = new Color(0xFFA080);
-                }
+                const name = sat.name.replace("0 STARLINK", "SL").replace("STARLINK", "SL").replace(/\s+$/, '');
+                color = name.length > 7 ? new Color(0xFFA080) : new Color(0xFFFFC0);
             }
 
-            colors[i * 3] = color.r;
-            colors[i * 3 + 1] = color.g;
-            colors[i * 3 + 2] = color.b;
+            this.lightCloud.setColor(i, color.r, color.g, color.b);
+            this.lightCloud.setBrightness(i, 0.1);
         }
 
-        // Attach data to geometry
-        this.satelliteGeometry.setAttribute('position', new BufferAttribute(positions, 3));
-        this.satelliteGeometry.setAttribute('color', new BufferAttribute(colors, 3));
-        this.satelliteGeometry.setAttribute('magnitude', new BufferAttribute(magnitudes, 1));
-
-        // Create point cloud for satellites
-        this.satellites = new Points(this.satelliteGeometry, this.satelliteMaterial);
-
-        // Disable frustum culling for satellites
-        this.satellites.frustumCulled = false;
-
-        // Add to scene
-        scene.add(this.satellites);
+        this.lightCloud.markColorsNeedUpdate();
+        this.lightCloud.markBrightnessNeedUpdate();
     }
 
     /**
@@ -1008,27 +890,19 @@ export class CSatellite {
         }
     }
 
-    /**
-     * Update all satellite positions for a given date
-     */
     updateAllSatellites(date, options = {}) {
-        if (!this.TLEData || !this.satelliteGeometry) {
+        if (!this.TLEData || !this.lightCloud) {
             return;
         }
 
         const timeMS = date.getTime();
         const numSats = this.TLEData.satData.length;
 
-        // if there's only a few satellites, use a smaller time step
         if (numSats < 100) {
             this.timeStep = 100;
         } else {
-            this.timeStep = numSats; // scale it by the number of satellites
+            this.timeStep = numSats;
         }
-
-        // Get the position attribute from the geometry
-        const positions = this.satelliteGeometry.attributes.position.array;
-        const magnitudes = this.satelliteGeometry.attributes.magnitude.array;
 
         const lookPos = options.lookCameraPos || V3(0, 0, 0);
 
@@ -1038,14 +912,9 @@ export class CSatellite {
             const satData = this.TLEData.satData[i];
             const satrec = bestSat(satData.satrecs, date);
 
-            // Satellites move in nearly straight lines
-            // so interpolate every few seconds
             if (satData.timeA === undefined || timeMS < satData.timeA || timeMS > satData.timeB) {
-
                 satData.timeA = timeMS;
                 if (satData.timeB === undefined) {
-                    // for the first one we spread it out
-                    // so we end up updating about the same number of satellites per frame
                     satData.timeB = timeMS + Math.floor(1 + this.timeStep * (i / numSats));
                 } else {
                     satData.timeB = timeMS + this.timeStep;
@@ -1055,33 +924,17 @@ export class CSatellite {
                 satData.eusB = this.calcSatEUS(satrec, dateB);
             }
 
-            // if the position can't be calculated then A and/or B will be null
-            // so just skip over this
             if (satData.eusA !== null && satData.eusB !== null) {
-
-                // calculate the velocity from A to B in m/s
                 const velocity = satData.eusB.clone().sub(satData.eusA).multiplyScalar(1000 / (satData.timeB - satData.timeA)).length();
 
-                // Starlink is typically 7.5 km/s, so if it's much higher than that, then it's probably an error
-                // I use 11,000 as an upper limit to include highly elliptical orbits
-                // Geostationary satellites are around 3 km/s, so we can use that as a lower limit
                 if (velocity < 2500 || velocity > 11000) {
-                    // if the velocity is too high, then we assume it's an error and skip it
                     satData.invalidPosition = true;
                 } else {
-
-                    // Otherwise, we have a valid A and B, so do a linear interpolation
                     var t = (timeMS - satData.timeA) / (satData.timeB - satData.timeA);
-
-                    // Perform the linear interpolation (lerp)
                     satData.eus.lerpVectors(satData.eusA, satData.eusB, t);
 
-                    // Update the position in the geometry's attribute
-                    positions[i * 3] = satData.eus.x;
-                    positions[i * 3 + 1] = satData.eus.y;
-                    positions[i * 3 + 2] = satData.eus.z;
+                    this.lightCloud.setPosition(i, satData.eus.x, satData.eus.y, satData.eus.z);
                     satData.invalidPosition = false;
-
                     satData.currentPosition = satData.eus.clone();
 
                     if (satData.spriteText) {
@@ -1090,16 +943,13 @@ export class CSatellite {
 
                     let arrowsDrawn = false;
                     if (satData.visible && satData.eusA.distanceTo(lookPos) < this.arrowRange * 1000) {
-                        // draw an arrow from the satellite in the direction of its velocity (yellow)
                         if (this.showSatelliteTracks && options.satelliteTrackGroup) {
-                            let A = satData.eusA.clone();
                             let dir = satData.eusB.clone().sub(satData.eusA).normalize();
                             DebugArrow(satData.name + "_t", dir, satData.eus, 500000, "#FFFF00", true, options.satelliteTrackGroup, 20, LAYER.MASK_LOOKRENDER);
                             arrowsDrawn = true;
                             satData.hasArrowsNeedingCleanup = true;
                         }
 
-                        // Arrow from satellite to ground (green)
                         if (this.showSatelliteGround && options.satelliteGroundGroup) {
                             let A = satData.eusA.clone();
                             let B = getPointBelow(A);
@@ -1114,16 +964,15 @@ export class CSatellite {
                     }
                 }
             } else {
-                // if the new position is invalid, then we make it invisible
                 satData.invalidPosition = true;
             }
 
             if (satData.invalidPosition || !satData.visible) {
                 this.removeSatSunArrows(satData);
-                // to make it invisible, we set the magnitude to 0 and position to a million km away
-                magnitudes[i] = 0;
-                positions[i * 3] = 1000000000;
+                this.lightCloud.setBrightness(i, 0);
+                this.lightCloud.setPosition(i, 1000000000, 0, 0);
             } else {
+                this.lightCloud.setBrightness(i, 0.1);
                 validCount++;
             }
 
@@ -1132,8 +981,8 @@ export class CSatellite {
             }
         }
 
-        // Notify THREE.js that the positions have changed
-        this.satelliteGeometry.attributes.position.needsUpdate = true;
+        this.lightCloud.markPositionsNeedUpdate();
+        this.lightCloud.markBrightnessNeedUpdate();
 
         return { validCount, visibleCount };
     }

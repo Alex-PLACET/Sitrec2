@@ -1,56 +1,44 @@
 /**
- * CStarField - Extracted star rendering system from CNodeDisplayNightSky
+ * CStarField - Star rendering system using CPointLightCloud
  * 
  * Handles:
  * - Loading and parsing binary BSC5 (Bright Star Catalog) data
  * - Loading common star names from IAU Catalog Star Names (IAUCSN)
- * - Creating custom shader material for star rendering
- * - Generating and managing star sprite geometry
+ * - Rendering stars via CPointLightCloud in celestial sphere mode
  * - Dynamic magnitude-based visibility filtering
  * - Resource cleanup and disposal
  * 
  * Dependencies:
  * - FileManager: Loads BSC5 and IAUCSN data files
- * - Three.js: Provides rendering primitives (Points, BufferGeometry, ShaderMaterial, etc.)
+ * - CPointLightCloud: Unified point light rendering
  * - Sit: Global settings (starScale, starLimit)
  * - CelestialMath.raDec2Celestial: Converts RA/DEC to 3D coordinates
- * - configUtils.SITREC_APP: Application root path for resources
  */
 
-import {AdditiveBlending, BufferAttribute, BufferGeometry, Points, ShaderMaterial} from "three";
-import {FileManager, NodeMan, Sit} from "../Globals";
+import {FileManager, Sit} from "../Globals";
 import {raDec2Celestial} from "../CelestialMath";
 import {assert} from "../assert.js";
+import {CPointLightCloud} from "./CPointLightCloud";
 
 export class CStarField {
-    /**
-     * Creates a new CStarField instance
-     * @param {Object} config Configuration object
-     * @param {number} [config.starLimit=6.5] Magnitude limit for stars to display (higher = fainter stars shown)
-     * @param {number} [config.starScale=1.0] Responsive scale factor for star sizes
-     * @param {number} [config.sphereRadius=100] Radius of celestial sphere in units
-     */
     constructor(config = {}) {
         this.starLimit = config.starLimit ?? 6.5;
         this.starScale = config.starScale ?? 1.0;
         this.sphereRadius = config.sphereRadius ?? 100;
 
-        // Bright Star Catalog data - using separate arrays for performance
         this.BSC_NumStars = 0;
         this.BSC_MaxMag = -10000;
-        this.BSC_RA = [];      // Right Ascension in radians
-        this.BSC_DEC = [];     // Declination in radians
-        this.BSC_MAG = [];     // Magnitude (brightness)
-        this.BSC_HIP = [];     // Hipparcos catalog ID
-        this.BSC_NAME = [];    // Star names (rarely used, mostly empty)
+        this.BSC_RA = [];
+        this.BSC_DEC = [];
+        this.BSC_MAG = [];
+        this.BSC_HIP = [];
+        this.BSC_NAME = [];
 
-        // Common star names indexed by position in catalog
         this.commonNames = {};
 
-        // Rendering objects
-        this.starSprites = null;        // Points object for GPU rendering
-        this.starGeometry = null;       // BufferGeometry with positions and flux
-        this.starMaterial = null;       // Custom ShaderMaterial
+        this.lightCloud = null;
+        this.starIndexMap = [];  // maps light index to BSC index
+        this.scene = null;
     }
 
     /**
@@ -155,161 +143,65 @@ export class CStarField {
         }
     }
 
-    /**
-     * Creates the custom ShaderMaterial for star rendering
-     * Vertex shader: Calculates point size based on flux (magnitude-derived brightness)
-     * Fragment shader: Renders circular stars with texture and smooth alpha blending
-     * @returns {ShaderMaterial} The star rendering material
-     */
-    createStarMaterial() {
-        const customVertexShader = `
-        varying vec3 vColor;
-        varying float vFlux;
-        varying float vAlpha;
+    magnitudeToFlux(mag) {
+        const magRef = -1.5;
+        return Math.cbrt(100000000 * Math.pow(10, -0.4 * (mag - magRef))) / 16;
+    }
 
-        uniform float cameraFOV;
-        uniform float starScale;
-        uniform float minPointSize;
-        
-        attribute float flux;
-
-        void main() {
-            vColor = vec3(1.0);
-
-            // Size proportional to flux and responsive scaling
-            float desiredSize = flux * starScale;
-            float actualSize = max(desiredSize, minPointSize);
-            
-            // Alpha compensation: dim small stars to preserve total brightness
-            float sizeRatio = desiredSize / actualSize;
-            vAlpha = sizeRatio * sizeRatio;
-            
-            vFlux = desiredSize;
-
-            vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-            gl_Position = projectionMatrix * mvPosition;
-            gl_PointSize = actualSize;
+    createStarCloud(scene) {
+        if (this.lightCloud) {
+            this.lightCloud.dispose();
+            this.lightCloud = null;
         }
-    `;
 
-        const customFragmentShader = `
-        varying vec3 vColor;
-        varying float vFlux;
-        varying float vAlpha;
-        uniform float uRadius;
-
-        void main() {
-            // Discard very faint stars early
-            if (vFlux < 0.5) {
-                discard;
+        this.starIndexMap = [];
+        let visibleCount = 0;
+        for (let i = 0; i < this.BSC_NumStars; i++) {
+            if (this.BSC_MAG[i] <= Sit.starLimit) {
+                visibleCount++;
             }
-            
-            // Convert gl_PointCoord to centered coordinates
-            vec2 centered = gl_PointCoord - 0.5;
-            float dist = length(centered) * 2.0;
-            
-            // Solid white inside uRadius, ramp to transparent at edge
-            // smoothstep gives 0 when dist <= uRadius, 1 when dist >= 1.0
-            float alpha = 1.0 - smoothstep(uRadius, 1.0, dist);
-            
-            // Apply alpha compensation for subpixel stars
-            alpha *= vAlpha;
-            
-            gl_FragColor = vec4(vColor, alpha);
-        }`;
+        }
 
-        this.starMaterial = new ShaderMaterial({
-            vertexShader: customVertexShader,
-            fragmentShader: customFragmentShader,
-            uniforms: {
-                uRadius: { value: 0.4 },
-                cameraFOV: { value: 30 },
-                starScale: { value: Sit.starScale / window.devicePixelRatio },
-                minPointSize: { value: 2.0 },
-            },
-            transparent: true,
-            depthTest: true,
-            depthWrite: false,
-            blending: AdditiveBlending,
+        this.lightCloud = new CPointLightCloud({
+            id: "StarfieldLightCloud",
+            mode: 'celestial',
+            singleColor: 0xffffff,
+            sphereRadius: this.sphereRadius,
+            baseScale: Sit.starScale / window.devicePixelRatio,
+            minPointSize: 2.0,
+            uRadius: 0.4,
+            count: visibleCount,
+            scene: scene,
         });
 
-        return this.starMaterial;
-    }
-
-    /**
-     * Generates star sprite geometry and creates Points object for rendering
-     * Converts RA/DEC coordinates to 3D positions and calculates magnitude-based flux values
-     * @param {Scene} scene Three.js scene to add star sprites to
-     */
-    createStarSprites(scene) {
-        const numStars = this.BSC_NumStars;
-
-        // Remove existing star sprites to prevent duplicates
-        if (this.starSprites) {
-            scene.remove(this.starSprites);
-            if (this.starGeometry) {
-                this.starGeometry.dispose();
-            }
-            this.starSprites = null;
-        }
-
-        this.starGeometry = new BufferGeometry();
-
-        let positions = [];
-        let fluxes = [];
-
-        // Reference magnitude for flux calculation normalization
-        // Corresponds to Sirius-like brightness
-        const magRef = -1.5;
-
-        // Create vertices for each star that passes magnitude filter
-        for (let i = 0; i < numStars; i++) {
+        let lightIndex = 0;
+        for (let i = 0; i < this.BSC_NumStars; i++) {
             const mag = this.BSC_MAG[i];
-            
-            // Only include stars brighter than the limit
             if (mag <= Sit.starLimit) {
-                // Convert RA/DEC celestial coordinates to 3D Cartesian on sphere
                 const equatorial = raDec2Celestial(this.BSC_RA[i], this.BSC_DEC[i], this.sphereRadius);
-                positions.push(equatorial.x, equatorial.y, equatorial.z);
+                const flux = this.magnitudeToFlux(mag);
 
-                // Calculate flux (visual brightness) from magnitude
-                // Formula: flux = cbrt(100000000 * 10^(-0.4 * (mag - (-1.5)))) / 16
-                // This converts astronomical magnitude scale to visual point size
-                const flux = Math.cbrt(100000000 * Math.pow(10, -0.4 * (mag - magRef))) / 16;
-                fluxes.push(flux);
+                this.lightCloud.setPosition(lightIndex, equatorial.x, equatorial.y, equatorial.z);
+                this.lightCloud.setBrightness(lightIndex, flux);
+                this.starIndexMap[lightIndex] = i;
+                lightIndex++;
             }
         }
 
-        // Set geometry attributes
-        this.starGeometry.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3));
-        this.starGeometry.setAttribute('flux', new BufferAttribute(new Float32Array(fluxes), 1));
-
-        // Create and add Points object to scene
-        this.starSprites = new Points(this.starGeometry, this.starMaterial);
-        scene.add(this.starSprites);
+        this.lightCloud.markPositionsNeedUpdate();
+        this.lightCloud.markBrightnessNeedUpdate();
+        this.scene = scene;
     }
 
-    /**
-     * Initializes star rendering system
-     * Loads data, creates material, and generates sprite geometry
-     * @param {Scene} scene Three.js scene to add stars to
-     */
     addToScene(scene) {
         this.loadStarData();
         this.loadCommonStarNames();
-        this.createStarMaterial();
-        this.createStarSprites(scene);
+        this.createStarCloud(scene);
     }
 
-    /**
-     * Updates star visibility based on new magnitude limit
-     * Useful for dynamic filtering without reloading star data
-     * @param {number} newLimit New magnitude limit (higher = more stars visible)
-     * @param {Scene} scene Three.js scene containing the stars
-     */
     updateStarVisibility(newLimit, scene) {
         Sit.starLimit = newLimit;
-        this.createStarSprites(scene);
+        this.createStarCloud(scene);
     }
 
     /**
@@ -378,62 +270,32 @@ export class CStarField {
         return this.BSC_HIP[index];
     }
 
-    /**
-     * Cleans up GPU resources
-     * Should be called when the star field is no longer needed or being replaced
-     */
     dispose() {
-        if (this.starSprites) {
-            if (this.starGeometry) {
-                this.starGeometry.dispose();
-            }
-            if (this.starMaterial) {
-                this.starMaterial.dispose();
-            }
+        if (this.lightCloud) {
+            this.lightCloud.dispose();
+            this.lightCloud = null;
         }
 
-        // Clear data arrays
         this.BSC_RA = [];
         this.BSC_DEC = [];
         this.BSC_MAG = [];
         this.BSC_HIP = [];
         this.BSC_NAME = [];
         this.commonNames = {};
+        this.starIndexMap = [];
     }
 
-    /**
-     * Updates the responsive star scale
-     * Useful when device pixel ratio changes or user adjusts brightness
-     * @param {number} newScale New scale factor
-     */
     updateScale(newScale) {
         this.starScale = newScale;
-        if (this.starMaterial) {
-            this.starMaterial.uniforms.starScale.value = newScale / window.devicePixelRatio;
+        if (this.lightCloud) {
+            this.lightCloud.baseScale = newScale / window.devicePixelRatio;
         }
     }
 
-    /**
-     * Updates star scales based on view camera and atmospheric conditions
-     * Adjusts star visibility based on sky brightness at camera location
-     * Called once per frame during rendering to maintain responsive display
-     * @param {Object} view The view object containing camera and adjustment methods
-     */
     updateStarScales(view) {
-        if (!this.starMaterial) return;
-
-        const camera = view.camera;
-
-        let starScale = Sit.starScale;
-        this.starMaterial.uniforms.cameraFOV.value = camera.fov;
-
-        // scale based on sky brightness at camera location
-        const sunNode = NodeMan.get("theSun", true);
-        const skyBrightness = sunNode.calculateSkyBrightness(camera.position);
-        let attenuation = Math.max(0, 1 - skyBrightness);
-        starScale *= attenuation;
-
-        starScale = view.adjustPointScale(starScale);
-        this.starMaterial.uniforms.starScale.value = starScale;
+        if (this.lightCloud) {
+            this.lightCloud.baseScale = 1.4 / 1.78 * 2 * Sit.starScale / window.devicePixelRatio;
+            this.lightCloud.preRender(view);
+        }
     }
 }
