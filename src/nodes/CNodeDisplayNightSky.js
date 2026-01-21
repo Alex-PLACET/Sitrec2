@@ -1,6 +1,6 @@
 import {CNode3DGroup} from "./CNode3DGroup";
 import {GlobalNightSkyScene, GlobalScene, GlobalSunSkyScene, setupNightSkyScene, setupSunSkyScene} from "../LocalFrame";
-import {Color, Group, Matrix4, Ray, Raycaster, Scene, Sphere, Vector3} from "three";
+import {Color, Frustum, Group, Matrix4, Ray, Raycaster, Scene, Sphere, Vector3} from "three";
 import {degrees, radians} from "../utils";
 import {FileManager, GlobalDateTimeNode, Globals, guiMenus, guiShowHide, NodeMan, setRenderOne, Sit} from "../Globals";
 import {
@@ -306,6 +306,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
         this.showFlareBand = Sit.showFlareBand;
 
         this.showAllLabels = false;
+        this.maxLabelsDisplayed = 5000;
 
         const satelliteOptions = [
             {
@@ -405,6 +406,10 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
             this.addSimpleSerial(option.key);
         });
 
+        satGUI.add(this, "maxLabelsDisplayed", 100, 10000, 100).listen().name("Max Labels Displayed")
+            .onChange(() => setRenderOne(true));
+        this.addSimpleSerial("maxLabelsDisplayed");
+
         this.flareBandGroup.visible = this.showFlareBand;
 
         // NOTE: older vars set from Sit
@@ -467,7 +472,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
             .tooltip("Satellites dimmed to this level or less will not be displayed")
 
 
-        satGUI.add(this.satellites, "arrowRange", 10, 10000, 1).name("Display Range (km)").listen()
+        satGUI.add(this.satellites, "arrowRange", 10, 100000, 1).name("Display Range (km)").listen()
             .tooltip("Satellites beyond this distance will not have their names or arrows displayed")
             .onChange(() => {
                 this.satellites.filterSatellites();
@@ -1099,51 +1104,88 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
 
         assert(this.satellites.TLEData !== undefined, "TLEData is undefined in updateSatelliteText")
 
-        const lookPos = NodeMan.get("lookCamera").camera.position;
         const numSats = this.satellites.TLEData.satData.length;
+        const maxLabels = this.maxLabelsDisplayed;
+        let labelCount = 0;
+        const raycaster = new Raycaster();
+        const hitPoint = V3();
+        const hitPoint2 = V3();
+        
+        const frustum = new Frustum();
+        const projScreenMatrix = new Matrix4();
+        projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+        frustum.setFromProjectionMatrix(projScreenMatrix);
+        
         for (let i = 0; i < numSats; i++) {
             const satData = this.satellites.TLEData.satData[i];
 
-            // if the satellite is not visible or not valid, skip it
-            // user filtered sats are either in the list, or ar e the brightest or the ISS (if those are enabled)
-            // if the satellite is not user filtered, skip it
-            if (satData.visible
+            // Check if satellite qualifies for a label (visible, valid, in range, flags enabled)
+            const qualifiesForLabel = satData.visible
                 && !satData.invalidPosition
-                && (satData.userFiltered || satData.eus.distanceTo(lookPos) < this.satellites.arrowRange * 1000)
-//                && ( (satData.lastScale > 0 && !this.satellites.labelFlares)  // if the scale is > 0, we show the label if not labelFlares
-                 && (
-                     this.showAllLabels
-                    || (this.satellites.labelFlares && satData.isFlaring)) // if the scale is 0, we don't show the label, unless showAllLabels is true or labelFlares is enabled and satellite is flaring
-            ) {
-                //if (satData.visible) {
+                && (satData.userFiltered || satData.eus.distanceTo(cameraPos) < this.satellites.arrowRange * 1000)
+                && (this.showAllLabels
+                    || this.satellites.showSatelliteNames
+                    || this.satellites.showSatelliteNamesMain
+                    || (this.satellites.labelFlares && satData.isFlaring));
+
+            if (qualifiesForLabel) {
+                // Full frustum culling: skip satellites outside the view frustum
+                if (!frustum.containsPoint(satData.eus)) {
+                    if (satData.spriteText) {
+                        this.satelliteTextGroup.remove(satData.spriteText);
+                        satData.spriteText.dispose();
+                        satData.spriteText = null;
+                    }
+                    continue;
+                }
+                
+                const camToSat = satData.eus.clone().sub(cameraPos);
+                const distToSat = camToSat.length();
+                
+                raycaster.set(cameraPos, camToSat.normalize());
+                const isOccluded = intersectSphere2(raycaster.ray, this.globe, hitPoint, hitPoint2)
+                    && hitPoint.distanceTo(cameraPos) < distToSat;
+
+                if (isOccluded) {
+                    if (satData.spriteText) {
+                        this.satelliteTextGroup.remove(satData.spriteText);
+                        satData.spriteText.dispose();
+                        satData.spriteText = null;
+                    }
+                    continue;
+                }
+
+                labelCount++;
+                if (labelCount > maxLabels) {
+                    if (satData.spriteText) {
+                        this.satelliteTextGroup.remove(satData.spriteText);
+                        satData.spriteText.dispose();
+                        satData.spriteText = null;
+                    }
+                    continue;
+                }
                 if (!satData.spriteText) {
-                    // if the sprite is not created, create it
-                    // this is done in the TLEData constructor, but might not be called
-                    // if the TLEData is loaded after the CNodeDisplayNightSky is created
                     var name = satData.name.replace("0 STARLINK", "SL").replace("STARLINK", "SL");
-                    // strip whitespae off the end
                     name = name.replace(/\s+$/, '');
                     satData.spriteText = new SpriteText(name, 0.01, "white", {depthTest: true});
-
-                    // propagate the layer mask
                     satData.spriteText.layers.mask = layerMask;
-
                     this.satelliteTextGroup.add(satData.spriteText);
                 }
                 const sprite = satData.spriteText;
+                if (sprite) {
+                    const satPosition = satData.eus;
+                    // scaling based on the view camera
+                    // whereas satellite dot scaling is done with the look Camera?????
+                    const camToSatVec = satPosition.clone().sub(cameraPos)
+                    // get the perpendicular distance to the satellite, and use that to scale the name
+                    const perpDistToSat = camToSatVec.dot(cameraForward);
+                    const nameScale = viewScale * perpDistToSat * tanHalfFOV;
+                    sprite.scale.set(nameScale * sprite.aspect, nameScale, 1);
 
-                const satPosition = satData.eus;
-                // scaling based on the view camera
-                // whereas satellite dot scaling is done with the look Camera?????
-                const camToSat = satPosition.clone().sub(cameraPos)
-                // get the perpendicular distance to the satellite, and use that to scale the name
-                const distToSat = camToSat.dot(cameraForward);
-                const nameScale = viewScale * distToSat * tanHalfFOV;
-                sprite.scale.set(nameScale * sprite.aspect, nameScale, 1);
-
-                const pos = satData.eus;
-                const offsetPost = view.offsetScreenPixels(pos, 0, 30);
-                sprite.position.copy(offsetPost);
+                    const pos = satData.eus;
+                    const offsetPost = view.offsetScreenPixels(pos, 0, 30);
+                    sprite.position.copy(offsetPost);
+                }
             } else {
                 // if not visible dispose it
                 if (satData.spriteText) {
@@ -1157,6 +1199,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
                 //satData.spriteText.scale.set(0,0,0);
             }
         }
+        console.log("Satellite labels displayed: " + labelCount)
     }
 
 

@@ -672,7 +672,7 @@ export class CNodeView3D extends CNodeViewCanvas {
             if (nightSkyNode) {
                 nightSkyNode.starField.updateStarScales(this);
                 nightSkyNode.updateSatelliteScales(this);
-                if (nightSkyNode.showSatelliteNames) {
+                if (nightSkyNode.showSatelliteNames || nightSkyNode.showSatelliteNamesMain) {
                     nightSkyNode.updateSatelliteText(this);
                 }
             }
