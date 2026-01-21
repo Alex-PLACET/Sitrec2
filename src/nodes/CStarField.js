@@ -17,10 +17,9 @@
  * - configUtils.SITREC_APP: Application root path for resources
  */
 
-import {BufferAttribute, BufferGeometry, Points, ShaderMaterial, TextureLoader} from "three";
+import {AdditiveBlending, BufferAttribute, BufferGeometry, Points, ShaderMaterial} from "three";
 import {FileManager, NodeMan, Sit} from "../Globals";
 import {raDec2Celestial} from "../CelestialMath";
-import {SITREC_APP} from "../configUtils";
 import {assert} from "../assert.js";
 
 export class CStarField {
@@ -30,13 +29,11 @@ export class CStarField {
      * @param {number} [config.starLimit=6.5] Magnitude limit for stars to display (higher = fainter stars shown)
      * @param {number} [config.starScale=1.0] Responsive scale factor for star sizes
      * @param {number} [config.sphereRadius=100] Radius of celestial sphere in units
-     * @param {string} [config.starTexturePath] Custom path to star texture (default: SITREC_APP+'data/images/nightsky/MickStar.png')
      */
     constructor(config = {}) {
         this.starLimit = config.starLimit ?? 6.5;
         this.starScale = config.starScale ?? 1.0;
         this.sphereRadius = config.sphereRadius ?? 100;
-        this.starTexturePath = config.starTexturePath ?? (SITREC_APP + 'data/images/nightsky/MickStar.png');
 
         // Bright Star Catalog data - using separate arrays for performance
         this.BSC_NumStars = 0;
@@ -190,36 +187,46 @@ export class CStarField {
         const customFragmentShader = `
         varying vec3 vColor;
         varying float vFlux;
-        uniform sampler2D starTexture;
+        uniform float uRadius;
 
         void main() {
-            vec2 uv = gl_PointCoord.xy * 2.0 - 1.0;
-            float alpha = 1.0 - dot(uv, uv);
-            if (alpha < 0.0) discard;
-            
-            vec4 textureColor = texture2D(starTexture, gl_PointCoord);
-            
-            // Discard very faint stars to reduce visual clutter
+            // Discard very faint stars early
             if (vFlux < 0.5) {
-                gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0);
-                return;
+                discard;
             }
             
-            gl_FragColor = textureColor;
+            // Convert gl_PointCoord to centered coordinates
+            vec2 centered = gl_PointCoord - 0.5;
+            float dist = length(centered) * 2.0;
+            
+            // Discard outside circle
+            if (dist > 1.0) discard;
+            
+            // Core disk (hard center)
+            float core = smoothstep(uRadius, uRadius - 0.05, dist);
+            
+            // Soft outer falloff
+            float falloff = pow(clamp(1.0 - dist, 0.0, 1.0), 2.0);
+            
+            // Combine alpha
+            float alpha = core + (1.0 - core) * falloff * 0.5;
+            alpha = clamp(alpha, 0.0, 1.0);
+            
+            gl_FragColor = vec4(vColor, alpha);
         }`;
 
         this.starMaterial = new ShaderMaterial({
             vertexShader: customVertexShader,
             fragmentShader: customFragmentShader,
             uniforms: {
-                starTexture: {
-                    value: new TextureLoader().load(this.starTexturePath)
-                },
+                uRadius: { value: 0.4 },
                 cameraFOV: { value: 30 },
                 starScale: { value: Sit.starScale / window.devicePixelRatio },
             },
             transparent: true,
             depthTest: true,
+            depthWrite: false,
+            blending: AdditiveBlending,
         });
 
         return this.starMaterial;
@@ -377,9 +384,6 @@ export class CStarField {
                 this.starGeometry.dispose();
             }
             if (this.starMaterial) {
-                if (this.starMaterial.uniforms.starTexture && this.starMaterial.uniforms.starTexture.value) {
-                    this.starMaterial.uniforms.starTexture.value.dispose();
-                }
                 this.starMaterial.dispose();
             }
         }
