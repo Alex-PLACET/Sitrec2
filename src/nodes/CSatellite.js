@@ -5,7 +5,7 @@ import {SITREC_SERVER} from "../configUtils";
 import {FileManager, GlobalDateTimeNode, guiMenus, setRenderOne} from "../Globals";
 import {EventManager} from "../CEventManager";
 import * as satellite from 'satellite.js';
-import {bestSat, CTLEData} from "../TLEUtils";
+import {bestSat, CTLEData, satRecToDate} from "../TLEUtils";
 import {degrees} from "../utils";
 import {hideProgress, initProgress, updateProgress} from "../CProgressIndicator";
 import {DebugArrow, DebugArrowAB, getPointBelow, removeDebugArrow} from "../threeExt";
@@ -921,19 +921,42 @@ export class CSatellite {
 
         let validCount = 0;
         let visibleCount = 0;
+        const maxTLEAgeDays = 90;
+        const maxTLEAgeMS = maxTLEAgeDays * 24 * 60 * 60 * 1000;
+
         for (let i = 0; i < numSats; i++) {
             const satData = this.TLEData.satData[i];
             const satrec = bestSat(satData.satrecs, date);
 
-            if (satData.timeA === undefined || timeMS < satData.timeA || timeMS > satData.timeB) {
+            const tleEpochDate = satRecToDate(satrec);
+            const tleAgeMS = Math.abs(timeMS - tleEpochDate.getTime());
+            if (tleAgeMS > maxTLEAgeMS) {
+                satData.invalidPosition = true;
+                satData.outOfRange = true;
+                this.removeSatSunArrows(satData);
+                this.lightCloud.setBrightness(i, 0);
+                this.lightCloud.setPosition(i, 1000000000, 0, 0);
+                if (satData.visible) {
+                    visibleCount++;
+                }
+                continue;
+            }
+            satData.outOfRange = false;
+
+            if (satData.timeA === undefined
+                || timeMS < satData.timeA  // check if time is outside current interval
+                || timeMS > satData.timeB) {
                 // When crossing the boundary (timeMS > timeB), start new interval from old endpoint
                 // to ensure smooth continuity. Otherwise we'd jump from position-at-timeB to position-at-timeMS.
-                if (satData.timeB !== undefined && timeMS > satData.timeB && satData.eusB !== null) {
+                if (satData.timeB !== undefined
+                    && timeMS > satData.timeB               // current time is past B time
+                    && (timeMS - satData.timeB) < 1000      // but less than a second past
+                    && satData.eusB !== null) {             // and we were interpolating valid     positions
                     // Carry forward: old end becomes new start
                     satData.timeA = satData.timeB;
                     satData.eusA = satData.eusB;
                 } else {
-                    // First time or backwards jump: calculate fresh
+                    // First time or backwards jump or jump fwd more that a second, calculate fresh
                     satData.timeA = timeMS;
                     satData.eusA = this.calcSatEUS(satrec, date);
                 }

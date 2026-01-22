@@ -181,7 +181,7 @@ function tleEpochToDate(epochYr, epochDays) {
     return new Date(startOfYear.getTime() + msSinceStart);
 }
 
-function satRecToDate(satrec) {
+export function satRecToDate(satrec) {
     // Convert the TLE epoch to a Date object
     return tleEpochToDate(satrec.epochyr, satrec.epochdays);
 }
