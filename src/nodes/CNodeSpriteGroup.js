@@ -126,11 +126,13 @@ constructor(v) {
 
     // Create point cloud for sprites
     this.sprites = new Points(this.geometry, this.material);
+    this.sprites.userData.ignoreContextMenu = true;
 
     this.sprites.updateMatrix();
     this.sprites.updateMatrixWorld();
 
     this.group.add(this.sprites);
+    this.group.userData.ignoreContextMenu = true;
     this.group.layers.mask = LAYER.MASK_LOOKRENDER;
     this.propagateLayerMask();
 

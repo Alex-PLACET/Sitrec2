@@ -2273,16 +2273,27 @@ export class CNodeView3D extends CNodeViewCanvas {
         }
 
         // Check satellites
+        // IMPORTANT: Unlike stars/planets which are in GlobalNightSkyScene (rendered with camera at origin),
+        // satellites are in GlobalScene (rendered with camera at its actual position).
+        // So we must use the actual camera position for satellite direction calculation.
         if (nightSkyNode.TLEData && nightSkyNode.TLEData.satData) {
+            // Restore camera position temporarily for satellite picking
+            this.camera.position.copy(savedCameraPos);
+            this.camera.updateMatrixWorld();
+            
+            // Recompute ray direction with actual camera position
+            this.raycaster.setFromCamera(mouseRay, this.camera);
+            const satRayDirection = this.raycaster.ray.direction.clone();
+            
             for (const satData of nightSkyNode.TLEData.satData) {
                 if (!satData.visible || !satData.eus) continue;
 
-                // Get satellite position
+                // Get satellite direction from actual camera position
                 const satPos = satData.eus.clone();
                 const satDir = satPos.clone().sub(this.camera.position).normalize();
 
                 // Calculate angle between ray and satellite direction
-                const dot = rayDirection.dot(satDir);
+                const dot = satRayDirection.dot(satDir);
                 const angle = Math.acos(Math.max(-1, Math.min(1, dot))) * 180 / Math.PI;
 
                 if (angle < closestAngle) {
@@ -2296,6 +2307,10 @@ export class CNodeView3D extends CNodeViewCanvas {
                     };
                 }
             }
+            
+            // Move camera back to origin for remaining celestial object checks (stars)
+            this.camera.position.set(0, 0, 0);
+            this.camera.updateMatrixWorld();
         }
 
         // Check stars (using pixel-based distance)
@@ -2415,9 +2430,19 @@ export class CNodeView3D extends CNodeViewCanvas {
             this.raycaster.setFromCamera(mouseRay, this.camera);
             const allIntersects = this.raycaster.intersectObjects(this.scene.children, true);
 
-            // Filter out objects marked to ignore context menu (overlays, clouds)
+            // Helper to check if object or any parent has ignoreContextMenu
+            const shouldIgnoreContextMenu = (obj) => {
+                let current = obj;
+                while (current) {
+                    if (current.userData?.ignoreContextMenu) return true;
+                    current = current.parent;
+                }
+                return false;
+            };
+
+            // Filter out objects marked to ignore context menu (overlays, clouds, sprites)
             const intersects = allIntersects.filter(intersect =>
-                !intersect.object.userData?.ignoreContextMenu
+                !shouldIgnoreContextMenu(intersect.object)
             );
 
             if (intersects.length > 0) {

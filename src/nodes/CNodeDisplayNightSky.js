@@ -499,6 +499,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
 
 
         this.satelliteTextGroup = new Group();
+        this.satelliteTextGroup.userData.ignoreContextMenu = true;
         this.viewSpriteData = new Map();
         this.updateSatelliteNamesVisibility();
 
@@ -1093,6 +1094,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
         if (!this.viewSpriteData.has(view.id)) {
             const group = new Group();
             group.layers.mask = this.getViewLayerMask(view);
+            group.userData.ignoreContextMenu = true;
             this.satelliteTextGroup.add(group);
             this.viewSpriteData.set(view.id, { group: group, sprites: new Map() });
         }
@@ -1189,6 +1191,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
                 name = name.replace(/\s+$/, '');
                 sprite = new SpriteText(name, 0.01, "white", {depthTest: true});
                 sprite.layers.mask = layerMask;
+                sprite.userData.ignoreContextMenu = true;
                 viewData.group.add(sprite);
                 sprites.set(satIndex, sprite);
             }
