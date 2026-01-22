@@ -1,11 +1,11 @@
 // CNodeDisplaySkyOverlay takes a CNodeCanvas derived node, CNodeDisplayNightSky and a camera
 // and displays star names on an overlay
 import {CNodeViewUI} from "./CNodeViewUI";
-import {GlobalDateTimeNode, guiShowHide, setRenderOne} from "../Globals";
+import {GlobalDateTimeNode, guiShowHide, setRenderOne, Sit} from "../Globals";
 import {getCelestialDirectionFromRaDec, raDec2Celestial} from "../CelestialMath";
 import {wgs84} from "../LLA-ECEF-ENU";
 import {intersectSphere2, V3} from "../threeUtils";
-import {Ray, Sphere} from "three";
+import {Ray, Raycaster, Sphere} from "three";
 
 export class CNodeDisplaySkyOverlay extends CNodeViewUI {
 
@@ -16,7 +16,6 @@ export class CNodeDisplaySkyOverlay extends CNodeViewUI {
         this.camera = v.camera;
         this.nightSky = v.nightSky;
 
-        this.showSatelliteNames = false;
         this.showStarNames = false;
 
         const gui = v.gui ?? guiShowHide;
@@ -25,13 +24,7 @@ export class CNodeDisplaySkyOverlay extends CNodeViewUI {
             this.syncVideoZoom = true;
         }
 
-        // this.separateVisibility = true;
-
-        //    guiShowHide.add(this,"showSatelliteNames" ).onChange(()=>{setRenderOne(true);}).name(this.overlayView.id+" Sat names")
         gui.add(this, "showStarNames").onChange(() => {
-
-            //this.show(!this.showStarNames)
-
             setRenderOne(true);
         }).name(this.overlayView.id + " Star names").listen();
         this.addSimpleSerial("showStarNames");
@@ -39,134 +32,173 @@ export class CNodeDisplaySkyOverlay extends CNodeViewUI {
 
     }
 
-    //
     renderCanvas(frame) {
-
-
-
         super.renderCanvas(frame);
 
-        if (!this.showStarNames) return
+        if (!this.showStarNames && !this.showSatelliteNames) return
 
-
-        const camera = this.camera.clone();
-
-        // restore the FOV if it was modified for rendering
-        if (this.camera.renderedFOV) {
-            camera.fov = this.camera.renderedFOV;
-        }
-
-
-        camera.position.set(0, 0, 0)
-        camera.aspect = this.widthPx / this.heightPx;
-        camera.updateMatrix()
-        camera.updateWorldMatrix()
-        camera.updateProjectionMatrix()
-
-//         var cameraECEF = ESUToECEF()
-//         var cameraLLA = ECEFToLLA()
-
-        var font_h = 9
-
+        const font_h = 9
         this.ctx.font = Math.floor(font_h) + 'px' + " " + 'Arial'
         this.ctx.fillStyle = "#ffffff";
         this.ctx.strokeStyle = '#ffffff';
         this.ctx.textAlign = 'left';
 
+        const earthSphere = new Sphere(V3(0, -wgs84.RADIUS, 0), wgs84.RADIUS)
+        const actualCameraPosition = this.camera.position
+        const date = this.in.startTime.dateNow
+
         if (this.showStarNames) {
-            const earthSphere = new Sphere(V3(0, -wgs84.RADIUS, 0), wgs84.RADIUS)
-            const actualCameraPosition = this.camera.position
-            const date = this.in.startTime.dateNow
+            const starCamera = this.camera.clone();
+            if (this.camera.renderedFOV) {
+                starCamera.fov = this.camera.renderedFOV;
+            }
+            starCamera.position.set(0, 0, 0);
+            starCamera.aspect = this.widthPx / this.heightPx;
+            starCamera.updateMatrix();
+            starCamera.matrixWorld.copy(starCamera.matrix);
+            starCamera.matrixWorldInverse.copy(starCamera.matrixWorld).invert();
+            starCamera.updateProjectionMatrix();
+            this.renderStarNames(starCamera, earthSphere, actualCameraPosition, date);
+        }
 
-            for (var HR in this.nightSky.starField.commonNames) {
+        if (this.showSatelliteNames) {
+            this.renderSatelliteNames(earthSphere);
+        }
+    }
 
-                // HR is the HR number, i.e. the index into the BSC + 1
-                // So we sub 1 to get the actual index.
-                const n = HR - 1
+    renderStarNames(camera, earthSphere, actualCameraPosition, date) {
+        for (var HR in this.nightSky.starField.commonNames) {
+            const n = HR - 1
 
-                const mag = this.nightSky.starField.getStarMagnitude(n)
-                if (mag > Sit.starLimit) {
-                    continue
-                }
-
-                const ra = this.nightSky.starField.getStarRA(n)
-                const dec = this.nightSky.starField.getStarDEC(n)
-                
-                const starDirection = getCelestialDirectionFromRaDec(ra, dec, date)
-                
-                const ray = new Ray(actualCameraPosition, starDirection)
-                const target0 = V3()
-                const target1 = V3()
-                if (intersectSphere2(ray, earthSphere, target0, target1)) {
-                    continue
-                }
-
-                const pos = raDec2Celestial(ra, dec, 100) // get equatorial
-                pos.applyMatrix4(this.nightSky.celestialSphere.matrix) // convert equatorial to EUS
-                pos.project(camera) // project using the EUS camera
-
-                if (pos.z > -1 && pos.z < 1 && pos.x >= -1 && pos.x <= 1 && pos.y >= -1 && pos.y <= 1) {
-                    // Apply videoZoom to the projected coordinates
-                    var zoomedX = pos.x * this.zoom;
-                    var zoomedY = pos.y * this.zoom;
-                    
-                    var x = (zoomedX + 1) * this.widthPx / 2
-                    var y = (-zoomedY + 1) * this.heightPx / 2
-                    x += 5
-                    y -= 5
-                   this.ctx.fillText(this.nightSky.starField.commonNames[HR], x, y)
-                }
+            const mag = this.nightSky.starField.getStarMagnitude(n)
+            if (mag > Sit.starLimit) {
+                continue
             }
 
-            // // iterate over ALL the stars, not just the common ones
-            // // and lable them with the index
-            //   for (let n = 0; n < this.nightSky.starField.getStarCount(); n++) {
-            //       const ra = this.nightSky.starField.getStarRA(n)
-            //       const dec = this.nightSky.starField.getStarDEC(n)
-            //       assert(ra !== 0 || dec !== 0, "ra AND dec is 0 for star "+n)
-            //       const pos1 = raDec2Celestial(ra, dec, 100) // get equatorial
-            //       pos1.applyMatrix4(this.nightSky.celestialSphere.matrix) // convert equatorial to EUS
-            //       pos1.project(camera) // project using the EUS camera
-            //
-            //       if (pos1.z > -1 && pos1.z < 1 && pos1.x >= -1 && pos1.x <= 1 && pos1.y >= -1 && pos1.y <= 1) {
-            //           // Apply videoZoom to the projected coordinates
-            //           var zoomedX = pos1.x * this.zoom;
-            //           var zoomedY = pos1.y * this.zoom;
-            //           
-            //           var x = (zoomedX + 1) * this.widthPx / 2
-            //           var y = (-zoomedY + 1) * this.heightPx / 2
-            //           x += 5
-            //           y -= 5
-            //           this.ctx.fillText(n, x, y)
-            //       }
-            //   }
+            const ra = this.nightSky.starField.getStarRA(n)
+            const dec = this.nightSky.starField.getStarDEC(n)
+            
+            const starDirection = getCelestialDirectionFromRaDec(ra, dec, date)
+            
+            const ray = new Ray(actualCameraPosition, starDirection)
+            const target0 = V3()
+            const target1 = V3()
+            if (intersectSphere2(ray, earthSphere, target0, target1)) {
+                continue
+            }
 
+            const pos = raDec2Celestial(ra, dec, 100)
+            pos.applyMatrix4(this.nightSky.celestialSphere.matrix)
+            pos.project(camera)
 
-            // Note this is overlay code, so we use this.nightSky.
-            // CNodeDisplayNightSky would use this.planetSprites
-            for (const [name, planet] of Object.entries(this.nightSky.planets.planetSprites)) {
-                var pos = planet.equatorial.clone()
-                pos.applyMatrix4(this.nightSky.celestialSphere.matrix)
-
-                pos.project(camera)
-
-                this.ctx.strokeStyle = planet.color;
-                this.ctx.fillStyle = planet.color;
-
-                if (pos.z > -1 && pos.z < 1 && pos.x >= -1 && pos.x <= 1 && pos.y >= -1 && pos.y <= 1) {
-                    // Apply videoZoom to the projected coordinates
-                    var zoomedX = pos.x * this.zoom;
-                    var zoomedY = pos.y * this.zoom;
-                    
-                    var x = (zoomedX + 1) * this.widthPx / 2
-                    var y = (-zoomedY + 1) * this.heightPx / 2
-                    x += 5
-                    y -= 5
-                    this.ctx.fillText(name, x, y)
-                }
-
+            if (pos.z > -1 && pos.z < 1 && pos.x >= -1 && pos.x <= 1 && pos.y >= -1 && pos.y <= 1) {
+                const zoomedX = pos.x * this.zoom;
+                const zoomedY = pos.y * this.zoom;
+                
+                const x = (zoomedX + 1) * this.widthPx / 2 + 5
+                const y = (-zoomedY + 1) * this.heightPx / 2 - 5
+                this.ctx.fillText(this.nightSky.starField.commonNames[HR], x, y)
             }
         }
 
+        for (const [name, planet] of Object.entries(this.nightSky.planets.planetSprites)) {
+            const pos = planet.equatorial.clone()
+            pos.applyMatrix4(this.nightSky.celestialSphere.matrix)
+            pos.project(camera)
+
+            this.ctx.strokeStyle = planet.color;
+            this.ctx.fillStyle = planet.color;
+
+            if (pos.z > -1 && pos.z < 1 && pos.x >= -1 && pos.x <= 1 && pos.y >= -1 && pos.y <= 1) {
+                const zoomedX = pos.x * this.zoom;
+                const zoomedY = pos.y * this.zoom;
+                
+                const x = (zoomedX + 1) * this.widthPx / 2 + 5
+                const y = (-zoomedY + 1) * this.heightPx / 2 - 5
+                this.ctx.fillText(name, x, y)
+            }
+        }
+    }
+
+    renderSatelliteNames(earthSphere) {
+        const satellites = this.nightSky.satellites;
+        if (!satellites.TLEData) return;
+
+        const camera = this.camera.clone();
+        if (this.camera.renderedFOV) {
+            camera.fov = this.camera.renderedFOV;
+        }
+        camera.aspect = this.widthPx / this.heightPx;
+        camera.updateProjectionMatrix()
+        camera.matrixWorld.copy(this.camera.matrixWorld);
+        camera.matrixWorldInverse.copy(this.camera.matrixWorldInverse);
+
+        const cameraPos = this.camera.position;
+        const satData = satellites.TLEData.satData;
+        const numSats = satData.length;
+
+        const raycaster = new Raycaster();
+        const hitPoint = V3();
+        const hitPoint2 = V3();
+        const arrowRangeSq = (satellites.arrowRange * 1000) ** 2;
+
+        const candidates = [];
+        
+        for (let i = 0; i < numSats; i++) {
+            const sat = satData[i];
+            if (!sat.visible || sat.invalidPosition) continue;
+
+            const distSq = sat.eus.distanceToSquared(cameraPos);
+            if (!sat.userFiltered && distSq >= arrowRangeSq) continue;
+
+            const satScreenPos = sat.eus.clone().project(camera);
+            if (satScreenPos.z < -1 || satScreenPos.z > 1 ||
+                satScreenPos.x < -1 || satScreenPos.x > 1 ||
+                satScreenPos.y < -1 || satScreenPos.y > 1) {
+
+                // if just off the left (and no others) see how many pixels offscreen it is
+                // and if less than about 30 characters worth, show it
+                // so offscree text works a bit better
+                if (satScreenPos.x < -1) {
+                    const zoomedX = satScreenPos.x * this.zoom;
+                    const pixelX = (zoomedX + 1) * this.widthPx / 2;
+                    const offscreenPixels = -pixelX;
+                    if (offscreenPixels > 30 * 16) {
+                        continue;
+                    }
+                } else {
+                    continue;
+                }
+            }
+
+            const camToSat = sat.eus.clone().sub(cameraPos);
+            const distToSat = Math.sqrt(distSq);
+            raycaster.set(cameraPos, camToSat.normalize());
+            const isOccluded = intersectSphere2(raycaster.ray, earthSphere, hitPoint, hitPoint2)
+                && hitPoint.distanceTo(cameraPos) < distToSat;
+            if (isOccluded) continue;
+
+            candidates.push({ index: i, distSq, screenPos: satScreenPos });
+        }
+
+        candidates.sort((a, b) => a.distSq - b.distSq);
+        
+        this.ctx.fillStyle = "#ffffff";
+        
+        const maxLabels = this.maxSatelliteLabels;
+        for (let i = 0; i < candidates.length && i < maxLabels; i++) {
+            const sat = satData[candidates[i].index];
+            const screenPos = candidates[i].screenPos;
+
+            const zoomedX = screenPos.x * this.zoom;
+            const zoomedY = screenPos.y * this.zoom;
+            
+            const x = (zoomedX + 1) * this.widthPx / 2 + 5
+            const y = (-zoomedY + 1) * this.heightPx / 2 - 5
+
+            let name = sat.name.replace("0 STARLINK", "SL").replace("STARLINK", "SL");
+            name = name.replace(/\s+$/, '');
+            this.ctx.fillText(name, x, y)
+        }
     }
 }
