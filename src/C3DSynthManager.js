@@ -11,7 +11,7 @@ import {makeMouseRay} from "./mouseMoveView";
 import {V3} from "./threeUtils";
 import {getLocalUpVector} from "./SphericalMath";
 import {Sphere, Vector3} from "three";
-import {EUSToLLA, wgs84} from "./LLA-ECEF-ENU";
+import {EUSToLLA, LLAToEUS, wgs84} from "./LLA-ECEF-ENU";
 import {f2m} from "./utils";
 
 export class C3DSynthManager extends CManager {
@@ -246,6 +246,25 @@ export class C3DSynthManager extends CManager {
      */
     getClouds(cloudsID) {
         return this.cloudsList[cloudsID];
+    }
+    
+    /**
+     * Find a cloud layer that contains the given lat/lon point (within radius)
+     * @param {number} lat - Latitude
+     * @param {number} lon - Longitude
+     * @returns {CNodeSynthClouds|null} The clouds at that point, or null if none
+     */
+    findCloudsAtLatLon(lat, lon) {
+        const clickedEUS = LLAToEUS(lat, lon, 0);
+        for (const id in this.cloudsList) {
+            const clouds = this.cloudsList[id];
+            const centerEUS = LLAToEUS(clouds.centerLat, clouds.centerLon, 0);
+            const distance = clickedEUS.distanceTo(centerEUS);
+            if (distance <= clouds.radius) {
+                return clouds;
+            }
+        }
+        return null;
     }
     
     /**

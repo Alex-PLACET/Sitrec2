@@ -2583,6 +2583,26 @@ export class CCustomManager {
                 }
             };
         }
+        
+        const cloudsAtPoint = Synth3DManager.findCloudsAtLatLon(lat, lon);
+        if (cloudsAtPoint) {
+            const isEditingClouds = cloudsAtPoint.editMode;
+            menuData.editClouds = () => {
+                this.groundContextMenu = null;
+                menu.destroy();
+                
+                if (isEditingClouds) {
+                    cloudsAtPoint.setEditMode(false);
+                    console.log(`Exited edit mode for clouds: ${cloudsAtPoint.id}`);
+                } else {
+                    if (Globals.editingClouds && Globals.editingClouds !== cloudsAtPoint) {
+                        Globals.editingClouds.setEditMode(false);
+                    }
+                    cloudsAtPoint.setEditMode(true);
+                    console.log(`Editing clouds: ${cloudsAtPoint.id}`);
+                }
+            };
+        }
 
         // Add location text as custom HTML (bright and selectable)
         menu.addHTML(locationText, "Location");
@@ -2603,7 +2623,12 @@ export class CCustomManager {
         // Add building creation option
         menu.add(menuData, "addBuilding").name("Add Building");
 
-        // Add clouds creation option
+        // Add clouds options
+        if (cloudsAtPoint) {
+            const cloudsLabel = cloudsAtPoint.name || cloudsAtPoint.id;
+            const cloudsMenuLabel = cloudsAtPoint.editMode ? `Exit Edit: ${cloudsLabel}` : `Edit Clouds: ${cloudsLabel}`;
+            menu.add(menuData, "editClouds").name(cloudsMenuLabel);
+        }
         menu.add(menuData, "addClouds").name("Add Clouds");
 
         // Add ground overlay options
