@@ -15,7 +15,7 @@
  * - CelestialMath.raDec2Celestial: Converts RA/DEC to 3D coordinates
  */
 
-import {FileManager, Sit} from "../Globals";
+import {FileManager, NodeMan, Sit} from "../Globals";
 import {raDec2Celestial} from "../CelestialMath";
 import {assert} from "../assert.js";
 import {CPointLightCloud} from "./CPointLightCloud";
@@ -150,7 +150,7 @@ export class CStarField {
 
     createStarCloud(scene) {
         if (this.lightCloud) {
-            this.lightCloud.dispose();
+            NodeMan.disposeRemove(this.lightCloud);
             this.lightCloud = null;
         }
 
@@ -272,7 +272,7 @@ export class CStarField {
 
     dispose() {
         if (this.lightCloud) {
-            this.lightCloud.dispose();
+            NodeMan.disposeRemove(this.lightCloud);
             this.lightCloud = null;
         }
 

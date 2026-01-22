@@ -376,6 +376,18 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
                 action: () => setRenderOne(true)
             },
             {
+                key: "labelLit",
+                name: "Label Lit Only",
+                object: this.satellites,
+                action: () => setRenderOne(true)
+            },
+            {
+                key: "labelLookVisible",
+                name: "Label Look Visible Only",
+                object: this.satellites,
+                action: () => setRenderOne(true)
+            },
+            {
                 key: "showFlareRegion",
                 name: "Flare Region",
                 object: this,
@@ -970,6 +982,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
                     this.satellites.removeSatSunArrows(satData);
                 }
             }
+            satData.isLit = fade > 0;
 
             if (fade > 0) {
                 const camToSat = satPosition.clone().sub(cameraPos);
@@ -1209,6 +1222,30 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
 
     set penumbraDepth(value) {
         this.satellites.penumbraDepth = value;
+    }
+
+    get labelFlares() {
+        return this.satellites.labelFlares;
+    }
+
+    set labelFlares(value) {
+        this.satellites.labelFlares = value;
+    }
+
+    get labelLit() {
+        return this.satellites.labelLit;
+    }
+
+    set labelLit(value) {
+        this.satellites.labelLit = value;
+    }
+
+    get labelLookVisible() {
+        return this.satellites.labelLookVisible;
+    }
+
+    set labelLookVisible(value) {
+        this.satellites.labelLookVisible = value;
     }
 
 

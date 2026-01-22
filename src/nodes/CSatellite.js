@@ -2,7 +2,7 @@ import {Color, Raycaster} from "three";
 import {intersectSphere2, V3} from "../threeUtils";
 import {LLAToEUSRadians} from "../LLA-ECEF-ENU";
 import {SITREC_SERVER} from "../configUtils";
-import {FileManager, GlobalDateTimeNode, guiMenus, setRenderOne} from "../Globals";
+import {FileManager, GlobalDateTimeNode, guiMenus, NodeMan, setRenderOne} from "../Globals";
 import {EventManager} from "../CEventManager";
 import * as satellite from 'satellite.js';
 import {bestSat, CTLEData, satRecToDate} from "../TLEUtils";
@@ -33,6 +33,8 @@ export class CSatellite {
         this.showSatelliteNames = false;
         this.showSatelliteNamesMain = false;
         this.labelFlares = false;
+        this.labelLit = false;
+        this.labelLookVisible = false;
         this.showSatelliteList = "";
 
         // TLE Data
@@ -708,7 +710,7 @@ export class CSatellite {
     removeSatellites() {
         if (this.TLEData !== undefined) {
             if (this.lightCloud) {
-                this.lightCloud.dispose();
+                NodeMan.disposeRemove(this.lightCloud);
                 this.lightCloud = null;
             }
 
@@ -731,6 +733,11 @@ export class CSatellite {
 
     addSatellites(scene, globeRadius = 1) {
         assert(this.TLEData !== undefined, "addSatellites needs TLEData to be set");
+
+        if (this.lightCloud) {
+            NodeMan.disposeRemove(this.lightCloud);
+            this.lightCloud = null;
+        }
 
         const len = this.TLEData.satData.length;
         this.scene = scene;

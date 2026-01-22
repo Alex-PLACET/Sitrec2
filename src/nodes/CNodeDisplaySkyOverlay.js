@@ -149,6 +149,9 @@ export class CNodeDisplaySkyOverlay extends CNodeViewUI {
         const satellites = this.nightSky.satellites;
         if (!satellites.TLEData) return;
 
+        const isLookView = this.overlayView.id === "lookView";
+        const isMainView = this.overlayView.id === "mainView";
+
         const camera = this.camera.clone();
         if (this.camera.renderedFOV) {
             camera.fov = this.camera.renderedFOV;
@@ -168,10 +171,20 @@ export class CNodeDisplaySkyOverlay extends CNodeViewUI {
         const arrowRangeSq = (satellites.arrowRange * 1000) ** 2;
 
         const candidates = [];
+
+        if (isLookView) {
+            for (let i = 0; i < numSats; i++) {
+                satData[i].visibleInLook = false;
+            }
+        }
         
         for (let i = 0; i < numSats; i++) {
             const sat = satData[i];
             if (!sat.visible || sat.invalidPosition) continue;
+
+            if (satellites.labelFlares && !sat.isFlaring) continue;
+            if (satellites.labelLit && !sat.isLit) continue;
+            if (isMainView && satellites.labelLookVisible && !sat.visibleInLook) continue;
 
             const distSq = sat.eus.distanceToSquared(cameraPos);
             if (!sat.userFiltered && distSq >= arrowRangeSq) continue;
@@ -181,9 +194,6 @@ export class CNodeDisplaySkyOverlay extends CNodeViewUI {
                 satScreenPos.x < -1 || satScreenPos.x > 1 ||
                 satScreenPos.y < -1 || satScreenPos.y > 1) {
 
-                // if just off the left (and no others) see how many pixels offscreen it is
-                // and if less than about 30 characters worth, show it
-                // so offscree text works a bit better
                 if (satScreenPos.x < -1) {
                     const zoomedX = satScreenPos.x * this.zoom;
                     const pixelX = (zoomedX + 1) * this.widthPx / 2;
@@ -202,6 +212,10 @@ export class CNodeDisplaySkyOverlay extends CNodeViewUI {
             const isOccluded = intersectSphere2(raycaster.ray, earthSphere, hitPoint, hitPoint2)
                 && hitPoint.distanceTo(cameraPos) < distToSat;
             if (isOccluded) continue;
+
+            if (isLookView) {
+                sat.visibleInLook = true;
+            }
 
             candidates.push({ index: i, distSq, screenPos: satScreenPos });
         }
