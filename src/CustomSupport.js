@@ -2566,16 +2566,21 @@ export class CCustomManager {
         
         const overlayAtPoint = Synth3DManager.findOverlayAtLatLon(lat, lon);
         if (overlayAtPoint) {
+            const isEditing = overlayAtPoint.editMode;
             menuData.editOverlay = () => {
                 this.groundContextMenu = null;
                 menu.destroy();
                 
-                if (Globals.editingOverlay && Globals.editingOverlay !== overlayAtPoint) {
-                    Globals.editingOverlay.setEditMode(false);
+                if (isEditing) {
+                    overlayAtPoint.setEditMode(false);
+                    console.log(`Exited edit mode for overlay: ${overlayAtPoint.id}`);
+                } else {
+                    if (Globals.editingOverlay && Globals.editingOverlay !== overlayAtPoint) {
+                        Globals.editingOverlay.setEditMode(false);
+                    }
+                    overlayAtPoint.setEditMode(true);
+                    console.log(`Editing overlay: ${overlayAtPoint.id}`);
                 }
-                
-                overlayAtPoint.setEditMode(true);
-                console.log(`Editing overlay: ${overlayAtPoint.id}`);
             };
         }
 
@@ -2603,7 +2608,9 @@ export class CCustomManager {
 
         // Add ground overlay options
         if (overlayAtPoint) {
-            menu.add(menuData, "editOverlay").name(`Edit Overlay: ${overlayAtPoint.name || overlayAtPoint.id}`);
+            const overlayLabel = overlayAtPoint.name || overlayAtPoint.id;
+            const menuLabel = overlayAtPoint.editMode ? `Exit Edit: ${overlayLabel}` : `Edit Overlay: ${overlayLabel}`;
+            menu.add(menuData, "editOverlay").name(menuLabel);
         }
         menu.add(menuData, "addOverlay").name("Add Ground Overlay");
 
