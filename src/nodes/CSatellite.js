@@ -754,7 +754,7 @@ export class CSatellite {
         this.lightCloud.createMainViewMaterial({
             nearDist: 20000000,
             farDist: 100000000,
-            nearScale: 1.0,
+            nearScale: 0.5,
             farScale: 0.1,
             baseScale: 10,
             minPointSize: 1.0,

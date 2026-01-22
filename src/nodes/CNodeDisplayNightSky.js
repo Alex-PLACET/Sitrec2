@@ -687,13 +687,26 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
     }
 
     updateSatelliteNamesVisibility() {
-        this.satelliteTextGroup.visible = this.showSatelliteName || this.showSatelliteNameMain;
+        this.satelliteTextGroup.visible = this.showSatelliteNames || this.showSatelliteNamesMain;
         this.satelliteTextGroup.layers.mask =
             (this.showSatelliteNames ? LAYER.MASK_LOOK : 0)
             | (this.showSatelliteNamesMain ? LAYER.MASK_MAIN : 0)
         for (const [viewId, viewData] of this.viewSpriteData) {
-            const viewMask = viewId === "lookView" ? LAYER.MASK_LOOK 
-                           : viewId === "mainView" ? LAYER.MASK_MAIN 
+            const isLookView = viewId === "lookView";
+            const isMainView = viewId === "mainView";
+            const labelsEnabled = (isLookView && this.showSatelliteNames)
+                               || (isMainView && this.showSatelliteNamesMain);
+            
+            if (!labelsEnabled) {
+                for (const [satIndex, sprite] of viewData.sprites) {
+                    viewData.group.remove(sprite);
+                    sprite.dispose();
+                }
+                viewData.sprites.clear();
+            }
+            
+            const viewMask = isLookView ? LAYER.MASK_LOOK 
+                           : isMainView ? LAYER.MASK_MAIN 
                            : viewData.group.layers.mask;
             viewData.group.layers.mask = viewMask;
             for (const sprite of viewData.sprites.values()) {
@@ -1053,7 +1066,8 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
                 satData.isFlaring = false;
             }
 
-            if (brightness < Sit.satCutOff) {
+            // need the /2 as brightness calculation has changed
+            if (brightness < Sit.satCutOff/2) {
                 brightness = 0;
             }
 
