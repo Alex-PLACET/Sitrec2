@@ -2015,6 +2015,24 @@ export class CFileManager extends CManager {
                             if (bbox && bbox.length === 4) {
                                 const [west, south, east, north] = bbox;
                                 if (west !== 0 || south !== 0 || east !== image.getWidth() || north !== image.getHeight()) {
+                                    const geoKeys = image.getGeoKeys();
+                                    const geographicType = geoKeys?.GeographicTypeGeoKey;
+                                    const projectedType = geoKeys?.ProjectedCSTypeGeoKey;
+                                    
+                                    const isWGS84Geographic = geographicType === 4326 && !projectedType;
+                                    const isValidLatLon = north >= -90 && north <= 90 && 
+                                                          south >= -90 && south <= 90 &&
+                                                          east >= -180 && east <= 180 && 
+                                                          west >= -180 && west <= 180;
+                                    
+                                    if (!isWGS84Geographic && !isValidLatLon) {
+                                        console.warn(`GeoTIFF has projected CRS (Geographic: ${geographicType}, Projected: ${projectedType}). ` +
+                                            `Bounds [${west}, ${south}, ${east}, ${north}] are not valid lat/lon. ` +
+                                            `Only WGS84 (EPSG:4326) GeoTIFFs are supported as ground overlays.`);
+                                        dataType = "image";
+                                        return createImageFromArrayBuffer(buffer, 'image/tiff');
+                                    }
+                                    
                                     dataType = "geotiff";
                                     return {
                                         buffer: buffer,

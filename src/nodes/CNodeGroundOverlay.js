@@ -574,6 +574,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         
         if (enable) {
             Globals.editingOverlay = this;
+            this.updateGroupPosition();
             this.createControlPoints();
         } else {
             if (Globals.editingOverlay === this) {
