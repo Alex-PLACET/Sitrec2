@@ -2563,6 +2563,21 @@ export class CCustomManager {
                 }
             },
         };
+        
+        const overlayAtPoint = Synth3DManager.findOverlayAtLatLon(lat, lon);
+        if (overlayAtPoint) {
+            menuData.editOverlay = () => {
+                this.groundContextMenu = null;
+                menu.destroy();
+                
+                if (Globals.editingOverlay && Globals.editingOverlay !== overlayAtPoint) {
+                    Globals.editingOverlay.setEditMode(false);
+                }
+                
+                overlayAtPoint.setEditMode(true);
+                console.log(`Editing overlay: ${overlayAtPoint.id}`);
+            };
+        }
 
         // Add location text as custom HTML (bright and selectable)
         menu.addHTML(locationText, "Location");
@@ -2586,7 +2601,10 @@ export class CCustomManager {
         // Add clouds creation option
         menu.add(menuData, "addClouds").name("Add Clouds");
 
-        // Add ground overlay creation option
+        // Add ground overlay options
+        if (overlayAtPoint) {
+            menu.add(menuData, "editOverlay").name(`Edit Overlay: ${overlayAtPoint.name || overlayAtPoint.id}`);
+        }
         menu.add(menuData, "addOverlay").name("Add Ground Overlay");
 
         if (NodeMan.exists("terrainUI")) {

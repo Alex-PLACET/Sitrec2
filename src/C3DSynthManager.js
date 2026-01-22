@@ -340,6 +340,23 @@ export class C3DSynthManager extends CManager {
     }
     
     /**
+     * Find an overlay that contains the given lat/lon point
+     * @param {number} lat - Latitude
+     * @param {number} lon - Longitude
+     * @returns {CNodeGroundOverlay|null} The overlay at that point, or null if none
+     */
+    findOverlayAtLatLon(lat, lon) {
+        for (const id in this.overlaysList) {
+            const overlay = this.overlaysList[id];
+            if (lat >= overlay.south && lat <= overlay.north &&
+                lon >= overlay.west && lon <= overlay.east) {
+                return overlay;
+            }
+        }
+        return null;
+    }
+    
+    /**
      * Create a ground overlay at the given ground point
      * @param {Vector3} groundPoint - The ground point (in EUS coordinates)
      * @returns {CNodeGroundOverlay} The created overlay
