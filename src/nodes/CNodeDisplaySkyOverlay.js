@@ -32,10 +32,22 @@ export class CNodeDisplaySkyOverlay extends CNodeViewUI {
 
     }
 
+    get showSatelliteNames() {
+        const isLookView = this.overlayView.id === "lookView";
+        const isMainView = this.overlayView.id === "mainView";
+        return (isLookView && this.nightSky.satellites.showSatelliteNames)
+            || (isMainView && this.nightSky.satellites.showSatelliteNamesMain);
+    }
+
+    get maxSatelliteLabels() {
+        return this.nightSky.maxLabelsDisplayed;
+    }
+
     renderCanvas(frame) {
         super.renderCanvas(frame);
 
-        if (!this.showStarNames && !this.showSatelliteNames) return
+        const showSatelliteNames = this.showSatelliteNames;
+        if (!this.showStarNames && !showSatelliteNames) return
 
         const font_h = 9
         this.ctx.font = Math.floor(font_h) + 'px' + " " + 'Arial'
@@ -61,7 +73,7 @@ export class CNodeDisplaySkyOverlay extends CNodeViewUI {
             this.renderStarNames(starCamera, earthSphere, actualCameraPosition, date);
         }
 
-        if (this.showSatelliteNames) {
+        if (showSatelliteNames) {
             this.renderSatelliteNames(earthSphere);
         }
     }

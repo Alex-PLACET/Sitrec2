@@ -1,6 +1,6 @@
 import {CNode3DGroup} from "./CNode3DGroup";
 import {GlobalNightSkyScene, GlobalScene, GlobalSunSkyScene, setupNightSkyScene, setupSunSkyScene} from "../LocalFrame";
-import {Color, Frustum, Group, Matrix4, Ray, Raycaster, Scene, Sphere, Vector3} from "three";
+import {Color, Group, Matrix4, Ray, Raycaster, Scene, Sphere, Vector3} from "three";
 import {degrees, radians} from "../utils";
 import {FileManager, GlobalDateTimeNode, Globals, guiMenus, guiShowHide, NodeMan, setRenderOne, Sit} from "../Globals";
 import {
@@ -17,7 +17,7 @@ import {ECEFToLLAVD_Sphere, EUSToECEF, getLST, raDecToAzElRADIANS, wgs84} from "
 import * as LAYER from "../LayerMasks";
 import {par} from "../par";
 
-import SpriteText from '../js/three-spritetext';
+
 import {CNodeDisplayGlobeCircle} from "./CNodeDisplayGlobeCircle";
 import {CNodeDisplayEarthShadow} from "./CNodeDisplayEarthShadow";
 import {CNodeDisplayMoonShadow} from "./CNodeDisplayMoonShadow";
@@ -361,13 +361,13 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
                 key: "showSatelliteNames",
                 name: "Satellite Labels (Look View)",
                 object: this.satellites,
-                action: () => this.updateSatelliteNamesVisibility()
+                action: () => setRenderOne(true)
             },
             {
                 key: "showSatelliteNamesMain",
                 name: "Satellite Labels (Main View)",
                 object: this.satellites,
-                action: () => this.updateSatelliteNamesVisibility()
+                action: () => setRenderOne(true)
             },
             {
                 key: "labelFlares",
@@ -496,17 +496,6 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
         this.satelliteGroup.add(this.satelliteFlareTracksGroup)
         this.satelliteGroundGroup = new Group();
         this.satelliteGroup.add(this.satelliteGroundGroup)
-
-
-        this.satelliteTextGroup = new Group();
-        this.satelliteTextGroup.userData.ignoreContextMenu = true;
-        this.viewSpriteData = new Map();
-        this.updateSatelliteNamesVisibility();
-
-        GlobalScene.add(this.satelliteTextGroup)
-
-        this.satelliteTextGroup.matrixWorldAutoUpdate = false
-
 
 //        console.log("Loading stars")
         this.starField.addToScene(this.celestialSphere)
@@ -686,35 +675,6 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
 //        console.log("Done with CNodeDisplayNightSky constructor")
     }
 
-    updateSatelliteNamesVisibility() {
-        this.satelliteTextGroup.visible = this.showSatelliteNames || this.showSatelliteNamesMain;
-        this.satelliteTextGroup.layers.mask =
-            (this.showSatelliteNames ? LAYER.MASK_LOOK : 0)
-            | (this.showSatelliteNamesMain ? LAYER.MASK_MAIN : 0)
-        for (const [viewId, viewData] of this.viewSpriteData) {
-            const isLookView = viewId === "lookView";
-            const isMainView = viewId === "mainView";
-            const labelsEnabled = (isLookView && this.showSatelliteNames)
-                               || (isMainView && this.showSatelliteNamesMain);
-            
-            if (!labelsEnabled) {
-                for (const [satIndex, sprite] of viewData.sprites) {
-                    viewData.group.remove(sprite);
-                    sprite.dispose();
-                }
-                viewData.sprites.clear();
-            }
-            
-            const viewMask = isLookView ? LAYER.MASK_LOOK 
-                           : isMainView ? LAYER.MASK_MAIN 
-                           : viewData.group.layers.mask;
-            viewData.group.layers.mask = viewMask;
-            for (const sprite of viewData.sprites.values()) {
-                sprite.layers.mask = viewMask;
-            }
-        }
-    }
-
     // See updateArrow
     addCelestialArrow(name) {
         const flagName = "show" + name + "Arrow";
@@ -802,7 +762,6 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
         this.satelliteTrackGroup.visible = this.satellites.showSatelliteTracks;
         this.satelliteFlareTracksGroup.visible = this.satellites.showFlareTracks;
         this.satelliteGroundGroup.visible = this.satellites.showSatelliteGround;
-        this.satelliteTextGroup.visible = this.satellites.showSatelliteNames;
 
         propagateLayerMaskObject(this.equatorialSphereGroup)
     }
@@ -813,7 +772,6 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
         // perhaps better to flag the gui system to update it?
         this.satellites.filterSatellites();
         this.updateVis();
-        this.updateSatelliteNamesVisibility();
 
 
     }
@@ -1098,137 +1056,6 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
         }
     }
 
-    getViewLayerMask(view) {
-        if (view.id === "lookView") return LAYER.MASK_LOOK;
-        if (view.id === "mainView") return LAYER.MASK_MAIN;
-        return view.camera.layers.mask;
-    }
-
-    getViewSpriteData(view) {
-        if (!this.viewSpriteData.has(view.id)) {
-            const group = new Group();
-            group.layers.mask = this.getViewLayerMask(view);
-            group.userData.ignoreContextMenu = true;
-            this.satelliteTextGroup.add(group);
-            this.viewSpriteData.set(view.id, { group: group, sprites: new Map() });
-        }
-        return this.viewSpriteData.get(view.id);
-    }
-
-    // per-viewport satellite sprite text update for scale and screen offset
-    updateSatelliteText(view) {
-        if (!this.satellites.showSatelliteNames
-            && !this.satellites.showSatelliteNamesMain 
-            && !this.satellites.labelFlares) {
-            return;
-        }
-        
-        const combinedMask = this.satelliteTextGroup.layers.mask;
-        if (!combinedMask) {
-            return;
-        }
-
-        const viewData = this.getViewSpriteData(view);
-        const layerMask = this.getViewLayerMask(view);
-        viewData.group.layers.mask = layerMask;
-        const sprites = viewData.sprites;
-
-        const camera = view.camera;
-        const cameraForward = new Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-        const cameraPos = camera.position;
-        const tanHalfFOV = Math.tan(radians(camera.fov / 2))
-
-        const viewScale = 0.025 * view.divParent.clientHeight / view.heightPx;
-
-        if (this.satellites.TLEData === undefined) {
-            console.warn("TLEData is undefined in updateSatelliteText (Not loaded yet?)")
-            return;
-        }
-
-        assert(this.satellites.TLEData !== undefined, "TLEData is undefined in updateSatelliteText")
-
-        const numSats = this.satellites.TLEData.satData.length;
-        const maxLabels = this.maxLabelsDisplayed;
-        const raycaster = new Raycaster();
-        const hitPoint = V3();
-        const hitPoint2 = V3();
-        
-        const frustum = new Frustum();
-        const projScreenMatrix = new Matrix4();
-        projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
-        frustum.setFromProjectionMatrix(projScreenMatrix);
-        
-        const candidates = [];
-        
-        for (let i = 0; i < numSats; i++) {
-            const satData = this.satellites.TLEData.satData[i];
-            const distSq = satData.eus.distanceToSquared(cameraPos);
-
-            const qualifiesForLabel = satData.visible
-                && !satData.invalidPosition
-                && (satData.userFiltered || distSq < (this.satellites.arrowRange * 1000) ** 2)
-                && (this.satellites.showSatelliteNames
-                    || this.satellites.showSatelliteNamesMain
-                    || (this.satellites.labelFlares && satData.isFlaring));
-
-            if (qualifiesForLabel) {
-                if (!frustum.containsPoint(satData.eus)) {
-                    continue;
-                }
-                
-                const camToSat = satData.eus.clone().sub(cameraPos);
-                const distToSat = Math.sqrt(distSq);
-                
-                raycaster.set(cameraPos, camToSat.normalize());
-                const isOccluded = intersectSphere2(raycaster.ray, this.globe, hitPoint, hitPoint2)
-                    && hitPoint.distanceTo(cameraPos) < distToSat;
-
-                if (isOccluded) {
-                    continue;
-                }
-
-                candidates.push({ index: i, distSq: distSq });
-            }
-        }
-        
-        candidates.sort((a, b) => a.distSq - b.distSq);
-        
-        const activeIndices = new Set();
-        for (let i = 0; i < candidates.length && i < maxLabels; i++) {
-            const satIndex = candidates[i].index;
-            const satData = this.satellites.TLEData.satData[satIndex];
-            activeIndices.add(satIndex);
-            
-            let sprite = sprites.get(satIndex);
-            if (!sprite) {
-                var name = satData.name.replace("0 STARLINK", "SL").replace("STARLINK", "SL");
-                name = name.replace(/\s+$/, '');
-                sprite = new SpriteText(name, 0.01, "white", {depthTest: true});
-                sprite.layers.mask = layerMask;
-                sprite.userData.ignoreContextMenu = true;
-                viewData.group.add(sprite);
-                sprites.set(satIndex, sprite);
-            }
-            const satPosition = satData.eus;
-            const camToSatVec = satPosition.clone().sub(cameraPos);
-            const perpDistToSat = camToSatVec.dot(cameraForward);
-            const nameScale = viewScale * perpDistToSat * tanHalfFOV;
-            sprite.scale.set(nameScale * sprite.aspect, nameScale, 1);
-
-            const offsetPost = view.offsetScreenPixels(satPosition, 0, 30);
-            sprite.position.copy(offsetPost);
-        }
-        
-        for (const [satIndex, sprite] of sprites) {
-            if (!activeIndices.has(satIndex)) {
-                viewData.group.remove(sprite);
-                sprite.dispose();
-                sprites.delete(satIndex);
-            }
-        }
-    }
-
-
     /*
 // Actual data used.
 0 STARLINK-1007
@@ -1248,7 +1075,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
     replaceTLE(tle) {
         this.satellites.replaceTLE(tle);
         // Add satellites to the scene
-        this.satellites.addSatellites(this.satelliteGroup, this.satelliteTextGroup, 1);
+        this.satellites.addSatellites(this.satelliteGroup, 1);
         this.satellites.filterSatellites();
     }
 

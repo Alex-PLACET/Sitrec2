@@ -30,7 +30,6 @@ export const Globals = {
         // Granular renderSky() step flags
         dbg_updateStarScales: true,
         dbg_updateSatelliteScales: true,
-        dbg_updateSatelliteText: true,
         dbg_renderNightSky: true,
         dbg_renderFullscreenQuad: true,
         dbg_renderSunSky: true

@@ -729,7 +729,7 @@ export class CSatellite {
         }
     }
 
-    addSatellites(scene, textGroup, globeRadius = 1) {
+    addSatellites(scene, globeRadius = 1) {
         assert(this.TLEData !== undefined, "addSatellites needs TLEData to be set");
 
         const len = this.TLEData.satData.length;

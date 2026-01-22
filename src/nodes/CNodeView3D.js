@@ -187,7 +187,6 @@ export class CNodeView3D extends CNodeViewCanvas {
             const skyFolder = debugFolder.addFolder("Sky Steps");
             skyFolder.add(Globals.renderDebugFlags, "dbg_updateStarScales").name("Update Star Scales").onChange(() => setRenderOne(true));
             skyFolder.add(Globals.renderDebugFlags, "dbg_updateSatelliteScales").name("Update Satellite Scales").onChange(() => setRenderOne(true));
-            skyFolder.add(Globals.renderDebugFlags, "dbg_updateSatelliteText").name("Update Satellite Text").onChange(() => setRenderOne(true));
             skyFolder.add(Globals.renderDebugFlags, "dbg_renderNightSky").name("Render Night Sky").onChange(() => setRenderOne(true));
             skyFolder.add(Globals.renderDebugFlags, "dbg_renderFullscreenQuad").name("Render Fullscreen Quad").onChange(() => setRenderOne(true));
             skyFolder.add(Globals.renderDebugFlags, "dbg_renderSunSky").name("Render Sun Sky").onChange(() => setRenderOne(true));
@@ -672,9 +671,6 @@ export class CNodeView3D extends CNodeViewCanvas {
             if (nightSkyNode) {
                 nightSkyNode.starField.updateStarScales(this);
                 nightSkyNode.updateSatelliteScales(this);
-                if (nightSkyNode.showSatelliteNames || nightSkyNode.showSatelliteNamesMain) {
-                    nightSkyNode.updateSatelliteText(this);
-                }
             }
             
             // Set initial clear color
@@ -1326,13 +1322,6 @@ export class CNodeView3D extends CNodeViewCanvas {
             
             if (Globals.renderDebugFlags.dbg_updateSatelliteScales) {
                 nightSkyNode.updateSatelliteScales(this)
-            }
-
-            if (Globals.renderDebugFlags.dbg_updateSatelliteText && (
-                this.id === "lookView" && nightSkyNode.showSatelliteNames
-                || this.id === "mainView" && nightSkyNode.showSatelliteNamesMain)) {
-                // updating the satellite text is just applying the offset per viewport
-                nightSkyNode.updateSatelliteText(this)
             }
 
             this.renderer.setClearColor(this.background);
