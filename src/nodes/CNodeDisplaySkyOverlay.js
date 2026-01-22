@@ -6,6 +6,17 @@ import {getCelestialDirectionFromRaDec, raDec2Celestial} from "../CelestialMath"
 import {wgs84} from "../LLA-ECEF-ENU";
 import {intersectSphere2, V3} from "../threeUtils";
 import {Ray, Raycaster, Sphere} from "three";
+import {calculateAltitude} from "../threeExt";
+
+const registeredLabels = new Set();
+
+export function registerLabel3D(label) {
+    registeredLabels.add(label);
+}
+
+export function unregisterLabel3D(label) {
+    registeredLabels.delete(label);
+}
 
 export class CNodeDisplaySkyOverlay extends CNodeViewUI {
 
@@ -45,6 +56,8 @@ export class CNodeDisplaySkyOverlay extends CNodeViewUI {
 
     renderCanvas(frame) {
         super.renderCanvas(frame);
+
+        this.renderLabels3D(frame);
 
         const showSatelliteNames = this.showSatelliteNames;
         if (!this.showStarNames && !showSatelliteNames) return
@@ -211,6 +224,83 @@ export class CNodeDisplaySkyOverlay extends CNodeViewUI {
             let name = sat.name.replace("0 STARLINK", "SL").replace("STARLINK", "SL");
             name = name.replace(/\s+$/, '');
             this.ctx.fillText(name, x, y)
+        }
+    }
+
+    renderLabels3D(frame) {
+        if (registeredLabels.size === 0) return;
+
+        const viewLayerMask = this.camera.layers.mask;
+
+        const camera = this.camera.clone();
+        if (this.camera.renderedFOV) {
+            camera.fov = this.camera.renderedFOV;
+        }
+        camera.aspect = this.widthPx / this.heightPx;
+        camera.updateProjectionMatrix();
+        camera.matrixWorld.copy(this.camera.matrixWorld);
+        camera.matrixWorldInverse.copy(this.camera.matrixWorldInverse);
+
+        for (const label of registeredLabels) {
+            if (!label.group || !label.group.visible) continue;
+            if (!(label.layerMask & viewLayerMask)) continue;
+            if (!label.shouldRender(viewLayerMask)) continue;
+
+            let pos = label.textPosition.clone();
+            if (label.offset) {
+                pos = this.overlayView.offsetScreenPixels(pos, label.offset.x, label.offset.y);
+            }
+
+            const screenPos = pos.clone().project(camera);
+            if (screenPos.z < -1 || screenPos.z > 1) continue;
+
+            const zoomedX = screenPos.x * this.zoom;
+            const zoomedY = screenPos.y * this.zoom;
+            if (zoomedX < -1.5 || zoomedX > 1.5 || zoomedY < -1.5 || zoomedY > 1.5) continue;
+
+            const altitude = calculateAltitude(label.textPosition);
+            let transparency = 1;
+            if (altitude < 0) {
+                const fadeDepth = 25000;
+                if (altitude < -fadeDepth) {
+                    transparency = 0;
+                } else {
+                    transparency = 1 + altitude / fadeDepth;
+                }
+            }
+            if (transparency <= 0) continue;
+
+            const textAlign = label.textAlign || 'left';
+            let x = (zoomedX + 1) * this.widthPx / 2;
+            let y = (-zoomedY + 1) * this.heightPx / 2;
+            
+            if (textAlign === 'left') {
+                x += 5;
+                y -= 5;
+            }
+
+            const fontSize = label.size || 12;
+            this.ctx.font = (label.fontWeight ? label.fontWeight + ' ' : '') + Math.floor(fontSize) + 'px Arial';
+            this.ctx.textAlign = textAlign;
+            
+            const color = label.color || '#FFFFFF';
+            const alpha = Math.floor(transparency * 255).toString(16).padStart(2, '0');
+            this.ctx.fillStyle = color.length === 7 ? color + alpha : color;
+            
+            const lines = label.text.split('\n');
+            const lineHeight = fontSize * 1.2;
+            const totalHeight = lines.length * lineHeight;
+            let startY = y - totalHeight / 2 + lineHeight / 2;
+            
+            for (const line of lines) {
+                if (label.strokeWidth && label.strokeColor) {
+                    this.ctx.strokeStyle = label.strokeColor;
+                    this.ctx.lineWidth = label.strokeWidth;
+                    this.ctx.strokeText(line, x, startY);
+                }
+                this.ctx.fillText(line, x, startY);
+                startY += lineHeight;
+            }
         }
     }
 }

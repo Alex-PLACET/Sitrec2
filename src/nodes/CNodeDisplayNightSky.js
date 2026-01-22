@@ -702,6 +702,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
 
         this.celestialGUI.add(this, flagName).listen().onChange(() => {
             setRenderOne(true);
+            this[obName].show(this[flagName]);
             this[groupName].show(this[flagName]);
         }).name(name + " Vector");
         this.addSimpleSerial(flagName)

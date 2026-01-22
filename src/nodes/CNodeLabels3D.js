@@ -1,10 +1,8 @@
 // 3D labels (and other text that exists in 3D)
-// uses the SpriteText library
-// and adjusts the scale of the sprites on a per-camera basis
+// Uses the 2D canvas overlay system (CNodeDisplaySkyOverlay) for rendering
 
-import SpriteText from '../js/three-spritetext';
 import * as LAYER from "../LayerMasks";
-import {calculateAltitude, DebugArrowAB, propagateLayerMaskObject, removeDebugArrow} from "../threeExt";
+import {DebugArrowAB, DebugArrows, isVisible, propagateLayerMaskObject, removeDebugArrow} from "../threeExt";
 import {altitudeAboveSphere, pointOnSphereBelow} from "../SphericalMath";
 import {CNodeMunge} from "./CNodeMunge";
 import {Globals, guiShowHide, NodeMan, setRenderOne, Units} from "../Globals";
@@ -14,9 +12,8 @@ import {LLAToEUS} from "../LLA-ECEF-ENU";
 
 import {assert} from "../assert.js";
 import {V2, V3} from "../threeUtils";
-
-import {ViewMan} from "../CViewManager";
 import {EventManager} from "../CEventManager";
+import {registerLabel3D, unregisterLabel3D} from "./CNodeDisplaySkyOverlay";
 
 
 export const measurementUIVars = {
@@ -163,20 +160,21 @@ export class CNodeLabel3D extends CNode3DGroup {
         this.unitType = v.unitType ?? "big";
         this.decimals = v.decimals ?? 2;
         this.size = v.size ?? 12;
-        this.sprite = new SpriteText(v.text, this.size);
+        this.text = v.text ?? "";
         this.optionalInputs(["position"])
         this.position = V3();
+        this.textPosition = V3();
         if (this.in.position !== undefined) {
             const pos = this.in.position.p(0);
-//            this.sprite.position.set(pos.x, pos.y, pos.z);
             this.position.copy(pos)
+            this.textPosition.copy(pos)
         }
 
-        // simple LLA input for markers
         if (v.positionLLA !== undefined) {
             const lla = v.positionLLA;
             const pos = LLAToEUS(lla.lat, lla.lon, lla.alt);
             this.position.set(pos.x, pos.y, pos.z);
+            this.textPosition.copy(this.position);
         }
 
         this.input("color",true)
@@ -184,127 +182,47 @@ export class CNodeLabel3D extends CNode3DGroup {
         let color = '#FFFFFF';
         if (this.in.color !== undefined) {
             color = this.in.color.v(0)
-            // convert from THREE.Color to hex
             if (color.getStyle !== undefined) {
                 color = color.getStyle();
             }
         }
 
-        this.sprite.color = color;
-        this.sprite.layers.mask = v.layers ?? LAYER.MASK_HELPERS;
-        this.group.add(this.sprite);
+        this.color = color;
+        this.layerMask = v.layers ?? LAYER.MASK_HELPERS;
         
-        // Only mark as measurement if it's actually in a measurement group
         this.isMeasurement = groupNode.isMeasurement ?? false;
 
-        // for sprite center (anchor point), 0,0 is lower left
-        this.sprite.center = V2(v.centerX ?? 0.5, v.centerY ?? 0.5);
         this.offset = V2(v.offsetX ?? 0, v.offsetY ?? 0);
+        
+        this.strokeWidth = 0;
+        this.strokeColor = null;
+        this.fontWeight = null;
+        this.textAlign = v.textAlign ?? 'left';
 
-//        setupMeasurementUI();
-
-    }
-
-    preRender(view) {
-        this.updateVisibility(view);
-        this.updateScale(view);
-    }
-
-    updateVisibility(view) {
-        // text is draw with no depth test, so it's always visible
-        // so here we check if it's underground, and hide it if it is
-        const altitude = calculateAltitude(this.position);
-        let transparency = 1;
-        if (altitude > 0) {
-        } else {
-            const fadeDepth = 25000;
-            if (altitude < -fadeDepth) {
-                transparency = 0 ;
-            } else {
-                transparency = (1 + altitude / fadeDepth);
-            }
-
-        }
-
-
-        //console.log("transparency = " + transparency + " altitude = " + altitude)
-        this.sprite.setTransparency(transparency);
-
-
-
-    }
-
-    // Update the Scale based on the camera's position
-    // Since this is a simple fixed size, we code just use sizeAttenuation:false in the sprite material
-    // however I might want to change the size based on distance in the future.
-    updateScale(view) {
-        if (!this.group.visible) {
-            return;
-        }
-
-        const camera = view.camera
-
-        //this.sprite.position.copy(this.position)
-
-        // given:
-        // a 3D position in this.position
-        // a 2D pixel offset in this.offset
-        // a 3D camera position in camera.position
-        // the camera vertical FOV in camera.fov
-        // then modify the sprites position by the offset
-        // accounting for the camera's FOV and distance to the sprite, and the viewport size in pixels
-        // to keep the offset in pixels
-
-        let pos = this.position.clone();
-        if (this.offset !== undefined) {
-           pos = view.offsetScreenPixels(pos, this.offset.x, this.offset.y);
-        }
-
-        this.sprite.position.copy(pos);
-
-
-        let zoom = 1;
-        if (view.syncVideoZoom && NodeMan.exists("videoZoom")) {
-            var videoZoom = NodeMan.get("videoZoom")
-            if (videoZoom !== undefined) {
-                zoom = videoZoom.v0 / 100;
-            }
-        }
-
-        const mask = camera.layers.mask;
-        const fovScale = 0.0025 * Math.tan((camera.fov / 2) * (Math.PI / 180))
-         const sprite = this.sprite;
-        if (sprite.layers.mask & mask) {
-            const distance = camera.position.distanceTo(sprite.position);
-            let scale = distance * fovScale * this.size * ViewMan.heightPx/view.heightPx/zoom;
-            sprite.scale.set(scale * sprite.aspect, scale, 1);
-        }
-
+        registerLabel3D(this);
     }
 
     update(f) {
         if (this.in.position !== undefined) {
             const pos = this.in.position.p(f);
-            this.position.set(pos.x, pos.y, pos.z);
+            this.position.copy(pos);
+            this.textPosition.copy(pos);
         }
     }
 
     dispose() {
-        this.group.remove(this.sprite)
-        this.sprite.material.dispose();
-        this.sprite.geometry.dispose();
+        unregisterLabel3D(this);
         super.dispose();
     }
 
     changeText(text) {
-        if (this.sprite.text === text) return;
-        // using the settor will regenerate the sprite canvas
-        this.sprite.text = text;
+        if (this.text === text) return;
+        this.text = text;
     }
 
-    // changePosition(position) {
-    //     this.position.set(position.x, position.y, position.z);
-    // }
+    shouldRender(viewLayerMask) {
+        return true;
+    }
 
 }
 
@@ -328,7 +246,7 @@ export class CNodeLLALabel extends CNodeLabel3D {
 
         const pos = LLAToEUS(lat, lon, this.alt);
         this.position.set(pos.x, pos.y, pos.z);
-
+        this.textPosition.copy(this.position);
     }
 
     changeLLA(lat, lon, alt) {
@@ -342,7 +260,8 @@ export class CNodeLLALabel extends CNodeLabel3D {
 
 export class CNodeMeasureAB extends CNodeLabel3D {
     constructor(v) {
-        v.position = v.A;  // PATCH !! we have A and B, but super needs position
+        v.position = v.A;
+        v.textAlign = 'center';
         super(v);
         this.input("A");
         this.input("B");
@@ -359,7 +278,8 @@ export class CNodeMeasureAB extends CNodeLabel3D {
         this.A = this.in.A.p(f);
         this.B = this.in.B.p(f);
         const midPoint = this.A.clone().add(this.B).multiplyScalar(0.5);
-        this.position.set(midPoint.x, midPoint.y, midPoint.z);
+        this.position.copy(midPoint);
+        this.textPosition.copy(midPoint);
 
         // get a point that's 90% of the way from A to midPoint
         this.C = this.A.clone().lerp(midPoint, 0.9);
@@ -425,8 +345,14 @@ export class CNodeLabeledArrow extends CNodeLabel3D {
         this.input("color")
 
         this.label = v.label ?? "";
+        this.addSimpleSerial("label");
 
         this.recalculate(0);
+        
+        // For negative lengths, initialize textPosition to start (preRender will fix to end)
+        if (this.length < 0) {
+            this.textPosition.copy(this.start);
+        }
     }
 
     recalculate(f) {
@@ -450,8 +376,16 @@ export class CNodeLabeledArrow extends CNodeLabel3D {
         // normalize the direction
         this.direction.normalize();
 
+        // Always compute end (even if wrong magnitude for negative length)
+        // so DebugArrowAB can use it. preRender will fix it for negative lengths.
         this.end = this.start.clone().add(this.direction.clone().multiplyScalar(this.length));
         this.position.copy(this.end);
+        
+        // Only set textPosition for positive lengths
+        // For negative length (pixel-based), textPosition is set in preRender
+      //  if (this.length >= 0) {
+            this.textPosition.copy(this.end);
+      //  }
     }
 
     // update the arrow with a new direction
@@ -465,23 +399,24 @@ export class CNodeLabeledArrow extends CNodeLabel3D {
 
 
 
-    // scale things based on the camera's position
     preRender(view) {
-
-        // change the length of the arrows based on the camera's position
         if (this.length < 0) {
             const lengthPixels = -this.length;
             const lengthMeters = view.pixelsToMeters(this.start, lengthPixels);
             const color = this.in.color.v(0)
             this.end = this.start.clone().add(this.direction.clone().multiplyScalar(lengthMeters));
-
-            // just calling this again will update the length of the arrow
             DebugArrowAB(this.id+"arrow", this.start, this.end, color, true, this.groupNode.group);
         }
-
-        // update the position of the text
         this.position.copy(this.end);
-        super.preRender(view);
+        this.textPosition.copy(this.end);
+    }
+
+    shouldRender(viewLayerMask) {
+        const arrow = DebugArrows[this.id + "arrow"];
+        if (!arrow) return false;
+        if (!isVisible(arrow)) return false;
+        if (!(arrow.layers.mask & viewLayerMask)) return false;
+        return true;
     }
 
     dispose() {
@@ -517,10 +452,6 @@ export class CNodeMeasureAltitude extends CNodeMeasureAB {
         })
         v.B = B;
 
-        // patch to make it double size with two lines
-        // should handle this better
-        v.size = 24;
-
         v.unitType ??= "small";
         v.decimals ??= 0;
 
@@ -533,48 +464,33 @@ export class CNodeMeasureAltitude extends CNodeMeasureAB {
 // A feature marker with a label and an arrow pointing down from 100 pixels above the feature
 export class CNodeFeatureMarker extends CNodeLabel3D {
     constructor(v) {
-        // Set the groupNode to FeaturesGroupNode instead of MeasurementsGroupNode
         v.groupNode = v.groupNode ?? "FeaturesGroupNode";
         
-        // Store the arrow length (default 100 pixels)
         const arrowLength = v.arrowLength ?? 100;
         
-        // Set the label to be arrowLength pixels above the feature
         v.offsetY = v.offsetY ?? arrowLength;
-        v.centerY = v.centerY ?? 0; // Bottom of label at the top of arrow
+        v.textAlign = 'center';
         
-        // Set text color (default white) - textColor takes precedence over color
         const textColor = v.textColor ?? v.color ?? 0xFFFFFF;
         v.color = textColor;
         
         super(v);
 
         this.arrowLength = arrowLength;
-        
-        // Store the arrow color (default red)
         this.arrowColor = v.arrowColor ?? 0xFF0000;
-        
-        // Store the text color for serialization
         this.textColor = textColor;
-        
-        // Store the text for serialization
         this.text = v.text ?? "";
         
-        // Override the layer masks to match the parent FeaturesGroupNode
-        // This ensures the feature respects "Features in Main/Look" settings immediately
-        this.sprite.layers.mask = this.groupNode.group.layers.mask;
+        this.layerMask = this.groupNode.group.layers.mask;
         this.group.layers.mask = this.groupNode.group.layers.mask;
         
-        // Convert textColor hex number to CSS color string for the sprite
         const hexString = '#' + textColor.toString(16).padStart(6, '0');
-        this.sprite.color = hexString;
+        this.color = hexString;
         
-        // Add black stroke/border to the text
-        this.sprite.strokeWidth = 1;
-        this.sprite.strokeColor = 'black';
-        this.sprite.fontWeight = 'bold';
+        this.strokeWidth = 1;
+        this.strokeColor = 'black';
+        this.fontWeight = 'bold';
         
-        // Store the original LLA values
         this.lla = null;
         if (v.positionLLA !== undefined) {
             this.lla = {
@@ -584,13 +500,10 @@ export class CNodeFeatureMarker extends CNodeLabel3D {
             };
         }
         
-        // Store the base feature position (without offset)
         this.featurePosition = V3();
         
-        // Initial calculation
         this.recalculate(0);
         
-        // Listen for elevation changes to update ground-conformed positions
         EventManager.addEventListener("elevationChanged", () => {
             this.recalculate(0);
         });
@@ -599,12 +512,9 @@ export class CNodeFeatureMarker extends CNodeLabel3D {
     recalculate(f) {
         if (!this.lla) return;
         
-        // If altitude is zero, conform to ground
         if (this.lla.alt === 0) {
-            // First get the position at the lat/lon with zero altitude
             const basePos = LLAToEUS(this.lla.lat, this.lla.lon, 0);
             
-            // Then get the point on the terrain/sphere below
             if (NodeMan.exists("TerrainModel")) {
                 const terrainNode = NodeMan.get("TerrainModel");
                 this.featurePosition.copy(terrainNode.getPointBelow(basePos));
@@ -612,24 +522,16 @@ export class CNodeFeatureMarker extends CNodeLabel3D {
                 this.featurePosition.copy(pointOnSphereBelow(basePos));
             }
         } else {
-            // Use the specified altitude
             const pos = LLAToEUS(this.lla.lat, this.lla.lon, this.lla.alt);
             this.featurePosition.copy(pos);
         }
         
-        // Update the position used by the parent class
         this.position.copy(this.featurePosition);
+        this.textPosition.copy(this.featurePosition);
     }
     
     preRender(view) {
-        super.preRender(view);
-        
-        // Calculate the top position (arrowLength pixels above in screen space)
         const topPosition = view.offsetScreenPixels(this.featurePosition.clone(), 0, this.arrowLength);
-        
-        // Add arrow pointing down from label to feature
-        // Use the parent FeaturesGroupNode's layer mask to ensure proper visibility
-        // (using this.group.layers.mask might not be updated yet on initial creation)
         DebugArrowAB(this.id + "_arrow", topPosition, this.featurePosition, this.arrowColor, true, this.group, 20, this.groupNode.group.layers.mask);
     }
     
