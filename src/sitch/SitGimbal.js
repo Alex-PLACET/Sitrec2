@@ -66,6 +66,9 @@ const GimbalDefaults = {
     // JetOrigin uses the above three nodes to set the initial position of the jet
     jetOrigin: {kind: "TrackFromLLA", lat: "jetLat", lon: "jetLon", alt: "jetAltitude"},
 
+    TerrainModel: {kind: "Terrain", lat: 34, lon: -118.3, zoom: 7, nTiles: 3, fullUI: true, dynamic: true},
+
+    isCustom: true,
 
 
     files: {
