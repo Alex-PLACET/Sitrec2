@@ -24,6 +24,7 @@ import {getPointBelow, pointAbove} from "../threeExt";
 import {EventManager} from "../CEventManager";
 import {degrees, radians, scaleF2M} from "../utils";
 import {sharedUniforms} from "../js/map33/material/SharedUniforms";
+import {assert} from "../assert";
 
 export class CNodeGroundOverlay extends CNode3DGroup {
     constructor(v) {
@@ -624,7 +625,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
     
     updateMesh() {
         this.buildMesh();
-        if (this.editMode) {
+        if (this.editMode && !this.lockShape) {
             this.createControlPoints();
         }
     }
@@ -642,6 +643,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
     }
 
     createControlPoints() {
+        assert(!this.lockShape, "Cannot create control points when shape is locked");
         this.removeControlPoints();
 
         const corners = this.getCornerPositions();
