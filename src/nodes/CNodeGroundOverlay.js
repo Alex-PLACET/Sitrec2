@@ -43,6 +43,11 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         this.wireframe = v.wireframe !== undefined ? v.wireframe : false;
         this.opacity = v.opacity !== undefined ? v.opacity : 1.0;
         
+        this.extractClouds = v.extractClouds !== undefined ? v.extractClouds : false;
+        this.cloudColor = v.cloudColor !== undefined ? v.cloudColor : '#E0E0E0';
+        this.cloudFuzziness = v.cloudFuzziness !== undefined ? v.cloudFuzziness : 50;
+        
+        this.originalTexture = null;
         this.overlayTileMeshes = new Map();
         this.overlayMaterial = null;
         this.texture = null;
@@ -136,15 +141,80 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         const loader = new TextureLoader();
         loader.load(textureURL, (texture) => {
             texture.flipY = false;
-            this.texture = texture;
-            if (this.overlayMaterial) {
-                this.overlayMaterial.uniforms.map.value = texture;
-                this.overlayMaterial.needsUpdate = true;
-            }
-            setRenderOne(true);
+            this.originalTexture = texture;
+            this.applyCloudExtraction();
         }, undefined, (error) => {
             console.error(`Failed to load overlay texture: ${textureURL}`, error);
         });
+    }
+    
+    applyCloudExtraction() {
+        if (!this.originalTexture) return;
+        
+        if (!this.extractClouds) {
+            this.texture = this.originalTexture;
+            if (this.overlayMaterial) {
+                this.overlayMaterial.uniforms.map.value = this.texture;
+                this.overlayMaterial.needsUpdate = true;
+            }
+            setRenderOne(true);
+            return;
+        }
+        
+        const image = this.originalTexture.image;
+        if (!image || !image.width || !image.height) {
+            this.texture = this.originalTexture;
+            return;
+        }
+        
+        const canvas = document.createElement('canvas');
+        canvas.width = image.width;
+        canvas.height = image.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(image, 0, 0);
+        
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+        
+        const targetR = parseInt(this.cloudColor.slice(1, 3), 16);
+        const targetG = parseInt(this.cloudColor.slice(3, 5), 16);
+        const targetB = parseInt(this.cloudColor.slice(5, 7), 16);
+        
+        const threshold = (100 - this.cloudFuzziness) * 2.55;
+        
+        for (let i = 0; i < data.length; i += 4) {
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            
+            const distance = Math.sqrt(
+                Math.pow(r - targetR, 2) +
+                Math.pow(g - targetG, 2) +
+                Math.pow(b - targetB, 2)
+            );
+            
+            if (distance <= threshold) {
+                data[i + 3] = 255;
+            } else {
+                data[i + 3] = 0;
+            }
+        }
+        
+        ctx.putImageData(imageData, 0, 0);
+        
+        const processedTexture = new CanvasTexture(canvas);
+        processedTexture.flipY = false;
+        
+        if (this.texture && this.texture !== this.originalTexture) {
+            this.texture.dispose();
+        }
+        
+        this.texture = processedTexture;
+        if (this.overlayMaterial) {
+            this.overlayMaterial.uniforms.map.value = this.texture;
+            this.overlayMaterial.needsUpdate = true;
+        }
+        setRenderOne(true);
     }
 
     createDefaultTexture() {
@@ -1043,6 +1113,20 @@ export class CNodeGroundOverlay extends CNode3DGroup {
             setRenderOne(true);
         }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
         
+        const cloudFolder = this.guiFolder.addFolder('Cloud Extraction').close();
+        
+        cloudFolder.add(this, 'extractClouds').name('Extract Clouds').onChange(() => {
+            this.applyCloudExtraction();
+        }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        
+        cloudFolder.addColor(this, 'cloudColor').name('Cloud Color').onChange(() => {
+            if (this.extractClouds) this.applyCloudExtraction();
+        }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        
+        cloudFolder.add(this, 'cloudFuzziness', 0, 100, 1).name('Fuzziness').onChange(() => {
+            if (this.extractClouds) this.applyCloudExtraction();
+        }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        
         this.guiFolder.add({goto: () => this.gotoOverlay()}, 'goto').name('Go to Overlay');
         
         this.guiFolder.add({remove: () => {
@@ -1163,6 +1247,9 @@ export class CNodeGroundOverlay extends CNode3DGroup {
             imageFileID: this.imageFileID,
             wireframe: this.wireframe,
             opacity: this.opacity,
+            extractClouds: this.extractClouds,
+            cloudColor: this.cloudColor,
+            cloudFuzziness: this.cloudFuzziness,
         };
     }
 
@@ -1179,6 +1266,9 @@ export class CNodeGroundOverlay extends CNode3DGroup {
             imageFileID: data.imageFileID,
             wireframe: data.wireframe,
             opacity: data.opacity,
+            extractClouds: data.extractClouds,
+            cloudColor: data.cloudColor,
+            cloudFuzziness: data.cloudFuzziness,
         });
     }
     
