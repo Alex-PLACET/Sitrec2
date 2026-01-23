@@ -1246,29 +1246,15 @@ export class CNodeSynthBuilding extends CNode3DGroup {
      * Set edit mode on/off
      */
     setEditMode(enable) {
+        if (this.editMode === enable) return;
+        
         this.editMode = enable;
         
         if (enable) {
             this.createControlPoints();
             Globals.editingBuilding = this;
-            
-            // Show GUI folder and expand it
-            if (this.guiFolder) {
-                this.guiFolder.show();
-                this.guiFolder.open();
-            }
-            
-            // Keep material folder visible but closed initially
-            if (this.materialFolder) {
-                this.materialFolder.close();
-            }
-            
-            // Show the standalone edit menu at a default position (center-right of screen)
-            const defaultX = window.innerWidth * 0.65;
-            const defaultY = window.innerHeight * 0.3;
-            CustomManager.showBuildingEditingMenu(defaultX, defaultY, null);
+            CustomManager.showBuildingEditingMenu(100, 100);
         } else {
-            // Remove control points
             this.controlPoints.forEach(cp => {
                 this.group.remove(cp);
                 cp.geometry.dispose();
@@ -1276,7 +1262,6 @@ export class CNodeSynthBuilding extends CNode3DGroup {
             });
             this.controlPoints = [];
             
-            // Remove roof center handle
             if (this.roofCenterHandle) {
                 this.group.remove(this.roofCenterHandle);
                 this.roofCenterHandle.geometry.dispose();
@@ -1284,7 +1269,6 @@ export class CNodeSynthBuilding extends CNode3DGroup {
                 this.roofCenterHandle = null;
             }
             
-            // Remove roofline handle
             if (this.rooflineHandle) {
                 this.group.remove(this.rooflineHandle);
                 this.rooflineHandle.geometry.dispose();
@@ -1292,7 +1276,6 @@ export class CNodeSynthBuilding extends CNode3DGroup {
                 this.rooflineHandle = null;
             }
             
-            // Remove rotation handles
             this.rotationHandles.forEach(handle => {
                 this.group.remove(handle);
                 handle.geometry.dispose();
@@ -1300,7 +1283,6 @@ export class CNodeSynthBuilding extends CNode3DGroup {
             });
             this.rotationHandles = [];
             
-            // Reset cursor and state
             this.hoveredHandle = null;
             this.isRotating = false;
             document.body.style.cursor = 'default';
@@ -1309,22 +1291,14 @@ export class CNodeSynthBuilding extends CNode3DGroup {
                 Globals.editingBuilding = null;
             }
             
-            // Close the standalone edit menu if it exists
             if (CustomManager.buildingEditMenu) {
                 CustomManager.buildingEditMenu.destroy();
                 CustomManager.buildingEditMenu = null;
             }
-            
-            // Clear controller references
-            this.roofEdgeHeightController = null;
-            this.ridgelineHeightController = null;
-            this.ridgelineInsetController = null;
-            this.roofEavesController = null;
-            
-            // Hide GUI folder
-            if (this.guiFolder) {
-                this.guiFolder.hide();
-            }
+        }
+        
+        if (this.editModeController) {
+            this.editModeController.setValue(enable);
         }
         
         setRenderOne(true);
@@ -2353,51 +2327,116 @@ export class CNodeSynthBuilding extends CNode3DGroup {
      * Create GUI folder for this building
      */
     createGUIFolder() {
-        if (!guiMenus.contents) return;
+        if (!guiMenus.objects) return;
         
-        const folderID = `folder_${this.buildingID}`;
-        this.guiFolder = guiMenus.contents.addFolder(this.name);
-        this.guiFolder.domElement.id = folderID;
+        this.guiFolder = guiMenus.objects.addFolder(`Building: ${this.name}`);
         
-        // Name editor
         this.guiFolder.add(this, 'name').name('Name').onChange(() => {
-            // Update folder title
-            this.guiFolder.title = this.name;
+            this.guiFolder.title = `Building: ${this.name}`;
             setRenderOne(true);
-        });
+        }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
         
-        // Edit mode checkbox
         const editModeData = {editMode: this.editMode};
-        this.guiFolder.add(editModeData, 'editMode').name('Edit Mode').onChange((value) => {
-            // If enabling edit mode, first exit edit mode on any other building
+        this.editModeController = this.guiFolder.add(editModeData, 'editMode').name('Edit Mode').onChange((value) => {
             if (value && Globals.editingBuilding && Globals.editingBuilding !== this) {
                 Globals.editingBuilding.setEditMode(false);
             }
             this.setEditMode(value);
         });
         
-        // Material folder
+        const heightFolder = this.guiFolder.addFolder('Height').close();
+        
+        const roofEdgeProxy = {
+            _displayValue: this.roofAGL,
+            get height() { return this._displayValue; },
+            set height(v) { this._displayValue = v; }
+        };
+        this.roofEdgeProxy = roofEdgeProxy;
+        this.roofEdgeHeightController = heightFolder.add(roofEdgeProxy, 'height', 0.1, 100, 0.01)
+            .name('Roof Edge Height')
+            .setUnitType('small')
+            .onChange(() => {
+                const siValue = this.roofEdgeHeightController.getSIValue();
+                this.updateRoofEdgeHeight(siValue);
+            })
+            .onFinishChange(() => { CustomManager.saveGlobalSettings(true); })
+            .listen();
+        
+        const ridgelineHeightProxy = {
+            _displayValue: this.roofAGL + this.rooflineHeightAGL,
+            get height() { return this._displayValue; },
+            set height(v) { this._displayValue = v; }
+        };
+        this.ridgelineProxy = ridgelineHeightProxy;
+        this.ridgelineHeightController = heightFolder.add(ridgelineHeightProxy, 'height', 0.1, 100, 0.01)
+            .name('Ridgeline Height')
+            .setUnitType('small')
+            .onChange(() => {
+                const siValue = this.ridgelineHeightController.getSIValue();
+                const newRooflineHeight = Math.max(0, siValue - this.roofAGL);
+                this.updateRooflineHeight(newRooflineHeight);
+            })
+            .onFinishChange(() => { CustomManager.saveGlobalSettings(true); })
+            .listen();
+        
+        const ridgelineInsetProxy = {
+            _displayValue: this.ridgelineInset,
+            get inset() { return this._displayValue; },
+            set inset(v) { this._displayValue = v; }
+        };
+        this.ridgelineInsetProxy = ridgelineInsetProxy;
+        this.ridgelineInsetController = heightFolder.add(ridgelineInsetProxy, 'inset', 0, 20, 0.01)
+            .name('Ridgeline Inset')
+            .setUnitType('small')
+            .onChange(() => {
+                const siValue = this.ridgelineInsetController.getSIValue();
+                this.updateRidgelineInset(siValue);
+            })
+            .onFinishChange(() => { CustomManager.saveGlobalSettings(true); })
+            .listen();
+        
+        const roofEavesProxy = {
+            _displayValue: this.roofEaves,
+            get eaves() { return this._displayValue; },
+            set eaves(v) { this._displayValue = v; }
+        };
+        this.roofEavesProxy = roofEavesProxy;
+        this.roofEavesController = heightFolder.add(roofEavesProxy, 'eaves', 0, 3, 0.01)
+            .name('Roof Eaves')
+            .setUnitType('small')
+            .onChange(() => {
+                const siValue = this.roofEavesController.getSIValue();
+                this.updateRoofEaves(siValue);
+            })
+            .onFinishChange(() => { CustomManager.saveGlobalSettings(true); })
+            .listen();
+        
         this.materialFolder = this.guiFolder.addFolder('Material').close();
         
         this.materialFolder.add(this, 'materialType', ['basic', 'lambert', 'phong', 'physical'])
             .name('Type')
-            .onChange(() => this.rebuildMaterial());
+            .onChange(() => this.rebuildMaterial())
+            .onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
         
         this.materialFolder.addColor(this, 'wallColor')
             .name('Wall Color')
-            .onChange(() => this.rebuildMaterial());
+            .onChange(() => this.rebuildMaterial())
+            .onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
         
         this.materialFolder.addColor(this, 'roofColor')
             .name('Roof Color')
-            .onChange(() => this.rebuildMaterial());
+            .onChange(() => this.rebuildMaterial())
+            .onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
         
         this.materialFolder.add(this, 'materialOpacity', 0, 1, 0.01)
             .name('Opacity')
-            .onChange(() => this.rebuildMaterial());
+            .onChange(() => this.rebuildMaterial())
+            .onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
         
         this.materialFolder.add(this, 'materialTransparent')
             .name('Transparent')
-            .onChange(() => this.rebuildMaterial());
+            .onChange(() => this.rebuildMaterial())
+            .onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
         
         this.materialFolder.add(this, 'materialWireframe')
             .name('Wireframe')
@@ -2407,37 +2446,31 @@ export class CNodeSynthBuilding extends CNode3DGroup {
             .name('Depth Test')
             .onChange(() => this.rebuildMaterial());
         
-        // Delete button
         const actions = {
             delete: () => {
                 if (confirm(`Delete building "${this.name}"?`)) {
-                    // Capture state before deletion for undo
                     if (UndoManager) {
                         const buildingState = this.serialize();
                         const buildingID = this.buildingID;
                         
                         UndoManager.add({
                             undo: () => {
-                                // Recreate the building
                                 Synth3DManager.addBuilding(buildingState);
                             },
                             redo: () => {
-                                // Delete the building again
                                 Synth3DManager.removeBuilding(buildingID);
                             },
                             description: `Delete building "${this.name}"`
                         });
                     }
                     
-                    // Manager will handle deletion
                     Synth3DManager.removeBuilding(this.buildingID);
                 }
             }
         };
         this.guiFolder.add(actions, 'delete').name('Delete Building');
         
-        // Initially hide the folder
-        this.guiFolder.hide();
+        this.guiFolder.close();
     }
     
     /**

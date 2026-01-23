@@ -819,31 +819,28 @@ export class CNodeSynthClouds extends CNode3DGroup {
     }
     
     setEditMode(enabled) {
+        if (this.editMode === enabled) return;
+        
         this.editMode = enabled;
         
         if (enabled) {
             Globals.editingClouds = this;
             this.createControlHandles();
+            CustomManager.showCloudsEditingMenu(100, 100);
         } else {
             if (Globals.editingClouds === this) {
                 Globals.editingClouds = null;
             }
             this.removeControlHandles();
             
-            // Close the standalone edit menu if it exists
             if (CustomManager.cloudsEditMenu) {
                 CustomManager.cloudsEditMenu.destroy();
                 CustomManager.cloudsEditMenu = null;
             }
-            
-            // Clear controller references (created by showCloudsEditingMenu)
-            this.altitudeController = null;
-            this.radiusController = null;
-            this.altitudeProxy = null;
-            this.radiusProxy = null;
-            this.windModeController = null;
-            this.windFromController = null;
-            this.windKnotsController = null;
+        }
+        
+        if (this.editModeController) {
+            this.editModeController.setValue(enabled);
         }
         
         setRenderOne(true);
@@ -853,14 +850,154 @@ export class CNodeSynthClouds extends CNode3DGroup {
         this.guiFolder = guiMenus.objects.addFolder(`Clouds: ${this.name}`);
         
         this.guiFolder.add(this, 'name').name('Name').onChange(() => {
-            this.guiFolder.name = `Clouds: ${this.name}`;
+            this.guiFolder.title = `Clouds: ${this.name}`;
         }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
         
+        const editModeData = {editMode: this.editMode};
+        this.editModeController = this.guiFolder.add(editModeData, 'editMode').name('Edit Mode').onChange((value) => {
+            this.setEditMode(value);
+        });
+        
+        const propsFolder = this.guiFolder.addFolder('Properties').close();
+        
+        const altitudeProxy = {
+            _displayValue: this.altitude,
+            get altitude() { return this._displayValue; },
+            set altitude(v) { this._displayValue = v; }
+        };
+        this.altitudeProxy = altitudeProxy;
+        this.altitudeController = propsFolder.add(altitudeProxy, 'altitude', 0, 20000, 10)
+            .name('Altitude')
+            .setUnitType('small')
+            .onChange(() => {
+                this.altitude = this.altitudeController.getSIValue();
+                this.updateGroupPosition();
+                if (this.editMode) this.createControlHandles();
+                setRenderOne(true);
+            })
+            .onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        
+        const radiusProxy = {
+            _displayValue: this.radius,
+            get radius() { return this._displayValue; },
+            set radius(v) { this._displayValue = v; }
+        };
+        this.radiusProxy = radiusProxy;
+        this.radiusController = propsFolder.add(radiusProxy, 'radius', 100, 100000, 10)
+            .name('Radius')
+            .setUnitType('small')
+            .onChange(() => {
+                this.radius = this.radiusController.getSIValue();
+                this.buildCloudMesh();
+                if (this.editMode) this.createControlHandles();
+                setRenderOne(true);
+            })
+            .onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        
+        propsFolder.add(this, 'cloudSize', 50, 1000, 10)
+            .name('Cloud Size (m)')
+            .onChange(() => {
+                this.buildCloudMesh();
+                setRenderOne(true);
+            })
+            .onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        
+        propsFolder.add(this, 'density', 0.1, 2.0, 0.1)
+            .name('Density')
+            .onChange(() => {
+                this.buildCloudMesh();
+                setRenderOne(true);
+            })
+            .onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        
+        propsFolder.add(this, 'opacity', 0.1, 1.0, 0.05)
+            .name('Opacity')
+            .onChange(() => {
+                if (this.cloudMesh && this.cloudMesh.material && this.cloudMesh.material.uniforms) {
+                    this.cloudMesh.material.uniforms.opacity.value = this.opacity;
+                }
+                setRenderOne(true);
+            })
+            .onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        
+        propsFolder.add(this, 'brightness', 0, 2, 0.05)
+            .name('Brightness')
+            .onChange(() => {
+                this.buildCloudMesh();
+                setRenderOne(true);
+            })
+            .onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        
+        propsFolder.add(this, 'depth', 0, 2000, 10)
+            .name('Depth (m)')
+            .onChange(() => {
+                this.buildCloudMesh();
+                setRenderOne(true);
+            })
+            .onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        
+        propsFolder.add(this, 'edgeWiggle', 0, 0.5, 0.01)
+            .name('Edge Wiggle')
+            .onChange(() => {
+                this.buildCloudMesh();
+                setRenderOne(true);
+            })
+            .onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        
+        propsFolder.add(this, 'edgeFrequency', 1, 20, 1)
+            .name('Edge Frequency')
+            .onChange(() => {
+                this.buildCloudMesh();
+                setRenderOne(true);
+            })
+            .onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        
+        propsFolder.add(this, 'seed', 0, 9999, 1)
+            .name('Seed')
+            .onChange(() => {
+                this.buildCloudMesh();
+                setRenderOne(true);
+            })
+            .onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        
+        propsFolder.add(this, 'feather', 0, 50000, 10)
+            .name('Feather (m)')
+            .onChange(() => {
+                this.buildCloudMesh();
+                setRenderOne(true);
+            })
+            .onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        
+        const windFolder = this.guiFolder.addFolder('Wind').close();
+        
+        const windModes = ["No Wind", "Use Local", "Use Target", "Custom"];
+        this.windModeController = windFolder.add(this, 'windMode', windModes)
+            .name('Wind Mode')
+            .onChange(() => {
+                const isCustom = this.windMode === "Custom";
+                if (this.windFromController) this.windFromController.show(isCustom);
+                if (this.windKnotsController) this.windKnotsController.show(isCustom);
+                setRenderOne(true);
+                CustomManager.saveGlobalSettings(true);
+            });
+        
+        this.windFromController = windFolder.add(this, 'windFrom', 0, 359, 1)
+            .name('Wind From (°)')
+            .onChange(() => {
+                setRenderOne(true);
+            })
+            .onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        this.windFromController.show(this.windMode === "Custom");
+        
+        this.windKnotsController = windFolder.add(this, 'windKnots', 0, 200, 1)
+            .name('Wind (knots)')
+            .onChange(() => {
+                setRenderOne(true);
+            })
+            .onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        this.windKnotsController.show(this.windMode === "Custom");
+        
         const actions = {
-            edit: () => {
-                this.setEditMode(true);
-                CustomManager.showCloudsEditingMenu(100, 100, null);
-            },
             delete: () => {
                 if (confirm(`Delete cloud layer "${this.name}"?`)) {
                     if (UndoManager) {
@@ -882,7 +1019,6 @@ export class CNodeSynthClouds extends CNode3DGroup {
                 }
             }
         };
-        this.guiFolder.add(actions, 'edit').name('Edit');
         this.guiFolder.add(actions, 'delete').name('Delete Clouds');
     }
     

@@ -1979,10 +1979,9 @@ export class CCustomManager {
                     mirroredController.tooltip(controller._tooltip);
                 }
 
-                // Copy listen state
-                if (controller._listening) {
-                    mirroredController.listen();
-                }
+                // Both sides need listen() for bidirectional sync
+                controller.listen();
+                mirroredController.listen();
 
                 // Copy elastic properties for numeric controllers
                 if (controller._elastic && mirroredController.elastic) {
@@ -2296,13 +2295,19 @@ export class CCustomManager {
 
         // Check if we're in building editing mode
         if (Globals.editingBuilding) {
-            this.showBuildingEditingMenu(mouseX, mouseY, groundPoint);
+            this.showBuildingEditingMenu(mouseX, mouseY);
             return;
         }
 
         // Check if we're in clouds editing mode
         if (Globals.editingClouds) {
-            this.showCloudsEditingMenu(mouseX, mouseY, groundPoint);
+            this.showCloudsEditingMenu(mouseX, mouseY);
+            return;
+        }
+
+        // Check if we're in overlay editing mode
+        if (Globals.editingOverlay) {
+            this.showOverlayEditingMenu(Globals.editingOverlay, mouseX, mouseY);
             return;
         }
 
@@ -2484,11 +2489,9 @@ export class CCustomManager {
                     });
                 }
 
-                // Immediately enter edit mode and show edit menu
                 if (building) {
                     building.setEditMode(true);
-                    this.showBuildingEditingMenu(mouseX, mouseY, groundPoint);
-                    console.log(`Created building at ground point, now in edit mode with menu`);
+                    console.log(`Created building at ground point, now in edit mode`);
                 }
             },
             addClouds: () => {
@@ -2514,8 +2517,7 @@ export class CCustomManager {
 
                 if (clouds) {
                     clouds.setEditMode(true);
-                    this.showCloudsEditingMenu(mouseX, mouseY, groundPoint);
-                    console.log(`Created clouds at ground point, now in edit mode with menu`);
+                    console.log(`Created clouds at ground point, now in edit mode`);
                 }
             },
             addOverlay: () => {
@@ -2753,400 +2755,66 @@ export class CCustomManager {
         menu.add(menuData, "exitEditMode").name("Exit Edit Mode");
     }
 
-    /**
-     * Show persistent edit menu when in building edit mode
-     */
-    showBuildingEditingMenu(mouseX, mouseY, groundPoint) {
+    showBuildingEditingMenu(mouseX, mouseY) {
         const building = Globals.editingBuilding;
-        if (!building) {
-            console.warn("No building being edited");
+        if (!building || !building.guiFolder) {
+            console.warn("No building being edited or no GUI folder");
             return;
+        }
+
+        if (this.buildingEditMenu) {
+            this.buildingEditMenu.destroy();
+            this.buildingEditMenu = null;
         }
 
         const buildingName = building.name || building.buildingID;
-
-        // Close any existing building edit menu
-        if (this.buildingEditMenu) {
-            this.buildingEditMenu.destroy();
-        }
-
-        // Create the persistent edit menu
-        const menu = Globals.menuBar.createStandaloneMenu(`Edit: ${buildingName}`, mouseX, mouseY);
-        this.buildingEditMenu = menu;
-
-        // Add instructions
-        menu.addHTML('<div style="color: #aaa; font-size: 11px; padding: 5px;">Click and drag yellow spheres to move vertices</div>', 'Instructions');
-
-        // Add material controls
-        const materialFolder = menu.addFolder('Material');
-
-        materialFolder.add(building, 'materialType', ['basic', 'lambert', 'phong', 'physical'])
-            .name('Type')
-            .onChange(() => building.rebuildMaterial());
-
-        materialFolder.addColor(building, 'wallColor')
-            .name('Wall Color')
-            .onChange(() => building.rebuildMaterial());
-
-        materialFolder.addColor(building, 'roofColor')
-            .name('Roof Color')
-            .onChange(() => building.rebuildMaterial());
-
-        materialFolder.add(building, 'materialOpacity', 0, 1, 0.01)
-            .name('Opacity')
-            .onChange(() => building.rebuildMaterial());
-
-        materialFolder.add(building, 'materialTransparent')
-            .name('Transparent')
-            .onChange(() => building.rebuildMaterial());
-
-        // Add height controls with automatic unit conversion
-        const heightFolder = menu.addFolder('Height');
-
-        // Create proxy object for roof edge height
-        // This stores the value in current display units (ft/m)
-        // Building stores SI units (m), so we convert when reading/writing
-        const roofEdgeProxy = {
-            _displayValue: building.roofAGL,  // Initialize with SI value (will be converted by setUnitType)
-            get height() {
-                // Return the display value (ft or m depending on current units)
-                return this._displayValue;
-            },
-            set height(displayValue) {
-                // Store display value
-                this._displayValue = displayValue;
-            }
-        };
-
-        // Store controller reference on building so it can be updated
-        building.roofEdgeHeightController = heightFolder.add(roofEdgeProxy, 'height', 0.1, 100, 0.01)
-            .name('Roof Edge Height')
-            .setUnitType('small')  // Controller stores display units, setUnitType converts initial SI value
-            .onChange(() => {
-                // When user changes the controller, get SI value and update building
-                const siValue = building.roofEdgeHeightController.getSIValue();
-                building.updateRoofEdgeHeight(siValue);
-            })
-            .listen();
-
-        // Store proxy on building so we can update it when building changes
-        building.roofEdgeProxy = roofEdgeProxy;
-
-        // Create proxy object for ridgeline height (total height from ground)
-        // This stores the value in current display units (ft/m)
-        const ridgelineHeightProxy = {
-            _displayValue: building.roofAGL + building.rooflineHeightAGL,  // Initialize with SI value (will be converted)
-            get height() {
-                // Return the display value
-                return this._displayValue;
-            },
-            set height(displayValue) {
-                // Store display value
-                this._displayValue = displayValue;
-            }
-        };
-
-        // Store controller reference on building so it can be updated
-        building.ridgelineHeightController = heightFolder.add(ridgelineHeightProxy, 'height', 0.1, 100, 0.01)
-            .name('Ridgeline Height')
-            .setUnitType('small')  // Controller stores display units
-            .onChange(() => {
-                // When user changes the controller, get SI value and calculate roofline height
-                const siValue = building.ridgelineHeightController.getSIValue();
-                const newRooflineHeight = Math.max(0, siValue - building.roofAGL);
-                building.updateRooflineHeight(newRooflineHeight);
-            })
-            .listen();
-
-        // Store proxy on building so we can update it when building changes
-        building.ridgelineProxy = ridgelineHeightProxy;
-
-        // Create proxy object for ridgeline inset
-        const ridgelineInsetProxy = {
-            _displayValue: building.ridgelineInset,
-            get inset() {
-                return this._displayValue;
-            },
-            set inset(displayValue) {
-                this._displayValue = displayValue;
-            }
-        };
-
-        // Store controller reference on building so it can be updated
-        building.ridgelineInsetController = heightFolder.add(ridgelineInsetProxy, 'inset', 0, 20, 0.01)
-            .name('Ridgeline Inset')
-            .setUnitType('small')
-            .onChange(() => {
-                // When user changes the controller, get SI value and update building
-                const siValue = building.ridgelineInsetController.getSIValue();
-                building.updateRidgelineInset(siValue);
-            })
-            .listen();
-
-        // Store proxy on building so we can update it when building changes
-        building.ridgelineInsetProxy = ridgelineInsetProxy;
-
-        // Create proxy object for roof eaves
-        const roofEavesProxy = {
-            _displayValue: building.roofEaves,
-            get eaves() {
-                return this._displayValue;
-            },
-            set eaves(displayValue) {
-                this._displayValue = displayValue;
-            }
-        };
-
-        // Store controller reference on building so it can be updated
-        building.roofEavesController = heightFolder.add(roofEavesProxy, 'eaves', 0, 3, 0.01)
-            .name('Roof Eaves')
-            .setUnitType('small')
-            .onChange(() => {
-                // When user changes the controller, get SI value and update building
-                const siValue = building.roofEavesController.getSIValue();
-                building.updateRoofEaves(siValue);
-            })
-            .listen();
-
-        // Store proxy on building so we can update it when building changes
-        building.roofEavesProxy = roofEavesProxy;
-
-        // Create menu actions
-        const menuData = {
-            exitEditMode: () => {
-                // Exit edit mode
-                building.setEditMode(false);
-                console.log(`Exited edit mode for building ${buildingName}`);
-                menu.destroy();
-                this.buildingEditMenu = null;
-            },
-            deleteBuilding: () => {
-                if (confirm(`Delete building "${buildingName}"?`)) {
-                    // Add undo action for deletion
-                    if (UndoManager) {
-                        const buildingState = building.serialize();
-                        const buildingID = building.buildingID;
-
-                        UndoManager.add({
-                            undo: () => {
-                                // Recreate the building
-                                Synth3DManager.addBuilding(buildingState);
-                            },
-                            redo: () => {
-                                // Delete the building again
-                                Synth3DManager.removeBuilding(buildingID);
-                            },
-                            description: `Delete building "${buildingName}"`
-                        });
-                    }
-
-                    Synth3DManager.removeBuilding(building.buildingID);
-                    menu.destroy();
-                    this.buildingEditMenu = null;
-                }
-            }
-        };
-
-        // Add action buttons
-        menu.add(menuData, "exitEditMode").name("Exit Edit Mode").setDoubleClickAction();
-        menu.add(menuData, "deleteBuilding").name("Delete Building").setLabelColor('#ff4444');
-
-        // Open the menu
-        menu.open();
+        const standaloneMenu = Globals.menuBar.createStandaloneMenu(`Edit: ${buildingName}`, mouseX, mouseY);
+        this.buildingEditMenu = standaloneMenu;
+        
+        this.setupDynamicMirroring(building.guiFolder, standaloneMenu);
+        
+        standaloneMenu.open();
     }
 
-    showCloudsEditingMenu(mouseX, mouseY, groundPoint) {
+    showCloudsEditingMenu(mouseX, mouseY) {
         const clouds = Globals.editingClouds;
-        if (!clouds) {
-            console.warn("No clouds being edited");
+        if (!clouds || !clouds.guiFolder) {
+            console.warn("No clouds being edited or no GUI folder");
             return;
         }
 
-        const cloudsName = clouds.name || clouds.cloudsID;
-
         if (this.cloudsEditMenu) {
             this.cloudsEditMenu.destroy();
+            this.cloudsEditMenu = null;
         }
 
-        const menu = Globals.menuBar.createStandaloneMenu(`Edit: ${cloudsName}`, mouseX, mouseY);
-        this.cloudsEditMenu = menu;
+        const cloudsName = clouds.name || clouds.cloudsID;
+        const standaloneMenu = Globals.menuBar.createStandaloneMenu(`Edit: ${cloudsName}`, mouseX, mouseY);
+        this.cloudsEditMenu = standaloneMenu;
+        
+        this.setupDynamicMirroring(clouds.guiFolder, standaloneMenu);
+        
+        standaloneMenu.open();
+    }
 
-        menu.addHTML('<div style="color: #aaa; font-size: 11px; padding: 5px;">Drag handles to adjust clouds</div>', 'Instructions');
+    showOverlayEditingMenu(overlay, mouseX, mouseY) {
+        if (!overlay || !overlay.guiFolder) {
+            console.warn("No overlay or no GUI folder");
+            return;
+        }
 
-        const editFolder = menu.addFolder('Properties');
+        if (this.overlayEditMenu) {
+            this.overlayEditMenu.destroy();
+            this.overlayEditMenu = null;
+        }
 
-        const altitudeProxy = {
-            _displayValue: clouds.altitude,
-            get altitude() { return this._displayValue; },
-            set altitude(v) { this._displayValue = v; }
-        };
-        clouds.altitudeProxy = altitudeProxy;
-        clouds.altitudeController = editFolder.add(altitudeProxy, 'altitude', 0, 20000, 10)
-            .name('Altitude')
-            .setUnitType('small')
-            .onChange(() => {
-                clouds.altitude = clouds.altitudeController.getSIValue();
-                clouds.updateGroupPosition();
-                if (clouds.editMode) clouds.createControlHandles();
-                setRenderOne(true);
-            })
-            .onFinishChange(() => { this.saveGlobalSettings(true); });
-
-        const radiusProxy = {
-            _displayValue: clouds.radius,
-            get radius() { return this._displayValue; },
-            set radius(v) { this._displayValue = v; }
-        };
-        clouds.radiusProxy = radiusProxy;
-        clouds.radiusController = editFolder.add(radiusProxy, 'radius', 100, 100000, 10)
-            .name('Radius')
-            .setUnitType('small')
-            .onChange(() => {
-                clouds.radius = clouds.radiusController.getSIValue();
-                clouds.buildCloudMesh();
-                if (clouds.editMode) clouds.createControlHandles();
-                setRenderOne(true);
-            })
-            .onFinishChange(() => { this.saveGlobalSettings(true); });
-
-        editFolder.add(clouds, 'cloudSize', 50, 1000, 10)
-            .name('Cloud Size (m)')
-            .onChange(() => {
-                clouds.buildCloudMesh();
-                setRenderOne(true);
-            })
-            .onFinishChange(() => { this.saveGlobalSettings(true); });
-
-        editFolder.add(clouds, 'density', 0.1, 2.0, 0.1)
-            .name('Density')
-            .onChange(() => {
-                clouds.buildCloudMesh();
-                setRenderOne(true);
-            })
-            .onFinishChange(() => { this.saveGlobalSettings(true); });
-
-        editFolder.add(clouds, 'opacity', 0.1, 1.0, 0.05)
-            .name('Opacity')
-            .onChange(() => {
-                if (clouds.cloudMesh && clouds.cloudMesh.material && clouds.cloudMesh.material.uniforms) {
-                    clouds.cloudMesh.material.uniforms.opacity.value = clouds.opacity;
-                }
-                setRenderOne(true);
-            })
-            .onFinishChange(() => { this.saveGlobalSettings(true); });
-
-        editFolder.add(clouds, 'brightness', 0, 2, 0.05)
-            .name('Brightness')
-            .onChange(() => {
-                clouds.buildCloudMesh();
-                setRenderOne(true);
-            })
-            .onFinishChange(() => { this.saveGlobalSettings(true); });
-
-        editFolder.add(clouds, 'depth', 0, 2000, 10)
-            .name('Depth (m)')
-            .onChange(() => {
-                clouds.buildCloudMesh();
-                setRenderOne(true);
-            })
-            .onFinishChange(() => { this.saveGlobalSettings(true); });
-
-        editFolder.add(clouds, 'edgeWiggle', 0, 0.5, 0.01)
-            .name('Edge Wiggle')
-            .onChange(() => {
-                clouds.buildCloudMesh();
-                setRenderOne(true);
-            })
-            .onFinishChange(() => { this.saveGlobalSettings(true); });
-
-        editFolder.add(clouds, 'edgeFrequency', 1, 20, 1)
-            .name('Edge Frequency')
-            .onChange(() => {
-                clouds.buildCloudMesh();
-                setRenderOne(true);
-            })
-            .onFinishChange(() => { this.saveGlobalSettings(true); });
-
-        editFolder.add(clouds, 'seed', 0, 9999, 1)
-            .name('Seed')
-            .onChange(() => {
-                clouds.buildCloudMesh();
-                setRenderOne(true);
-            })
-            .onFinishChange(() => { this.saveGlobalSettings(true); });
-
-        editFolder.add(clouds, 'feather', 0, 50000, 10)
-            .name('Feather (m)')
-            .onChange(() => {
-                clouds.buildCloudMesh();
-                setRenderOne(true);
-            })
-            .onFinishChange(() => { this.saveGlobalSettings(true); });
-
-        const windFolder = menu.addFolder('Wind');
-
-        const windModes = ["No Wind", "Use Local", "Use Target", "Custom"];
-        clouds.windModeController = windFolder.add(clouds, 'windMode', windModes)
-            .name('Wind Mode')
-            .onChange(() => {
-                const isCustom = clouds.windMode === "Custom";
-                if (clouds.windFromController) clouds.windFromController.show(isCustom);
-                if (clouds.windKnotsController) clouds.windKnotsController.show(isCustom);
-                setRenderOne(true);
-                this.saveGlobalSettings(true);
-            });
-
-        clouds.windFromController = windFolder.add(clouds, 'windFrom', 0, 359, 1)
-            .name('Wind From (°)')
-            .onChange(() => {
-                setRenderOne(true);
-            })
-            .onFinishChange(() => { this.saveGlobalSettings(true); });
-        clouds.windFromController.show(clouds.windMode === "Custom");
-
-        clouds.windKnotsController = windFolder.add(clouds, 'windKnots', 0, 200, 1)
-            .name('Wind (knots)')
-            .onChange(() => {
-                setRenderOne(true);
-            })
-            .onFinishChange(() => { this.saveGlobalSettings(true); });
-        clouds.windKnotsController.show(clouds.windMode === "Custom");
-
-        const menuData = {
-            exitEditMode: () => {
-                clouds.setEditMode(false);
-                console.log(`Exited edit mode for clouds ${cloudsName}`);
-                menu.destroy();
-                this.cloudsEditMenu = null;
-            },
-            deleteClouds: () => {
-                if (confirm(`Delete cloud layer "${cloudsName}"?`)) {
-                    if (UndoManager) {
-                        const cloudsState = clouds.serialize();
-                        const cloudsID = clouds.cloudsID;
-
-                        UndoManager.add({
-                            undo: () => {
-                                Synth3DManager.addClouds(cloudsState);
-                            },
-                            redo: () => {
-                                Synth3DManager.removeClouds(cloudsID);
-                            },
-                            description: `Delete cloud layer "${cloudsName}"`
-                        });
-                    }
-
-                    Synth3DManager.removeClouds(clouds.cloudsID);
-                    menu.destroy();
-                    this.cloudsEditMenu = null;
-                }
-            }
-        };
-
-        menu.add(menuData, "exitEditMode").name("Exit Edit Mode").setDoubleClickAction();
-        menu.add(menuData, "deleteClouds").name("Delete Clouds").setLabelColor('#ff4444');
-
-        menu.open();
+        const overlayName = overlay.name || overlay.overlayID;
+        const standaloneMenu = Globals.menuBar.createStandaloneMenu(`Edit: ${overlayName}`, mouseX, mouseY);
+        this.overlayEditMenu = standaloneMenu;
+        
+        this.setupDynamicMirroring(overlay.guiFolder, standaloneMenu);
+        
+        standaloneMenu.open();
     }
 
     updateViewFromPreset() {

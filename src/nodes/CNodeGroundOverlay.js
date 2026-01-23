@@ -576,11 +576,21 @@ export class CNodeGroundOverlay extends CNode3DGroup {
             Globals.editingOverlay = this;
             this.updateGroupPosition();
             this.createControlPoints();
+            CustomManager.showOverlayEditingMenu(this, 100, 100);
         } else {
             if (Globals.editingOverlay === this) {
                 Globals.editingOverlay = null;
             }
             this.removeControlPoints();
+            
+            if (CustomManager.overlayEditMenu) {
+                CustomManager.overlayEditMenu.destroy();
+                CustomManager.overlayEditMenu = null;
+            }
+        }
+        
+        if (this.editModeController) {
+            this.editModeController.setValue(enable);
         }
         
         setRenderOne(true);
@@ -979,51 +989,59 @@ export class CNodeGroundOverlay extends CNode3DGroup {
     }
     
     createGUIFolder() {
-        this.guiFolder = guiMenus.objects.addFolder(this.name);
+        this.guiFolder = guiMenus.objects.addFolder(`Overlay: ${this.name}`);
         
-        this.guiFolder.add(this, 'imageURL').name('Image URL').onChange(() => {
+        this.guiFolder.add(this, 'name').name('Name').onChange(() => {
+            this.guiFolder.title = `Overlay: ${this.name}`;
+        }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        
+        const editModeData = {editMode: this.editMode};
+        this.editModeController = this.guiFolder.add(editModeData, 'editMode').name('Edit Mode').onChange((value) => {
+            this.setEditMode(value);
+        });
+        
+        const propsFolder = this.guiFolder.addFolder('Properties').close();
+        
+        propsFolder.add(this, 'imageURL').name('Image URL').onChange(() => {
             this.loadTexture();
-        }).onFinishChange(() => {  });
+        }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
         
-        this.guiFolder.add({rehost: () => this.showRehostDialog()}, 'rehost').name('Rehost Local Image');
+        propsFolder.add({rehost: () => this.showRehostDialog()}, 'rehost').name('Rehost Local Image');
         
-        this.guiFolder.add(this, 'north', -90, 90, 0.0001).name('North').onChange(() => {
+        propsFolder.add(this, 'north', -90, 90, 0.0001).name('North').onChange(() => {
             this.updateMesh();
-        }).onFinishChange(() => {  });
+        }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
         
-        this.guiFolder.add(this, 'south', -90, 90, 0.0001).name('South').onChange(() => {
+        propsFolder.add(this, 'south', -90, 90, 0.0001).name('South').onChange(() => {
             this.updateMesh();
-        }).onFinishChange(() => {  });
+        }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
         
-        this.guiFolder.add(this, 'east', -180, 180, 0.0001).name('East').onChange(() => {
+        propsFolder.add(this, 'east', -180, 180, 0.0001).name('East').onChange(() => {
             this.updateMesh();
-        }).onFinishChange(() => {  });
+        }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
         
-        this.guiFolder.add(this, 'west', -180, 180, 0.0001).name('West').onChange(() => {
+        propsFolder.add(this, 'west', -180, 180, 0.0001).name('West').onChange(() => {
             this.updateMesh();
-        }).onFinishChange(() => {  });
+        }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
         
-        this.guiFolder.add(this, 'rotation', -180, 180, 0.1).name('Rotation').onChange(() => {
+        propsFolder.add(this, 'rotation', -180, 180, 0.1).name('Rotation').onChange(() => {
             this.updateMesh();
-        }).onFinishChange(() => {  });
+        }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
         
-        this.guiFolder.add(this, 'wireframe').name('Wireframe').onChange(() => {
+        propsFolder.add(this, 'wireframe').name('Wireframe').onChange(() => {
             if (this.overlayMaterial) {
                 this.overlayMaterial.wireframe = this.wireframe;
                 this.overlayMaterial.needsUpdate = true;
             }
             setRenderOne(true);
-
         });
         
-        this.guiFolder.add(this, 'opacity', 0, 1, 0.01).name('Opacity').onChange(() => {
+        propsFolder.add(this, 'opacity', 0, 1, 0.01).name('Opacity').onChange(() => {
             if (this.overlayMaterial) {
                 this.overlayMaterial.uniforms.opacity.value = this.opacity;
             }
             setRenderOne(true);
-        }).onFinishChange(() => {  });
-        
-        this.guiFolder.add({edit: () => this.setEditMode(!this.editMode)}, 'edit').name('Toggle Edit Mode');
+        }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
         
         this.guiFolder.add({goto: () => this.gotoOverlay()}, 'goto').name('Go to Overlay');
         
@@ -1047,8 +1065,6 @@ export class CNodeGroundOverlay extends CNode3DGroup {
                 Synth3DManager.removeOverlay(this.overlayID);
             }
         }}, 'remove').name('Delete Overlay');
-        
-        this.guiFolder.add({debug: () => this.dumpState()}, 'debug').name('Debug State');
         
         this.guiFolder.close();
     }
