@@ -358,7 +358,12 @@ export class CNodeManager extends CManager{
     // given a name, return a unique name
     // either the name itself, or the name with a number appended
     // e.g. if name is "foo", and "foo" already exists, then return "foo1"
-    getUniqueID(name) {
+    // if maxName is specified and name is longer, truncate to first (maxName/2) + last (maxName/2)
+    getUniqueID(name, maxName = 100) {
+        if (name.length > maxName) {
+            const half = Math.floor(maxName / 2);
+            name = name.slice(0, half) + name.slice(-half);
+        }
         if (!this.exists(name)) {
             return name;
         }

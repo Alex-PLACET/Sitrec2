@@ -45,7 +45,8 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         
         this.extractClouds = v.extractClouds !== undefined ? v.extractClouds : false;
         this.cloudColor = v.cloudColor !== undefined ? v.cloudColor : '#E0E0E0';
-        this.cloudFuzziness = v.cloudFuzziness !== undefined ? v.cloudFuzziness : 50;
+        this.cloudFuzziness = v.cloudFuzziness !== undefined ? v.cloudFuzziness : 40;
+        this.cloudFeather = v.cloudFeather !== undefined ? v.cloudFeather : 40;
         this.altitude = v.altitude !== undefined ? v.altitude : 0;
         this.lockShape = v.lockShape !== undefined ? v.lockShape : false;
         
@@ -183,7 +184,8 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         const targetG = parseInt(this.cloudColor.slice(3, 5), 16);
         const targetB = parseInt(this.cloudColor.slice(5, 7), 16);
         
-        const threshold = (100 - this.cloudFuzziness) * 2.55;
+        const threshold = (this.cloudFuzziness) * 2.55 * Math.sqrt(3);
+        const feather = this.cloudFeather * 2.55 * Math.sqrt(3);
         
         for (let i = 0; i < data.length; i += 4) {
             const r = data[i];
@@ -198,8 +200,11 @@ export class CNodeGroundOverlay extends CNode3DGroup {
             
             if (distance <= threshold) {
                 data[i + 3] = 255;
-            } else {
+            } else if (distance > threshold+feather) {
                 data[i + 3] = 0;
+            } else {
+                const f  = Math.round(255 * (threshold+feather - distance) / feather)
+                data[i + 3] = f;
             }
         }
         
@@ -1226,6 +1231,10 @@ export class CNodeGroundOverlay extends CNode3DGroup {
             if (this.extractClouds) this.applyCloudExtraction();
         }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
         
+        cloudFolder.add(this, 'cloudFeather', 0, 100, 1).name('Feather').onChange(() => {
+            if (this.extractClouds) this.applyCloudExtraction();
+        }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        
         this.guiFolder.add({goto: () => this.gotoOverlay()}, 'goto').name('Go to Overlay');
         
         this.guiFolder.add({remove: () => {
@@ -1349,6 +1358,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
             extractClouds: this.extractClouds,
             cloudColor: this.cloudColor,
             cloudFuzziness: this.cloudFuzziness,
+            cloudFeather: this.cloudFeather,
             altitude: this.altitude,
             lockShape: this.lockShape,
         };
@@ -1371,6 +1381,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
             extractClouds: data.extractClouds,
             cloudColor: data.cloudColor,
             cloudFuzziness: data.cloudFuzziness,
+            cloudFeather: data.cloudFeather,
             lockShape: data.lockShape,
         });
     }

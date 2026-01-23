@@ -1784,7 +1784,7 @@ export class CFileManager extends CManager {
         this.list[fileID].dataType = "image";
         
         Synth3DManager.addOverlay({
-            name: baseName,
+            name: NodeMan.getUniqueID(baseName, 18),
             north: bounds.north,
             south: bounds.south,
             east: bounds.east,

@@ -538,7 +538,7 @@ export class CTrackFileKML extends CTrackFile {
             rotation: rotation,
             imageURL: imageURL,
             imageFileID: imageFileID,
-            name: overlayName,
+            name: NodeMan.getUniqueID(overlayName, 18),
             gotoOnCreate: true,
             lockShape: true,
         });
