@@ -3573,7 +3573,10 @@ export class CCustomManager {
         console.log("Serializing custom sitch")
 
         assert(Sit.canMod || Sit.isCustom, "one of Sit.canMod or Sit.isCustom must be true to serialize a sitch")
-        assert(!Sit.canMod || !Sit.isCustom, "one of Sit.canMod or Sit.isCustom must be false to serialize a sitch")
+
+        // we now allow serialization of legacy Sitchs that are marked with isCustom
+        // Gimbal for example
+   //     assert(!Sit.canMod || !Sit.isCustom, "one of Sit.canMod or Sit.isCustom must be false to serialize a sitch")
 
         if (local) {
 
@@ -3997,8 +4000,12 @@ export class CCustomManager {
 
         let targetObject = NodeMan.get("targetObject", false);
         if (targetObject === undefined) {
-            targetObject = NodeMan.get("traverseObject");
+            targetObject = NodeMan.get("traverseObject", false);
         }
+
+        // patch for legacy sitches with different configuation of target Object (e.g. Gimbal)
+        if(!targetObject) return;
+
         const tob = targetObject._object;
 
         // root track are calculate and cached for all CNode3DObjects in their recalculate()
@@ -4070,9 +4077,10 @@ export class CCustomManager {
         // if the camera is following a track, then turn off the object display for that track
         // in the lookView
 
-        const cameraPositionSwitch = NodeMan.get("CameraPositionController");
+        // if (!NodeMan.exists("CameraPositionController")) return;
+        // const cameraPositionSwitch = NodeMan.get("CameraPositionController");
         // get the selected node
-        const choice = cameraPositionSwitch.choice;
+        // const choice = cameraPositionSwitch.choice;
         // if the selected node is the track position controller
         // if (choice === "Follow Track") {
         //     // turn off the object display for the camera track in the lookView
@@ -4107,7 +4115,10 @@ export class CCustomManager {
         // handle hold down the t key to move the terrain square around
         if (NodeMan.exists("terrainUI")) {
             const terrainUI = NodeMan.get("terrainUI")
-            if (isKeyHeld('t')) {
+
+            // only relevant if we are NOT using dynamic subdivision
+            // which we most are now
+            if (!Globals.dynamicSubdivision && isKeyHeld('t')) {
 
                 // we assume if they set some terrain then they don't want the automatic
                 // moving of the terrain and time done
