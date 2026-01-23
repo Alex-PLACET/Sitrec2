@@ -12,6 +12,9 @@ import {
     TextureLoader,
     Vector3
 } from "three";
+import {Line2} from "three/addons/lines/Line2.js";
+import {LineGeometry} from "three/addons/lines/LineGeometry.js";
+import {disposeMatLine, makeMatLine} from "../MatLines";
 import * as LAYER from "../LayerMasks";
 import {getLocalDownVector, getLocalUpVector} from "../SphericalMath";
 import {EUSToLLA, LLAToEUS} from "../LLA-ECEF-ENU";
@@ -50,6 +53,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         this.cloudFeather = v.cloudFeather !== undefined ? v.cloudFeather : 40;
         this.altitude = v.altitude !== undefined ? v.altitude : 0;
         this.lockShape = v.lockShape !== undefined ? v.lockShape : false;
+        this.showBorder = v.showBorder !== undefined ? v.showBorder : false;
         
         this.originalTexture = null;
         this.flatMesh = null;
@@ -66,6 +70,9 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         this.rotationHandle = null;
         this.moveHandle = null;
         
+        this.highlightBorder = null;
+        this.highlightBorderMaterial = null;
+        
         this.raycaster = new Raycaster();
         this.raycaster.layers.mask = LAYER.MASK_HELPERS;
         
@@ -74,6 +81,10 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         this.buildMesh();
         this.setupEventListeners();
         this.createGUIFolder();
+        
+        if (this.showBorder) {
+            this.showHighlightBorder();
+        }
     }
     
     createMaterial() {
@@ -1172,6 +1183,14 @@ export class CNodeGroundOverlay extends CNode3DGroup {
             }
         }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
         
+        this.guiFolder.add(this, 'showBorder').name('Show Border').onChange(() => {
+            if (this.showBorder) {
+                this.showHighlightBorder();
+            } else {
+                this.hideHighlightBorder();
+            }
+        }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        
         const propsFolder = this.guiFolder.addFolder('Properties').close();
         
         propsFolder.add(this, 'imageURL').name('Image URL').onChange(() => {
@@ -1259,6 +1278,13 @@ export class CNodeGroundOverlay extends CNode3DGroup {
                 Synth3DManager.removeOverlay(this.overlayID);
             }
         }}, 'remove').name('Delete Overlay');
+        
+        this.guiFolder.domElement.addEventListener('mouseenter', () => {
+            this.showHighlightBorder();
+        });
+        this.guiFolder.domElement.addEventListener('mouseleave', () => {
+            this.hideHighlightBorder();
+        });
         
         this.guiFolder.close();
     }
@@ -1363,6 +1389,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
             cloudFeather: this.cloudFeather,
             altitude: this.altitude,
             lockShape: this.lockShape,
+            showBorder: this.showBorder,
         };
     }
 
@@ -1427,6 +1454,57 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         console.log(`[Overlay] ===========================`);
     }
     
+    showHighlightBorder() {
+        const corners = this.getCornerPositions();
+        const groupPos = this.group.position;
+        const points = corners.map(c => c.clone().sub(groupPos));
+        points.push(points[0].clone());
+        
+        const positions = [];
+        for (const p of points) {
+            positions.push(p.x, p.y, p.z);
+        }
+        
+        if (!this.highlightBorder) {
+            this.highlightBorderMaterial = makeMatLine(0xff0000, 3);
+            const geometry = new LineGeometry();
+            geometry.setPositions(positions);
+            this.highlightBorder = new Line2(geometry, this.highlightBorderMaterial);
+            this.highlightBorder.computeLineDistances();
+            this.highlightBorder.renderOrder = 999999;
+            this.highlightBorder.material.depthTest = false;
+            this.group.add(this.highlightBorder);
+        } else {
+            this.highlightBorder.geometry.dispose();
+            const geometry = new LineGeometry();
+            geometry.setPositions(positions);
+            this.highlightBorder.geometry = geometry;
+            this.highlightBorder.computeLineDistances();
+        }
+        
+        this.highlightBorder.visible = true;
+        setRenderOne(true);
+    }
+    
+    hideHighlightBorder() {
+        if (this.highlightBorder && !this.showBorder) {
+            this.highlightBorder.visible = false;
+            setRenderOne(true);
+        }
+    }
+    
+    disposeHighlightBorder() {
+        if (this.highlightBorder) {
+            this.group.remove(this.highlightBorder);
+            this.highlightBorder.geometry.dispose();
+            this.highlightBorder = null;
+        }
+        if (this.highlightBorderMaterial) {
+            disposeMatLine(this.highlightBorderMaterial);
+            this.highlightBorderMaterial = null;
+        }
+    }
+    
     dispose() {
         document.removeEventListener('pointerdown', this.onPointerDownBound);
         document.removeEventListener('pointermove', this.onPointerMoveBound);
@@ -1438,6 +1516,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         this.removeControlPoints();
         this.disposeTileMeshes();
         this.disposeFlatMesh();
+        this.disposeHighlightBorder();
         
         if (this.overlayMaterial) this.overlayMaterial.dispose();
         if (this.texture) this.texture.dispose();
