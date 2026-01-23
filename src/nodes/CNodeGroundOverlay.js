@@ -28,6 +28,7 @@ import {EventManager} from "../CEventManager";
 import {degrees, radians, scaleF2M} from "../utils";
 import {sharedUniforms} from "../js/map33/material/SharedUniforms";
 import {assert} from "../assert";
+import {LoadingManager} from "../CLoadingManager";
 
 export class CNodeGroundOverlay extends CNode3DGroup {
     constructor(v) {
@@ -134,7 +135,6 @@ export class CNodeGroundOverlay extends CNode3DGroup {
     }
     
     loadTexture() {
-        // Check for blobURL from FileManager if we have an imageFileID
         let textureURL = this.imageURL;
         if (this.imageFileID && FileManager.exists(this.imageFileID)) {
             const fileEntry = FileManager.list[this.imageFileID];
@@ -144,7 +144,6 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         }
 
         if (!textureURL) {
-            // Create default texture: grey background with red circle
             this.texture = this.createDefaultTexture();
             if (this.overlayMaterial) {
                 this.overlayMaterial.uniforms.map.value = this.texture;
@@ -154,12 +153,22 @@ export class CNodeGroundOverlay extends CNode3DGroup {
             return;
         }
 
+        const loadingId = `overlay-${this.overlayID}-${Date.now()}`;
+        LoadingManager.registerLoading(loadingId, textureURL, "Image");
+
         const loader = new TextureLoader();
         loader.load(textureURL, (texture) => {
+            LoadingManager.completeLoading(loadingId);
             texture.flipY = false;
             this.originalTexture = texture;
             this.applyCloudExtraction();
-        }, undefined, (error) => {
+        }, (progress) => {
+            if (progress.lengthComputable) {
+                const percent = (progress.loaded / progress.total) * 100;
+                LoadingManager.updateProgress(loadingId, percent);
+            }
+        }, (error) => {
+            LoadingManager.completeLoading(loadingId);
             console.error(`Failed to load overlay texture: ${textureURL}`, error);
         });
     }

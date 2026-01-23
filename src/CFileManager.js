@@ -65,6 +65,7 @@ import {isAudioOnlyFormat} from "./AudioFormats";
 import {extractFeaturesFromFile, isFeaturesCSV} from "./ParseFeaturesCSV";
 import {createImageFromArrayBuffer} from "./FileUtils";
 import {ModelFiles} from "./nodes/CNode3DObject";
+import {LoadingManager} from "./CLoadingManager";
 
 const trackFileClasses = [
     CTrackFileKML,
@@ -1093,25 +1094,22 @@ export class CFileManager extends CManager {
         // // if we are going to try to load it,
         // assert(!this.exists(id), "Asset " + id + " already exists");
 
-        // Create a loading promise that will be stored in the map
         let loadingPromise;
+        const loadingId = `asset-${id}-${Date.now()}`;
+        LoadingManager.registerLoading(loadingId, filename, "Asset");
 
-        // If it has no forward slash, then it's a local file
-        // and will be in the this.directoryHandle folder
         if (!filename.includes("/")) {
             assert(this.directoryHandle !== undefined, `No directory handle for local file ${filename}`);
             loadingPromise = this.directoryHandle.getFileHandle(filename).then(fileHandle => {
                 return fileHandle.getFile().then(file => {
                     return file.arrayBuffer().then(arrayBuffer => {
-                        // Got a LOCALLY LOAD arrayBuffer for the file
-                        // we pass it into the DragDropHandler to parse it
-                        // exactly as if it was drag-dropped
-                        // this is specifically for the .TS files
-                        // which are expanded into multiple pseudo-files from the streams
-                        // But we also do it with the other local files.
+                        LoadingManager.completeLoading(loadingId);
                         return this.parseResult(filename, arrayBuffer, null);
                     });
                 });
+            }).catch(error => {
+                LoadingManager.completeLoading(loadingId);
+                throw error;
             });
         } else {
             // if not a local file, then it's a URL
@@ -1154,7 +1152,6 @@ export class CFileManager extends CManager {
             }
 
             Globals.parsing++;
-            // console.log(`>>> loadAsset() Loading Started: ${filename} (id: ${id})`);
 
             var bufferPromise = null;
             let fetchOperationId = null; // Track for cleanup
@@ -1218,13 +1215,12 @@ export class CFileManager extends CManager {
             Globals.pendingActions++;
 
             if (filename.toLowerCase().endsWith('.ts')) {
-                // if it's a TS file, then just load it and pass it to parseResult
-                // The id will be the original dropped filename
                 loadingPromise = bufferPromise
                     .then(arrayBuffer => {
                         console.log(`Special handling for .TS file load: ${filename} (id: ${id})`);
                         Globals.parsing--;
                         Globals.pendingActions--;
+                        LoadingManager.completeLoading(loadingId);
                         return this.parseResult(id, arrayBuffer, filename);
                     })
             } else {
@@ -1267,19 +1263,18 @@ export class CFileManager extends CManager {
                         }
 
                         Globals.parsing--;
-                        // console.log(`<<< loadAsset() parsing Finished: ${filename} (id: ${id})`);
                         Globals.pendingActions--;
+                        LoadingManager.completeLoading(loadingId);
 
-                        // Add the ID to the parsed asset for reference in the loading promise map
                         parsedAsset.id = id;
-                        return parsedAsset; // Return the asset for further chaining if necessary
+                        return parsedAsset;
                     })
                     .catch(error => {
                         Globals.parsing--;
                         console.log(`There was a problem loading ${filename}: ${error.message}`);
                         Globals.pendingActions--;
+                        LoadingManager.completeLoading(loadingId);
 
-                        // Remove from loading promises map on error
                         this.#loadingPromises.delete(loadingKey);
                         throw error;
                     });
