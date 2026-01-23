@@ -1979,22 +1979,51 @@ export class CCustomManager {
                     mirroredController.tooltip(controller._tooltip);
                 }
 
-                // Both sides need listen() for bidirectional sync
-                controller.listen();
-                mirroredController.listen();
-
                 // Copy elastic properties for numeric controllers
                 if (controller._elastic && mirroredController.elastic) {
                     mirroredController.elastic(controller._elastic.max, controller._elastic.maxMax, controller._elastic.allowNegative);
                 }
 
-                // Copy onChange handler by referencing the original controller's onChange
-                if (controller._onChange) {
-                    mirroredController.onChange(controller._onChange);
+                // Copy unit type metadata for numeric controllers with unit conversion
+                // We copy the properties directly instead of calling setUnitType() because:
+                // 1. The name already includes the unit suffix (copied above)
+                // 2. The proxy already stores values in display units (no conversion needed)
+                // 3. Calling setUnitType() would double-convert and double-suffix
+                if (controller._unitType) {
+                    mirroredController._unitType = controller._unitType;
+                    // Copy the SI reference values so getSIValue()/setSIValue() work correctly
+                    if (controller._originalMinSI !== undefined) {
+                        mirroredController._originalMinSI = controller._originalMinSI;
+                        mirroredController._originalMaxSI = controller._originalMaxSI;
+                        mirroredController._originalStepSI = controller._originalStepSI;
+                    }
                 }
+
+                // Set up bidirectional sync by wrapping onChange handlers
+                // lil-gui's listen() doesn't reliably sync between two controllers pointing to same data
+                // So we explicitly update the other controller when either one changes
+
+                const originalOnChange = controller._onChange;
+
+                // When SOURCE changes, update mirrored controller's display
+                const sourceOnChange = (value) => {
+                    if (originalOnChange) originalOnChange(value);
+                    mirroredController.updateDisplay();
+                };
+                controller.onChange(sourceOnChange);
+
+                // When MIRRORED changes, call original handler and update source display
+                mirroredController.onChange((value) => {
+                    if (originalOnChange) originalOnChange(value);
+                    controller.updateDisplay();
+                });
 
                 // Copy visibility state
                 mirroredController.show(!controller._hidden);
+
+                // Still enable listen() for any external changes
+                controller.listen();
+                mirroredController.listen();
             }
         } catch (error) {
             console.warn(`Failed to mirror controller '${controller._name}':`, error);
