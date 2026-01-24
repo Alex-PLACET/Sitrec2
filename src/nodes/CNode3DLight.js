@@ -94,7 +94,12 @@ export class CNode3DLight extends CNode3D {
         if (this.light.userData !== undefined && this.light.userData.strobeEvery) {
             this.strobeEvery = this.light.userData.strobeEvery
             this.strobeLength = this.light.userData.strobeLength || 0.1;
-            this.strobeOffset = Math.random() * 5;
+            let hash = 0;
+            for (let i = 0; i < this.id.length; i++) {
+                hash = ((hash << 5) - hash) + this.id.charCodeAt(i);
+                hash |= 0;
+            }
+            this.strobeOffset = (((hash >>> 0) % 50000) / 10000) ;
             this.addSimpleSerial("strobeOffset");
         }
 
