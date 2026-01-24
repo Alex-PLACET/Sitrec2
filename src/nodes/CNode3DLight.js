@@ -94,6 +94,8 @@ export class CNode3DLight extends CNode3D {
         if (this.light.userData !== undefined && this.light.userData.strobeEvery) {
             this.strobeEvery = this.light.userData.strobeEvery
             this.strobeLength = this.light.userData.strobeLength || 0.1;
+            this.strobeOffset = Math.random() * 5;
+            this.addSimpleSerial("strobeOffset");
         }
 
 
@@ -216,6 +218,18 @@ export class CNode3DLight extends CNode3D {
                     this.strobeLength = value;
                 }
             }, this.gui);
+
+            this.strobeOffsetControl = new CNodeGUIValue({
+                id: this.id + "_strobeOffset",
+                desc: "Strobe Offset (s)",
+                value: this.strobeOffset,
+                start: 0,
+                end: 20.0,
+                step: 0.01,
+                onChange: (value) => {
+                    this.strobeOffset = value;
+                }
+            }, this.gui);
         }
     }
 
@@ -238,6 +252,7 @@ export class CNode3DLight extends CNode3D {
         NodeMan.disposeRemove(this.radiusControl, true);
         NodeMan.disposeRemove(this.strobeEveryControl, true);
         NodeMan.disposeRemove(this.strobeLengthControl, true);
+        NodeMan.disposeRemove(this.strobeOffsetControl, true);
 
 
         if (this._object) {
@@ -259,7 +274,8 @@ export class CNode3DLight extends CNode3D {
 
         // only need to check if both are non-zero
         if (this.strobeEvery && this.strobeLength) {
-            strobeOn = time % this.strobeEvery < this.strobeLength;
+            const offsetTime = time + this.strobeOffset;
+            strobeOn = offsetTime % this.strobeEvery < this.strobeLength;
 
 
 
@@ -268,7 +284,7 @@ export class CNode3DLight extends CNode3D {
             // (e.g. strobe every 1.01 seconds, but strobe length is 0.01 seconds)
             // since 0.01 is less than a frame, it would not always fall in the window
             if (this.lastStrobeTime !== undefined
-                && (time - this.lastStrobeTime) > this.strobeEvery) {
+                && (offsetTime - this.lastStrobeTime) > this.strobeEvery) {
                 strobeOn = true;
 
             }
@@ -278,7 +294,7 @@ export class CNode3DLight extends CNode3D {
                 // reset time to last time we SHOULD have strobed
                 // not the time we actually strobed
                 // this maintains more consistent timing
-                this.lastStrobeTime = time - time % this.strobeEvery
+                this.lastStrobeTime = offsetTime - offsetTime % this.strobeEvery
             }
 
 
