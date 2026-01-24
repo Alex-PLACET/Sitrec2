@@ -9,6 +9,7 @@ import {SITREC_DEV_DOMAIN, SITREC_DOMAIN} from "./configUtils";
 import {EventManager} from "./CEventManager";
 import {MP4_DEMUXER_EXTENSIONS, WEBAUDIO_SUPPORTED_EXTENSIONS} from "./AudioFormats";
 import {ViewMan} from "./CViewManager";
+import {quickFetch} from "./quickFetch";
 
 // Image file extensions
 const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'];
@@ -536,7 +537,7 @@ class CDragDropHandler {
             return;
         }
 
-        return fetch(url)
+        return quickFetch(url, { showLoading: true, loadingCategory: "File" })
             .then(response => {
                 if (!response.ok) {
                     throw new Error('Network response was not ok');

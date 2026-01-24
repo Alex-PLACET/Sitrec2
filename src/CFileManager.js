@@ -1195,9 +1195,13 @@ export class CFileManager extends CManager {
                     'fetch',
                     `loadAsset: ${filename}`
                 );
-                
+
+                // If this is an S3 URL then do NOT use the version extension
+                const isS3Url = encodedFilename.includes("s3.amazonaws.com") || encodedFilename.includes(".s3.");
+                const fetchUrl = isS3Url ? encodedFilename : encodedFilename + versionExtension;
+
                 // Use custom fetch wrapper that supports File System Access API
-                bufferPromise = fileSystemFetch(encodedFilename + versionExtension, { signal: fetchController.signal })
+                bufferPromise = fileSystemFetch(fetchUrl, { signal: fetchController.signal })
                 .then(response => {
                     if (!response.ok) {
                         throw new Error('Network response was not ok');

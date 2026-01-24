@@ -2032,7 +2032,7 @@ async function waitForAllPendingOperations() {
                 if (pendingOpsString !== lastPendingString) {
                     lastPendingString = pendingOpsString;
                     if (pendingOpsString) {
-                        console.log(`\nWaiting for operations (${elapsedTime}ms elapsed):\n${pendingOpsString}\n`);
+//                        console.log(`\nWaiting for operations (${elapsedTime}ms elapsed):\n${pendingOpsString}\n`);
                     }
                 }
                 

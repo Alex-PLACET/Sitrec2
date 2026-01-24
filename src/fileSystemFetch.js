@@ -1,17 +1,15 @@
 // Custom fetch wrapper that uses File System Access API when available
 // This allows loading files from the local filesystem when running from file:// protocol
 
+import {quickFetch} from "./quickFetch";
+
 export async function fileSystemFetch(url, options = {}) {
-    // First, check if we're running from file:// and have directory access
     if (window.location.protocol !== 'file:' || !window.fileSystemDirectoryHandle) {
-        // Not running from file:// or no directory access, use regular fetch
-        return fetch(url, options);
+        return quickFetch(url, options);
     }
     
-    // Check if this is an absolute URL (http/https) - use regular fetch for those
     if (url.startsWith('http://') || url.startsWith('https://')) {
-        // This won't work from file:// due to CORS, but let it fail naturally
-        return fetch(url, options);
+        return quickFetch(url, options);
     }
     
     // We're running from file:// with directory access and have a relative URL
@@ -109,9 +107,8 @@ export async function fileSystemFetch(url, options = {}) {
         return response;
         
     } catch (err) {
-        console.error("File System Access API fetch failed, falling back to regular fetch:", err);
-        // Fall back to regular fetch
-        return fetch(url, options);
+        console.error("File System Access API fetch failed, falling back to quickFetch:", err);
+        return quickFetch(url, options);
     }
 }
 

@@ -800,8 +800,8 @@ class CNode {
             console.log("|---".repeat(depth) + " Root Recalculating:  " + this.constructor.name +": " +  this.id + " frame " + f)
 
         if (!this.visible && isLocal) {
-            console.warn("Trying to recalculateCascade invisible node. ("+ this.constructor.name +": " + this.id +  ") This will fail as recalculateNodesBreadthFirst " +
-                "calls markMaximumVisibleDepth, which will mark it's depth as -1")
+            // console.warn("Trying to recalculateCascade invisible node. ("+ this.constructor.name +": " + this.id +  ") This will fail as recalculateNodesBreadthFirst " +
+            //     "calls markMaximumVisibleDepth, which will mark it's depth as -1")
         }
 
         let listOfOne = [this]

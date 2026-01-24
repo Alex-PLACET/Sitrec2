@@ -4,6 +4,7 @@ import {Sit} from "./Globals.js";
 import {EventManager} from "./CEventManager.js";
 import {updateSitFrames} from "./UpdateSitFrames";
 import {isWebAudioFormat} from "./AudioFormats.js";
+import {quickFetch} from "./quickFetch";
 
 /**
  * Audio-only video class that plays audio files with a black video frame
@@ -162,7 +163,7 @@ export class CVideoAudioOnly extends CVideoAndAudio {
      */
     loadMP3URL(url) {
         console.log(`[CVideoAudioOnly.loadMP3URL] Starting: url=${url}`);
-        fetch(url)
+        quickFetch(url, { showLoading: true, loadingCategory: "Audio" })
             .then(response => response.arrayBuffer())
             .then(arrayBuffer => {
                 console.log(`[CVideoAudioOnly.loadMP3URL] Fetch complete, buffer size=${arrayBuffer.byteLength}`);

@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>quickFetch Benchmark</title>
+    <style>
+        body { font-family: monospace; padding: 20px; max-width: 1000px; margin: 0 auto; }
+        table { border-collapse: collapse; width: 100%; margin: 20px 0; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+        th { background: #f0f0f0; }
+        .faster { background: #d4ffd4; }
+        .slower { background: #ffd4d4; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        #status { margin: 20px 0; padding: 10px; background: #f5f5f5; }
+        .section { margin: 30px 0; }
+    </style>
+</head>
+<body>
+    <h1>quickFetch Benchmark</h1>
+    
+    <div class="section">
+        <button onclick="runBenchmark(false)">Run Benchmark (Cache Enabled)</button>
+        <button onclick="runBenchmark(true)">Run Benchmark (Cache Disabled)</button>
+        <button onclick="clearCache()">Clear IndexedDB Cache</button>
+    </div>
+    
+    <div id="status">Ready</div>
+    
+    <div id="results"></div>
+
+<script type="module">
+const TEST_URLS = [
+    'https://sitrec.s3-us-west-2.amazonaws.com/99999999/619251881-23b4907ae30b.png',
+    'https://sitrec.s3-us-west-2.amazonaws.com/99999999/619851885-38e6fa97ac7e.png',
+    'https://sitrec.s3-us-west-2.amazonaws.com/99999999/11slt975335-0cb776b4b039.png',
+    'https://sitrec.s3-us-west-2.amazonaws.com/99999999/snapshot-2026-01-08T00_00_00Z-b3e7f056b229.png',
+];
+
+const DB_NAME = 'SitrecDataCache';
+const STORE_NAME = 'cached_data';
+const CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
+
+class SimpleIndexedDB {
+    constructor() {
+        this.db = null;
+    }
+
+    async init() {
+        if (this.db) return;
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open(DB_NAME, 1);
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => { this.db = request.result; resolve(); };
+            request.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains(STORE_NAME)) {
+                    db.createObjectStore(STORE_NAME, { keyPath: 'key' });
+                }
+            };
+        });
+    }
+
+    async get(key) {
+        await this.init();
+        return new Promise((resolve, reject) => {
+            const tx = this.db.transaction(STORE_NAME, 'readonly');
+            const store = tx.objectStore(STORE_NAME);
+            const request = store.get(key);
+            request.onsuccess = () => {
+                const result = request.result;
+                if (result && result.expires > Date.now()) {
+                    resolve(result.data);
+                } else {
+                    resolve(null);
+                }
+            };
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    async set(key, data) {
+        await this.init();
+        return new Promise((resolve, reject) => {
+            const tx = this.db.transaction(STORE_NAME, 'readwrite');
+            const store = tx.objectStore(STORE_NAME);
+            const request = store.put({ key, data, expires: Date.now() + CACHE_TTL });
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    async clear() {
+        await this.init();
+        return new Promise((resolve, reject) => {
+            const tx = this.db.transaction(STORE_NAME, 'readwrite');
+            const store = tx.objectStore(STORE_NAME);
+            const request = store.clear();
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    }
+}
+
+const db = new SimpleIndexedDB();
+
+function getCacheKey(url) {
+    return `quickfetch:${url}`;
+}
+
+async function regularFetch(url) {
+    const start = performance.now();
+    const response = await fetch(url);
+    const buffer = await response.arrayBuffer();
+    const elapsed = performance.now() - start;
+    return { elapsed, size: buffer.byteLength };
+}
+
+async function regularFetchNoCache(url) {
+    const start = performance.now();
+    const response = await fetch(url, { cache: 'no-store' });
+    const buffer = await response.arrayBuffer();
+    const elapsed = performance.now() - start;
+    return { elapsed, size: buffer.byteLength };
+}
+
+async function cachedFetch(url, useCache) {
+    const start = performance.now();
+    const cacheKey = getCacheKey(url);
+    
+    if (useCache) {
+        const cached = await db.get(cacheKey);
+        if (cached) {
+            const elapsed = performance.now() - start;
+            return { elapsed, size: cached.byteLength, cacheHit: true };
+        }
+    }
+    
+    const response = await fetch(url, { cache: 'no-store' });
+    const buffer = await response.arrayBuffer();
+    
+    if (useCache) {
+        await db.set(cacheKey, buffer);
+    }
+    
+    const elapsed = performance.now() - start;
+    return { elapsed, size: buffer.byteLength, cacheHit: false };
+}
+
+function isS3Url(url) {
+    return url.includes('.s3.') || url.includes('.s3-');
+}
+
+
+
+async function downloadChunk(url, start, end) {
+    const response = await fetch(url, {
+        headers: { 'Range': `bytes=${start}-${end}` },
+        cache: 'no-store',
+    });
+    return response.arrayBuffer();
+}
+
+const INITIAL_CHUNK_SIZE = 3 * 1024 * 1024;
+const CHUNK_SIZE = 2 * 1024 * 1024;
+const CONCURRENCY = 4;
+
+async function chunkedFetch(url, useCache) {
+    const start = performance.now();
+    const cacheKey = getCacheKey(url);
+    
+    if (useCache) {
+        const cached = await db.get(cacheKey);
+        if (cached) {
+            const elapsed = performance.now() - start;
+            return { elapsed, size: cached.byteLength, cacheHit: true, chunks: 0 };
+        }
+    }
+    
+    if (!isS3Url(url)) {
+        const response = await fetch(url, { cache: 'no-store' });
+        const buffer = await response.arrayBuffer();
+        const elapsed = performance.now() - start;
+        return { elapsed, size: buffer.byteLength, cacheHit: false, chunks: 1, fallback: true, fallbackReason: 'Not S3' };
+    }
+    
+    const initialResponse = await fetch(url, {
+        headers: { 'Range': `bytes=0-${INITIAL_CHUNK_SIZE - 1}` },
+        cache: 'no-store',
+    });
+    
+    if (initialResponse.status === 200) {
+        const buffer = await initialResponse.arrayBuffer();
+        if (useCache) await db.set(cacheKey, buffer);
+        const elapsed = performance.now() - start;
+        return { elapsed, size: buffer.byteLength, cacheHit: false, chunks: 1 };
+    }
+    
+    if (initialResponse.status !== 206) {
+        const buffer = await initialResponse.arrayBuffer();
+        const elapsed = performance.now() - start;
+        return { elapsed, size: buffer.byteLength, cacheHit: false, chunks: 1, fallback: true, fallbackReason: `Status ${initialResponse.status}` };
+    }
+    
+    const contentRange = initialResponse.headers.get('Content-Range');
+    const match = contentRange?.match(/bytes \d+-\d+\/(\d+)/);
+    if (!match) {
+        const buffer = await initialResponse.arrayBuffer();
+        const elapsed = performance.now() - start;
+        return { elapsed, size: buffer.byteLength, cacheHit: false, chunks: 1, fallback: true, fallbackReason: 'No Content-Range' };
+    }
+    
+    const totalSize = parseInt(match[1], 10);
+    const initialBuffer = await initialResponse.arrayBuffer();
+    
+    if (initialBuffer.byteLength >= totalSize) {
+        if (useCache) await db.set(cacheKey, initialBuffer);
+        const elapsed = performance.now() - start;
+        return { elapsed, size: initialBuffer.byteLength, cacheHit: false, chunks: 1 };
+    }
+    
+    const remainingStart = initialBuffer.byteLength;
+    const remainingChunks = [];
+    let pos = remainingStart;
+    while (pos < totalSize) {
+        const end = Math.min(pos + CHUNK_SIZE - 1, totalSize - 1);
+        remainingChunks.push({ start: pos, end, index: remainingChunks.length });
+        pos = end + 1;
+    }
+    
+    const chunkBuffers = new Array(remainingChunks.length);
+    let activeDownloads = 0;
+    let nextIdx = 0;
+    
+    await new Promise((resolve, reject) => {
+        const startNext = () => {
+            while (activeDownloads < CONCURRENCY && nextIdx < remainingChunks.length) {
+                const chunk = remainingChunks[nextIdx++];
+                activeDownloads++;
+                downloadChunk(url, chunk.start, chunk.end)
+                    .then(buf => {
+                        chunkBuffers[chunk.index] = buf;
+                        activeDownloads--;
+                        if (nextIdx >= remainingChunks.length && activeDownloads === 0) {
+                            resolve();
+                        } else {
+                            startNext();
+                        }
+                    })
+                    .catch(reject);
+            }
+            if (remainingChunks.length === 0) resolve();
+        };
+        startNext();
+    });
+    
+    const totalLength = initialBuffer.byteLength + chunkBuffers.reduce((sum, b) => sum + b.byteLength, 0);
+    const combined = new Uint8Array(totalLength);
+    combined.set(new Uint8Array(initialBuffer), 0);
+    let offset = initialBuffer.byteLength;
+    for (const buf of chunkBuffers) {
+        combined.set(new Uint8Array(buf), offset);
+        offset += buf.byteLength;
+    }
+    
+    if (useCache) await db.set(cacheKey, combined.buffer);
+    const elapsed = performance.now() - start;
+    return { elapsed, size: combined.byteLength, cacheHit: false, chunks: 1 + remainingChunks.length };
+}
+
+function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1024 / 1024).toFixed(2) + ' MB';
+}
+
+function formatSpeed(bytes, ms) {
+    const mbps = (bytes * 8) / (ms / 1000) / 1000000;
+    return mbps.toFixed(2) + ' Mbps';
+}
+
+async function runBenchmark(cacheDisabled) {
+    const statusEl = document.getElementById('status');
+    const resultsEl = document.getElementById('results');
+    
+    const useCache = !cacheDisabled;
+    statusEl.textContent = `Running benchmark (cache ${useCache ? 'enabled' : 'disabled'})...`;
+    
+    const results = [];
+    
+    for (let i = 0; i < TEST_URLS.length; i++) {
+        const url = TEST_URLS[i];
+        const filename = url.split('/').pop();
+        statusEl.textContent = `Testing ${filename} (${i + 1}/${TEST_URLS.length})...`;
+        
+        const row = { url, filename };
+        
+        try {
+            row.regular = await regularFetchNoCache(url);
+        } catch (e) {
+            row.regular = { error: e.message };
+        }
+        
+        await new Promise(r => setTimeout(r, 100));
+        
+        try {
+            row.cached = await cachedFetch(url, useCache);
+        } catch (e) {
+            row.cached = { error: e.message };
+        }
+        
+        await new Promise(r => setTimeout(r, 100));
+        
+        try {
+            row.chunked = await chunkedFetch(url, useCache);
+        } catch (e) {
+            row.chunked = { error: e.message };
+        }
+        
+        results.push(row);
+        await new Promise(r => setTimeout(r, 100));
+    }
+    
+    if (useCache) {
+        statusEl.textContent = 'Running second pass to test cache hits...';
+        for (let i = 0; i < TEST_URLS.length; i++) {
+            const url = TEST_URLS[i];
+            try {
+                results[i].cachedHit = await cachedFetch(url, true);
+            } catch (e) {
+                results[i].cachedHit = { error: e.message };
+            }
+            try {
+                results[i].chunkedHit = await chunkedFetch(url, true);
+            } catch (e) {
+                results[i].chunkedHit = { error: e.message };
+            }
+        }
+    }
+    
+    statusEl.textContent = 'Benchmark complete!';
+    renderResults(results, useCache);
+}
+
+function renderResults(results, useCache) {
+    const resultsEl = document.getElementById('results');
+    
+    let html = `<h2>Results (Cache ${useCache ? 'Enabled' : 'Disabled'})</h2>`;
+    html += `<table>
+        <tr>
+            <th>File</th>
+            <th>Size</th>
+            <th>Regular Fetch</th>
+            <th>Cached Fetch${useCache ? ' (1st)' : ''}</th>
+            ${useCache ? '<th>Cached Fetch (2nd)</th>' : ''}
+            <th>Chunked Fetch${useCache ? ' (1st)' : ''}</th>
+            ${useCache ? '<th>Chunked Fetch (2nd)</th>' : ''}
+        </tr>`;
+    
+    for (const row of results) {
+        const size = row.regular?.size || row.cached?.size || row.chunked?.size || 0;
+        
+        html += `<tr>
+            <td title="${row.url}">${row.filename}</td>
+            <td>${formatSize(size)}</td>`;
+        
+        if (row.regular?.error) {
+            html += `<td>Error: ${row.regular.error}</td>`;
+        } else {
+            html += `<td>${row.regular.elapsed.toFixed(0)}ms<br><small>${formatSpeed(size, row.regular.elapsed)}</small></td>`;
+        }
+        
+        if (row.cached?.error) {
+            html += `<td>Error: ${row.cached.error}</td>`;
+        } else {
+            const cls = row.cached.elapsed < row.regular.elapsed ? 'faster' : 'slower';
+            html += `<td class="${cls}">${row.cached.elapsed.toFixed(0)}ms<br><small>${row.cached.cacheHit ? 'CACHE HIT' : formatSpeed(size, row.cached.elapsed)}</small></td>`;
+        }
+        
+        if (useCache) {
+            if (row.cachedHit?.error) {
+                html += `<td>Error: ${row.cachedHit.error}</td>`;
+            } else if (row.cachedHit) {
+                html += `<td class="faster">${row.cachedHit.elapsed.toFixed(0)}ms<br><small>${row.cachedHit.cacheHit ? 'CACHE HIT' : 'miss'}</small></td>`;
+            }
+        }
+        
+        if (row.chunked?.error) {
+            html += `<td>Error: ${row.chunked.error}</td>`;
+        } else {
+            const cls = row.chunked.elapsed < row.regular.elapsed ? 'faster' : 'slower';
+            const info = row.chunked.fallback ? `fallback: ${row.chunked.fallbackReason || '?'}` : `${row.chunked.chunks} chunks`;
+            html += `<td class="${cls}">${row.chunked.elapsed.toFixed(0)}ms<br><small>${row.chunked.cacheHit ? 'CACHE HIT' : info}</small></td>`;
+        }
+        
+        if (useCache) {
+            if (row.chunkedHit?.error) {
+                html += `<td>Error: ${row.chunkedHit.error}</td>`;
+            } else if (row.chunkedHit) {
+                html += `<td class="faster">${row.chunkedHit.elapsed.toFixed(0)}ms<br><small>${row.chunkedHit.cacheHit ? 'CACHE HIT' : 'miss'}</small></td>`;
+            }
+        }
+        
+        html += `</tr>`;
+    }
+    
+    html += '</table>';
+    
+    const totalRegular = results.reduce((sum, r) => sum + (r.regular?.elapsed || 0), 0);
+    const totalCached = results.reduce((sum, r) => sum + (r.cached?.elapsed || 0), 0);
+    const totalChunked = results.reduce((sum, r) => sum + (r.chunked?.elapsed || 0), 0);
+    const totalSize = results.reduce((sum, r) => sum + (r.regular?.size || 0), 0);
+    
+    html += `<h3>Totals</h3>
+    <table>
+        <tr><th>Method</th><th>Total Time</th><th>Avg Speed</th></tr>
+        <tr><td>Regular Fetch</td><td>${totalRegular.toFixed(0)}ms</td><td>${formatSpeed(totalSize, totalRegular)}</td></tr>
+        <tr><td>Cached Fetch (1st pass)</td><td>${totalCached.toFixed(0)}ms</td><td>${formatSpeed(totalSize, totalCached)}</td></tr>
+        <tr><td>Chunked Fetch (1st pass)</td><td>${totalChunked.toFixed(0)}ms</td><td>${formatSpeed(totalSize, totalChunked)}</td></tr>
+    </table>`;
+    
+    if (useCache) {
+        const totalCachedHit = results.reduce((sum, r) => sum + (r.cachedHit?.elapsed || 0), 0);
+        const totalChunkedHit = results.reduce((sum, r) => sum + (r.chunkedHit?.elapsed || 0), 0);
+        html += `<table>
+            <tr><th>Method</th><th>Total Time</th><th>Notes</th></tr>
+            <tr class="faster"><td>Cached Fetch (2nd pass)</td><td>${totalCachedHit.toFixed(0)}ms</td><td>All cache hits</td></tr>
+            <tr class="faster"><td>Chunked Fetch (2nd pass)</td><td>${totalChunkedHit.toFixed(0)}ms</td><td>All cache hits</td></tr>
+        </table>`;
+    }
+    
+    resultsEl.innerHTML = html;
+}
+
+async function clearCache() {
+    const statusEl = document.getElementById('status');
+    statusEl.textContent = 'Clearing cache...';
+    await db.clear();
+    statusEl.textContent = 'Cache cleared!';
+}
+
+window.runBenchmark = runBenchmark;
+window.clearCache = clearCache;
+</script>
+</body>
+</html>
