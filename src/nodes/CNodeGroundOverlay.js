@@ -405,8 +405,33 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         return {u, v};
     }
     
-    // Compute homography matrix that maps unit square UV to quad corners
-    // Returns the inverse homography (maps quad to UV)
+    /**
+     * Computes the inverse homography matrix for perspective-correct texture mapping.
+     *
+     * A homography (projective transformation) is a 3x3 matrix that maps points between
+     * two planes. Unlike bilinear interpolation, homography preserves straight lines and
+     * produces perspective-correct results - this is what users expect from "Free Transform"
+     * tools like in Photoshop.
+     *
+     * The forward homography H maps UV coordinates (unit square) to lat/lon coordinates:
+     *   [x']   [a b c]   [u]
+     *   [y'] = [d e f] * [v]
+     *   [w']   [g h 1]   [1]
+     *
+     *   lon = x'/w',  lat = y'/w'
+     *
+     * This function computes H from the 4-point correspondence, then inverts it to get H^-1
+     * which maps lat/lon back to UV coordinates.
+     *
+     * Corner correspondence (UV -> lat/lon):
+     *   (0,0) -> corners[0] (NW)
+     *   (1,0) -> corners[1] (NE)
+     *   (1,1) -> corners[2] (SE)
+     *   (0,1) -> corners[3] (SW)
+     *
+     * @param {Array} corners - Array of 4 corner objects with {lat, lon} properties
+     * @returns {Object|null} Inverse homography matrix elements, or null if degenerate
+     */
     computeInverseHomography(corners) {
         // Source points (UV space): unit square
         // (0,0), (1,0), (1,1), (0,1)
@@ -469,6 +494,29 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         return {ai, bi, ci, di, ei, fi, gi, hi, ii};
     }
 
+    /**
+     * Maps a lat/lon coordinate to UV texture coordinates using inverse homography.
+     *
+     * This provides perspective-correct texture mapping for arbitrary quadrilaterals,
+     * producing results similar to Photoshop's "Free Transform" tool. The homography
+     * matrix is cached for performance and automatically invalidated when corners change.
+     *
+     * The transformation uses homogeneous coordinates:
+     *   u' = ai*lon + bi*lat + ci
+     *   v' = di*lon + ei*lat + fi
+     *   w' = gi*lon + hi*lat + ii
+     *
+     *   u = u'/w',  v = v'/w'
+     *
+     * Key differences from bilinear interpolation:
+     * - Bilinear: Texture stretches/compresses based on edge lengths (trapezoid effect)
+     * - Homography: Texture appears as if viewing a flat plane in perspective
+     *
+     * @param {number} lat - Latitude of the point to map
+     * @param {number} lon - Longitude of the point to map
+     * @param {Array} corners - Array of 4 corner objects with {lat, lon} properties
+     * @returns {Object} UV coordinates {u, v} where 0-1 is inside the quad
+     */
     inverseHomography(lat, lon, corners) {
         // Use cached homography if available, otherwise compute it
         if (!this._cachedHomography || this._cachedHomographyCorners !== corners) {
