@@ -10,6 +10,8 @@ import Stats from "stats.js";
 import {
     addMenuToLeftSidebar,
     addMenuToRightSidebar,
+    getLeftSidebar,
+    getRightSidebar,
     isInLeftSidebar,
     isInRightSidebar,
     removeMenuFromLeftSidebar,
@@ -962,6 +964,53 @@ export class CGuiMenuBar {
             }
         });
     }
+    
+    _showDropIndicator(side) {
+        if (!this._dropIndicator) {
+            this._dropIndicator = document.createElement('div');
+            this._dropIndicator.style.pointerEvents = 'none';
+            document.body.appendChild(this._dropIndicator);
+        }
+        
+        // Reset all positioning and visual styles each time
+        this._dropIndicator.style.position = 'fixed';
+        this._dropIndicator.style.top = '0';
+        this._dropIndicator.style.height = '100%';
+        this._dropIndicator.style.zIndex = '10000';
+        this._dropIndicator.style.left = '';
+        this._dropIndicator.style.right = '';
+        this._dropIndicator.style.width = '10px';
+        this._dropIndicator.style.backgroundColor = 'rgba(100, 150, 255, 0.5)';
+        this._dropIndicator.style.border = 'none';
+        this._dropIndicator.style.boxSizing = 'border-box';
+        
+        const leftSidebar = getLeftSidebar();
+        const rightSidebar = getRightSidebar();
+        
+        if (side === 'left') {
+            this._dropIndicator.style.left = '0';
+            if (leftSidebar && leftSidebar.style.display !== 'none') {
+                this._dropIndicator.style.width = leftSidebar.offsetWidth + 'px';
+                this._dropIndicator.style.backgroundColor = 'transparent';
+                this._dropIndicator.style.border = '2px solid rgba(100, 150, 255, 0.8)';
+            }
+        } else {
+            this._dropIndicator.style.right = '0';
+            if (rightSidebar && rightSidebar.style.display !== 'none') {
+                this._dropIndicator.style.width = rightSidebar.offsetWidth + 'px';
+                this._dropIndicator.style.backgroundColor = 'transparent';
+                this._dropIndicator.style.border = '2px solid rgba(100, 150, 255, 0.8)';
+            }
+        }
+        
+        this._dropIndicator.style.display = 'block';
+    }
+    
+    _hideDropIndicators() {
+        if (this._dropIndicator) {
+            this._dropIndicator.style.display = 'none';
+        }
+    }
 
     toggleVisiblity() {
         if (this._hidden) {
@@ -1392,6 +1441,21 @@ export class CGuiMenuBar {
                 document.removeEventListener("pointermove", boundHandlePointerMove);
                 document.removeEventListener("pointerup", boundHandlePointerUp);
                 newGUI.close();
+                this._hideDropIndicators();
+                event.preventDefault();
+                return;
+            }
+            
+            const viewportWidth = window.innerWidth;
+            const menuLeft = parseInt(newDiv.style.left);
+            const menuRight = menuLeft + newGUI.domElement.offsetWidth;
+            
+            if (menuLeft < 0) {
+                this._showDropIndicator('left');
+            } else if (menuRight > viewportWidth) {
+                this._showDropIndicator('right');
+            } else {
+                this._hideDropIndicators();
             }
 
             event.preventDefault();
@@ -1402,6 +1466,7 @@ export class CGuiMenuBar {
         const boundHandlePointerUp = (event) => {
             document.removeEventListener("pointermove", boundHandlePointerMove);
             document.removeEventListener("pointerup", boundHandlePointerUp);
+            this._hideDropIndicators();
 
             if ((wasInLeftSidebar || wasInRightSidebar) && !hasUndockedFromSidebar) {
                 event.preventDefault();
@@ -1412,7 +1477,7 @@ export class CGuiMenuBar {
             const menuLeft = parseInt(newDiv.style.left);
             const menuRight = menuLeft + newGUI.domElement.offsetWidth;
 
-            if (hasDragged && !wasInLeftSidebar && menuLeft < 0) {
+            if (hasDragged && menuLeft < 0) {
                 addMenuToLeftSidebar(newGUI);
                 newGUI.mode = "SIDEBAR_LEFT";
                 newGUI.lockOpenClose = false;
@@ -1423,7 +1488,7 @@ export class CGuiMenuBar {
                 return;
             }
 
-            if (hasDragged && !wasInRightSidebar && menuRight > viewportWidth) {
+            if (hasDragged && menuRight > viewportWidth) {
                 addMenuToRightSidebar(newGUI);
                 newGUI.mode = "SIDEBAR_RIGHT";
                 newGUI.lockOpenClose = false;
