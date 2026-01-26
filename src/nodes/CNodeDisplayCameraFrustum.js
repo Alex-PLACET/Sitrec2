@@ -3,15 +3,26 @@ import {LineGeometry} from "three/addons/lines/LineGeometry.js";
 import {Line2} from "three/addons/lines/Line2.js";
 import {CNode3DGroup} from "./CNode3DGroup";
 import {DebugArrow, dispose, removeDebugArrow} from "../threeExt";
-import {NodeMan} from "../Globals";
+import {guiMenus, guiShowHide, NodeMan, setRenderOne, Units} from "../Globals";
 import {disposeMatLine, makeMatLine} from "../MatLines";
 import {LineSegmentsGeometry} from "three/addons/lines/LineSegmentsGeometry.js";
-import {Ray, Raycaster, Sphere, Vector3} from "three";
+import {
+    CanvasTexture,
+    DoubleSide,
+    Mesh,
+    MeshBasicMaterial,
+    PlaneGeometry,
+    Ray,
+    Raycaster,
+    Sphere,
+    Vector3
+} from "three";
 import {getLocalUpVector} from "../SphericalMath";
 import {wgs84} from "../LLA-ECEF-ENU";
 import * as LAYER from "../LayerMasks";
 import {assert} from "../assert.js";
 import {intersectSphere2} from "../threeUtils";
+import {CNodeGUIValue} from "./CNodeGUIValue";
 
 export class CNodeDisplayCameraFrustumATFLIR extends CNode3DGroup {
     constructor(v) {
@@ -84,7 +95,105 @@ export class CNodeDisplayCameraFrustum extends CNode3DGroup {
         this.showHider("Camera View Frustum");
         this.guiToggle("showQuad", "Frustum Ground Quad")
 
+        this.showVideoInFrustum = false;
+        guiShowHide.add(this, "showVideoInFrustum").name("Video in Frustum").listen().onChange((v) => {
+            this.updateVideoQuadVisibility();
+            setRenderOne(true);
+        })
+        this.addSimpleSerial("showVideoInFrustum")
+
+
+        const _dist = Number(Units.mToBig(2000))
+        const _end = Number(Units.mToBig(10000))
+        const _step = Number(Units.mToBig(100,5))
+
+        this.videoDistanceNode = new CNodeGUIValue({
+            id: this.id + "_videoDistance",
+            value: _dist,
+            start: 0,
+            end: _end,
+            step: _step,
+            desc: "Video Distance",
+            unitType: "big",
+        }, guiMenus.showhide);
+
+        this.videoOpacity = 1.0;
+        guiShowHide.add(this, "videoOpacity", 0, 1, 0.01).name("Video Opacity").listen().onChange(() => {
+            if (this.videoQuadMaterial) {
+                this.videoQuadMaterial.opacity = this.videoOpacity;
+            }
+            setRenderOne(true);
+        })
+        this.addSimpleSerial("videoOpacity")
+
+        this.videoQuad = null;
+        this.videoQuadMaterial = null;
+        this.videoTexture = null;
+        this.videoCanvas = null;
+        this.videoCtx = null;
+
         this.rebuild()
+    }
+
+    updateVideoQuadVisibility() {
+        if (this.videoQuad) {
+            this.videoQuad.visible = this.showVideoInFrustum;
+        }
+    }
+
+    createVideoQuad() {
+        if (this.videoQuad) return;
+
+        this.videoCanvas = document.createElement('canvas');
+        this.videoCanvas.width = 256;
+        this.videoCanvas.height = 256;
+        this.videoCtx = this.videoCanvas.getContext('2d');
+
+        this.videoTexture = new CanvasTexture(this.videoCanvas);
+
+        this.videoQuadMaterial = new MeshBasicMaterial({
+            map: this.videoTexture,
+            side: DoubleSide,
+            transparent: true,
+            opacity: this.videoOpacity,
+            depthWrite: false,
+        });
+
+        const geometry = new PlaneGeometry(1, 1);
+        this.videoQuad = new Mesh(geometry, this.videoQuadMaterial);
+        this.videoQuad.visible = this.showVideoInFrustum;
+        this.videoQuad.layers.mask = this.group.layers.mask;
+        this.group.add(this.videoQuad);
+    }
+
+    updateVideoQuad(f) {
+        if (!this.showVideoInFrustum) return;
+
+        const videoNode = NodeMan.get("video", false);
+        if (!videoNode || !videoNode.videoData) return;
+
+        const image = videoNode.videoData.getImage(f);
+        if (!image || !image.width) return;
+
+        if (!this.videoQuad) {
+            this.createVideoQuad();
+        }
+
+        if (this.videoCanvas.width !== image.width || this.videoCanvas.height !== image.height) {
+            this.videoCanvas.width = image.width;
+            this.videoCanvas.height = image.height;
+        }
+
+        this.videoCtx.drawImage(image, 0, 0);
+        this.videoTexture.needsUpdate = true;
+
+        const videoDistance = this.videoDistanceNode.getValueFrame(f);
+        const h = videoDistance * tan(radians(this.camera.fov / 2));
+        const w = h * this.camera.aspect;
+
+        this.videoQuad.scale.set(w * 2, h * 2, 1);
+        this.videoQuad.position.set(0, 0, -videoDistance);
+        this.videoQuad.visible = true;
     }
 
     rebuild() {
@@ -281,6 +390,8 @@ export class CNodeDisplayCameraFrustum extends CNode3DGroup {
             this.lastFOV = this.camera.fov;
             this.rebuild();
     //    }
+
+        this.updateVideoQuad(f);
     }
 }
 
