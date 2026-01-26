@@ -329,8 +329,9 @@ export class CNodeDisplayCameraFrustum extends CNode3DGroup {
         this.group.remove(this.line)
         dispose(this.FrustumGeometry)
 
-        var h = this.radius * tan(radians(this.camera.fov/2))
-        assert(!isNaN(h), "h is NaN, fov="+this.camera.fov+" radius="+this.radius+" aspect="+this.camera.aspect+" units="+this.units+" step="+this.step);
+        const fov = this.camera.renderedFOV || this.camera.fov;
+        var h = this.radius * tan(radians(fov/2))
+        assert(!isNaN(h), "h is NaN, fov="+fov+" radius="+this.radius+" aspect="+this.camera.aspect+" units="+this.units+" step="+this.step);
         // aspect is w/h so w = h * aspect
         var w = h * this.camera.aspect;
         var d = (this.radius - 2)
@@ -354,7 +355,7 @@ export class CNodeDisplayCameraFrustum extends CNode3DGroup {
             const step = unitsToMeters(this.units,this.step);
 
             for (let r = step; r < this.radius; r += step) {
-                h = r * tan(radians(this.camera.fov / 2))
+                h = r * tan(radians(fov / 2))
                 w = h * this.camera.aspect;
                 d = r;
                 line_points.push(
@@ -372,15 +373,19 @@ export class CNodeDisplayCameraFrustum extends CNode3DGroup {
 
         this.groundWorldCorners = null;
         if (this.showQuad || this.showVideoOnGround) {
+            this.camera.updateMatrixWorld();
+            const frustumH = this.radius * tan(radians(fov / 2));
+            const frustumW = frustumH * this.camera.aspect;
+            const frustumD = this.radius - 2;
 
             let corner = new Array(4)
 
             if (NodeMan.exists("TerrainModel")) {
                 let terrainNode = NodeMan.get("TerrainModel")
-                corner[0] = terrainCollideCameraRelative(terrainNode, this.camera, new Vector3(-w, -h, -d))
-                corner[1] = terrainCollideCameraRelative(terrainNode, this.camera, new Vector3(w, -h, -d))
-                corner[2] = terrainCollideCameraRelative(terrainNode, this.camera, new Vector3(w, h, -d))
-                corner[3] = terrainCollideCameraRelative(terrainNode, this.camera, new Vector3(-w, h, -d))
+                corner[0] = terrainCollideCameraRelative(terrainNode, this.camera, new Vector3(-frustumW, -frustumH, -frustumD))
+                corner[1] = terrainCollideCameraRelative(terrainNode, this.camera, new Vector3(frustumW, -frustumH, -frustumD))
+                corner[2] = terrainCollideCameraRelative(terrainNode, this.camera, new Vector3(frustumW, frustumH, -frustumD))
+                corner[3] = terrainCollideCameraRelative(terrainNode, this.camera, new Vector3(-frustumW, frustumH, -frustumD))
             } else {
                 corner[0] = null;
                 corner[1] = null;
@@ -413,16 +418,16 @@ export class CNodeDisplayCameraFrustum extends CNode3DGroup {
 
             // now we can try the sphere collisions for any that missed the terrain
             if (corner[0] === null) {
-                corner[0] = sphereCollideCameraRelative(globe, this.camera, new Vector3(-w, -h, -d))
+                corner[0] = sphereCollideCameraRelative(globe, this.camera, new Vector3(-frustumW, -frustumH, -frustumD))
             }
             if (corner[1] === null) {
-                corner[1] = sphereCollideCameraRelative(globe, this.camera, new Vector3(w, -h, -d))
+                corner[1] = sphereCollideCameraRelative(globe, this.camera, new Vector3(frustumW, -frustumH, -frustumD))
             }
             if (corner[2] === null) {
-                corner[2] = sphereCollideCameraRelative(globe, this.camera, new Vector3(w, h, -d))
+                corner[2] = sphereCollideCameraRelative(globe, this.camera, new Vector3(frustumW, frustumH, -frustumD))
             }
             if (corner[3] === null) {
-                corner[3] = sphereCollideCameraRelative(globe, this.camera, new Vector3(-w, h, -d))
+                corner[3] = sphereCollideCameraRelative(globe, this.camera, new Vector3(-frustumW, frustumH, -frustumD))
             }
 
             // if we have all 4 corners, then we can draw the quadrilateral
