@@ -86,7 +86,7 @@ import {imageQueueManager} from "./js/get-pixels-mick";
 import {disposeGimbalChart} from "./JetChart";
 import {CNode} from "./nodes/CNode";
 import {DragDropHandler} from "./DragDropHandler";
-import {CGuiMenuBar} from "./lil-gui-extras";
+import {CGuiMenuBar, setupHelpSearch} from "./lil-gui-extras";
 import {assert} from "./assert.js";
 import {CNodeFactory} from "./nodes/CNodeFactory";
 import {extraCSS} from "./extra.css.js";
@@ -1392,6 +1392,8 @@ async function initializeOnce() {
     guiMenus.help.add({ exportDebugLog: () => debugLog.export() }, 'exportDebugLog')
         .name('Export Debug Log')
         .tooltip('Download all console output (log, warn, error) as a text file for debugging');
+
+    setupHelpSearch(guiMenus.help);
 
     // legacy accessor variables. can also use guiMenus.physics, etc
     setupGUIGlobals(_gui,_guiShowHide,_guiTweaks, _guiShowHideViews, _guiPhysics)

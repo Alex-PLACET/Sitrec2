@@ -2066,3 +2066,205 @@ function getTextWidth(text) {
     return width;
 }
 
+export function setupHelpSearch(helpMenu) {
+    if (!helpMenu || !Globals.menuBar) return;
+
+    const searchContainer = document.createElement('div');
+    searchContainer.style.cssText = 'padding: 4px; border-bottom: 1px solid #444;';
+
+    const searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.placeholder = 'Search menus...';
+    searchInput.style.cssText = 'width: 100%; box-sizing: border-box; padding: 4px 8px; border: 1px solid #555; border-radius: 3px; background: #2a2a2a; color: #eee; font-size: 11px;';
+
+    const resultsContainer = document.createElement('div');
+    resultsContainer.style.cssText = 'max-height: 300px; overflow-y: auto;';
+
+    searchContainer.appendChild(searchInput);
+    searchContainer.appendChild(resultsContainer);
+
+    helpMenu.$children.insertBefore(searchContainer, helpMenu.$children.firstChild);
+
+    let currentHighlight = null;
+    let highlightTimeout = null;
+    let hoverOpenedMenu = null;
+
+    function clearHighlight() {
+        if (currentHighlight) {
+            currentHighlight.style.backgroundColor = '';
+            currentHighlight = null;
+        }
+        if (highlightTimeout) {
+            clearTimeout(highlightTimeout);
+            highlightTimeout = null;
+        }
+    }
+
+    function highlightController(controller, duration = 0) {
+        clearHighlight();
+        controller.domElement.style.backgroundColor = 'yellow';
+        currentHighlight = controller.domElement;
+        if (duration > 0) {
+            highlightTimeout = setTimeout(clearHighlight, duration);
+        }
+    }
+
+    function getMenuPath(gui) {
+        const path = [];
+        let current = gui;
+        while (current && current.$title) {
+            const title = current.$title.innerText;
+            if (title) path.unshift(title);
+            current = current.parent;
+        }
+        return path;
+    }
+
+    function collectMenuItems() {
+        const items = [];
+        const menuBar = Globals.menuBar;
+
+        for (const slot of menuBar.slots) {
+            if (!slot) continue;
+            collectFromGUI(slot, items);
+        }
+        return items;
+    }
+
+    function collectFromGUI(gui, items, depth = 0) {
+        if (!gui || !gui.children) return;
+
+        for (const child of gui.children) {
+            if (child instanceof GUI) {
+                collectFromGUI(child, items, depth + 1);
+            } else if (child._name) {
+                const path = getMenuPath(gui);
+                items.push({
+                    name: child._name,
+                    path: path,
+                    controller: child,
+                    gui: gui,
+                    rootMenu: findRootMenu(gui)
+                });
+            }
+        }
+    }
+
+    function findRootMenu(gui) {
+        let current = gui;
+        while (current.parent && current.parent.$title) {
+            current = current.parent;
+        }
+        return current;
+    }
+
+    function openMenuChain(gui, keepHelpOpen = false) {
+        const chain = [];
+        let current = gui;
+        while (current) {
+            chain.unshift(current);
+            current = current.parent;
+        }
+        if (keepHelpOpen) {
+            helpMenu.lockOpenClose = true;
+        }
+        try {
+            for (const g of chain) {
+                if (g.open) g.open();
+            }
+        } finally {
+            if (keepHelpOpen) {
+                helpMenu.lockOpenClose = false;
+            }
+        }
+    }
+
+    function performSearch(query) {
+        resultsContainer.innerHTML = '';
+        if (!query || query.length < 1) return;
+
+        const items = collectMenuItems();
+        const lowerQuery = query.toLowerCase();
+        const matches = items.filter(item => {
+            return item.name.toLowerCase().includes(lowerQuery);
+        });
+
+        for (const match of matches.slice(0, 20)) {
+            const resultDiv = document.createElement('div');
+            resultDiv.style.cssText = 'padding: 4px 8px; cursor: pointer; border-bottom: 1px solid #333; font-size: 11px;';
+            resultDiv.innerHTML = `<span style="color: #888;">${match.path.join(' > ')}</span> > <span style="color: #fff;">${match.name}</span>`;
+            const tooltip = match.controller.domElement.title;
+            if (tooltip) {
+                resultDiv.title = tooltip;
+            }
+
+            resultDiv.addEventListener('mouseenter', () => {
+                resultDiv.style.backgroundColor = '#444';
+
+                if (hoverOpenedMenu && hoverOpenedMenu !== match.rootMenu) {
+                    if (hoverOpenedMenu.mode === "DOCKED") {
+                        hoverOpenedMenu.close();
+                    }
+                }
+
+                if (match.rootMenu !== helpMenu) {
+                    openMenuChain(match.gui, true);
+                    hoverOpenedMenu = match.rootMenu;
+                    highlightController(match.controller);
+                }
+            });
+
+            resultDiv.addEventListener('mouseleave', () => {
+                resultDiv.style.backgroundColor = '';
+                clearHighlight();
+            });
+
+            resultDiv.addEventListener('click', () => {
+                helpMenu.close();
+
+                if (hoverOpenedMenu && hoverOpenedMenu.mode === "DOCKED") {
+                    hoverOpenedMenu.close();
+                }
+
+                openMenuChain(match.gui);
+                highlightController(match.controller, 5000);
+
+                searchInput.value = '';
+                resultsContainer.innerHTML = '';
+                hoverOpenedMenu = null;
+            });
+
+            resultsContainer.appendChild(resultDiv);
+        }
+    }
+
+    searchInput.addEventListener('input', (e) => {
+        performSearch(e.target.value);
+    });
+
+    searchInput.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+    });
+
+    resultsContainer.addEventListener('mouseleave', () => {
+        clearHighlight();
+        if (hoverOpenedMenu && hoverOpenedMenu.mode === "DOCKED") {
+            hoverOpenedMenu.close();
+        }
+        hoverOpenedMenu = null;
+    });
+
+    helpMenu.onOpenClose((gui) => {
+        if (gui._closed) {
+            searchInput.value = '';
+            resultsContainer.innerHTML = '';
+            clearHighlight();
+            helpMenu.lockOpenClose = false;
+            if (hoverOpenedMenu && hoverOpenedMenu.mode === "DOCKED") {
+                hoverOpenedMenu.close();
+            }
+            hoverOpenedMenu = null;
+        }
+    });
+}
+
