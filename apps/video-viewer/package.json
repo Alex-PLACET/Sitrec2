@@ -1,0 +1,67 @@
+{
+  "name": "sitrec-video-viewer",
+  "version": "1.0.0",
+  "description": "Sitrec Video Viewer - Standalone video analysis app",
+  "main": "main.js",
+  "author": "Metabunk",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --mac --arm64",
+    "build-universal": "electron-builder --mac --universal"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "com.metabunk.sitrec-video-viewer",
+    "productName": "Sitrec Video Viewer",
+    "directories": {
+      "output": "../../apps_dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js"
+    ],
+    "extraResources": [
+      {
+        "from": "../../app_build/video-viewer",
+        "to": "app_build/video-viewer",
+        "filter": ["**/*"]
+      }
+    ],
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64"]
+        }
+      ],
+      "category": "public.app-category.video",
+      "fileAssociations": [
+        {
+          "ext": ["mp4", "mov", "avi", "mkv", "webm", "m4v"],
+          "name": "Video Files",
+          "role": "Viewer"
+        }
+      ]
+    },
+    "dmg": {
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
+    "asar": true,
+    "compression": "maximum"
+  }
+}

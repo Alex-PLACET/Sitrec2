@@ -31,7 +31,10 @@
     "start-serverless-debug": "node --inspect standalone-serverless.js",
     "dev-serverless": "npm run build-serverless && npm run start-serverless",
     "dev-serverless-debug": "npm run build-serverless-debug && npm run start-serverless-debug",
-    "version": "node -e \"console.log(require('child_process').execSync('git describe --tags --abbrev=0', {encoding: 'utf8'}).trim())\""
+    "version": "node -e \"console.log(require('child_process').execSync('git describe --tags --abbrev=0', {encoding: 'utf8'}).trim())\"",
+    "build-video-viewer": "npx webpack --config apps/video-viewer/webpack.config.js",
+    "app-video-viewer": "npm run build-video-viewer && cd apps/video-viewer && npm run start",
+    "dist-video-viewer": "npm run build-video-viewer && cd apps/video-viewer && npm run build"
   },
   "jest": {
     "testPathIgnorePatterns": [

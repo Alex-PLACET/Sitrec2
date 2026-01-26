@@ -24,3 +24,5 @@ tests/__image_snapshots__/
 /.certs/
 /tests_regression/regression.test.js-snapshots/
 /tests_regression/ui-playwright.test.js-snapshots/
+/app_build/
+/app_dist/
