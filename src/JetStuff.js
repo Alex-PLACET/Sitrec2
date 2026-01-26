@@ -891,15 +891,22 @@ export function CreateTraverseNodes(idExtra="", los = "JetLOS") {
 //windowHeight = window.innerHeight;
 
 let lastWindowWidth, lastWindowHeight;
+let lastContentWidth, lastContentHeight;
 
 // Detects if the page's window has been resized, and resize things as needed.
 export function updateSize(force) {
 
-    if (force || lastWindowWidth !== window.innerWidth || lastWindowHeight !== window.innerHeight) {
+    const contentWidth = ViewMan.container ? ViewMan.container.offsetWidth : window.innerWidth;
+    const contentHeight = ViewMan.container ? ViewMan.container.offsetHeight : window.innerHeight;
+
+    if (force || lastWindowWidth !== window.innerWidth || lastWindowHeight !== window.innerHeight ||
+        lastContentWidth !== contentWidth || lastContentHeight !== contentHeight) {
         const windowWidth = window.innerWidth;
         const windowHeight = window.innerHeight;
         lastWindowHeight = windowHeight;
         lastWindowWidth = windowWidth;
+        lastContentWidth = contentWidth;
+        lastContentHeight = contentHeight;
 
         updateMatLineResolution(windowWidth*2, windowHeight*2)
 

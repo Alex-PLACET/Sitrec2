@@ -38,10 +38,8 @@ class CViewManager extends CManager {
     updateSize() {
 
         if (!isConsole) {
-            this.widthPx = window.innerWidth - this.leftPx;
-//            this.heightPx = window.innerHeight - this.topPx; // Old
-            this.heightPx = this.container.offsetHeight - this.topPx; // New
-//            console.log("Setting ViewMan size to " + this.widthPx + "," + this.heightPx)
+            this.widthPx = this.container.offsetWidth - this.leftPx;
+            this.heightPx = this.container.offsetHeight - this.topPx;
         }
     }
 

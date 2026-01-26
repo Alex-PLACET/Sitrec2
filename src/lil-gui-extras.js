@@ -7,7 +7,15 @@ import {assert} from "./assert";
 import {ViewMan} from "./CViewManager";
 import {parseBoolean} from "./utils";
 import Stats from "stats.js";
-import {toggleControlsVisibility} from "./PageStructure";
+import {
+    addMenuToLeftSidebar,
+    addMenuToRightSidebar,
+    isInLeftSidebar,
+    isInRightSidebar,
+    removeMenuFromLeftSidebar,
+    removeMenuFromRightSidebar,
+    toggleControlsVisibility
+} from "./PageStructure";
 
 // Issue with lil-gui, the OptionController options() method adds a
 // _names array to the controller object, and a _values array
@@ -1177,28 +1185,35 @@ export class CGuiMenuBar {
     }
 
     restoreToBar(newGUI) {
-        // Close any slider settings menu associated with this menu
         if (this.activePersistentMenu && this.activePersistentMenu._parentGUI === newGUI) {
             this.activePersistentMenu.destroy();
             this.activePersistentMenu = null;
         }
 
-        // and the div
-        const newDiv = this.divs.find((div) => div === newGUI.domElement.parentElement);
-        // restore position
+        if (isInLeftSidebar(newGUI)) {
+            removeMenuFromLeftSidebar(newGUI);
+        }
+        if (isInRightSidebar(newGUI)) {
+            removeMenuFromRightSidebar(newGUI);
+        }
 
+        const newDiv = this.divs.find((div) => div === newGUI.domElement.parentElement);
+        
+        if (newDiv.parentElement !== this.menuBar) {
+            this.menuBar.appendChild(newDiv);
+        }
+        
+        newDiv.style.position = 'absolute';
         newDiv.style.left = newGUI.originalLeft + "px";
         newDiv.style.top = newGUI.originalTop + "px";
-        // Reset z-index to base value when docked
+        newDiv.style.width = '';
         newDiv.style.zIndex = this.baseZIndex;
 
-        // Also reset the children's z-index
         newGUI.$children.style.zIndex = '';
         newGUI.$children.style.position = '';
         newGUI.lockOpenClose = false;
         newGUI.mode = "DOCKED";
 
-        // Remove detached styling when docked
         this.applyModeStyles(newGUI);
     }
 
@@ -1282,70 +1297,76 @@ export class CGuiMenuBar {
     applyModeStyles(gui) {
         const titleElement = gui.$title;
 
-        if (gui.mode !== "DOCKED") {
-            // Apply styling for dragging or detached menus - only to title bar
-            titleElement.style.setProperty('border-top-left-radius', '6px', 'important');
-            titleElement.style.setProperty('border-top-right-radius', '6px', 'important');
-            titleElement.style.setProperty('border-top', '1px solid #555', 'important');
-            titleElement.style.setProperty('border-left', '1px solid #555', 'important');
-            titleElement.style.setProperty('border-right', '1px solid #555', 'important');
-            titleElement.style.setProperty('box-shadow', '0 2px 8px rgba(0, 0, 0, 0.3)', 'important');
-        } else {
-            // Remove styling for docked menus
+        if (gui.mode === "DOCKED" || gui.mode === "SIDEBAR_LEFT" || gui.mode === "SIDEBAR_RIGHT") {
             titleElement.style.removeProperty('border-top-left-radius');
             titleElement.style.removeProperty('border-top-right-radius');
             titleElement.style.removeProperty('border-top');
             titleElement.style.removeProperty('border-left');
             titleElement.style.removeProperty('border-right');
             titleElement.style.removeProperty('box-shadow');
+        } else {
+            titleElement.style.setProperty('border-top-left-radius', '6px', 'important');
+            titleElement.style.setProperty('border-top-right-radius', '6px', 'important');
+            titleElement.style.setProperty('border-top', '1px solid #555', 'important');
+            titleElement.style.setProperty('border-left', '1px solid #555', 'important');
+            titleElement.style.setProperty('border-right', '1px solid #555', 'important');
+            titleElement.style.setProperty('box-shadow', '0 2px 8px rgba(0, 0, 0, 0.3)', 'important');
         }
     }
 
     handleTitleMouseDown(event) {
-        // event.target will be the title element we just moused over
-        // find the GUI object that has this title element
         const newGUI = this.slots.find((gui) => gui.$title === event.target);
 
-        // Bring this menu to the front
         this.bringToFront(newGUI);
 
-        // and find the div
         const newDiv = this.divs.find((div) => div === newGUI.domElement.parentElement);
 
-
-        // record current mouse position
+        const startX = event.clientX;
+        const startY = event.clientY;
         let mouseX = event.clientX;
         let mouseY = event.clientY;
+        let hasDragged = false;
 
-        // Note: We use the persistent wasOriginalllyInMenuBar flag instead of firstDrag
-        // This allows us to correctly identify menubar menus even on subsequent drags
+        const wasInLeftSidebar = isInLeftSidebar(newGUI);
+        const wasInRightSidebar = isInRightSidebar(newGUI);
+
+        if (wasInLeftSidebar || wasInRightSidebar) {
+            this.menuBar.appendChild(newDiv);
+            newDiv.style.position = 'absolute';
+            newDiv.style.left = event.clientX + 'px';
+            newDiv.style.top = event.clientY + 'px';
+            newDiv.style.width = '';
+            
+            if (wasInLeftSidebar) {
+                removeMenuFromLeftSidebar(newGUI);
+            } else {
+                removeMenuFromRightSidebar(newGUI);
+            }
+            hasDragged = true;
+        }
 
         newGUI.mode = "DRAGGING"
         this.applyModeStyles(newGUI)
 
-
-        // make sure it's open
         if (newGUI._closed) {
-            // in case we got locked into a closed state
-            // (dragged menus are always open)
             newGUI.lockOpenClose = false;
             newGUI.open();
         }
-        // lock it open
         newGUI.lockOpenClose = true;
 
-        // capture all the pointer move events and use then to move the div
-        // when the pointer is released, remove the event listener
         const boundHandlePointerMove = (event) => {
-
-
-
             newDiv.style.left = (parseInt(newDiv.style.left) + event.clientX - mouseX) + "px";
             newDiv.style.top = (parseInt(newDiv.style.top) + event.clientY - mouseY) + "px";
+            
+            const dx = Math.abs(event.clientX - startX);
+            const dy = Math.abs(event.clientY - startY);
+            if (dx > 10 || dy > 10) {
+                hasDragged = true;
+            }
+            
             mouseX = event.clientX;
             mouseY = event.clientY;
 
-            // if off the top, then click it back into the menu bar
             if (parseInt(newDiv.style.top) < -5) {
                 this.restoreToBar(newGUI);
                 document.removeEventListener("pointermove", boundHandlePointerMove);
@@ -1353,69 +1374,67 @@ export class CGuiMenuBar {
                 newGUI.close();
             }
 
-            // Check if menu is >80% off-screen during drag
-            if (this.isMenuOffScreen(newDiv)) {
-                document.removeEventListener("pointermove", boundHandlePointerMove);
-                document.removeEventListener("pointerup", boundHandlePointerUp);
-
-                // If it was originally created in the menubar, restore it to the bar
-                if (newGUI.wasOriginalllyInMenuBar) {
-                    // Was a menubar menu - restore it and close (same as double-click handler)
-                    this.restoreToBar(newGUI);
-                    newGUI.close();
-                    event.stopPropagation();
-                } else {
-                    // Was a standalone menu - just close it
-                    newGUI.close();
-                }
-                return;
-            }
-
-            // prevent all the default events
             event.preventDefault();
         }
 
-        // capture ALL pointer events, not just those on the div
-        // Using document instead of newDiv for better off-screen handling
         document.addEventListener("pointermove", boundHandlePointerMove);
 
         const boundHandlePointerUp = (event) => {
             document.removeEventListener("pointermove", boundHandlePointerMove);
             document.removeEventListener("pointerup", boundHandlePointerUp);
 
-            // Check if menu ended up >80% off-screen
+            const viewportWidth = window.innerWidth;
+            const menuLeft = parseInt(newDiv.style.left);
+            const menuRight = menuLeft + newGUI.domElement.offsetWidth;
+
+            if (hasDragged && !wasInLeftSidebar && menuLeft < 0) {
+                addMenuToLeftSidebar(newGUI);
+                newGUI.mode = "SIDEBAR_LEFT";
+                newGUI.lockOpenClose = false;
+                newGUI.open();
+                newGUI.lockOpenClose = true;
+                this.applyModeStyles(newGUI);
+                event.preventDefault();
+                return;
+            }
+
+            if (hasDragged && !wasInRightSidebar && menuRight > viewportWidth) {
+                addMenuToRightSidebar(newGUI);
+                newGUI.mode = "SIDEBAR_RIGHT";
+                newGUI.lockOpenClose = false;
+                newGUI.open();
+                newGUI.lockOpenClose = true;
+                this.applyModeStyles(newGUI);
+                event.preventDefault();
+                return;
+            }
+
             if (this.isMenuOffScreen(newDiv)) {
                 if (newGUI.wasOriginalllyInMenuBar) {
-                    // Was a menubar menu - restore it and close (same as double-click handler)
                     this.restoreToBar(newGUI);
                     newGUI.close();
                     event.stopPropagation();
                 } else {
-                    // Was a standalone menu - just close it
                     newGUI.close();
                 }
                 event.preventDefault();
                 return;
             }
-            // if in the first drag, and only moved a little, then snap it back
+            
             if (newGUI.wasOriginalllyInMenuBar && parseInt(newDiv.style.top) < 5) {
-                // This was just a click, not a drag - restore position but keep high z-index
                 newDiv.style.left = newGUI.originalLeft + "px";
                 newDiv.style.top = newGUI.originalTop + "px";
                 newGUI.lockOpenClose = false;
                 newGUI.mode = "DOCKED";
-                // Don't reset z-index - keep it high so menu stays in front
             } else {
-                // Menu has been dragged and released - set it as detached and bring to front
                 newGUI.mode = "DETACHED";
                 this.bringToFront(newGUI);
             }
             this.applyModeStyles(newGUI)
 
-
             event.preventDefault();
         }
-        // Add pointerup listener to document, not just the div
+        
         document.addEventListener("pointerup", boundHandlePointerUp);
 
         event.preventDefault();

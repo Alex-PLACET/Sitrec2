@@ -21,6 +21,15 @@ let setupDone = false;
 // Reduced from 40px to 28px, then to 20px (30% thinner than 28px) to minimize vertical space
 const CONTROLS_HEIGHT = 20;
 
+// Default sidebar width
+const SIDEBAR_WIDTH = 250;
+
+// Sidebar state
+let leftSidebarVisible = false;
+let rightSidebarVisible = false;
+let leftSidebarMenus = [];
+let rightSidebarMenus = [];
+
 export function setupPageStructure() {
     if (setupDone) return;
     setupDone = true;
@@ -159,4 +168,183 @@ export function toggleControlsVisibility() {
 
 export function areControlsHidden() {
     return controlsHidden;
+}
+
+const MENU_BAR_HEIGHT = 25;
+
+function createSidebar(id, side) {
+    const sidebar = document.createElement('div');
+    sidebar.id = id;
+    sidebar.style.position = 'absolute';
+    sidebar.style[side] = '0px';
+    sidebar.style.width = SIDEBAR_WIDTH + 'px';
+    sidebar.style.backgroundColor = '#1a1a1a';
+    sidebar.style.borderLeft = side === 'right' ? '1px solid #444' : 'none';
+    sidebar.style.borderRight = side === 'left' ? '1px solid #444' : 'none';
+    sidebar.style.zIndex = '4500';
+    sidebar.style.display = 'none';
+    sidebar.style.overflowY = 'auto';
+    sidebar.style.overflowX = 'hidden';
+    
+    let topOffset = MENU_BAR_HEIGHT;
+    if (parseBoolean(process.env.BANNER_ACTIVE)) {
+        topOffset += parseInt(process.env.BANNER_HEIGHT);
+    }
+    sidebar.style.top = topOffset + 'px';
+    sidebar.style.height = `calc(100% - ${topOffset}px)`;
+    
+    document.body.appendChild(sidebar);
+    return sidebar;
+}
+
+let leftSidebar = null;
+let rightSidebar = null;
+
+export function ensureSidebarsCreated() {
+    if (!leftSidebar) {
+        leftSidebar = createSidebar('LeftSidebar', 'left');
+    }
+    if (!rightSidebar) {
+        rightSidebar = createSidebar('RightSidebar', 'right');
+    }
+}
+
+function updateContentWidth() {
+    const content = document.getElementById("Content");
+    const controls = document.getElementById("ControlsBottom");
+    if (!content) return;
+    
+    let leftOffset = 0;
+    let rightOffset = 0;
+    
+    if (leftSidebarVisible && leftSidebar) {
+        leftOffset = SIDEBAR_WIDTH;
+    }
+    if (rightSidebarVisible && rightSidebar) {
+        rightOffset = SIDEBAR_WIDTH;
+    }
+    
+    content.style.left = leftOffset + 'px';
+    content.style.right = rightOffset + 'px';
+    content.style.width = `calc(100% - ${leftOffset + rightOffset}px)`;
+    
+    if (controls) {
+        controls.style.left = leftOffset + 'px';
+        controls.style.right = rightOffset + 'px';
+        controls.style.width = `calc(100% - ${leftOffset + rightOffset}px)`;
+    }
+    
+    window.dispatchEvent(new Event('resize'));
+}
+
+export function showLeftSidebar() {
+    ensureSidebarsCreated();
+    if (leftSidebar && !leftSidebarVisible) {
+        leftSidebar.style.display = 'block';
+        leftSidebarVisible = true;
+        updateContentWidth();
+    }
+}
+
+export function hideLeftSidebar() {
+    if (leftSidebar && leftSidebarVisible) {
+        leftSidebar.style.display = 'none';
+        leftSidebarVisible = false;
+        leftSidebarMenus = [];
+        updateContentWidth();
+    }
+}
+
+export function showRightSidebar() {
+    ensureSidebarsCreated();
+    if (rightSidebar && !rightSidebarVisible) {
+        rightSidebar.style.display = 'block';
+        rightSidebarVisible = true;
+        updateContentWidth();
+    }
+}
+
+export function hideRightSidebar() {
+    if (rightSidebar && rightSidebarVisible) {
+        rightSidebar.style.display = 'none';
+        rightSidebarVisible = false;
+        rightSidebarMenus = [];
+        updateContentWidth();
+    }
+}
+
+export function addMenuToLeftSidebar(menuGui) {
+    ensureSidebarsCreated();
+    showLeftSidebar();
+    
+    if (!leftSidebarMenus.includes(menuGui)) {
+        leftSidebarMenus.push(menuGui);
+    }
+    
+    leftSidebar.insertBefore(menuGui.domElement.parentElement, leftSidebar.firstChild);
+    
+    const container = menuGui.domElement.parentElement;
+    container.style.position = 'relative';
+    container.style.left = '0px';
+    container.style.top = '0px';
+    container.style.width = '100%';
+}
+
+export function addMenuToRightSidebar(menuGui) {
+    ensureSidebarsCreated();
+    showRightSidebar();
+    
+    if (!rightSidebarMenus.includes(menuGui)) {
+        rightSidebarMenus.push(menuGui);
+    }
+    
+    rightSidebar.insertBefore(menuGui.domElement.parentElement, rightSidebar.firstChild);
+    
+    const container = menuGui.domElement.parentElement;
+    container.style.position = 'relative';
+    container.style.left = '0px';
+    container.style.top = '0px';
+    container.style.width = '100%';
+}
+
+export function removeMenuFromLeftSidebar(menuGui) {
+    const index = leftSidebarMenus.indexOf(menuGui);
+    if (index !== -1) {
+        leftSidebarMenus.splice(index, 1);
+    }
+    if (leftSidebarMenus.length === 0) {
+        hideLeftSidebar();
+    }
+}
+
+export function removeMenuFromRightSidebar(menuGui) {
+    const index = rightSidebarMenus.indexOf(menuGui);
+    if (index !== -1) {
+        rightSidebarMenus.splice(index, 1);
+    }
+    if (rightSidebarMenus.length === 0) {
+        hideRightSidebar();
+    }
+}
+
+export function isInLeftSidebar(menuGui) {
+    return leftSidebarMenus.includes(menuGui);
+}
+
+export function isInRightSidebar(menuGui) {
+    return rightSidebarMenus.includes(menuGui);
+}
+
+export function getLeftSidebar() {
+    ensureSidebarsCreated();
+    return leftSidebar;
+}
+
+export function getRightSidebar() {
+    ensureSidebarsCreated();
+    return rightSidebar;
+}
+
+export function getSidebarWidth() {
+    return SIDEBAR_WIDTH;
 }
