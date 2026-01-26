@@ -26,8 +26,6 @@ function createWindow() {
 
     mainWindow.loadFile(path.join(getResourcePath(), 'index.html'));
 
-    mainWindow.webContents.openDevTools();
-
     mainWindow.on('closed', () => {
         mainWindow = null;
     });

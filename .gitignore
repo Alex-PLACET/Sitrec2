@@ -26,3 +26,4 @@ tests/__image_snapshots__/
 /tests_regression/ui-playwright.test.js-snapshots/
 /app_build/
 /app_dist/
+/apps_dist/

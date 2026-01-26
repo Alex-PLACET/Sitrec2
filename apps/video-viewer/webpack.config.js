@@ -7,8 +7,8 @@ const Dotenv = require('dotenv-webpack');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
 
 module.exports = {
-    mode: 'development',
-    devtool: 'source-map',
+    mode: 'production',
+    devtool: false,
     entry: './apps/video-viewer/renderer.js',
     target: 'web',
     output: {
@@ -64,7 +64,8 @@ module.exports = {
         }),
     ],
     optimization: {
-        minimize: false,
+        minimize: true,
+        minimizer: [new TerserPlugin()],
         usedExports: true,
         sideEffects: true,
     },
