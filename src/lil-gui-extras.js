@@ -11,7 +11,9 @@ import {
     addMenuToLeftSidebar,
     addMenuToRightSidebar,
     getLeftSidebar,
+    getLeftSidebarMenuIndex,
     getRightSidebar,
+    getRightSidebarMenuIndex,
     isInLeftSidebar,
     isInRightSidebar,
     removeMenuFromLeftSidebar,
@@ -1606,7 +1608,7 @@ export class CGuiMenuBar {
         const out = {};
         for (let i = 0; i < this.slots.length; i++) {
             const gui = this.slots[i];
-            out[this.getSerialID(i)] = {
+            const serialized = {
                 closed: gui._closed,
                 left: gui.domElement.parentElement.style.left,
                 top: gui.domElement.parentElement.style.top,
@@ -1614,6 +1616,12 @@ export class CGuiMenuBar {
                 mode: gui.mode,
                 lockOpenClose: gui.lockOpenClose,
             };
+            if (gui.mode === "SIDEBAR_LEFT") {
+                serialized.sidebarIndex = getLeftSidebarMenuIndex(gui);
+            } else if (gui.mode === "SIDEBAR_RIGHT") {
+                serialized.sidebarIndex = getRightSidebarMenuIndex(gui);
+            }
+            out[this.getSerialID(i)] = serialized;
         }
 
         return out;
@@ -1622,6 +1630,8 @@ export class CGuiMenuBar {
 
     modDeserialize(v) {
         const guiData = v;
+        const leftSidebarMenusToAdd = [];
+        const rightSidebarMenusToAdd = [];
 
         for (let i = 0; i < this.slots.length; i++) {
             const key = this.getSerialID(i);
@@ -1663,9 +1673,26 @@ export class CGuiMenuBar {
                 }
                 // Apply mode-specific styling
                 this.applyModeStyles(gui);
+                
+                // Collect sidebar menus to add in correct order
+                if (data.mode === "SIDEBAR_LEFT") {
+                    leftSidebarMenusToAdd.push({ gui, index: data.sidebarIndex ?? 0 });
+                } else if (data.mode === "SIDEBAR_RIGHT") {
+                    rightSidebarMenusToAdd.push({ gui, index: data.sidebarIndex ?? 0 });
+                }
             }
         }
-
+        
+        // Sort by sidebar index and add to sidebars
+        leftSidebarMenusToAdd.sort((a, b) => a.index - b.index);
+        rightSidebarMenusToAdd.sort((a, b) => a.index - b.index);
+        
+        for (const { gui } of leftSidebarMenusToAdd) {
+            addMenuToLeftSidebar(gui);
+        }
+        for (const { gui } of rightSidebarMenusToAdd) {
+            addMenuToRightSidebar(gui);
+        }
     }
 
     // Create a standalone pop-up menu that can be dragged around

@@ -356,3 +356,11 @@ export function getRightSidebar() {
 export function getSidebarWidth() {
     return SIDEBAR_WIDTH;
 }
+
+export function getLeftSidebarMenuIndex(menuGui) {
+    return leftSidebarMenus.indexOf(menuGui);
+}
+
+export function getRightSidebarMenuIndex(menuGui) {
+    return rightSidebarMenus.indexOf(menuGui);
+}
