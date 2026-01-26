@@ -1326,17 +1326,15 @@ export class CGuiMenuBar {
 
         const startX = event.clientX;
         const startY = event.clientY;
-        let mouseX = event.clientX;
-        let mouseY = event.clientY;
         let hasDragged = false;
 
         const wasInLeftSidebar = isInLeftSidebar(newGUI);
         const wasInRightSidebar = isInRightSidebar(newGUI);
         let hasUndockedFromSidebar = false;
         
-        const titleRect = newGUI.$title.getBoundingClientRect();
-        const clickOffsetX = event.clientX - titleRect.left;
-        const clickOffsetY = event.clientY - titleRect.top;
+        const divRect = newDiv.getBoundingClientRect();
+        const dragOffsetX = event.clientX - divRect.left;
+        const dragOffsetY = event.clientY - divRect.top;
 
         if (!(wasInLeftSidebar || wasInRightSidebar)) {
             newGUI.mode = "DRAGGING"
@@ -1359,8 +1357,8 @@ export class CGuiMenuBar {
             if ((wasInLeftSidebar || wasInRightSidebar) && !hasUndockedFromSidebar && hasDragged) {
                 this.menuBar.appendChild(newDiv);
                 newDiv.style.position = 'absolute';
-                newDiv.style.left = (event.clientX - clickOffsetX) + 'px';
-                newDiv.style.top = (event.clientY - clickOffsetY) + 'px';
+                newDiv.style.left = (event.clientX - dragOffsetX) + 'px';
+                newDiv.style.top = (event.clientY - dragOffsetY) + 'px';
                 newDiv.style.width = '';
                 newDiv.style.height = '1px';
                 
@@ -1378,23 +1376,16 @@ export class CGuiMenuBar {
                 this.applyModeStyles(newGUI)
                 newGUI.lockOpenClose = true;
                 
-                mouseX = event.clientX;
-                mouseY = event.clientY;
                 event.preventDefault();
                 return;
             }
             
             if (!hasUndockedFromSidebar && (wasInLeftSidebar || wasInRightSidebar)) {
-                mouseX = event.clientX;
-                mouseY = event.clientY;
                 return;
             }
             
-            newDiv.style.left = (parseInt(newDiv.style.left) + event.clientX - mouseX) + "px";
-            newDiv.style.top = (parseInt(newDiv.style.top) + event.clientY - mouseY) + "px";
-            
-            mouseX = event.clientX;
-            mouseY = event.clientY;
+            newDiv.style.left = (event.clientX - dragOffsetX) + 'px';
+            newDiv.style.top = (event.clientY - dragOffsetY) + 'px';
 
             if (parseInt(newDiv.style.top) < -5) {
                 this.restoreToBar(newGUI);
