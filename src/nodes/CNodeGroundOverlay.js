@@ -36,6 +36,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         
         this.overlayID = v.id;
         this.name = v.name || v.id;
+        this.noGUI = v.noGUI || false;
         
         this.north = v.north !== undefined ? v.north : 0;
         this.south = v.south !== undefined ? v.south : 0;
@@ -83,7 +84,9 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         this.loadTexture();  // Creates default texture if no imageURL
         this.buildMesh();
         this.setupEventListeners();
-        this.createGUIFolder();
+        if (!this.noGUI) {
+            this.createGUIFolder();
+        }
         
         if (this.showBorder) {
             this.showHighlightBorder();
@@ -269,6 +272,28 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         const texture = new CanvasTexture(canvas);
         texture.flipY = false;
         return texture;
+    }
+
+    setTexture(texture) {
+        this.texture = texture;
+        if (this.overlayMaterial) {
+            this.overlayMaterial.uniforms.map.value = this.texture;
+            this.overlayMaterial.needsUpdate = true;
+        }
+        setRenderOne(true);
+    }
+
+    setFreeTransformCorners(corners) {
+        this.freeTransform = true;
+        this.corners = corners;
+        this._cachedHomography = null;
+        const lats = corners.map(c => c.lat);
+        const lons = corners.map(c => c.lon);
+        this.north = Math.max(...lats);
+        this.south = Math.min(...lats);
+        this.east = Math.max(...lons);
+        this.west = Math.min(...lons);
+        this.updateMesh();
     }
     
     getCornerPositions() {

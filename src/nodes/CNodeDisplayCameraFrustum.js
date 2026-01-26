@@ -18,7 +18,8 @@ import {
     Vector3
 } from "three";
 import {getLocalUpVector} from "../SphericalMath";
-import {wgs84} from "../LLA-ECEF-ENU";
+import {EUSToLLA, wgs84} from "../LLA-ECEF-ENU";
+import {CNodeGroundOverlay} from "./CNodeGroundOverlay";
 import * as LAYER from "../LayerMasks";
 import {assert} from "../assert.js";
 import {intersectSphere2} from "../threeUtils";
@@ -102,6 +103,13 @@ export class CNodeDisplayCameraFrustum extends CNode3DGroup {
         })
         this.addSimpleSerial("showVideoInFrustum")
 
+        this.showVideoOnGround = false;
+        guiShowHide.add(this, "showVideoOnGround").name("Video on Ground").listen().onChange((v) => {
+            this.updateGroundVideoQuadVisibility();
+            setRenderOne(true);
+        })
+        this.addSimpleSerial("showVideoOnGround")
+
 
         const _dist = Number(Units.mToBig(2000))
         const _end = Number(Units.mToBig(10000))
@@ -132,6 +140,11 @@ export class CNodeDisplayCameraFrustum extends CNode3DGroup {
         this.videoCanvas = null;
         this.videoCtx = null;
 
+        this.groundVideoOverlay = null;
+        this.groundVideoCanvas = null;
+        this.groundVideoCtx = null;
+        this.groundVideoTexture = null;
+
         this.rebuild()
     }
 
@@ -139,6 +152,99 @@ export class CNodeDisplayCameraFrustum extends CNode3DGroup {
         if (this.videoQuad) {
             this.videoQuad.visible = this.showVideoInFrustum;
         }
+    }
+
+    updateGroundVideoQuadVisibility() {
+        if (this.groundVideoOverlay) {
+            this.groundVideoOverlay.group.visible = this.showVideoOnGround;
+        }
+    }
+
+    createGroundVideoOverlay() {
+        if (this.groundVideoOverlay) return;
+
+        this.groundVideoCanvas = document.createElement('canvas');
+        this.groundVideoCanvas.width = 256;
+        this.groundVideoCanvas.height = 256;
+        this.groundVideoCtx = this.groundVideoCanvas.getContext('2d');
+        this.groundVideoTexture = new CanvasTexture(this.groundVideoCanvas);
+        this.groundVideoTexture.flipY = false;
+
+        this.groundVideoOverlay = new CNodeGroundOverlay({
+            id: this.id + "_groundVideoOverlay",
+            noGUI: true,
+            freeTransform: true,
+            corners: [
+                {lat: 0, lon: 0},
+                {lat: 0, lon: 0.001},
+                {lat: -0.001, lon: 0.001},
+                {lat: -0.001, lon: 0},
+            ],
+            opacity: this.videoOpacity,
+            layers: this.group.layers.mask,
+        });
+        this.groundVideoOverlay.setTexture(this.groundVideoTexture);
+        this.groundVideoOverlay.group.visible = this.showVideoOnGround;
+    }
+
+    updateGroundVideoOverlay(f, worldCorners) {
+        if (!this.showVideoOnGround) {
+            if (this.groundVideoOverlay) {
+                this.groundVideoOverlay.group.visible = false;
+            }
+            return;
+        }
+
+        if (!worldCorners || worldCorners.some(c => c === null)) {
+            if (this.groundVideoOverlay) {
+                this.groundVideoOverlay.group.visible = false;
+            }
+            return;
+        }
+
+        const videoNode = NodeMan.get("video", false);
+        if (!videoNode || !videoNode.videoData) {
+            if (this.groundVideoOverlay) {
+                this.groundVideoOverlay.group.visible = false;
+            }
+            return;
+        }
+
+        const image = videoNode.videoData.getImage(f);
+        if (!image || !image.width) {
+            if (this.groundVideoOverlay) {
+                this.groundVideoOverlay.group.visible = false;
+            }
+            return;
+        }
+
+        if (!this.groundVideoOverlay) {
+            this.createGroundVideoOverlay();
+        }
+
+        if (this.groundVideoCanvas.width !== image.width || this.groundVideoCanvas.height !== image.height) {
+            this.groundVideoCanvas.width = image.width;
+            this.groundVideoCanvas.height = image.height;
+        }
+
+        this.groundVideoCtx.save();
+        this.groundVideoCtx.translate(0, image.height);
+        this.groundVideoCtx.scale(1, -1);
+        this.groundVideoCtx.drawImage(image, 0, 0);
+        this.groundVideoCtx.restore();
+        this.groundVideoTexture.needsUpdate = true;
+
+        if (this.groundVideoOverlay.overlayMaterial) {
+            this.groundVideoOverlay.overlayMaterial.uniforms.opacity.value = this.videoOpacity;
+        }
+
+        const llaCorners = worldCorners.map(corner => {
+            const lla = EUSToLLA(corner);
+            return {lat: lla.x, lon: lla.y};
+        });
+
+        this.groundVideoOverlay.setFreeTransformCorners(llaCorners);
+        this.groundVideoOverlay.group.visible = true;
     }
 
     createVideoQuad() {
@@ -264,7 +370,8 @@ export class CNodeDisplayCameraFrustum extends CNode3DGroup {
 
 // WORK IN PROGRESS.  calculating the ground quadrilateral intersecting the frustum with the ground
 
-        if (this.showQuad) {
+        this.groundWorldCorners = null;
+        if (this.showQuad || this.showVideoOnGround) {
 
             let corner = new Array(4)
 
@@ -323,20 +430,28 @@ export class CNodeDisplayCameraFrustum extends CNode3DGroup {
             // converting them back to local space, as they are attached to the camera
             if (corner[0] !== null && corner[1] !== null && corner[2] !== null && corner[3] !== null) {
                 const localUp = getLocalUpVector(corner[0])
+                this.groundWorldCorners = [
+                    corner[0].clone(),
+                    corner[1].clone(),
+                    corner[2].clone(),
+                    corner[3].clone(),
+                ];
                 corner[0] = this.camera.worldToLocal(corner[0]).add(localUp);
                 corner[1] = this.camera.worldToLocal(corner[1]).add(localUp);
                 corner[2] = this.camera.worldToLocal(corner[2]).add(localUp);
                 corner[3] = this.camera.worldToLocal(corner[3]).add(localUp);
-                line_points.push(
-                    corner[0].x, corner[0].y, corner[0].z,
-                    corner[1].x, corner[1].y, corner[1].z,
-                    corner[1].x, corner[1].y, corner[1].z,
-                    corner[2].x, corner[2].y, corner[2].z,
-                    corner[2].x, corner[2].y, corner[2].z,
-                    corner[3].x, corner[3].y, corner[3].z,
-                    corner[3].x, corner[3].y, corner[3].z,
-                    corner[0].x, corner[0].y, corner[0].z,
-                )
+                if (this.showQuad) {
+                    line_points.push(
+                        corner[0].x, corner[0].y, corner[0].z,
+                        corner[1].x, corner[1].y, corner[1].z,
+                        corner[1].x, corner[1].y, corner[1].z,
+                        corner[2].x, corner[2].y, corner[2].z,
+                        corner[2].x, corner[2].y, corner[2].z,
+                        corner[3].x, corner[3].y, corner[3].z,
+                        corner[3].x, corner[3].y, corner[3].z,
+                        corner[0].x, corner[0].y, corner[0].z,
+                    )
+                }
             }
 
         }
@@ -392,6 +507,7 @@ export class CNodeDisplayCameraFrustum extends CNode3DGroup {
     //    }
 
         this.updateVideoQuad(f);
+        this.updateGroundVideoOverlay(f, this.groundWorldCorners);
     }
 }
 
