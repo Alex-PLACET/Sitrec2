@@ -39,6 +39,11 @@ if (!isset($acceptable_domains)) {
     ];
 }
 
+// SECURITY: Validate url parameter exists
+if (!isset($_GET["url"]) || empty($_GET["url"])) {
+    http_response_code(400);
+    exit("Missing url parameter");
+}
 $url = $_GET["url"];  // usage examples above
 
 ob_start();			// output buffering, so the echo commands don't get sent (some servers will not send the header() if there's already output
@@ -177,9 +182,12 @@ if (file_exists($cachedFile)) {
         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
         curl_setopt($ch, CURLOPT_USERAGENT, "Mozilla/5.0 (iPad; U; CPU OS 3_2 like Mac OS X; en-us) AppleWebKit/531.21.10 (KHTML, like Gecko) Version/4.0.4 Mobile/7B334b Safari/531.21.102011-10-16 20:23:10");
 
-        // disable SSL verification
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+        // SECURITY: Only disable SSL verification if explicitly configured
+        // Set SITREC_DISABLE_SSL_VERIFY=true in environment for hosts with invalid certs
+        if (getenv('SITREC_DISABLE_SSL_VERIFY')) {
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+        }
 
         $dataBlob = curl_exec($ch);
         if ($dataBlob === false) {

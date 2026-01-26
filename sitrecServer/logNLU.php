@@ -8,6 +8,26 @@ require_once __DIR__ . '/user.php';
 
 header('Content-Type: application/json');
 
+// SECURITY: Rate limiting - max 30 logs per minute per IP
+$clientIP = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+$rateLimitDir = sys_get_temp_dir() . '/sitrec_nlu_ratelimit/';
+if (!is_dir($rateLimitDir)) {
+    @mkdir($rateLimitDir, 0755, true);
+}
+$rateLimitFile = $rateLimitDir . md5($clientIP) . ".json";
+$now = time();
+$rateData = file_exists($rateLimitFile) ? json_decode(file_get_contents($rateLimitFile), true) : null;
+if (!$rateData || $now > ($rateData['reset'] ?? 0)) {
+    $rateData = ['count' => 0, 'reset' => $now + 60];
+}
+if ($rateData['count'] >= 30) {
+    http_response_code(429);
+    echo json_encode(['error' => 'Rate limit exceeded']);
+    exit;
+}
+$rateData['count']++;
+file_put_contents($rateLimitFile, json_encode($rateData), LOCK_EX);
+
 $NLU_LOG_FILE = sys_get_temp_dir() . '/sitrec_nlu_fallbacks.json';
 $MAX_LOG_ENTRIES = 1000;
 

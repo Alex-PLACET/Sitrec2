@@ -39,11 +39,18 @@ if (isset($params['url'])) {
     $url = $params['url'];
 
     // SECURITY: Validate URL scheme - only allow http/https
+    // Also block javascript: and data: URLs that could be embedded
     $parsedUrl = parse_url($url);
-    if (!$parsedUrl || !isset($parsedUrl['scheme']) || 
-        !in_array(strtolower($parsedUrl['scheme']), ['http', 'https'])) {
+    $scheme = isset($parsedUrl['scheme']) ? strtolower($parsedUrl['scheme']) : '';
+    if (!$parsedUrl || !in_array($scheme, ['http', 'https'])) {
         http_response_code(400);
         echo "Only http/https URLs are allowed.";
+        exit;
+    }
+    // SECURITY: Block URLs containing javascript: or data: anywhere (for meta refresh attacks)
+    if (preg_match('/javascript:|data:/i', $url)) {
+        http_response_code(400);
+        echo "Invalid URL content.";
         exit;
     }
 
@@ -83,7 +90,8 @@ function generateRandomCode($length = 6) {
     $charactersLength = strlen($characters);
     $randomString = '';
     for ($i = 0; $i < $length; $i++) {
-        $randomString .= $characters[rand(0, $charactersLength - 1)];
+        // SECURITY: Use cryptographically secure random
+        $randomString .= $characters[random_int(0, $charactersLength - 1)];
     }
     return $randomString;
 }
