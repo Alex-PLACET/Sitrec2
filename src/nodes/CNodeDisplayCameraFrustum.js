@@ -110,6 +110,13 @@ export class CNodeDisplayCameraFrustum extends CNode3DGroup {
         })
         this.addSimpleSerial("showVideoOnGround")
 
+        this.showGroundVideoInLookView = false;
+        guiShowHide.add(this, "showGroundVideoInLookView").name("Ground Video in Look View").listen().onChange((v) => {
+            this.updateGroundVideoLayerMask();
+            setRenderOne(true);
+        })
+        this.addSimpleSerial("showGroundVideoInLookView")
+
 
         const _dist = Number(Units.mToBig(2000))
         const _end = Number(Units.mToBig(10000))
@@ -160,6 +167,19 @@ export class CNodeDisplayCameraFrustum extends CNode3DGroup {
         }
     }
 
+    updateGroundVideoLayerMask() {
+        if (this.groundVideoOverlay) {
+            let mask = LAYER.MASK_MAIN | LAYER.MASK_LOOK;
+            if (!this.showGroundVideoInLookView) {
+                mask = LAYER.MASK_MAIN;
+            }
+            this.groundVideoOverlay.group.layers.mask = mask;
+            this.groundVideoOverlay.group.traverse((child) => {
+                child.layers.mask = mask;
+            });
+        }
+    }
+
     createGroundVideoOverlay() {
         if (this.groundVideoOverlay) return;
 
@@ -185,6 +205,7 @@ export class CNodeDisplayCameraFrustum extends CNode3DGroup {
         });
         this.groundVideoOverlay.setTexture(this.groundVideoTexture);
         this.groundVideoOverlay.group.visible = this.showVideoOnGround;
+        this.updateGroundVideoLayerMask();
     }
 
     updateGroundVideoOverlay(f, worldCorners) {
@@ -244,6 +265,7 @@ export class CNodeDisplayCameraFrustum extends CNode3DGroup {
         });
 
         this.groundVideoOverlay.setFreeTransformCorners(llaCorners);
+        this.updateGroundVideoLayerMask();
         this.groundVideoOverlay.group.visible = true;
     }
 
@@ -374,9 +396,26 @@ export class CNodeDisplayCameraFrustum extends CNode3DGroup {
         this.groundWorldCorners = null;
         if (this.showQuad || this.showVideoOnGround) {
             this.camera.updateMatrixWorld();
-            const frustumH = this.radius * tan(radians(fov / 2));
-            const frustumW = frustumH * this.camera.aspect;
+            let frustumH = this.radius * tan(radians(fov / 2));
+            let frustumW = frustumH * this.camera.aspect;
             const frustumD = this.radius - 2;
+
+            if (this.showVideoOnGround) {
+                const videoNode = NodeMan.get("video", false);
+                if (videoNode && videoNode.videoData) {
+                    const videoWidth = videoNode.videoData.videoWidth;
+                    const videoHeight = videoNode.videoData.videoHeight;
+                    if (videoWidth && videoHeight) {
+                        const videoAspect = videoWidth / videoHeight;
+                        const cameraAspect = this.camera.aspect;
+                        if (videoAspect > cameraAspect) {
+                            frustumH *= cameraAspect / videoAspect;
+                        } else {
+                            frustumW *= videoAspect / cameraAspect;
+                        }
+                    }
+                }
+            }
 
             let corner = new Array(4)
 
