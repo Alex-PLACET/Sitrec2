@@ -9,6 +9,7 @@ class CViewManager extends CManager {
             setupPageStructure();
             this.topPx = 24;
             this.leftPx = 0;
+            this.screenOffsetX = 0;  // Container's screen X offset (updated when sidebars appear)
             this.container = document.getElementById("Content")
             this.updateSize();
 
@@ -38,7 +39,15 @@ class CViewManager extends CManager {
     updateSize() {
 
         if (!isConsole) {
-            this.widthPx = this.container.offsetWidth - this.leftPx;
+            // leftPx is the container-relative offset (always 0 for views positioned at left edge)
+            // Used for positioning view divs within the container
+            this.leftPx = 0;
+
+            // screenOffsetX is the container's absolute screen position (accounts for sidebars)
+            // Used for converting mouse screen coordinates to view-relative coordinates
+            this.screenOffsetX = this.container.offsetLeft;
+
+            this.widthPx = this.container.offsetWidth;
             this.heightPx = this.container.offsetHeight - this.topPx;
         }
     }

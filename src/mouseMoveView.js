@@ -159,22 +159,49 @@ export function onDocumentDoubleClick(event) {
     setRenderOne(true);
 }
 
+/**
+ * Convert screen coordinates to Three.js NDC (Normalized Device Coordinates).
+ * Takes absolute screen coordinates (event.clientX, event.clientY) and returns
+ * a Vector2 suitable for raycaster.setFromCamera().
+ *
+ * This function properly handles:
+ * - Sidebar offsets (via ViewMan.screenOffsetX which tracks the Content container's screen position)
+ * - View position within container (via view.leftPx, view.topPx)
+ * - Y-axis inversion (screen Y increases downward, NDC Y increases upward)
+ *
+ * @param {Object} view - The view object with leftPx, topPx, widthPx, heightPx
+ * @param {number} screenX - Screen X coordinate (event.clientX)
+ * @param {number} screenY - Screen Y coordinate (event.clientY)
+ * @returns {Vector2} NDC coordinates in range [-1, 1] for both axes
+ */
+export function screenToNDC(view, screenX, screenY) {
+    // Convert screen coords to view-relative coords
+    // view.leftPx is relative to the container, so we also need the container's screen offset
+    const containerOffsetX = ViewMan.screenOffsetX || 0;
+    const viewX = screenX - view.leftPx - containerOffsetX;
+    const viewY = screenY - view.topPx;
+
+    // Convert to NDC: x from -1 (left) to +1 (right), y from -1 (bottom) to +1 (top)
+    const ndcX = (viewX / view.widthPx) * 2 - 1;
+    const ndcY = -(viewY / view.heightPx) * 2 + 1;  // Invert Y for Three.js
+
+    return V2(ndcX, ndcY);
+}
+
+/**
+ * @deprecated Use screenToNDC() instead. This function expects pre-converted
+ * coordinates in a confusing coordinate system. Kept for backward compatibility.
+ *
+ * LEGACY: Expects mouseX and mouseY to already be view-relative, with mouseY
+ * being "Y-up" (i.e., measured from bottom of view, not top). This non-standard
+ * expectation has caused many bugs.
+ */
 export function makeMouseRay(view, mouseX, mouseY) {
-    // get position in that view in pixels
-    // views are defined from the TOP left of the window
-    // so need to adjust (same as in mouseInView)
-    const viewX = mouseX;
-    const viewY = mouseY;
+    // Legacy function - expects view-relative coords with Y measured from bottom
+    // Convert to proportion
+    const viewXp = mouseX / view.widthPx;
+    const viewYp = mouseY / view.heightPx;
 
-    // convert to proportion
-    const viewXp = viewX / view.widthPx
-    const viewYp = viewY / view.heightPx
-
-    //      console.log(`MouseX,Y = ${mouseX},${mouseY}`)
-    //      console.log(`ViewXp, Yp = ${viewXp},${viewYp}`)
-
-    // convert to Three.js camera relative, -1 to +1,
-    // where -1,-1 is bottom left, 0,0 is center, 1,1 is top right
-    //
-    return V2(viewXp * 2 - 1, viewYp * 2 - 1)
+    // Convert to Three.js NDC: -1 to +1
+    return V2(viewXp * 2 - 1, viewYp * 2 - 1);
 }

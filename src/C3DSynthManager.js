@@ -7,7 +7,7 @@ import {CNodeSynthClouds} from "./nodes/CNodeSynthClouds";
 import {CNodeGroundOverlay} from "./nodes/CNodeGroundOverlay";
 import {Globals, NodeMan, setRenderOne} from "./Globals";
 import {ViewMan} from "./CViewManager";
-import {makeMouseRay} from "./mouseMoveView";
+import {screenToNDC} from "./mouseMoveView";
 import {V3} from "./threeUtils";
 import {getLocalUpVector} from "./SphericalMath";
 import {Sphere, Vector3} from "three";
@@ -160,9 +160,9 @@ export class C3DSynthManager extends CManager {
      * Get ground intersection point from mouse position
      */
     getGroundPoint(view, mouseX, mouseY) {
-        const mouseYUp = view.heightPx - (mouseY - view.topPx);
-        const mouseRay = makeMouseRay(view, mouseX, mouseYUp);
-        
+        // Convert screen coordinates to NDC for raycasting
+        const mouseRay = screenToNDC(view, mouseX, mouseY);
+
         view.raycaster.setFromCamera(mouseRay, view.camera);
         
         // Try to intersect with terrain first
@@ -201,9 +201,9 @@ export class C3DSynthManager extends CManager {
         const view = ViewMan.get("mainView");
         if (!view) return null;
         
-        const mouseYUp = view.heightPx - (mouseY - view.topPx);
-        const mouseRay = makeMouseRay(view, mouseX, mouseYUp);
-        
+        // Convert screen coordinates to NDC for raycasting
+        const mouseRay = screenToNDC(view, mouseX, mouseY);
+
         view.raycaster.setFromCamera(mouseRay, view.camera);
         view.raycaster.layers.mask = view.camera.layers.mask; // Use camera's layer mask
         

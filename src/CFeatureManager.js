@@ -2,6 +2,7 @@ import {CManager} from "./CManager";
 import {CNodeFeatureMarker} from "./nodes/CNodeLabels3D";
 import {Globals, NodeMan} from "./Globals";
 import {Vector3} from "three";
+import {ViewMan} from "./CViewManager";
 
 /**
  * CFeatureManager
@@ -172,7 +173,9 @@ class CFeatureManager extends CManager {
                 if (screenPos.z > 1) continue;
                 
                 // Convert from normalized device coordinates (-1 to 1) to screen pixels
-                const screenX = (screenPos.x * 0.5 + 0.5) * view.widthPx + view.leftPx;
+                // Note: leftPx/topPx are container-relative, add screenOffsetX for absolute screen position
+                const containerOffsetX = ViewMan.screenOffsetX || 0;
+                const screenX = (screenPos.x * 0.5 + 0.5) * view.widthPx + view.leftPx + containerOffsetX;
                 const screenY = (1 - (screenPos.y * 0.5 + 0.5)) * view.heightPx + view.topPx;
                 
                 // Calculate distance from mouse to projected point

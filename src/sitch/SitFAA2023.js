@@ -3,7 +3,7 @@ import {ECEFToLLAVD_Sphere, EUSToECEF, LLAToEUS} from "../LLA-ECEF-ENU";
 import {DebugSphere, removeDebugSphere} from "../threeExt";
 import {Group, Raycaster} from "three";
 import {GlobalScene} from "../LocalFrame";
-import {makeMouseRay} from "../mouseMoveView";
+import {screenToNDC} from "../mouseMoveView";
 import * as LAYERS from "../LayerMasks";
 import * as LAYER from "../LayerMasks";
 import {CNodeViewUI} from "../nodes/CNodeViewUI";
@@ -115,12 +115,9 @@ export const SitFAA2023 = {
 
     handleMouseMove: function (event) {
         const mainView = ViewMan.get("mainView");
-        let mouseX = (event.clientX);
-        let mouseY = (event.clientY);
-        var mouseYUp = mainView.heightPx - (mouseY - mainView.topPx)
-        var mouseRay = makeMouseRay(mainView, mouseX, mouseYUp);
+        // Convert screen coordinates to NDC for raycasting
+        const mouseRay = screenToNDC(mainView, event.clientX, event.clientY);
 
-        //  console.log("pointermove" + event.clientX + event.clientY)
         const raycaster = new Raycaster();
         raycaster.layers.mask = LAYERS.MASK_MAINRENDER
         raycaster.layers.mask  |= LAYER.MASK_MAIN | LAYER.MASK_LOOK;

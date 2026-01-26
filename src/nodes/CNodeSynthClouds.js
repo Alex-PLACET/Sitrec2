@@ -17,7 +17,7 @@ import {
 import * as LAYER from "../LayerMasks";
 import {dropFromDistance, getLocalNorthVector, getLocalUpVector} from "../SphericalMath";
 import {EUSToLLA, LLAToEUS, wgs84} from "../LLA-ECEF-ENU";
-import {makeMouseRay} from "../mouseMoveView";
+import {screenToNDC} from "../mouseMoveView";
 import {ViewMan} from "../CViewManager";
 import {CustomManager, Globals, guiMenus, NodeMan, setRenderOne, Sit, Synth3DManager, UndoManager} from "../Globals";
 import {mouseInViewOnly} from "../ViewUtils";
@@ -546,8 +546,7 @@ export class CNodeSynthClouds extends CNode3DGroup {
             this.dragInitialCenterEUS = centerEUS.clone();
             
             // Calculate initial intersection point on the drag plane
-            const mouseYUp = view.heightPx - (event.clientY - view.topPx);
-            const mouseRay = makeMouseRay(view, event.clientX, mouseYUp);
+            const mouseRay = screenToNDC(view, event.clientX, event.clientY);
             this.raycaster.setFromCamera(mouseRay, view.camera);
             
             const plane = new Plane();
@@ -586,9 +585,8 @@ export class CNodeSynthClouds extends CNode3DGroup {
         if (this.isDragging && this.draggingHandle) {
             const view = ViewMan.get("mainView");
             if (!view) return;
-            
-            const mouseYUp = view.heightPx - (event.clientY - view.topPx);
-            const mouseRay = makeMouseRay(view, event.clientX, mouseYUp);
+
+            const mouseRay = screenToNDC(view, event.clientX, event.clientY);
             this.raycaster.setFromCamera(mouseRay, view.camera);
             
             // Use INITIAL center position for plane - this is key for relative dragging
@@ -701,10 +699,8 @@ export class CNodeSynthClouds extends CNode3DGroup {
     getHandleAtMouse(mouseX, mouseY) {
         const view = ViewMan.get("mainView");
         if (!view) return null;
-        
-        const mouseYUp = view.heightPx - (mouseY - view.topPx);
-        const mouseRay = makeMouseRay(view, mouseX, mouseYUp);
-        
+
+        const mouseRay = screenToNDC(view, mouseX, mouseY);
         this.raycaster.setFromCamera(mouseRay, view.camera);
         
         const handles = [];

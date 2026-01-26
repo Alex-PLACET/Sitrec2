@@ -24,7 +24,7 @@ import {
 import * as LAYER from "../LayerMasks";
 import {getLocalUpVector} from "../SphericalMath";
 import {EUSToLLA, LLAToEUS} from "../LLA-ECEF-ENU";
-import {makeMouseRay} from "../mouseMoveView";
+import {screenToNDC} from "../mouseMoveView";
 import {ViewMan} from "../CViewManager";
 import {CustomManager, Globals, guiMenus, setRenderOne, Synth3DManager, UndoManager} from "../Globals";
 import {mouseInViewOnly} from "../ViewUtils";
@@ -1382,9 +1382,7 @@ export class CNodeSynthBuilding extends CNode3DGroup {
             return;
         }
         
-        const mouseYUp = view.heightPx - (event.clientY - view.topPx);
-        const mouseRay = makeMouseRay(view, event.clientX, mouseYUp);
-        
+        const mouseRay = screenToNDC(view, event.clientX, event.clientY);
         this.raycaster.setFromCamera(mouseRay, view.camera);
         
         // Check intersection with actual handles (control points + roof center handle + roofline handle)
@@ -1586,9 +1584,7 @@ export class CNodeSynthBuilding extends CNode3DGroup {
             return;
         }
         
-        const mouseYUp = view.heightPx - (event.clientY - view.topPx);
-        const mouseRay = makeMouseRay(view, event.clientX, mouseYUp);
-        
+        const mouseRay = screenToNDC(view, event.clientX, event.clientY);
         this.raycaster.setFromCamera(mouseRay, view.camera);
         
         // Capture state before any drag operation begins (for undo/redo)
@@ -1783,9 +1779,7 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         const view = ViewMan.get("mainView");
         if (!view || !this.buildingCentroid) return;
         
-        const mouseYUp = view.heightPx - (event.clientY - view.topPx);
-        const mouseRay = makeMouseRay(view, event.clientX, mouseYUp);
-        
+        const mouseRay = screenToNDC(view, event.clientX, event.clientY);
         this.raycaster.setFromCamera(mouseRay, view.camera);
         
         // Create a ground plane at the building centroid
@@ -1884,9 +1878,7 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         const view = ViewMan.get("mainView");
         if (!view) return;
         
-        const mouseYUp = view.heightPx - (event.clientY - view.topPx);
-        const mouseRay = makeMouseRay(view, event.clientX, mouseYUp);
-        
+        const mouseRay = screenToNDC(view, event.clientX, event.clientY);
         this.raycaster.setFromCamera(mouseRay, view.camera);
         
         // Check if dragging the roof center handle, roofline handle, or building mesh

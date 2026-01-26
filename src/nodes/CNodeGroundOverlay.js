@@ -18,7 +18,7 @@ import {disposeMatLine, makeMatLine} from "../MatLines";
 import * as LAYER from "../LayerMasks";
 import {getLocalDownVector, getLocalUpVector} from "../SphericalMath";
 import {EUSToLLA, LLAToEUS} from "../LLA-ECEF-ENU";
-import {makeMouseRay} from "../mouseMoveView";
+import {screenToNDC} from "../mouseMoveView";
 import {ViewMan} from "../CViewManager";
 import {CustomManager, FileManager, Globals, guiMenus, NodeMan, setRenderOne, Synth3DManager} from "../Globals";
 import {undoManager as UndoManager} from "../UndoManager";
@@ -1117,8 +1117,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
                 this.dragInitialRotation = this.rotation;
 
                 // Get the terrain intersection point for the initial click
-                const mouseYUp = view.heightPx - (event.clientY - view.topPx);
-                const mouseRay = makeMouseRay(view, event.clientX, mouseYUp);
+                const mouseRay = screenToNDC(view, event.clientX, event.clientY);
                 this.raycaster.setFromCamera(mouseRay, view.camera);
 
                 const savedMask = this.raycaster.layers.mask;
@@ -1155,10 +1154,9 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         const view = ViewMan.get("mainView");
         if (!view) return null;
         
-        const mouseYUp = view.heightPx - (mouseY - view.topPx);
-        const mouseRay = makeMouseRay(view, mouseX, mouseYUp);
+        const mouseRay = screenToNDC(view, mouseX, mouseY);
         this.raycaster.setFromCamera(mouseRay, view.camera);
-        
+
         const handles = [];
         this.cornerHandles.forEach((mesh, index) => {
             handles.push({mesh, type: 'corner', index});
@@ -1191,8 +1189,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         if (!view) return;
 
         if (this.isDragging && this.draggingHandle) {
-            const mouseYUp = view.heightPx - (event.clientY - view.topPx);
-            const mouseRay = makeMouseRay(view, event.clientX, mouseYUp);
+            const mouseRay = screenToNDC(view, event.clientX, event.clientY);
             this.raycaster.setFromCamera(mouseRay, view.camera);
 
             if (NodeMan.exists("TerrainModel")) {

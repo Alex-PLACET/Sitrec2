@@ -19,7 +19,7 @@ import {
 } from "../Globals";
 import {isKeyHeld} from "../KeyBoardHandler";
 import {GlobalDaySkyScene, GlobalNightSkyScene, GlobalScene, GlobalSunSkyScene} from "../LocalFrame";
-import {DRAG, makeMouseRay} from "../mouseMoveView";
+import {DRAG, screenToNDC} from "../mouseMoveView";
 import {GPUMemoryMonitor} from "../GPUMemoryMonitor";
 import {
     Camera,
@@ -63,7 +63,7 @@ import {ACESFilmicToneMappingShader} from "../shaders/ACESFilmicToneMappingShade
 import {ShaderPass} from "three/addons/postprocessing/ShaderPass.js";
 import {isLocal, SITREC_APP} from "../configUtils.js"
 import {VRButton} from 'three/addons/webxr/VRButton.js';
-import {mouseInViewOnly, mouseToView} from "../ViewUtils";
+import {mouseInViewOnly} from "../ViewUtils";
 import {sharedUniforms} from "../js/map33/material/SharedUniforms";
 import {CameraMapControls} from "../js/CameraControls";
 import {ViewMan} from "../CViewManager";
@@ -1788,9 +1788,8 @@ export class CNodeView3D extends CNodeViewCanvas {
     onMouseDown(event, mouseX, mouseY) {
         if (!this.mouseEnabled) return;
 
-        // convert to coordinates relative to lower left of view
-        var mouseYUp = this.heightPx - (mouseY - this.topPx)
-        var mouseRay = makeMouseRay(this, mouseX, mouseYUp);
+        // Convert screen coordinates to NDC for raycasting
+        const mouseRay = screenToNDC(this, mouseX, mouseY);
 
         // this.cursorSprite.position
 
@@ -1878,9 +1877,8 @@ export class CNodeView3D extends CNodeViewCanvas {
 
         //     return;
 
-
-        var mouseYUp = this.heightPx - (mouseY - this.topPx)
-        var mouseRay = makeMouseRay(this, mouseX, mouseYUp);
+        // Convert screen coordinates to NDC for raycasting
+        const mouseRay = screenToNDC(this, mouseX, mouseY);
 
         // For testing mouse position, just set dragMode to 1
         //  this.dragMode = DRAG.MOVEHANDLE;
@@ -2052,10 +2050,12 @@ export class CNodeView3D extends CNodeViewCanvas {
             if (screenPos_A.z > 1 && screenPos_B.z > 1) continue;
             
             // Convert from normalized device coordinates (-1 to 1) to screen pixels
-            const screenX_A = (screenPos_A.x * 0.5 + 0.5) * this.widthPx + this.leftPx;
+            // Note: leftPx/topPx are container-relative, add screenOffsetX for absolute screen position
+            const containerOffsetX = ViewMan.screenOffsetX || 0;
+            const screenX_A = (screenPos_A.x * 0.5 + 0.5) * this.widthPx + this.leftPx + containerOffsetX;
             const screenY_A = (1 - (screenPos_A.y * 0.5 + 0.5)) * this.heightPx + this.topPx;
-            
-            const screenX_B = (screenPos_B.x * 0.5 + 0.5) * this.widthPx + this.leftPx;
+
+            const screenX_B = (screenPos_B.x * 0.5 + 0.5) * this.widthPx + this.leftPx + containerOffsetX;
             const screenY_B = (1 - (screenPos_B.y * 0.5 + 0.5)) * this.heightPx + this.topPx;
             
             // Calculate distance from mouse to line segment
@@ -2374,7 +2374,9 @@ export class CNodeView3D extends CNodeViewCanvas {
                 pos.project(this.camera);
                 
                 if (pos.z > -1 && pos.z < 1 && pos.x >= -1 && pos.x <= 1 && pos.y >= -1 && pos.y <= 1) {
-                    const screenX = (pos.x + 1) * this.widthPx / 2 + this.leftPx;
+                    // Convert NDC to screen coordinates, accounting for sidebar offset
+                    const containerOffsetX = ViewMan.screenOffsetX || 0;
+                    const screenX = (pos.x + 1) * this.widthPx / 2 + this.leftPx + containerOffsetX;
                     const screenY = (-pos.y + 1) * this.heightPx / 2 + this.topPx;
                     
                     const dx = screenX - mouseX;
@@ -2458,12 +2460,8 @@ export class CNodeView3D extends CNodeViewCanvas {
         }
         
         // mouseX, mouseY are screen coordinates (event.clientX, event.clientY)
-        // Convert to view-relative coordinates
-        const [viewX, viewY] = mouseToView(this, mouseX, mouseY);
-        
-        // Convert to coordinates relative to lower left of view (same as onMouseDown)
-        const mouseYUp = this.heightPx - viewY;
-        const mouseRay = makeMouseRay(this, viewX, mouseYUp);
+        // Convert screen coordinates to NDC for raycasting
+        const mouseRay = screenToNDC(this, mouseX, mouseY);
         
         if (this.camera && mouseInViewOnly(this, mouseX, mouseY)) {
             // First, check for 3D objects using raycasting (they have priority over tracks)
