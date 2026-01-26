@@ -37,15 +37,20 @@ Example entry format:
 ### New Features
 - **Help Menu Search**: Search box in the Help menu allows searching all menu items across all menus. Type to filter, hover or use arrow keys to preview items in their menus with highlighting, click or press Enter to select. Tooltips are shown for items that have them.
 - **Video in Frustum**: Display video texture directly on the camera frustum
+- **Video on Ground**: Display video texture on the ground plane with correct aspect ratio
 - **Slider Settings Menu**: Right-click on any slider to adjust min, max, and step values for more precision
 - **Free Transform for Overlays**: More flexible positioning of ground overlays
 
 ### Improvements
 - Better TIFF support for files without geolocation data
 - Deterministic flash offset based on light ID for consistent strobe timing
+- Server-side rate limiting for improved security
 
 ### Bug Fixes
 - Fixed JSON parsing of sitch file names returning numbers instead of strings
+- Fixed feature marker text color not applying correctly
+- Fixed FOV calculation issues
+- Fixed ground video aspect ratio and visibility in look view
 
 ---
 
