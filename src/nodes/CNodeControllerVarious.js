@@ -2,7 +2,7 @@ import {atan, degrees, radians, tan} from "../utils";
 import {par} from "../par";
 import {ECEFToLLAVD_Sphere, EUSToECEF, LLAToEUS, wgs84} from "../LLA-ECEF-ENU";
 import {isKeyHeld} from "../KeyBoardHandler";
-import {gui, guiPhysics, NodeMan, setRenderOne, Sit} from "../Globals";
+import {gui, guiPhysics, NodeMan, setRenderOne, Sit, UndoManager} from "../Globals";
 import {getLocalEastVector, getLocalNorthVector, getLocalUpVector} from "../SphericalMath";
 import {adjustHeightAboveGround, clampAboveGround, DebugArrow} from "../threeExt";
 import {CNodeController} from "./CNodeController";
@@ -169,10 +169,9 @@ export class CNodeControllerManualPosition extends CNodeController {
         super(v);
 
         this.aboveGround = v.aboveGround;
-
-        // bit of a patch to only apply this once in an update cycle
-        // the problem being that recalculateCastcade() will make the camera node call apply() again
-        // this.applying = false;
+        this.clKeyWasHeld = false;
+        this.undoCameraLat = null;
+        this.undoCameraLon = null;
     }
 
     apply(f, objectNode) {
@@ -188,9 +187,14 @@ export class CNodeControllerManualPosition extends CNodeController {
         const fwd = camera.getWorldDirection(new Vector3())
         const right = new Vector3().crossVectors(fwd, camera.up)
 
-        if (isKeyHeld('l') || isKeyHeld('c')) {
+        const clHeld = isKeyHeld('l') || isKeyHeld('c');
+        if (clHeld) {
             const cursorPos = getCursorPositionFromTopView();
             if (cursorPos) {
+                if (!this.clKeyWasHeld) {
+                    this.undoCameraLat = NodeMan.get("cameraLat").value;
+                    this.undoCameraLon = NodeMan.get("cameraLon").value;
+                }
                 this.applying = true;
                 const ecef = EUSToECEF(cursorPos)
                 const LLA = ECEFToLLAVD_Sphere(ecef)
@@ -204,6 +208,26 @@ export class CNodeControllerManualPosition extends CNodeController {
                 }
             }
         }
+        if (!clHeld && this.clKeyWasHeld && this.undoCameraLat !== null && UndoManager) {
+            const oldLat = this.undoCameraLat;
+            const oldLon = this.undoCameraLon;
+            const newLat = NodeMan.get("cameraLat").value;
+            const newLon = NodeMan.get("cameraLon").value;
+            UndoManager.add({
+                description: "Move camera position",
+                undo: () => {
+                    NodeMan.get("cameraLat").value = oldLat;
+                    NodeMan.get("cameraLon").value = oldLon;
+                },
+                redo: () => {
+                    NodeMan.get("cameraLat").value = newLat;
+                    NodeMan.get("cameraLon").value = newLon;
+                }
+            });
+            this.undoCameraLat = null;
+            this.undoCameraLon = null;
+        }
+        this.clKeyWasHeld = clHeld;
 
 
 

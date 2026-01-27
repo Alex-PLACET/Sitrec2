@@ -15,7 +15,7 @@ import {adjustHeightAboveGround, elevationAtLL} from "../threeExt";
 import {assert} from "../assert";
 import {getCursorPositionFromTopView} from "../mouseMoveView";
 import {EventManager} from "../CEventManager";
-import {guiMenus, NodeMan, setSitchEstablished, Sit} from "../Globals";
+import {guiMenus, NodeMan, setSitchEstablished, Sit, UndoManager} from "../Globals";
 import {getApproximateLocationFromIP} from "../GeoLocation";
 import {customAltitudeFunction, customLocationFunction} from "../../config/config";
 import {showError} from "../showError";
@@ -200,6 +200,8 @@ export class CNodePositionLLA extends CNodeTrack {
             }
 
             this.key = v.key;
+            this.posKeyWasHeld = false;
+            this.undoLLA = null;
 
         } else {
             // more customizable, so you can add your own sources or controls
@@ -306,17 +308,29 @@ export class CNodePositionLLA extends CNodeTrack {
 
     update() {
         if (this.key) {
-
-            // Note adding 'l' key for historical reasons, as the 'l' key was used for "lookCamera" or lat/lon or locations in the past
-            if (isKeyHeld(this.key.toLowerCase()) || isKeyHeld('l')) {
+            const posHeld = isKeyHeld(this.key.toLowerCase()) || isKeyHeld('l');
+            if (posHeld) {
                 const cursorPos = getCursorPositionFromTopView();
                 if (cursorPos) {
+                    if (!this.posKeyWasHeld) {
+                        this.undoLLA = this._LLA.slice();
+                    }
                     setSitchEstablished(true);
                     this.setFromEUS(cursorPos, true);
                 }
             }
-
-
+            if (!posHeld && this.posKeyWasHeld && this.undoLLA && UndoManager) {
+                const oldLLA = this.undoLLA.slice();
+                const newLLA = this._LLA.slice();
+                const self = this;
+                UndoManager.add({
+                    description: "Move position " + this.id,
+                    undo: () => { self.setLLA(oldLLA[0], oldLLA[1], oldLLA[2]); },
+                    redo: () => { self.setLLA(newLLA[0], newLLA[1], newLLA[2]); }
+                });
+                this.undoLLA = null;
+            }
+            this.posKeyWasHeld = posHeld;
         }
     }
 
