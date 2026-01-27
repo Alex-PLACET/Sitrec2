@@ -17,10 +17,9 @@ import {
 import {NodeFactory, NodeMan, setRenderOne, Sit} from "../Globals";
 import {CNodeControllerPTZUI} from "../nodes/CNodeControllerPTZUI";
 import {intersectSphere2, V3} from "../threeUtils";
-import {onDocumentMouseMove} from "../mouseMoveView";
+import {getCursorPositionFromTopView, onDocumentMouseMove} from "../mouseMoveView";
 import {isKeyHeld} from "../KeyBoardHandler";
 import {isLocal} from "../configUtils.js"
-import {ViewMan} from "../CViewManager";
 import {mouseInViewOnly, mouseToView} from "../ViewUtils";
 import {CNodeMeasureAB} from "../nodes/CNodeLabels3D";
 import {CNodePositionXYZ} from "../nodes/CNodePositionLLA";
@@ -700,9 +699,7 @@ class CameraMapControls {
 		if (this.view.showCursor) {
 			this.view.cursorSprite.visible = true;
 		}
-		const mainView = ViewMan.get("mainView")
-		const cursorPos = mainView.cursorSprite.position.clone();
-		// convert to LLA
+		const cursorPos = this.view.cursorSprite.position.clone();
 		const ecef = EUSToECEF(cursorPos)
 		const LLA = ECEFToLLAVD_Sphere(ecef)
 		//		console.log("Cursor LLA: "+vdump(LLA));
@@ -1135,8 +1132,8 @@ class CameraMapControls {
 
 	updateMeasureArrow() {
 
-		const mainView = ViewMan.get("mainView");
-		const cursorPos = mainView.cursorSprite.position.clone();
+		const cursorPos = getCursorPositionFromTopView();
+		if (!cursorPos) return;
 
 		let update = false;
 

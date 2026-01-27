@@ -23,6 +23,36 @@ let mouseLastY = 0;
 let mouseX = 0;
 let mouseY = 0;
 
+export function getMousePosition() {
+    return { x: mouseX, y: mouseY };
+}
+
+export function getTopViewWithCursor() {
+    const mouse = getMousePosition();
+    let topView = null;
+    let topZ = -Infinity;
+    
+    ViewMan.iterateVisibleIncludingOverlays((key, view) => {
+        if (view.cursorSprite && mouseInViewOnly(view, mouse.x, mouse.y)) {
+            const z = view.zIndex || 0;
+            if (z > topZ) {
+                topZ = z;
+                topView = view;
+            }
+        }
+    });
+    
+    return topView;
+}
+
+export function getCursorPositionFromTopView() {
+    const view = getTopViewWithCursor();
+    if (view && view.cursorSprite) {
+        return view.cursorSprite.position.clone();
+    }
+    return null;
+}
+
 
 
 export function SetupMouseHandler() {

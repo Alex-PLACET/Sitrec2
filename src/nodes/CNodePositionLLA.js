@@ -13,7 +13,7 @@ import {CNodeGUIValue} from "./CNodeGUIValue";
 import {isKeyHeld} from "../KeyBoardHandler";
 import {adjustHeightAboveGround, elevationAtLL} from "../threeExt";
 import {assert} from "../assert";
-import {ViewMan} from "../CViewManager";
+import {getCursorPositionFromTopView} from "../mouseMoveView";
 import {EventManager} from "../CEventManager";
 import {guiMenus, NodeMan, setSitchEstablished, Sit} from "../Globals";
 import {getApproximateLocationFromIP} from "../GeoLocation";
@@ -309,17 +309,11 @@ export class CNodePositionLLA extends CNodeTrack {
 
             // Note adding 'l' key for historical reasons, as the 'l' key was used for "lookCamera" or lat/lon or locations in the past
             if (isKeyHeld(this.key.toLowerCase()) || isKeyHeld('l')) {
-
-                // don't do any more drag-and-drop triggering of positions
-                // after we move the target or the camera
-                setSitchEstablished(true);
-
-                const mainView = ViewMan.get("mainView")
-                const cursorPos = mainView.cursorSprite.position.clone();
-
-                this.setFromEUS(cursorPos, true);
-
-                // we don't change the altitude, as we don't know it from the cursor
+                const cursorPos = getCursorPositionFromTopView();
+                if (cursorPos) {
+                    setSitchEstablished(true);
+                    this.setFromEUS(cursorPos, true);
+                }
             }
 
 

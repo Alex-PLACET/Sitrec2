@@ -67,6 +67,7 @@ import {CNodeViewDAG} from "./nodes/CNodeViewDAG";
 import {createCustomModalWithCopy, saveFilePrompted} from "./FileUtils";
 import {deserializeMotionAnalysis, getMotionAnalysisOverlays, serializeMotionAnalysis} from "./CMotionAnalysis";
 import {setupPanoramaExport} from "./PanoramaExporter";
+import {getCursorPositionFromTopView} from "./mouseMoveView";
 
 export class CCustomManager {
     constructor() {
@@ -4119,25 +4120,19 @@ export class CCustomManager {
             // only relevant if we are NOT using dynamic subdivision
             // which we most are now
             if (!Globals.dynamicSubdivision && isKeyHeld('t')) {
+                const cursorPos = getCursorPositionFromTopView();
+                if (cursorPos) {
+                    setSitchEstablished(true);
+                    const ecef = EUSToECEF(cursorPos)
+                    const LLA = ECEFToLLAVD_Sphere(ecef)
 
-                // we assume if they set some terrain then they don't want the automatic
-                // moving of the terrain and time done
-                setSitchEstablished(true);
-
-                const mainView = ViewMan.get("mainView")
-                const cursorPos = mainView.cursorSprite.position.clone();
-                // convert to LLA
-                const ecef = EUSToECEF(cursorPos)
-                const LLA = ECEFToLLAVD_Sphere(ecef)
-
-                // only if different
-                if (terrainUI.lat !== LLA.x || terrainUI.lon !== LLA.y) {
-
-                    terrainUI.lat = LLA.x
-                    terrainUI.lon = LLA.y
-                    terrainUI.flagForRecalculation();
-                    terrainUI.tHeld = true;
-                    terrainUI.startLoading = false;
+                    if (terrainUI.lat !== LLA.x || terrainUI.lon !== LLA.y) {
+                        terrainUI.lat = LLA.x
+                        terrainUI.lon = LLA.y
+                        terrainUI.flagForRecalculation();
+                        terrainUI.tHeld = true;
+                        terrainUI.startLoading = false;
+                    }
                 }
             } else {
                 if (terrainUI.tHeld) {

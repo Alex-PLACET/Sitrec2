@@ -10,7 +10,7 @@ import {CNodeController} from "./CNodeController";
 import {MISB} from "../MISBUtils";
 import {Quaternion, Vector2, Vector3} from "three";
 import {assert} from "../assert.js";
-import {ViewMan} from "../CViewManager";
+import {getCursorPositionFromTopView} from "../mouseMoveView";
 import {get_real_horizon_angle_for_frame} from "../JetUtils";
 
 
@@ -189,22 +189,19 @@ export class CNodeControllerManualPosition extends CNodeController {
         const right = new Vector3().crossVectors(fwd, camera.up)
 
         if (isKeyHeld('l') || isKeyHeld('c')) {
-            this.applying = true;
-            const mainView = ViewMan.get("mainView")
-            const cursorPos = mainView.cursorSprite.position.clone();
-            // convert to LLA
-            const ecef = EUSToECEF(cursorPos)
-            const LLA = ECEFToLLAVD_Sphere(ecef)
+            const cursorPos = getCursorPositionFromTopView();
+            if (cursorPos) {
+                this.applying = true;
+                const ecef = EUSToECEF(cursorPos)
+                const LLA = ECEFToLLAVD_Sphere(ecef)
 
-            // we set the values in the UI nodes, which creates an
-            // automatic cascade recalculation for anything that uses them.
-            NodeMan.get("cameraLat").value = LLA.x
-            NodeMan.get("cameraLon").value = LLA.y
+                NodeMan.get("cameraLat").value = LLA.x
+                NodeMan.get("cameraLon").value = LLA.y
 
-            // convert that to a camera position
-            camPos = LLAToEUS(LLA.x, LLA.y, LLA.z)
-            if (this.aboveGround !== undefined) {
-                camPos.y = adjustHeightAboveGround(camPos, this.aboveGround).y
+                camPos = LLAToEUS(LLA.x, LLA.y, LLA.z)
+                if (this.aboveGround !== undefined) {
+                    camPos.y = adjustHeightAboveGround(camPos, this.aboveGround).y
+                }
             }
         }
 
