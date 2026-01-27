@@ -1538,6 +1538,9 @@ export class CNode3DObject extends CNode3DGroup {
 
                     }
                     Globals.pendingActions--;
+                }, (error) => {
+                    console.error("Failed to load GLTF model:", model.file, error);
+                    Globals.pendingActions--;
                 });
             }
 

@@ -67,7 +67,7 @@ function checkModelHierarchy(gltf, filename) {
     }
 }
 
-export function loadGLTFModel(file, callback) {
+export function loadGLTFModel(file, callback, errorCallback) {
 
     console.log("Async Loading asset for", file);
     FileManager.loadAsset(file, file).then( (asset) => {
@@ -85,7 +85,13 @@ export function loadGLTFModel(file, callback) {
             checkModelHierarchy(gltf, file);
             
             callback(gltf);
+        }, (error) => {
+            console.error("Error parsing GLTF model:", file, error);
+            if (errorCallback) errorCallback(error);
         })
+    }).catch((error) => {
+        console.error("Error loading GLTF model asset:", file, error);
+        if (errorCallback) errorCallback(error);
     })
 }
 
