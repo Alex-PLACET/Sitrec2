@@ -285,6 +285,7 @@ export async function initializeSettings() {
 
     if (Globals.regression) {
         console.log("Regression mode - skipping settings load");
+        Globals.lastSettingsJSON = JSON.stringify(sanitizeSettings(Globals.settings));
         return Globals.settings;
     }
     
@@ -294,6 +295,7 @@ export async function initializeSettings() {
         if (indexedDBSettings && Object.keys(indexedDBSettings).length > 0) {
             Object.assign(Globals.settings, indexedDBSettings);
             console.log("Using IndexedDB settings (serverless mode)");
+            Globals.lastSettingsJSON = JSON.stringify(sanitizeSettings(Globals.settings));
             return Globals.settings;
         }
         // Fall back to cookie if IndexedDB is empty or disabled
@@ -302,6 +304,7 @@ export async function initializeSettings() {
             Object.assign(Globals.settings, savedSettings);
             console.log("Using cookie settings (serverless mode)");
         }
+        Globals.lastSettingsJSON = JSON.stringify(sanitizeSettings(Globals.settings));
         return Globals.settings;
     }
     
@@ -311,6 +314,7 @@ export async function initializeSettings() {
         if (serverSettings && Object.keys(serverSettings).length > 0) {
             Object.assign(Globals.settings, serverSettings);
             console.log("Using server settings");
+            Globals.lastSettingsJSON = JSON.stringify(sanitizeSettings(Globals.settings));
             return Globals.settings;
         }
     }
@@ -322,6 +326,7 @@ export async function initializeSettings() {
         console.log("Using cookie settings");
     }
     
+    Globals.lastSettingsJSON = JSON.stringify(sanitizeSettings(Globals.settings));
     return Globals.settings;
 }
 
@@ -335,12 +340,21 @@ export async function initializeSettings() {
 export async function saveSettings() {
 
     const settings = Globals.settings;
+    const currentJSON = JSON.stringify(sanitizeSettings(settings));
+    
+    if (currentJSON === Globals.lastSettingsJSON) {
+        // console.log("Settings unchanged, skipping save");
+        return true;
+    }
 
     // Serverless mode - use IndexedDB
     if (isServerless) {
         const indexedDBSuccess = await saveSettingsToIndexedDB(settings);
         // Also save to cookie as backup/compatibility
         saveSettingsToCookie(settings);
+        if (indexedDBSuccess) {
+            Globals.lastSettingsJSON = currentJSON;
+        }
         return indexedDBSuccess;
     }
     
@@ -351,12 +365,14 @@ export async function saveSettings() {
             console.log("Settings saved to server");
             // Also save to cookie as backup
             saveSettingsToCookie(settings);
+            Globals.lastSettingsJSON = currentJSON;
             return true;
         }
     }
     
     // Fall back to cookie if server unavailable or user not logged in
     saveSettingsToCookie(settings);
+    Globals.lastSettingsJSON = currentJSON;
     console.log("Settings saved to cookie only");
     return true;
 }
