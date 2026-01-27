@@ -666,6 +666,8 @@ export async function SetupFromKeyAndData(key, _data, depth=0) {
                 background: data.background ?? Sit.skyColor,
                 camera: "mainCamera",
                 ...data,
+                dragKey: data.dragKey ?? "Q",
+                draggable:true,resizable:true,freeAspect:true,
             }
             const view = new CNodeView3D(mainViewDef);
             view.addOrbitControls(Sit.renderer);
@@ -687,7 +689,7 @@ export async function SetupFromKeyAndData(key, _data, depth=0) {
                 //     draggable:true,resizable:true,
 
                 // what might these defaults not work for?
-                draggable:true,resizable:true,shiftDrag:true,freeAspect:false,
+
 
                 left: 0.75, top: 0, width: .25, height: 1,
                 fov: 50,
@@ -695,6 +697,8 @@ export async function SetupFromKeyAndData(key, _data, depth=0) {
                 camera: "lookCamera",
                 syncVideoZoom: true,
                 ...data,
+                dragKey: data.dragKey ?? "Q",
+                draggable:true,resizable:true,freeAspect:true,
             }
             const lookView = new CNodeView3D(lookViewDef);
             node = lookView;
@@ -736,11 +740,12 @@ export async function SetupFromKeyAndData(key, _data, depth=0) {
                         zoom: "videoZoom"
                     },
                     visible: true,
-                    draggable: true, resizable: true,
                     frames: Sit.frames,
                     videoSpeed: Sit.videoSpeed,
                     file: constructorFile,
                     ...data,
+                    dragKey: data.dragKey ?? "Q",
+                    draggable:true,resizable:true,freeAspect:true,
                 }
             )
 

@@ -18,6 +18,10 @@
  * See related fix: lil-gui-extras.js handleTitleMouseDown() method (similar fix applied)
  */
 
+import {isKeyHeld} from "./KeyBoardHandler";
+
+export let isViewDragging = false;
+
 /**
  * Makes an element draggable
  * @param {HTMLElement} element - The element to make draggable
@@ -27,6 +31,7 @@
  * @param {Function} [options.onDragStart] - Callback when drag starts
  * @param {Function} [options.onDragEnd] - Callback when drag ends
  * @param {boolean} [options.shiftKey] - Whether to require shift key for dragging
+ * @param {string} [options.requiredKey] - Key that must be held for dragging (e.g., "shift", "control", "alt", or any letter)
  * @param {HTMLElement[]} [options.excludeElements] - Elements to exclude from triggering drag (like the tab menu)
  */
 export function makeDraggable(element, options = {}) {
@@ -52,8 +57,28 @@ export function makeDraggable(element, options = {}) {
     
     if (!handleElement) handleElement = element;
     
-    // Add handle styling
-    handleElement.style.cursor = 'move';
+    // Store original cursor for restoration
+    const originalCursor = handleElement.style.cursor || '';
+    const requiresKey = options.shiftKey || options.requiredKey;
+    
+    // Only set move cursor immediately if no key is required
+    if (!requiresKey) {
+        handleElement.style.cursor = 'move';
+    }
+    
+    // Update cursor based on key state
+    const updateCursor = () => {
+        if (!requiresKey) return;
+        const keyHeld = (options.shiftKey && isKeyHeld('shift')) || 
+                       (options.requiredKey && isKeyHeld(options.requiredKey));
+        handleElement.style.cursor = keyHeld ? 'move' : originalCursor;
+    };
+    
+    // Listen for key changes if a key is required
+    if (requiresKey) {
+        document.addEventListener('keydown', updateCursor);
+        document.addEventListener('keyup', updateCursor);
+    }
     
     const isEventInExcludedElement = (e) => {
         if (!options.excludeElements || options.excludeElements.length === 0) {
@@ -80,8 +105,12 @@ export function makeDraggable(element, options = {}) {
         // Check if shift key is required and pressed
         if (options.shiftKey && !e.shiftKey) return;
         
+        // Check if a specific key is required and held
+        if (options.requiredKey && !isKeyHeld(options.requiredKey)) return;
+        
         // Prevent default to avoid text selection during drag
         e.preventDefault();
+        e.stopPropagation();
         
         // Get initial positions - use element's current style for document-relative coordinates
         startX = e.clientX;
@@ -92,6 +121,7 @@ export function makeDraggable(element, options = {}) {
         startTop = parseFloat(element.style.top) || 0;
         
         isDragging = true;
+        isViewDragging = true;
         
         // Call onDragStart callback if provided
         if (options.onDragStart && typeof options.onDragStart === 'function') {
@@ -107,6 +137,8 @@ export function makeDraggable(element, options = {}) {
         if (!isDragging) {
             return;
         }
+        
+        e.stopPropagation();
         
         // Calculate new position
         const dx = e.clientX - startX;
@@ -141,7 +173,9 @@ export function makeDraggable(element, options = {}) {
     const onPointerUp = (e) => {
         if (!isDragging) return;
         
+        e.stopPropagation();
         isDragging = false;
+        isViewDragging = false;
         
         // Call onDragEnd callback if provided
         if (options.onDragEnd && typeof options.onDragEnd === 'function') {
@@ -166,6 +200,10 @@ export function makeDraggable(element, options = {}) {
         handleElement.removeEventListener('pointerdown', onPointerDown);
         document.removeEventListener('pointermove', onPointerMove);
         document.removeEventListener('pointerup', onPointerUp);
+        if (requiresKey) {
+            document.removeEventListener('keydown', updateCursor);
+            document.removeEventListener('keyup', updateCursor);
+        }
         delete element._dragData;
         delete element._dragCleanup;
     };

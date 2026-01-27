@@ -26,6 +26,7 @@ import {CNodeMeasureAB} from "../nodes/CNodeLabels3D";
 import {CNodePositionXYZ} from "../nodes/CNodePositionLLA";
 import {GlobalScene} from "../LocalFrame";
 import * as LAYER from "../LayerMasks";
+import {isViewDragging} from "../DragResizeUtils";
 
 const STATE = {
 	NONE: -1,
@@ -626,6 +627,7 @@ class CameraMapControls {
 			this.state = STATE.NONE
 			return;
 		}
+		if (isViewDragging) return;
 		if (!mouseInViewOnly(this.view, event.clientX, event.clientY)) return;
 		//		console.log ("CameraMapControls Mouse DOWN, button = "+event.button)
 		this.button = event.button;
@@ -806,6 +808,7 @@ class CameraMapControls {
 			this.state = STATE.NONE
 			return;
 		}
+		if (isViewDragging) return;
 
 		// Check if movement exceeds long press threshold
 		if (this.longPressTimer) {

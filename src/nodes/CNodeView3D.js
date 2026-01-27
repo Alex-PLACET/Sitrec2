@@ -144,26 +144,6 @@ export class CNodeView3D extends CNodeViewCanvas {
         this.canDisplayNightSky = true;
         this.mouseEnabled = true; // by defualt
 
-        // When using a logorithmic depth buffer (or any really)
-        // need to ensure the near/far clip distances are propogated to custom shaders
-
-//        console.log(" devicePixelRatio = "+window.devicePixelRatio+" canvas.width = "+this.canvas.width+" canvas.height = "+this.canvas.height)
-        //       console.log("Window inner width = "+window.innerWidth+" height = "+window.innerHeight)
-
-        // this.renderer = new WebGLRenderer({antialias: true, canvas: this.canvas, logarithmicDepthBuffer: true})
-        //
-        // if (this.in.canvasWidth) {
-        //     // if a fixed pixel size canvas, then we ignore the devicePixelRatio
-        //     this.renderer.setPixelRatio(1);
-        // } else {
-        //     this.renderer.setPixelRatio(window.devicePixelRatio);
-        // }
-
-        // this.renderer.setSize(this.widthPx, this.heightPx, false); // false means don't update the style
-        // this.composer = new EffectComposer(this.renderer)
-        // const renderPass = new RenderPass( GlobalScene, this.camera );
-        // this.composer.addPass( renderPass );
-
         this.setupRenderPipeline(v);
 
         // Setup debug GUI once (shared across all views)

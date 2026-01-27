@@ -9,6 +9,7 @@ import {Globals, guiShowHideViews, NodeMan} from "../Globals";
 import {assert} from "../assert.js";
 import {ViewMan} from "../CViewManager";
 import {makeDraggable, makeResizable, removeDraggable, removeResizable} from "../DragResizeUtils";
+import {isKeyHeld} from "../KeyBoardHandler";
 
 
 const defaultCViewParams = {
@@ -82,6 +83,7 @@ class CNodeView extends CNode {
         this.doubleClickResizes = v.doubleClickResizes;
         if (v.doubleClickFullScreen !== undefined) this.doubleClickFullScreen = v.doubleClickFullScreen;
         this.shiftDrag = v.shiftDrag;
+        this.dragKey = v.dragKey;
         this.freeAspect = v.freeAspect;
         //
         //
@@ -140,10 +142,21 @@ class CNodeView extends CNode {
                     handle: v.dragHandle,
                     viewInstance: this,
                     shiftKey: this.shiftDrag,
+                    requiredKey: this.dragKey,
                     onDrag: (event, data) => {
                         const view = data.viewInstance;
                         if (!view.draggable) return false;
                         if (view.shiftDrag && !event.shiftKey) return false;
+                        if (view.dragKey && !isKeyHeld(view.dragKey)) return false;
+                        view.setFromDiv(view.div);
+                        ViewMan.iterate((id, v) => {
+                            if (v.overlayView === view) {
+                                v.inheritSize();
+                            }
+                            if (v.in.relativeTo === view) {
+                                v.updateWH();
+                            }
+                        });
                         return true;
                     }
                 });
@@ -289,20 +302,14 @@ class CNodeView extends CNode {
 
     inheritSize() {
         if (this.overlayView) {
+            this.widthPx = this.div.clientWidth
+            this.heightPx = this.div.clientHeight
+            this.topPx = this.div.offsetTop
+            this.leftPx = this.div.offsetLeft
             this.width = this.overlayView.width
             this.height = this.overlayView.height
-            this.widthPx = this.overlayView.widthPx
-            this.heightPx = this.overlayView.heightPx
-            // this.top = 0
-            // this.left = 0
-            // this.topPx = 0
-            // this.leftPx = 0
-            // and inherit the position, as we need that for UI mouse calculations
             this.top = this.overlayView.top
             this.left = this.overlayView.left
-            this.topPx = this.overlayView.topPx
-            this.leftPx = this.overlayView.leftPx
-
         }
     }
 

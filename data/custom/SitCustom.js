@@ -100,7 +100,8 @@ sitch = {
 //        left: 0.5, top: 0.5, width: -1.7927, height: 0.5,
         left: 0.5, top: 0, width: 0.5, height: 1,
 
-        draggable: false,
+        draggable: true,
+        resizable: true, freeAspect: true,
 
         canvasWidth: "canvasResolution", canvasHeight: "canvasHeight",
 
