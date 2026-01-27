@@ -1410,7 +1410,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         
         this.guiFolder.add(this, 'name').name('Name').onChange(() => {
             this.guiFolder.title = `Overlay: ${this.name}`;
-        }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        });
         
         const editModeData = {editMode: this.editMode};
         this.editModeController = this.guiFolder.add(editModeData, 'editMode').name('Edit Mode').onChange((value) => {
@@ -1426,7 +1426,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
                 }
                 setRenderOne(true);
             }
-        }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        });
         
         this.guiFolder.add(this, 'freeTransform').name('Free Transform').onChange(() => {
             if (this.freeTransform) {
@@ -1436,7 +1436,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
                 this.corners = null;
             }
             this.updateMesh();
-        }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        });
         
         this.guiFolder.add(this, 'showBorder').name('Show Border').onChange(() => {
             if (this.showBorder) {
@@ -1444,39 +1444,39 @@ export class CNodeGroundOverlay extends CNode3DGroup {
             } else {
                 this.hideHighlightBorder();
             }
-        }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        });
         
         const propsFolder = this.guiFolder.addFolder('Properties').close();
         
         propsFolder.add(this, 'imageURL').name('Image URL').onChange(() => {
             this.loadTexture();
-        }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        });
         
         propsFolder.add({rehost: () => this.showRehostDialog()}, 'rehost').name('Rehost Local Image');
         
         propsFolder.add(this, 'north', -90, 90, 0.0001).name('North').onChange(() => {
             this.updateMesh();
-        }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        });
         
         propsFolder.add(this, 'south', -90, 90, 0.0001).name('South').onChange(() => {
             this.updateMesh();
-        }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        });
         
         propsFolder.add(this, 'east', -180, 180, 0.0001).name('East').onChange(() => {
             this.updateMesh();
-        }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        });
         
         propsFolder.add(this, 'west', -180, 180, 0.0001).name('West').onChange(() => {
             this.updateMesh();
-        }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        });
         
         propsFolder.add(this, 'rotation', -180, 180, 0.1).name('Rotation').onChange(() => {
             this.updateMesh();
-        }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        });
         
         propsFolder.add(this, 'altitude', 0, 50000, 100).name('Altitude (ft)').onChange(() => {
             this.updateMesh();
-        }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        });
         
         propsFolder.add(this, 'wireframe').name('Wireframe').onChange(() => {
             if (this.overlayMaterial) {
@@ -1491,25 +1491,25 @@ export class CNodeGroundOverlay extends CNode3DGroup {
                 this.overlayMaterial.uniforms.opacity.value = this.opacity;
             }
             setRenderOne(true);
-        }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        });
         
         const cloudFolder = this.guiFolder.addFolder('Cloud Extraction').close();
         
         cloudFolder.add(this, 'extractClouds').name('Extract Clouds').onChange(() => {
             this.applyCloudExtraction();
-        }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        });
         
         cloudFolder.addColor(this, 'cloudColor').name('Cloud Color').onChange(() => {
             if (this.extractClouds) this.applyCloudExtraction();
-        }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        });
         
         cloudFolder.add(this, 'cloudFuzziness', 0, 100, 1).name('Fuzziness').onChange(() => {
             if (this.extractClouds) this.applyCloudExtraction();
-        }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        });
         
         cloudFolder.add(this, 'cloudFeather', 0, 100, 1).name('Feather').onChange(() => {
             if (this.extractClouds) this.applyCloudExtraction();
-        }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+        });
         
         this.guiFolder.add({goto: () => this.gotoOverlay()}, 'goto').name('Go to Overlay');
         

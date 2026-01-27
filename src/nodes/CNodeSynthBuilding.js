@@ -303,7 +303,6 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         this.updateGUIControllers();
         
         setRenderOne(true);
-        CustomManager.saveGlobalSettings();
     }
     
     /**
@@ -326,7 +325,6 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         this.updateGUIControllers();
         
         setRenderOne(true);
-        CustomManager.saveGlobalSettings();
     }
     
     /**
@@ -349,7 +347,6 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         this.updateGUIControllers();
         
         setRenderOne(true);
-        CustomManager.saveGlobalSettings();
     }
     
     /**
@@ -369,7 +366,6 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         this.updateGUIControllers();
         
         setRenderOne(true);
-        CustomManager.saveGlobalSettings();
     }
     
     /**
