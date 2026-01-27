@@ -1230,6 +1230,14 @@ export class CFileManager extends CManager {
                         LoadingManager.completeLoading(loadingId);
                         return this.parseResult(id, arrayBuffer, filename);
                     })
+                    .catch(error => {
+                        Globals.parsing--;
+                        console.log(`There was a problem loading .TS file ${filename}: ${error.message}`);
+                        Globals.pendingActions--;
+                        LoadingManager.completeLoading(loadingId);
+                        this.#loadingPromises.delete(loadingKey);
+                        throw error;
+                    });
             } else {
 
                 var original = null;
