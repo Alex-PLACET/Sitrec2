@@ -4,6 +4,8 @@ test.describe('Motion Accumulation Accuracy', () => {
     test.setTimeout(300000);
 
     test('Linear Tracklet + Consensus accumulation matches expected displacement', async ({ page }) => {
+        console.log('[TEST:motion-acc:STARTED]');
+        try {
         await page.goto('/sitrec/');
         
         await page.evaluate(() => {
@@ -484,9 +486,16 @@ test.describe('Motion Accumulation Accuracy', () => {
         
         expect(Math.abs(results.errorPct)).toBeLessThan(5);
         expect(Math.abs(results.perFrameErrorPct)).toBeLessThan(5);
+        console.log('[TEST:motion-acc:PASSED]');
+        } catch (error) {
+            console.log('[TEST:motion-acc:FAILED]');
+            throw error;
+        }
     });
 
     test('motion accumulation simulating real video analysis loop', async ({ page }) => {
+        console.log('[TEST:motion-acc2:STARTED]');
+        try {
         await page.goto('/sitrec/');
         
         await page.evaluate(() => {
@@ -673,5 +682,10 @@ test.describe('Motion Accumulation Accuracy', () => {
         console.log('========================================');
         
         expect(Math.abs(results.errorPctVsFrameCount)).toBeLessThan(5);
+        console.log('[TEST:motion-acc2:PASSED]');
+        } catch (error) {
+            console.log('[TEST:motion-acc2:FAILED]');
+            throw error;
+        }
     });
 });

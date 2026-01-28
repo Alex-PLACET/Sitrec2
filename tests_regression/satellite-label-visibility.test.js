@@ -115,9 +115,11 @@ test.describe.serial('Satellite Label Visibility Tests', () => {
     });
 
     test('Label Look Visible Only should only show labels for satellites inside look view frustum', async () => {
-        test.setTimeout(120000);
-        
-        await waitForSatelliteData(sharedPage);
+        console.log('[TEST:satellite:STARTED]');
+        try {
+            test.setTimeout(120000);
+            
+            await waitForSatelliteData(sharedPage);
         
         await clickMenuTitle(sharedPage, 'Satellites');
         await sharedPage.waitForTimeout(200);
@@ -183,5 +185,10 @@ test.describe.serial('Satellite Label Visibility Tests', () => {
         expect(result.outsideFrustumButMarkedVisible).toBe(0);
         
         expect(result.visibleInLookCount).toBeLessThanOrEqual(result.insideFrustumCount + 5);
+            console.log('[TEST:satellite:PASSED]');
+        } catch (error) {
+            console.log('[TEST:satellite:FAILED]');
+            throw error;
+        }
     });
 });

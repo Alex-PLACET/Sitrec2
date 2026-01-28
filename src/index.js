@@ -493,15 +493,25 @@ if (latlon) {
 }
 
 const mapType = urlParams.get("mapType");
-if (mapType && Sit.TerrainModel) {
-    console.log("Setting mapType from URL param: " + mapType);
-    Sit.TerrainModel.mapType = mapType;
-}
-
 const elevationType = urlParams.get("elevationType");
-if (elevationType && Sit.TerrainModel) {
-    console.log("Setting elevationType from URL param: " + elevationType);
-    Sit.TerrainModel.elevationType = elevationType;
+const isRegression = urlParams.get("regression") === "1";
+
+if (Sit.TerrainModel) {
+    if (mapType) {
+        console.log("Setting mapType from URL param: " + mapType);
+        Sit.TerrainModel.mapType = mapType;
+    } else if (isRegression) {
+        console.log("Setting mapType to Local for regression test");
+        Sit.TerrainModel.mapType = "Local";
+    }
+    
+    if (elevationType) {
+        console.log("Setting elevationType from URL param: " + elevationType);
+        Sit.TerrainModel.elevationType = elevationType;
+    } else if (isRegression) {
+        console.log("Setting elevationType to Local for regression test");
+        Sit.TerrainModel.elevationType = "Local";
+    }
 }
 
 legacySetup();

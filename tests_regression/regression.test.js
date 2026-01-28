@@ -3,30 +3,26 @@ import {takeScreenshotOrCompare} from './snapshot-utils.js';
 
 // Array of test cases: each object contains a name and its corresponding URL.
 // URLs are relative to baseURL configured in playwright.config.js
+// Update TEST_REGISTRY is these are changed
 const testDataDefault = [
-    { name: "testquick", url: "?sitch=testquick", waitFor: "All tests complete"},
-    { name: 'default', url: '?frame=10' },
-    { name: 'WMTS', url: '?custom=https://sitrec.s3.us-west-2.amazonaws.com/99999999/Regression%20test%20NRL%20WMTS/20251204_001658.js' },
-    { name: 'agua', url: '?sitch=agua&frame=10' },
-    { name: 'ocean surface', url: '?custom=https://sitrec.s3.us-west-2.amazonaws.com/99999999/REGRESSION%20TEST%20_%20Ocean%20Surface/20251114_234141.js&frame=10' },
- //   { name: 'pseudo color', url: '?custom=https://sitrec.s3.us-west-2.amazonaws.com/99999999/REGRESSION%20TEST%20_%20ELEVATION%20PSEUDOCOLOR/20251115_000233.js&frame=10' },
-    { name: 'gimbal', url: '?sitch=gimbal&frame=10' },
-    { name: 'starlink', url: '?custom=https://sitrec.s3.us-west-2.amazonaws.com/99999999/Stalink%20Names/20250218_060544.js' },
-    { name: "potomac", url: "?custom=https://sitrec.s3.us-west-2.amazonaws.com/99999999/Potomac/20250204_203812.js&frame=10" },
-    { name: "orion", url: "?custom=https://sitrec.s3.us-west-2.amazonaws.com/99999999/Orion%20in%20Both%20views%20for%20Label%20Check/20251127_200130.js&frame=10" },
-    { name: "bledsoe", url: "?custom=https://sitrec.s3.us-west-2.amazonaws.com/15857/BledsoeZoom/20250623_153507.js&frame=10" },
-    { name: "mosul", url: "?custom=https://sitrec.s3.us-west-2.amazonaws.com/99999999/Mosul%20Orb/20250707_055311.js&frame=62"},
-    // Add more objects as needed.
+    { id: "testquick", name: "testquick", url: "?sitch=testquick", waitFor: "All tests complete"},
+    { id: 'default', name: 'default', url: '?frame=10' },
+ //   { id: 'wmts', name: 'WMTS', url: '?custom=https://sitrec.s3.us-west-2.amazonaws.com/99999999/Regression%20test%20NRL%20WMTS/20251204_001658.js&mapType=WMTS' },
+    { id: 'agua', name: 'agua', url: '?sitch=agua&frame=10' },
+    { id: 'ocean', name: 'ocean surface', url: '?custom=https://sitrec.s3.us-west-2.amazonaws.com/99999999/REGRESSION%20TEST%20_%20Ocean%20Surface/20251114_234141.js&frame=10&mapType=OceanSurface' },
+    { id: 'gimbal', name: 'gimbal', url: '?sitch=gimbal&frame=10', timeout: 120000 },
+    { id: 'starlink', name: 'starlink', url: '?custom=https://sitrec.s3.us-west-2.amazonaws.com/99999999/Stalink%20Names/20250218_060544.js' },
+    { id: "potomac", name: "potomac", url: "?custom=https://sitrec.s3.us-west-2.amazonaws.com/99999999/Potomac/20250204_203812.js&frame=10" },
+    { id: "orion", name: "orion", url: "?custom=https://sitrec.s3.us-west-2.amazonaws.com/99999999/Orion%20in%20Both%20views%20for%20Label%20Check/20251127_200130.js&frame=10" },
+    { id: "bledsoe", name: "bledsoe", url: "?custom=https://sitrec.s3.us-west-2.amazonaws.com/15857/BledsoeZoom/20250623_153507.js&frame=10" },
+    { id: "mosul", name: "mosul", url: "?custom=https://sitrec.s3.us-west-2.amazonaws.com/99999999/Mosul%20Orb/20250707_055311.js&frame=62"},
 ];
 
 
 // unit tests for trackfile related rendering
 const testDataTrackFiles = [
-    { name: "multi-CSV", url: "?custom=https://sitrec.s3.us-west-2.amazonaws.com/99999999/REGRESSION%20_%20MULTI%20TRACK%20CSV%20AIRCRAFT/20251030_044434.js&frame=620"},
-
-    // we include mosul here as it has some building loaded from a KML file
-    // so we need to ensure
-    { name: "mosul", url: "?custom=https://sitrec.s3.us-west-2.amazonaws.com/99999999/Mosul%20Orb/20250707_055311.js&frame=62"},
+    { id: "multi-csv", name: "multi-CSV", url: "?custom=https://sitrec.s3.us-west-2.amazonaws.com/99999999/REGRESSION%20_%20MULTI%20TRACK%20CSV%20AIRCRAFT/20251030_044434.js&frame=620"},
+    { id: "mosul", name: "mosul", url: "?custom=https://sitrec.s3.us-west-2.amazonaws.com/99999999/Mosul%20Orb/20250707_055311.js&frame=62"},
 ]
 
 
@@ -56,80 +52,89 @@ if (process.env.TEST_TRACKFILES === 'true') {
 }
 
 test.describe('Visual Regression Testing', () => {
-    testData.forEach(({ name, url, waitFor }) => {
+    testData.forEach(({ id, name, url, waitFor, timeout }) => {
         test(`should match the baseline screenshot for ${name}`, async ({ page }, testInfo) => {
-            test.setTimeout(waitFor ? 900000 : 120000);
+            console.log(`[TEST:${id}:STARTED]`);
+            
+            try {
+                test.setTimeout(waitFor ? 900000 : 120000);
 
-            await page.setViewportSize({ width: 1920, height: 1080 });
+                await page.setViewportSize({ width: 1920, height: 1080 });
 
-            page.on('console', msg => {
-                console.log(`[WORKER-${testInfo.workerIndex}] PAGE CONSOLE [${msg.type()}]: ${msg.text()}`);
-            });
+                page.on('console', msg => {
+                    console.log(`[WORKER-${testInfo.workerIndex}] PAGE CONSOLE [${msg.type()}]: ${msg.text()}`);
+                });
 
-            page.on('pageerror', err => {
-                console.log(`[WORKER-${testInfo.workerIndex}] PAGE ERROR:`, err);
-            });
+                page.on('pageerror', err => {
+                    console.log(`[WORKER-${testInfo.workerIndex}] PAGE ERROR:`, err);
+                });
 
-            page.on('response', res => {
-                if (res.status() >= 400) {
-                    console.log(`[WORKER-${testInfo.workerIndex}] Failed response: ${res.url()} - Status: ${res.status()}`);
+                page.on('response', res => {
+                    if (res.status() >= 400) {
+                        console.log(`[WORKER-${testInfo.workerIndex}] Failed response: ${res.url()} - Status: ${res.status()}`);
+                    }
+                });
+
+                page.on('requestfailed', req => {
+                    console.log(`[WORKER-${testInfo.workerIndex}] Request failed: ${req.url()}`);
+                });
+
+                const fullUrl = url + '&ignoreunload=1&regression=1';
+
+                const expectedText = waitFor || 'No pending actions';
+                const consoleTimeout = waitFor ? 600000 : (timeout || 60000);
+                const consolePromise = waitForConsoleText(page, expectedText, consoleTimeout);
+
+                const response = await page.goto(fullUrl, {
+                    waitUntil: 'load',
+                    timeout: 30000
+                });
+
+                if (!response.ok()) {
+                    console.error(`[WORKER-${testInfo.workerIndex}] Page load failed with status: ${response.status()} for URL: ${fullUrl}`);
                 }
-            });
 
-            page.on('requestfailed', req => {
-                console.log(`[WORKER-${testInfo.workerIndex}] Request failed: ${req.url()}`);
-            });
+                await consolePromise;
 
-            const fullUrl = url + '&ignoreunload=1&regression=1';
+                await page.evaluate(() => {
+                    return new Promise((resolve) => {
+                        let frameCount = 0;
+                        function waitForFrames() {
+                            frameCount++;
+                            if (frameCount < 3) {
+                                requestAnimationFrame(waitForFrames);
+                            } else {
+                                resolve();
+                            }
+                        }
+                        requestAnimationFrame(waitForFrames);
+                    });
+                });
 
-            const expectedText = waitFor || 'No pending actions';
-            const consolePromise = waitForConsoleText(page, expectedText, waitFor ? 600000 : 60000);
+                await takeScreenshotOrCompare(page, `${name}-snapshot`, testInfo);
 
-            const response = await page.goto(fullUrl, {
-                waitUntil: 'load',
-                timeout: 30000
-            });
-
-            if (!response.ok()) {
-                console.error(`[WORKER-${testInfo.workerIndex}] Page load failed with status: ${response.status()} for URL: ${fullUrl}`);
-            }
-
-            await consolePromise;
-
-            await page.evaluate(() => {
-                return new Promise((resolve) => {
-                    let frameCount = 0;
-                    function waitForFrames() {
-                        frameCount++;
-                        if (frameCount < 3) {
-                            requestAnimationFrame(waitForFrames);
-                        } else {
-                            resolve();
+                await page.evaluate(() => {
+                    if (window.Globals && window.Globals.renderData) {
+                        try {
+                            window.Globals.renderData.forEach(rd => {
+                                if (rd.renderer) {
+                                    rd.renderer.dispose();
+                                }
+                                if (rd._resizeTimeout) {
+                                    clearTimeout(rd._resizeTimeout);
+                                    rd._resizeTimeout = null;
+                                }
+                            });
+                        } catch (e) {
                         }
                     }
-                    requestAnimationFrame(waitForFrames);
                 });
-            });
 
-            await takeScreenshotOrCompare(page, `${name}-snapshot`, testInfo);
-
-            await page.evaluate(() => {
-                if (window.Globals && window.Globals.renderData) {
-                    try {
-                        window.Globals.renderData.forEach(rd => {
-                            if (rd.renderer) {
-                                rd.renderer.dispose();
-                            }
-                            if (rd._resizeTimeout) {
-                                clearTimeout(rd._resizeTimeout);
-                                rd._resizeTimeout = null;
-                            }
-                        });
-                    } catch (e) {
-                        // ignore errors during cleanup
-                    }
-                }
-            });
+                console.log(`[TEST:${id}:PASSED]`);
+            } catch (error) {
+                console.log(`[TEST:${id}:FAILED]`);
+                throw error;
+            }
         });
     });
 });

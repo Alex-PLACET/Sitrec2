@@ -2,9 +2,11 @@ import {expect, test} from '@playwright/test';
 
 test.describe('Video Loading Manager Tests', () => {
     test('should load custom sitch with multiple video types', async ({ page }, testInfo) => {
-        test.setTimeout(180000);
+        console.log('[TEST:video-load:STARTED]');
+        try {
+            test.setTimeout(180000);
 
-        await page.setViewportSize({ width: 1920, height: 1080 });
+            await page.setViewportSize({ width: 1920, height: 1080 });
 
         const videoLoadingMessages = [];
         const allMessages = [];
@@ -75,7 +77,12 @@ test.describe('Video Loading Manager Tests', () => {
         videoLoadingMessages.forEach(m => console.log(m));
         
         // Check that we saw video loading complete messages
-        const completionMessages = videoLoadingMessages.filter(m => m.includes('[VideoLoaded]'));
-        console.log(`\nVideo completion messages: ${completionMessages.length}`);
+            const completionMessages = videoLoadingMessages.filter(m => m.includes('[VideoLoaded]'));
+            console.log(`\nVideo completion messages: ${completionMessages.length}`);
+            console.log('[TEST:video-load:PASSED]');
+        } catch (error) {
+            console.log('[TEST:video-load:FAILED]');
+            throw error;
+        }
     });
 });

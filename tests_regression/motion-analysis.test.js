@@ -4,7 +4,9 @@ test.describe('Motion Analysis Techniques', () => {
     test.setTimeout(180000);
 
     test('all four techniques detect diagonal motion correctly', async ({ page }) => {
-        await page.goto('/sitrec/');
+        console.log('[TEST:opencv:STARTED]');
+        try {
+            await page.goto('/sitrec/');
         
         await page.evaluate(() => {
             return new Promise((resolve, reject) => {
@@ -437,10 +439,15 @@ test.describe('Motion Analysis Techniques', () => {
         const failedTechniques = Object.values(results.results).filter(r => !r.passed).map(r => r.name);
         
         if (failedTechniques.length > 0) {
-            console.log(`\nFailed techniques: ${failedTechniques.join(', ')}`);
+                console.log(`\nFailed techniques: ${failedTechniques.join(', ')}`);
+            }
+            
+            expect(passedTechniques.length).toBeGreaterThan(0);
+            console.log('[TEST:opencv:PASSED]');
+        } catch (error) {
+            console.log('[TEST:opencv:FAILED]');
+            throw error;
         }
-        
-        expect(passedTechniques.length).toBeGreaterThan(0);
     });
 });
 

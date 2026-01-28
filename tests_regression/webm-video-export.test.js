@@ -4,9 +4,11 @@ import * as path from 'path';
 
 test.describe('WebM Video Export', () => {
     test('should generate a valid WebM video with correct frame count and fps', async ({ page }) => {
-        test.setTimeout(120000);
+        console.log('[TEST:webm:STARTED]');
+        try {
+            test.setTimeout(120000);
 
-        await page.setViewportSize({ width: 800, height: 600 });
+            await page.setViewportSize({ width: 800, height: 600 });
 
         page.on('console', msg => {
             console.log(`PAGE CONSOLE [${msg.type()}]: ${msg.text()}`);
@@ -272,7 +274,12 @@ test.describe('WebM Video Export', () => {
         }
 
         const expectedDuration = (30 / 3) * 1_000_000;
-        const lastTimestamp = result.chunkInfo[result.chunkInfo.length - 1].timestamp;
-        expect(lastTimestamp).toBeGreaterThan(expectedDuration * 0.8);
+            const lastTimestamp = result.chunkInfo[result.chunkInfo.length - 1].timestamp;
+            expect(lastTimestamp).toBeGreaterThan(expectedDuration * 0.8);
+            console.log('[TEST:webm:PASSED]');
+        } catch (error) {
+            console.log('[TEST:webm:FAILED]');
+            throw error;
+        }
     });
 });

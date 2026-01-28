@@ -745,10 +745,73 @@ wss.on('connection', (ws) => {
         const workerTestNames = new Map();
         const runningTests = new Set();
         const failedTests = new Set();
+        
+        function findMatchingTest(testDesc) {
+            const descLower = testDesc.toLowerCase();
+            let bestMatch = null;
+            let bestMatchLen = 0;
+            
+            for (const t of TEST_REGISTRY) {
+                if (!testIds.includes(t.id)) continue;
+                const grepLower = t.grep.toLowerCase();
+                
+                if (descLower === grepLower) {
+                    return t;
+                }
+                
+                if (descLower.includes(grepLower) && grepLower.length > bestMatchLen) {
+                    bestMatch = t;
+                    bestMatchLen = grepLower.length;
+                }
+            }
+            return bestMatch;
+        }
 
         testProcess.stdout.on('data', (data) => {
             const text = data.toString().replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
             process.stdout.write(text);
+            
+            const testIdStarted = text.match(/\[TEST:([a-z0-9-]+):STARTED\]/g);
+            if (testIdStarted) {
+                for (const match of testIdStarted) {
+                    const id = match.match(/\[TEST:([a-z0-9-]+):STARTED\]/)[1];
+                    if (testIds.includes(id) && !runningTests.has(id) && !testResults[id]) {
+                        console.log(`TEST STARTED (ID): ${id}`);
+                        runningTests.add(id);
+                        ws.send(JSON.stringify({ type: 'testStarted', id }));
+                    }
+                }
+            }
+            
+            const testIdPassed = text.match(/\[TEST:([a-z0-9-]+):PASSED\]/g);
+            if (testIdPassed) {
+                for (const match of testIdPassed) {
+                    const id = match.match(/\[TEST:([a-z0-9-]+):PASSED\]/)[1];
+                    if (testIds.includes(id) && !testResults[id]) {
+                        console.log(`TEST PASSED (ID): ${id}`);
+                        runningTests.delete(id);
+                        failedTests.delete(id);
+                        testResults[id] = 'passed';
+                        saveTestResults(testResults);
+                        ws.send(JSON.stringify({ type: 'testResult', id, passed: true }));
+                    }
+                }
+            }
+            
+            const testIdFailed = text.match(/\[TEST:([a-z0-9-]+):FAILED\]/g);
+            if (testIdFailed) {
+                for (const match of testIdFailed) {
+                    const id = match.match(/\[TEST:([a-z0-9-]+):FAILED\]/)[1];
+                    if (testIds.includes(id) && !testResults[id]) {
+                        console.log(`TEST FAILED (ID): ${id}`);
+                        runningTests.delete(id);
+                        failedTests.add(id);
+                        testResults[id] = 'failed';
+                        saveTestResults(testResults);
+                        ws.send(JSON.stringify({ type: 'testResult', id, passed: false }));
+                    }
+                }
+            }
             
             const bareTestMatch = text.match(/^\[chromium\]\s+›.*?›\s+([^›]+?)\s*$/m);
             if (bareTestMatch) {
@@ -767,17 +830,13 @@ wss.on('connection', (ws) => {
                     
                     // If worker was running a different test, that test completed
                     if (prevTestName && prevTestName !== lastTestName) {
-                        for (const t of TEST_REGISTRY) {
-                            if (testIds.includes(t.id) && prevTestName.toLowerCase().includes(t.grep.toLowerCase())) {
-                                if (runningTests.has(t.id) && !failedTests.has(t.id) && !testResults[t.id]) {
-                                    console.log(`TEST PASSED (worker ${targetWorker} switched): ${t.id}`);
-                                    runningTests.delete(t.id);
-                                    testResults[t.id] = 'passed';
-                                    saveTestResults(testResults);
-                                    ws.send(JSON.stringify({ type: 'testResult', id: t.id, passed: true }));
-                                }
-                                break;
-                            }
+                        const t = findMatchingTest(prevTestName);
+                        if (t && runningTests.has(t.id) && !failedTests.has(t.id) && !testResults[t.id]) {
+                            console.log(`TEST PASSED (worker ${targetWorker} switched): ${t.id}`);
+                            runningTests.delete(t.id);
+                            testResults[t.id] = 'passed';
+                            saveTestResults(testResults);
+                            ws.send(JSON.stringify({ type: 'testResult', id: t.id, passed: true }));
                         }
                     }
                     
@@ -810,15 +869,11 @@ wss.on('connection', (ws) => {
                 ws.send(JSON.stringify({ type: 'status', current: testNum - 1, total: totalTests }));
                 
                 // Find which test is starting and mark it as running
-                for (const t of TEST_REGISTRY) {
-                    if (testIds.includes(t.id) && testDesc.toLowerCase().includes(t.grep.toLowerCase())) {
-                        if (!runningTests.has(t.id) && !failedTests.has(t.id) && !testResults[t.id]) {
-                            console.log(`TEST STARTED: ${t.id} (${testDesc})`);
-                            runningTests.add(t.id);
-                            ws.send(JSON.stringify({ type: 'testStarted', id: t.id }));
-                        }
-                        break;
-                    }
+                const t = findMatchingTest(testDesc);
+                if (t && !runningTests.has(t.id) && !failedTests.has(t.id) && !testResults[t.id]) {
+                    console.log(`TEST STARTED: ${t.id} (${testDesc})`);
+                    runningTests.add(t.id);
+                    ws.send(JSON.stringify({ type: 'testStarted', id: t.id }));
                 }
                 
                 for (let i = 0; i < 4; i++) {
@@ -833,16 +888,14 @@ wss.on('connection', (ws) => {
                 const testDesc = failMatch[1].trim();
                 console.log(`FAILURE DETECTED: ${testDesc}`);
                 
-                for (const t of TEST_REGISTRY) {
-                    if (testIds.includes(t.id) && testDesc.toLowerCase().includes(t.grep.toLowerCase())) {
-                        console.log(`  -> Matched failed test: ${t.id}`);
-                        runningTests.delete(t.id);
-                        failedTests.add(t.id);
-                        testResults[t.id] = 'failed';
-                        saveTestResults(testResults);
-                        ws.send(JSON.stringify({ type: 'testResult', id: t.id, passed: false }));
-                        break;
-                    }
+                const t = findMatchingTest(testDesc);
+                if (t) {
+                    console.log(`  -> Matched failed test: ${t.id}`);
+                    runningTests.delete(t.id);
+                    failedTests.add(t.id);
+                    testResults[t.id] = 'failed';
+                    saveTestResults(testResults);
+                    ws.send(JSON.stringify({ type: 'testResult', id: t.id, passed: false }));
                 }
             }
             

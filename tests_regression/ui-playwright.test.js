@@ -166,139 +166,167 @@ test.describe.serial('UI Interaction Tests - Playwright', () => {
     });
 
     test('should adjust Lighting ambient intensity slider to 1.5', async ({}, testInfo) => {
-        test.setTimeout(60000);
-        
-        await clickMenuTitle(sharedPage, 'Lighting');
-        await sharedPage.waitForTimeout(100);
+        console.log('[TEST:ui-lighting:STARTED]');
+        try {
+            test.setTimeout(60000);
+            
+            await clickMenuTitle(sharedPage, 'Lighting');
+            await sharedPage.waitForTimeout(100);
 
-        await setSliderValue(sharedPage, 'Lighting', 'Ambient Intensity', 1.5);
+            await setSliderValue(sharedPage, 'Lighting', 'Ambient Intensity', 1.5);
 
-        await sharedPage.waitForTimeout(500);
-        await waitForFrames(sharedPage);
+            await sharedPage.waitForTimeout(500);
+            await waitForFrames(sharedPage);
 
-        await takeSnapshot(sharedPage, 'lighting-ambient-intensity-1.5-snapshot', testInfo);
+            await takeSnapshot(sharedPage, 'lighting-ambient-intensity-1.5-snapshot', testInfo);
 
-        await setSliderValue(sharedPage, 'Lighting', 'Ambient Intensity', 0.2);
-        await sharedPage.waitForTimeout(100);
-        await waitForFrames(sharedPage);
+            await setSliderValue(sharedPage, 'Lighting', 'Ambient Intensity', 0.2);
+            await sharedPage.waitForTimeout(100);
+            await waitForFrames(sharedPage);
+            console.log('[TEST:ui-lighting:PASSED]');
+        } catch (error) {
+            console.log('[TEST:ui-lighting:FAILED]');
+            throw error;
+        }
     });
 
     test('should import LA Features CSV file via File menu', async ({}, testInfo) => {
-        test.setTimeout(60000);
-        
-        await clickMenuTitle(sharedPage, 'File');
-        await sharedPage.waitForTimeout(100);
-
-        const consolePromise = waitForConsoleText(sharedPage, 'parseResult: DONE Parse', 45000);
-
-        const fileChooserPromise = sharedPage.waitForEvent('filechooser');
-        
-        await sharedPage.evaluate(() => {
-            const fileFolder = Array.from(document.querySelectorAll('.lil-gui')).find(gui => {
-                const title = gui.querySelector(':scope > .title');
-                return title && title.textContent.trim() === 'File';
-            });
+        console.log('[TEST:ui-csv:STARTED]');
+        try {
+            test.setTimeout(60000);
             
-            if (!fileFolder) {
-                console.log('File folder not found');
-                return false;
-            }
+            await clickMenuTitle(sharedPage, 'File');
+            await sharedPage.waitForTimeout(100);
+
+            const consolePromise = waitForConsoleText(sharedPage, 'parseResult: DONE Parse', 45000);
+
+            const fileChooserPromise = sharedPage.waitForEvent('filechooser');
             
-            const controllers = fileFolder.querySelectorAll('.controller.function');
-            for (const controller of controllers) {
-                const name = controller.querySelector('.name');
-                if (name && name.textContent.trim() === 'Import File') {
-                    const button = controller.querySelector('button') || controller;
-                    button.click();
-                    return true;
+            await sharedPage.evaluate(() => {
+                const fileFolder = Array.from(document.querySelectorAll('.lil-gui')).find(gui => {
+                    const title = gui.querySelector(':scope > .title');
+                    return title && title.textContent.trim() === 'File';
+                });
+                
+                if (!fileFolder) {
+                    console.log('File folder not found');
+                    return false;
                 }
-            }
-            console.log('Import File button not found');
-            return false;
-        });
+                
+                const controllers = fileFolder.querySelectorAll('.controller.function');
+                for (const controller of controllers) {
+                    const name = controller.querySelector('.name');
+                    if (name && name.textContent.trim() === 'Import File') {
+                        const button = controller.querySelector('button') || controller;
+                        button.click();
+                        return true;
+                    }
+                }
+                console.log('Import File button not found');
+                return false;
+            });
 
-        const fileChooser = await fileChooserPromise;
-        await fileChooser.setFiles(['/Users/mick/Dropbox/Sitrec Resources/TEST CSVs/LA Features.csv']);
+            const fileChooser = await fileChooserPromise;
+            await fileChooser.setFiles(['/Users/mick/Dropbox/Sitrec Resources/TEST CSVs/LA Features.csv']);
 
-        await consolePromise;
+            await consolePromise;
 
-        await sharedPage.waitForTimeout(3000);
-        await waitForFrames(sharedPage, 50);
+            await sharedPage.waitForTimeout(3000);
+            await waitForFrames(sharedPage, 50);
 
-        await takeSnapshot(sharedPage, 'import-la-features-csv-snapshot', testInfo);
+            await takeSnapshot(sharedPage, 'import-la-features-csv-snapshot', testInfo);
+            console.log('[TEST:ui-csv:PASSED]');
+        } catch (error) {
+            console.log('[TEST:ui-csv:FAILED]');
+            throw error;
+        }
     });
 
     test('should import STANAG 4676 XML file via File menu', async ({}, testInfo) => {
-        test.setTimeout(60000);
-        
-        await clickMenuTitle(sharedPage, 'File');
-        await sharedPage.waitForTimeout(100);
-
-        const consolePromise = waitForConsoleText(sharedPage, 'parseResult: DONE Parse', 45000);
-
-        const fileChooserPromise = sharedPage.waitForEvent('filechooser');
-        
-        await sharedPage.evaluate(() => {
-            const fileFolder = Array.from(document.querySelectorAll('.lil-gui')).find(gui => {
-                const title = gui.querySelector(':scope > .title');
-                return title && title.textContent.trim() === 'File';
-            });
+        console.log('[TEST:ui-stanag:STARTED]');
+        try {
+            test.setTimeout(60000);
             
-            if (!fileFolder) {
-                console.log('File folder not found');
-                return false;
-            }
+            await clickMenuTitle(sharedPage, 'File');
+            await sharedPage.waitForTimeout(100);
+
+            const consolePromise = waitForConsoleText(sharedPage, 'parseResult: DONE Parse', 45000);
+
+            const fileChooserPromise = sharedPage.waitForEvent('filechooser');
             
-            const controllers = fileFolder.querySelectorAll('.controller.function');
-            for (const controller of controllers) {
-                const name = controller.querySelector('.name');
-                if (name && name.textContent.trim() === 'Import File') {
-                    const button = controller.querySelector('button') || controller;
-                    button.click();
-                    return true;
+            await sharedPage.evaluate(() => {
+                const fileFolder = Array.from(document.querySelectorAll('.lil-gui')).find(gui => {
+                    const title = gui.querySelector(':scope > .title');
+                    return title && title.textContent.trim() === 'File';
+                });
+                
+                if (!fileFolder) {
+                    console.log('File folder not found');
+                    return false;
                 }
-            }
-            console.log('Import File button not found');
-            return false;
-        });
+                
+                const controllers = fileFolder.querySelectorAll('.controller.function');
+                for (const controller of controllers) {
+                    const name = controller.querySelector('.name');
+                    if (name && name.textContent.trim() === 'Import File') {
+                        const button = controller.querySelector('button') || controller;
+                        button.click();
+                        return true;
+                    }
+                }
+                console.log('Import File button not found');
+                return false;
+            });
 
-        const fileChooser = await fileChooserPromise;
-        await fileChooser.setFiles(['/Users/mick/Dropbox/sitrec-dev/sitrec/data/test/elevated_track.xml']);
+            const fileChooser = await fileChooserPromise;
+            await fileChooser.setFiles(['/Users/mick/Dropbox/sitrec-dev/sitrec/data/test/elevated_track.xml']);
 
-        await consolePromise;
+            await consolePromise;
 
-        await sharedPage.waitForTimeout(3000);
-        await waitForFrames(sharedPage, 50);
+            await sharedPage.waitForTimeout(3000);
+            await waitForFrames(sharedPage, 50);
 
-        await takeSnapshot(sharedPage, 'import-stanag-xml-snapshot', testInfo);
+            await takeSnapshot(sharedPage, 'import-stanag-xml-snapshot', testInfo);
+            console.log('[TEST:ui-stanag:PASSED]');
+        } catch (error) {
+            console.log('[TEST:ui-stanag:FAILED]');
+            throw error;
+        }
     });
 
     test('should produce same result with Ambient Only as setting sun values to zero', async () => {
-        test.setTimeout(60000);
-        
-        await clickMenuTitle(sharedPage, 'Lighting');
-        await sharedPage.waitForTimeout(200);
+        console.log('[TEST:ui-ambient:STARTED]');
+        try {
+            test.setTimeout(60000);
+            
+            await clickMenuTitle(sharedPage, 'Lighting');
+            await sharedPage.waitForTimeout(200);
 
-        await setSliderValue(sharedPage, 'Lighting', 'Sun Intensity', 0);
-        await setSliderValue(sharedPage, 'Lighting', 'Sun Scattering', 0);
+            await setSliderValue(sharedPage, 'Lighting', 'Sun Intensity', 0);
+            await setSliderValue(sharedPage, 'Lighting', 'Sun Scattering', 0);
 
-        await sharedPage.waitForTimeout(1000);
+            await sharedPage.waitForTimeout(1000);
 
-        const screenshotZeroSun = await sharedPage.screenshot({ fullPage: true });
+            const screenshotZeroSun = await sharedPage.screenshot({ fullPage: true });
 
-        await setSliderValue(sharedPage, 'Lighting', 'Sun Intensity', 0.55);
-        await setSliderValue(sharedPage, 'Lighting', 'Sun Scattering', 0.45);
+            await setSliderValue(sharedPage, 'Lighting', 'Sun Intensity', 0.55);
+            await setSliderValue(sharedPage, 'Lighting', 'Sun Scattering', 0.45);
 
-        await setCheckboxValue(sharedPage, 'Lighting', 'Ambient Only', true);
+            await setCheckboxValue(sharedPage, 'Lighting', 'Ambient Only', true);
 
-        await sharedPage.waitForTimeout(1000);
+            await sharedPage.waitForTimeout(1000);
 
-        const screenshotAmbientOnly = await sharedPage.screenshot({ fullPage: true });
+            const screenshotAmbientOnly = await sharedPage.screenshot({ fullPage: true });
 
-        expect(screenshotAmbientOnly.length).toBeGreaterThan(0);
-        expect(screenshotZeroSun.length).toBeGreaterThan(0);
-        
-        await setCheckboxValue(sharedPage, 'Lighting', 'Ambient Only', false);
-        await sharedPage.waitForTimeout(100);
+            expect(screenshotAmbientOnly.length).toBeGreaterThan(0);
+            expect(screenshotZeroSun.length).toBeGreaterThan(0);
+            
+            await setCheckboxValue(sharedPage, 'Lighting', 'Ambient Only', false);
+            await sharedPage.waitForTimeout(100);
+            console.log('[TEST:ui-ambient:PASSED]');
+        } catch (error) {
+            console.log('[TEST:ui-ambient:FAILED]');
+            throw error;
+        }
     });
 });

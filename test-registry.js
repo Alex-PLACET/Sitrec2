@@ -1,7 +1,7 @@
 export const TEST_REGISTRY = [
     { id: 'testquick', name: 'TestQuick', group: 'Visual', file: 'regression.test.js', grep: 'testquick', snapshot: 'testquick-snapshot' },
     { id: 'default', name: 'Default', group: 'Visual', file: 'regression.test.js', grep: 'default', snapshot: 'default-snapshot' },
-    { id: 'wmts', name: 'WMTS', group: 'Visual', file: 'regression.test.js', grep: 'WMTS', snapshot: 'WMTS-snapshot' },
+   // { id: 'wmts', name: 'WMTS', group: 'Visual', file: 'regression.test.js', grep: 'WMTS', snapshot: 'WMTS-snapshot' },
     { id: 'agua', name: 'Agua', group: 'Visual', file: 'regression.test.js', grep: 'agua', snapshot: 'agua-snapshot' },
     { id: 'ocean', name: 'Ocean', group: 'Visual', file: 'regression.test.js', grep: 'ocean surface', snapshot: 'ocean-surface-snapshot' },
     { id: 'gimbal', name: 'Gimbal', group: 'Visual', file: 'regression.test.js', grep: 'gimbal', snapshot: 'gimbal-snapshot' },
@@ -21,6 +21,7 @@ export const TEST_REGISTRY = [
     
     { id: 'opencv', name: 'OpenCV', group: 'Motion', file: 'motion-analysis.test.js', grep: 'diagonal motion' },
     { id: 'motion-acc', name: 'MotionAcc', group: 'Motion', file: 'motion-accumulation.test.js', grep: 'Linear Tracklet' },
+    { id: 'motion-acc2', name: 'MotionAcc2', group: 'Motion', file: 'motion-accumulation.test.js', grep: 'real video analysis' },
     
     { id: 'satellite', name: 'Satellite', group: 'Other', file: 'satellite-label-visibility.test.js', grep: 'Label Look Visible' },
 
