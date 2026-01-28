@@ -1,7 +1,6 @@
 {
   "name": "sitrec",
   "version": "1.0.0",
-  "type": "module",
   "scripts": {
     "test": "npx jest tests/",
     "test-regression": "npx jest tests_regression/",
