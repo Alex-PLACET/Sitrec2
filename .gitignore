@@ -27,3 +27,4 @@ tests/__image_snapshots__/
 /app_build/
 /app_dist/
 /apps_dist/
+/test-results.json

@@ -5,6 +5,8 @@ import express from 'express';
 import {WebSocketServer} from 'ws';
 import {fileURLToPath} from 'url';
 import {dirname} from 'path';
+import fs from 'fs';
+import {TEST_REGISTRY} from './test-registry.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -12,11 +14,51 @@ const __dirname = dirname(__filename);
 const app = express();
 const port = 3456;
 const exitAfterTests = process.argv.includes('--exit') || process.env.TEST_VIEWER_EXIT === 'true';
+const RESULTS_FILE = __dirname + '/test-results.json';
+
+function loadTestResults() {
+    try {
+        if (fs.existsSync(RESULTS_FILE)) {
+            return JSON.parse(fs.readFileSync(RESULTS_FILE, 'utf8'));
+        }
+    } catch (e) {}
+    return {};
+}
+
+function saveTestResults(results) {
+    fs.writeFileSync(RESULTS_FILE, JSON.stringify(results, null, 2));
+}
 
 app.use('/test-results', express.static(__dirname + '/test-results'));
 app.use('/tests_regression', express.static(__dirname + '/tests_regression'));
 
+app.get('/api/tests', (req, res) => {
+    const results = loadTestResults();
+    const tests = TEST_REGISTRY.map(t => ({
+        ...t,
+        status: results[t.id] || 'unknown'
+    }));
+    res.json(tests);
+});
+
 app.get('/', (req, res) => {
+    let lastGroup = '';
+    const testListHtml = TEST_REGISTRY.map(t => {
+        let html = '';
+        if (t.group !== lastGroup) {
+            html += `<div class="group-header" onclick="toggleGroup('${t.group}')">${t.group}</div>`;
+            lastGroup = t.group;
+        }
+        html += `
+        <div class="test-row" data-id="${t.id}" data-group="${t.group}">
+            <input type="checkbox" class="test-checkbox" data-id="${t.id}">
+            <span class="test-name">${t.name}</span>
+            <span class="test-status" id="status-${t.id}">-</span>
+            <button class="reset-btn" onclick="resetTest('${t.id}')" title="Reset regression data">R</button>
+        </div>`;
+        return html;
+    }).join('');
+
     res.send(`
 <!DOCTYPE html>
 <html>
@@ -53,6 +95,7 @@ app.get('/', (req, res) => {
         .status.running { border-left: 4px solid #4ec9b0; }
         .status.complete { border-left: 4px solid #6a9955; }
         .status.error { border-left: 4px solid #f48771; }
+        .status.idle { border-left: 4px solid #569cd6; }
         #workers {
             display: flex;
             gap: 8px;
@@ -118,35 +161,151 @@ app.get('/', (req, res) => {
             background: #3e3e42;
             cursor: not-allowed;
         }
+        #testList {
+            width: 200px;
+            min-width: 200px;
+            display: flex;
+            flex-direction: column;
+            background: #252526;
+            border: 1px solid #3e3e42;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .test-list-header {
+            background: #2d2d30;
+            padding: 8px;
+            font-weight: bold;
+            font-size: 12px;
+            border-bottom: 1px solid #3e3e42;
+            color: #4ec9b0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .test-list-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 4px;
+        }
+        .group-header {
+            font-size: 10px;
+            font-weight: bold;
+            color: #569cd6;
+            padding: 4px 4px 2px 4px;
+            margin-top: 4px;
+            border-bottom: 1px solid #3e3e42;
+            cursor: pointer;
+            user-select: none;
+        }
+        .group-header:hover {
+            background: #3e3e42;
+        }
+        .group-header:first-child {
+            margin-top: 0;
+        }
+        .test-row {
+            display: flex;
+            align-items: center;
+            padding: 0px 4px;
+            line-height: 1;
+            border-radius: 2px;
+            margin-bottom: 0px;
+        }
+        .test-row:hover {
+            background: #3e3e42;
+        }
+        .test-checkbox {
+            margin-right: 6px;
+            cursor: pointer;
+        }
+        .test-name {
+            flex: 1;
+            font-size: 11px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .test-status {
+            width: 16px;
+            text-align: center;
+            font-size: 12px;
+            margin-right: 4px;
+        }
+        .test-status.passed { color: #6a9955; }
+        .test-status.failed { color: #f48771; }
+        .test-status.running { color: #4ec9b0; }
+        .reset-btn {
+            padding: 2px 6px;
+            font-size: 10px;
+            background: #3e3e42;
+        }
+        .reset-btn:hover {
+            background: #f48771;
+        }
+        .select-btns {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 8px;
+            padding: 0 4px;
+        }
+        .select-btns button {
+            flex: 1;
+            padding: 4px 8px;
+            font-size: 10px;
+        }
+        #startBtn {
+            margin: 8px 4px;
+            background: #6a9955;
+        }
+        #startBtn:hover {
+            background: #7cb668;
+        }
+        #startBtn:disabled {
+            background: #3e3e42;
+        }
     </style>
 </head>
 <body>
     <div id="container">
-        <h1>🧪 Sitrec Test Viewer (4 Workers)</h1>
-        <div id="status" class="status running">
-            <span id="statusText">Connecting...</span>
+        <h1>🧪 Sitrec Test Viewer</h1>
+        <div id="status" class="status idle">
+            <span id="statusText">Ready - Select tests and click Start</span>
             <span id="elapsedTime" style="margin-left: 20px; color: #9cdcfe;"></span>
             <div>
-                <button id="abortBtn" onclick="abortTests()" style="background: #f48771; margin-right: 8px;">Abort</button>
+                <button id="abortBtn" onclick="abortTests()" style="background: #f48771; margin-right: 8px;" disabled>Abort</button>
                 <button id="clearBtn" onclick="clearOutput()">Clear</button>
             </div>
         </div>
         <div id="workers">
-            <div class="worker-column">
-                <div class="worker-header"><span class="worker-name" id="name-0">Waiting...</span><span class="worker-timer" id="timer-0"></span></div>
+            <div class="worker-column" id="column-0">
+                <div class="worker-header"><span class="worker-name" id="name-0">Idle</span><span class="worker-timer" id="timer-0"></span></div>
                 <div class="worker-output" id="worker-1"></div>
             </div>
-            <div class="worker-column">
-                <div class="worker-header"><span class="worker-name" id="name-1">Waiting...</span><span class="worker-timer" id="timer-1"></span></div>
+            <div class="worker-column" id="column-1">
+                <div class="worker-header"><span class="worker-name" id="name-1">Idle</span><span class="worker-timer" id="timer-1"></span></div>
                 <div class="worker-output" id="worker-2"></div>
             </div>
-            <div class="worker-column">
-                <div class="worker-header"><span class="worker-name" id="name-2">Waiting...</span><span class="worker-timer" id="timer-2"></span></div>
+            <div class="worker-column" id="column-2">
+                <div class="worker-header"><span class="worker-name" id="name-2">Idle</span><span class="worker-timer" id="timer-2"></span></div>
                 <div class="worker-output" id="worker-3"></div>
             </div>
-            <div class="worker-column">
-                <div class="worker-header"><span class="worker-name" id="name-3">Waiting...</span><span class="worker-timer" id="timer-3"></span></div>
+            <div class="worker-column" id="column-3">
+                <div class="worker-header"><span class="worker-name" id="name-3">Idle</span><span class="worker-timer" id="timer-3"></span></div>
                 <div class="worker-output" id="worker-4"></div>
+            </div>
+            <div id="testList">
+                <div class="test-list-header">
+                    <span>Tests</span>
+                </div>
+                <div class="select-btns">
+                    <button onclick="selectAll()">All</button>
+                    <button onclick="selectNone()">None</button>
+                    <button onclick="selectFailed()">Failed</button>
+                </div>
+                <button id="startBtn" onclick="startTests()">▶ Start Tests</button>
+                <div class="test-list-content">
+                    ${testListHtml}
+                </div>
             </div>
         </div>
     </div>
@@ -155,18 +314,12 @@ app.get('/', (req, res) => {
         const statusText = document.getElementById('statusText');
         const elapsedTimeEl = document.getElementById('elapsedTime');
         const abortBtn = document.getElementById('abortBtn');
+        const startBtn = document.getElementById('startBtn');
         const workers = [
             document.getElementById('worker-1'),
             document.getElementById('worker-2'),
             document.getElementById('worker-3'),
             document.getElementById('worker-4')
-        ];
-        
-        const workerHeaders = [
-            document.querySelector('.worker-column:nth-child(1) .worker-header'),
-            document.querySelector('.worker-column:nth-child(2) .worker-header'),
-            document.querySelector('.worker-column:nth-child(3) .worker-header'),
-            document.querySelector('.worker-column:nth-child(4) .worker-header')
         ];
         
         const workerTimers = [
@@ -187,6 +340,8 @@ app.get('/', (req, res) => {
         const workerStartTimes = [null, null, null, null];
         let globalStartTime = null;
         let timerInterval = null;
+        let ws = null;
+        let testsRunning = false;
         
         function formatTime(ms) {
             const seconds = Math.floor(ms / 1000);
@@ -207,6 +362,15 @@ app.get('/', (req, res) => {
             }
         }
         
+        function setVisibleWorkers(count) {
+            for (let i = 0; i < 4; i++) {
+                const col = document.getElementById('column-' + i);
+                if (col) {
+                    col.style.display = i < count ? 'flex' : 'none';
+                }
+            }
+        }
+        
         workers.forEach((worker, idx) => {
             worker.addEventListener('scroll', () => {
                 const atBottom = worker.scrollHeight - worker.scrollTop <= worker.clientHeight + 50;
@@ -214,164 +378,329 @@ app.get('/', (req, res) => {
             });
         });
 
-        const ws = new WebSocket('ws://localhost:${port}');
-        
-        ws.onopen = () => {
-            statusText.textContent = 'Running tests...';
+        function loadTestStatuses() {
+            fetch('/api/tests')
+                .then(r => r.json())
+                .then(tests => {
+                    tests.forEach(t => {
+                        updateTestStatus(t.id, t.status);
+                    });
+                });
+        }
+
+        function updateTestStatus(id, testStatus) {
+            const el = document.getElementById('status-' + id);
+            if (!el) return;
+            el.className = 'test-status';
+            el.dataset.status = testStatus;
+            if (testStatus === 'passed') {
+                el.textContent = '✓';
+                el.classList.add('passed');
+            } else if (testStatus === 'failed') {
+                el.textContent = '✗';
+                el.classList.add('failed');
+            } else if (testStatus === 'running') {
+                el.textContent = '⟳';
+                el.classList.add('running');
+            } else {
+                el.textContent = '-';
+            }
+        }
+
+        function selectAll() {
+            document.querySelectorAll('.test-checkbox').forEach(cb => cb.checked = true);
+        }
+
+        function selectNone() {
+            document.querySelectorAll('.test-checkbox').forEach(cb => cb.checked = false);
+        }
+
+        function selectFailed() {
+            document.querySelectorAll('.test-checkbox').forEach(cb => {
+                const id = cb.dataset.id;
+                const statusEl = document.getElementById('status-' + id);
+                cb.checked = statusEl && statusEl.classList.contains('failed');
+            });
+        }
+
+        function toggleGroup(group) {
+            const groupCheckboxes = document.querySelectorAll('.test-row[data-group="' + group + '"] .test-checkbox');
+            const allChecked = Array.from(groupCheckboxes).every(cb => cb.checked);
+            groupCheckboxes.forEach(cb => cb.checked = !allChecked);
+        }
+
+        function getSelectedTests() {
+            const selected = [];
+            document.querySelectorAll('.test-checkbox:checked').forEach(cb => {
+                selected.push(cb.dataset.id);
+            });
+            return selected;
+        }
+
+        function startTests() {
+            const selected = getSelectedTests();
+            if (selected.length === 0) {
+                alert('Please select at least one test');
+                return;
+            }
+
+            testsRunning = true;
+            startBtn.disabled = true;
+            abortBtn.disabled = false;
             status.className = 'status running';
+            statusText.textContent = 'Starting tests...';
             globalStartTime = Date.now();
             timerInterval = setInterval(updateTimers, 1000);
-        };
-        
-        ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
+
+            // Save previous statuses and mark selected as pending
+            const previousStatuses = {};
+            selected.forEach(id => {
+                const statusEl = document.getElementById('status-' + id);
+                previousStatuses[id] = statusEl ? statusEl.dataset.status : 'unknown';
+                updateTestStatus(id, 'unknown');
+            });
+
+            workers.forEach(w => w.innerHTML = '');
+            workerNames.forEach(n => n.textContent = 'Waiting...');
+            workerTimers.forEach(t => t.textContent = '');
             
-            if (data.type === 'workerName') {
-                const workerIdx = data.worker;
-                const testName = data.name;
-                workerNames[workerIdx].textContent = testName;
-                workerStartTimes[workerIdx] = Date.now();
-                workerTimers[workerIdx].textContent = '0s';
-            } else if (data.type === 'output') {
-                let line = data.text;
-                const workerIdx = data.worker || 0;
+            const visibleWorkers = Math.min(selected.length, 4);
+            setVisibleWorkers(visibleWorkers);
+
+            ws = new WebSocket('ws://localhost:${port}');
+            
+            ws.onopen = () => {
+                ws.send(JSON.stringify({ type: 'start', tests: selected }));
+            };
+            
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
                 
-                // Add syntax highlighting
-                if (line.includes('✓')) {
-                    line = '<span class="passed">' + line + '</span>';
-                } else if (line.includes('✗') || line.includes('failed')) {
-                    line = '<span class="failed">' + line + '</span>';
-                } else if (line.includes('›')) {
-                    line = '<span class="test-line">' + line + '</span>';
+                if (data.type === 'workerName') {
+                    const workerIdx = data.worker;
+                    const testName = data.name;
+                    workerNames[workerIdx].textContent = testName;
+                    workerStartTimes[workerIdx] = Date.now();
+                    workerTimers[workerIdx].textContent = '0s';
+                } else if (data.type === 'output') {
+                    let line = data.text;
+                    const workerIdx = data.worker || 0;
+                    
+                    if (line.includes('✓')) {
+                        line = '<span class="passed">' + line + '</span>';
+                    } else if (line.includes('✗') || line.includes('failed')) {
+                        line = '<span class="failed">' + line + '</span>';
+                    } else if (line.includes('›')) {
+                        line = '<span class="test-line">' + line + '</span>';
+                    }
+                    
+                    workers[workerIdx].innerHTML += line + '\\n';
+                    
+                    if (workerAutoScroll[workerIdx]) {
+                        workers[workerIdx].scrollTop = workers[workerIdx].scrollHeight;
+                    }
+                } else if (data.type === 'status') {
+                    if (data.total > 0) {
+                        const progress = data.current + '/' + data.total;
+                        statusText.textContent = '🧪 Running ' + progress + ' tests...';
+                    }
+                } else if (data.type === 'testStarted') {
+                    updateTestStatus(data.id, 'running');
+                } else if (data.type === 'testResult') {
+                    updateTestStatus(data.id, data.passed ? 'passed' : 'failed');
+                } else if (data.type === 'complete') {
+                    testsRunning = false;
+                    const hasFailures = data.code !== 0;
+                    status.className = hasFailures ? 'status error' : 'status complete';
+                    const totalTime = globalStartTime ? ' (' + formatTime(Date.now() - globalStartTime) + ')' : '';
+                    statusText.textContent = hasFailures 
+                        ? '❌ Tests completed with failures' + totalTime
+                        : '✅ All tests passed!' + totalTime;
+                    abortBtn.disabled = true;
+                    startBtn.disabled = false;
+                    if (timerInterval) clearInterval(timerInterval);
+                } else if (data.type === 'aborted') {
+                    testsRunning = false;
+                    status.className = 'status error';
+                    statusText.textContent = '🛑 Tests aborted by user';
+                    abortBtn.disabled = true;
+                    startBtn.disabled = false;
+                    if (timerInterval) clearInterval(timerInterval);
+                    // Restore previous status for tests that never ran or were still running
+                    for (const id in previousStatuses) {
+                        const statusEl = document.getElementById('status-' + id);
+                        if (statusEl && (statusEl.dataset.status === 'unknown' || statusEl.dataset.status === 'running')) {
+                            updateTestStatus(id, previousStatuses[id]);
+                        }
+                    }
+                } else if (data.type === 'error') {
+                    status.className = 'status error';
+                    statusText.textContent = '❌ Error: ' + data.message;
+                    workers[0].innerHTML += '<span class="failed">ERROR: ' + data.message + '</span>\\n';
+                } else if (data.type === 'imageDiff') {
+                    window.open(data.expected, '_blank');
+                    window.open(data.actual, '_blank');
+                    window.open(data.diff, '_blank');
                 }
-                
-                workers[workerIdx].innerHTML += line + '\\n';
-                
-                if (workerAutoScroll[workerIdx]) {
-                    workers[workerIdx].scrollTop = workers[workerIdx].scrollHeight;
+            };
+            
+            ws.onerror = () => {
+                status.className = 'status error';
+                statusText.textContent = '❌ Connection error';
+                testsRunning = false;
+                startBtn.disabled = false;
+            };
+            
+            ws.onclose = () => {
+                if (testsRunning) {
+                    status.className = 'status error';
+                    statusText.textContent = '❌ Connection closed unexpectedly';
+                    testsRunning = false;
+                    startBtn.disabled = false;
                 }
-            } else if (data.type === 'status') {
-                if (data.total > 0) {
-                    const progress = data.current + '/' + data.total;
-                    statusText.textContent = '🧪 Running ' + progress + ' tests on 4 workers...';
-                }
-            } else if (data.type === 'complete') {
-                const hasFailures = data.code !== 0;
-                status.className = hasFailures ? 'status error' : 'status complete';
-                const totalTime = globalStartTime ? ' (' + formatTime(Date.now() - globalStartTime) + ')' : '';
-                statusText.textContent = hasFailures 
-                    ? '❌ Tests completed with failures' + totalTime
-                    : '✅ All tests passed!' + totalTime;
-                abortBtn.disabled = true;
-                if (timerInterval) clearInterval(timerInterval);
-            } else if (data.type === 'aborted') {
-                status.className = 'status error';
-                statusText.textContent = '🛑 Tests aborted by user';
-                abortBtn.disabled = true;
-                if (timerInterval) clearInterval(timerInterval);
-            } else if (data.type === 'redirect') {
-                statusText.textContent = '✅ Tests passed! Redirecting to deployed site...';
-                setTimeout(() => {
-                    window.location.href = data.url;
-                }, 2000);
-            } else if (data.type === 'error') {
-                status.className = 'status error';
-                statusText.textContent = '❌ Error running tests';
-                workers[0].innerHTML += '<span class="failed">ERROR: ' + data.message + '</span>\\n';
-            } else if (data.type === 'imageDiff') {
-                window.open(data.expected, '_blank');
-                window.open(data.actual, '_blank');
-                window.open(data.diff, '_blank');
-            }
-        };
-        
-        ws.onerror = () => {
-            status.className = 'status error';
-            statusText.textContent = '❌ Connection error';
-        };
-        
-        ws.onclose = () => {
-            if (status.className === 'status running') {
-                status.className = 'status error';
-                statusText.textContent = '❌ Connection closed';
-            }
-        };
+            };
+        }
 
         function clearOutput() {
             workers.forEach(worker => worker.innerHTML = '');
+            setVisibleWorkers(4);
         }
 
         function abortTests() {
-            if (confirm('Are you sure you want to abort the tests?')) {
+            if (ws && confirm('Are you sure you want to abort the tests?')) {
                 ws.send(JSON.stringify({ type: 'abort' }));
                 statusText.textContent = '⏳ Aborting tests...';
                 abortBtn.disabled = true;
             }
         }
+
+        function resetTest(id) {
+            if (confirm('Reset regression data for ' + id + '?')) {
+                fetch('/api/reset/' + id, { method: 'POST' })
+                    .then(r => r.json())
+                    .then(result => {
+                        if (result.success) {
+                            updateTestStatus(id, 'unknown');
+                        } else {
+                            alert('Reset failed: ' + result.error);
+                        }
+                    });
+            }
+        }
+
+        loadTestStatuses();
     </script>
 </body>
 </html>
     `);
 });
 
-const server = app.listen(port, () => {
-    console.log(`\n🧪 Test Viewer running at http://localhost:${port}\n`);
-    console.log(`Opening browser...\n`);
-    
-    // Auto-open browser
-    const open = (url) => {
-        const cmd = process.platform === 'darwin' ? 'open' : 
-                    process.platform === 'win32' ? 'start' : 'xdg-open';
-        exec(`${cmd} ${url}`);
-    };
-    
-    setTimeout(() => open(`http://localhost:${port}`), 500);
-});
-
-server.on('error', (err) => {
-    if (err.code === 'EADDRINUSE') {
-        console.error(`\n❌ Port ${port} is already in use.`);
-        console.error('Killing existing test-viewer process...\n');
-        
-        // Kill existing test-viewer processes
-        exec(`lsof -ti:${port} | xargs kill -9 2>/dev/null`, (killErr) => {
-            if (killErr) {
-                console.error('Could not kill existing process. Please run:');
-                console.error(`  pkill -f "node test-viewer.js"`);
-                console.error(`or:`);
-                console.error(`  lsof -ti:${port} | xargs kill -9`);
-                process.exit(1);
-            } else {
-                console.log('Existing process killed. Please run the command again.');
-                process.exit(1);
-            }
-        });
-    } else {
-        console.error('Server error:', err);
-        process.exit(1);
+app.post('/api/reset/:id', (req, res) => {
+    const id = req.params.id;
+    const test = TEST_REGISTRY.find(t => t.id === id);
+    if (!test) {
+        return res.json({ success: false, error: 'Test not found' });
     }
+
+    let deleted = 0;
+    
+    if (test.snapshot) {
+        const snapshotDir = __dirname + '/tests_regression/regression.test.js-snapshots';
+        const baseName = test.snapshot;
+        const patterns = [
+            `${baseName}.png`,
+            `${baseName}-chromium.png`,
+            `${baseName}_Good.png`,
+            `${baseName}_Bad.png`,
+        ];
+        
+        for (const pattern of patterns) {
+            const fullPath = snapshotDir + '/' + pattern;
+            if (fs.existsSync(fullPath)) {
+                try { 
+                    fs.unlinkSync(fullPath); 
+                    deleted++;
+                    console.log(`Deleted: ${fullPath}`);
+                } catch (e) {
+                    console.error(`Failed to delete ${fullPath}:`, e);
+                }
+            }
+        }
+        
+        const uiSnapshotDir = __dirname + '/tests_regression/ui-playwright.test.js-snapshots';
+        for (const pattern of patterns) {
+            const fullPath = uiSnapshotDir + '/' + pattern;
+            if (fs.existsSync(fullPath)) {
+                try { 
+                    fs.unlinkSync(fullPath); 
+                    deleted++;
+                } catch (e) {}
+            }
+        }
+    }
+
+    const results = loadTestResults();
+    delete results[id];
+    saveTestResults(results);
+
+    res.json({ success: true, deleted });
 });
 
-const wss = new WebSocketServer({ server });
+function startServer() {
+    const server = app.listen(port, () => {
+        console.log(`\n🧪 Test Viewer running at http://localhost:${port}\n`);
+        
+        if (!exitAfterTests) {
+            console.log(`Opening browser...\n`);
+            const open = (url) => {
+                const cmd = process.platform === 'darwin' ? 'open' : 
+                            process.platform === 'win32' ? 'start' : 'xdg-open';
+                exec(`${cmd} ${url}`);
+            };
+            setTimeout(() => open(`http://localhost:${port}`), 500);
+        }
+        
+        setupWebSocket(server);
+    });
+
+    server.on('error', (err) => {
+        if (err.code === 'EADDRINUSE') {
+            console.error(`\n❌ Port ${port} is already in use. Killing existing process...`);
+            exec(`lsof -ti:${port} | xargs kill -9 2>/dev/null`, () => {
+                setTimeout(() => startServer(), 1000);
+            });
+        } else {
+            console.error('Server error:', err);
+            process.exit(1);
+        }
+    });
+}
+
+function setupWebSocket(server) {
+    const wss = new WebSocketServer({ server });
 
 wss.on('connection', (ws) => {
     console.log('Client connected\n');
     
-    let totalTests = 0;
-    let currentTest = 0;
     let testProcess = null;
     let isAborting = false;
-    const testToWorkerMap = new Map();
-    const workerTestNames = new Map();
-    const pendingTests = new Map(); // testNum -> testName (tests waiting for worker assignment)
-    let lastTestName = null; // Last test name seen (for worker assignment)
-    let lastSeenWorker = 0;
+    let selectedTests = [];
+    const testResults = loadTestResults();
     
-    // Handle incoming messages from client
     ws.on('message', (message) => {
         try {
             const data = JSON.parse(message);
-            if (data.type === 'abort' && testProcess && !isAborting) {
+            
+            if (data.type === 'start') {
+                selectedTests = data.tests || [];
+                if (selectedTests.length === 0) {
+                    ws.send(JSON.stringify({ type: 'error', message: 'No tests selected' }));
+                    return;
+                }
+                
+                console.log(`Starting tests: ${selectedTests.join(', ')}\n`);
+                runTests(selectedTests);
+            } else if (data.type === 'abort' && testProcess && !isAborting) {
                 console.log('\n🛑 Abort requested by user\n');
                 isAborting = true;
                 testProcess.kill('SIGTERM');
@@ -382,210 +711,235 @@ wss.on('connection', (ws) => {
         }
     });
     
-    // Clean quarantine attributes from snapshots before running tests
-    exec('find tests_regression -name "*.png" -exec xattr -d com.apple.quarantine {} \\; 2>/dev/null', { cwd: __dirname }, (err) => {
-        // Ignore errors - quarantine may not exist on all files
-    });
-    
-    // Run tests with line reporter for progress tracking
-    testProcess = spawn('npx', ['playwright', 'test', '--reporter=line'], {
-        cwd: __dirname,
-        shell: true,
-        env: { ...process.env, FORCE_COLOR: '0' }
-    });
+    function runTests(testIds) {
+        exec('find tests_regression -name "*.png" -exec xattr -d com.apple.quarantine {} \\; 2>/dev/null', { cwd: __dirname }, () => {});
+        
+        const grepPatterns = testIds.map(id => {
+            const test = TEST_REGISTRY.find(t => t.id === id);
+            return test ? test.grep : null;
+        }).filter(Boolean);
 
-    testProcess.stdout.on('data', (data) => {
-        const text = data.toString().replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
-        process.stdout.write(text);
-        
-        // Check for bare test line (starts with [chromium], not [N/M] [chromium])
-        // This indicates test is about to run on a worker
-        const bareTestMatch = text.match(/^\[chromium\]\s+›.*?›\s+([^›]+?)\s*$/m);
-        if (bareTestMatch) {
-            lastTestName = bareTestMatch[1].trim();
-        }
-        
-        // Check for worker ID prefix: [WORKER-0], [WORKER-1], etc.
-        const workerMatch = text.match(/\[WORKER-(\d+)\]/);
-        let targetWorker = lastSeenWorker;
-        
-        if (workerMatch) {
-            targetWorker = parseInt(workerMatch[1]);
-            lastSeenWorker = targetWorker;
-            
-            // If we have a pending test name, assign it to this worker
-            if (lastTestName) {
-                workerTestNames.set(targetWorker, lastTestName);
-                ws.send(JSON.stringify({ 
-                    type: 'workerName', 
-                    worker: targetWorker,
-                    name: lastTestName
-                }));
-                lastTestName = null;
-            }
-        }
-        
-        // Parse test count: "Running 14 tests using 4 workers"
-        const countMatch = text.match(/Running (\d+) tests? using/);
-        if (countMatch) {
-            totalTests = parseInt(countMatch[1]);
-            ws.send(JSON.stringify({ 
-                type: 'status', 
-                current: 0, 
-                total: totalTests
-            }));
-            // Send this to all workers
-            for (let i = 0; i < 4; i++) {
-                ws.send(JSON.stringify({ type: 'output', text, worker: i }));
-            }
+        if (grepPatterns.length === 0) {
+            ws.send(JSON.stringify({ type: 'error', message: 'No valid tests found' }));
             return;
         }
+
+        const grepArg = grepPatterns.join('|');
+        const escapedGrep = `'${grepArg.replace(/'/g, "'\\''")}'`;
         
-        // Parse test START: "[1/10] [chromium] › file.test.js:10:5 › Test Suite › test name"
-        // This happens BEFORE we know which worker runs it
-        const startMatch = text.match(/\[(\d+)\/(\d+)\]\s+\[chromium\].*?›\s+([^›]+?)\s*$/m);
-        if (startMatch) {
-            const testNum = parseInt(startMatch[1]);
-            const total = parseInt(startMatch[2]);
-            const testName = startMatch[3].trim();
+        // Clear previous results for selected tests
+        for (const id of testIds) {
+            delete testResults[id];
+        }
+        
+        testProcess = spawn('npx', ['playwright', 'test', '--reporter=line', '-g', escapedGrep], {
+            cwd: __dirname,
+            shell: true,
+            env: { ...process.env, FORCE_COLOR: '0' }
+        });
+
+        let totalTests = 0;
+        let currentTest = 0;
+        let lastSeenWorker = 0;
+        let lastTestName = null;
+        const workerTestNames = new Map();
+        const runningTests = new Set();
+        const failedTests = new Set();
+
+        testProcess.stdout.on('data', (data) => {
+            const text = data.toString().replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
+            process.stdout.write(text);
             
-            if (total > totalTests) totalTests = total;
-            
-            // Store pending test - worker will be assigned when we see WORKER-X output
-            pendingTests.set(testNum, testName);
-            
-            ws.send(JSON.stringify({ 
-                type: 'status', 
-                current: testNum - 1, 
-                total: totalTests
-            }));
-            
-            // Send to all workers initially (we don't know which one yet)
-            for (let i = 0; i < 4; i++) {
-                ws.send(JSON.stringify({ type: 'output', text, worker: i }));
+            const bareTestMatch = text.match(/^\[chromium\]\s+›.*?›\s+([^›]+?)\s*$/m);
+            if (bareTestMatch) {
+                lastTestName = bareTestMatch[1].trim();
             }
-            return;
-        }
-        
-        // Parse test COMPLETION: "  ✓  1 [chromium] › ... › test name (time)"
-        // Try to match "for X" pattern first
-        let testMatch = text.match(/[✓✗]\s+(\d+)\s+\[chromium\].*?for\s+(.+?)(?:\s+\(|$)/);
-        if (!testMatch) {
-            // Fallback: match last part after last ›
-            testMatch = text.match(/[✓✗]\s+(\d+)\s+\[chromium\].*?›\s+([^›]+?)(?:\s+\(|$)/);
-        }
-        
-        if (testMatch) {
-            const testNum = parseInt(testMatch[1]);
-            currentTest = testNum;
             
-            // Get the worker this test was assigned to
-            if (testToWorkerMap.has(testNum)) {
-                targetWorker = testToWorkerMap.get(testNum);
+            const workerMatch = text.match(/\[WORKER-(\d+)\]/);
+            let targetWorker = lastSeenWorker;
+            
+            if (workerMatch) {
+                targetWorker = parseInt(workerMatch[1]);
                 lastSeenWorker = targetWorker;
-            }
-            
-            ws.send(JSON.stringify({ 
-                type: 'status', 
-                current: currentTest, 
-                total: totalTests
-            }));
-            
-            ws.send(JSON.stringify({ type: 'output', text, worker: targetWorker }));
-            return;
-        }
-        
-        // For summary lines (X passed, X failed), send to all workers
-        if (text.match(/\d+\s+(passed|failed)/)) {
-            for (let i = 0; i < 4; i++) {
-                ws.send(JSON.stringify({ type: 'output', text, worker: i }));
-            }
-            return;
-        }
-        
-        // Detect screenshot mismatch and extract image paths
-        const lines = text.split('\n');
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i].trim();
-            
-            // Parse Playwright output format:
-            // Expected: tests_regression/.../snapshot.png
-            // Received: test-results/.../actual.png
-            // Diff:     test-results/.../diff.png
-            if (line.startsWith('Expected:') && i + 2 < lines.length) {
-                const expectedPath = line.replace('Expected:', '').trim();
-                const receivedLine = lines[i + 1].trim();
-                const diffLine = lines[i + 2].trim();
                 
-                if (receivedLine.startsWith('Received:') && diffLine.startsWith('Diff:')) {
-                    const actualPath = receivedLine.replace('Received:', '').trim();
-                    const diffPath = diffLine.replace('Diff:', '').trim();
+                if (lastTestName) {
+                    const prevTestName = workerTestNames.get(targetWorker);
                     
-                    ws.send(JSON.stringify({
-                        type: 'imageDiff',
-                        expected: `http://localhost:${port}/${expectedPath}`,
-                        actual: `http://localhost:${port}/${actualPath}`,
-                        diff: `http://localhost:${port}/${diffPath}`
+                    // If worker was running a different test, that test completed
+                    if (prevTestName && prevTestName !== lastTestName) {
+                        for (const t of TEST_REGISTRY) {
+                            if (testIds.includes(t.id) && prevTestName.toLowerCase().includes(t.grep.toLowerCase())) {
+                                if (runningTests.has(t.id) && !failedTests.has(t.id) && !testResults[t.id]) {
+                                    console.log(`TEST PASSED (worker ${targetWorker} switched): ${t.id}`);
+                                    runningTests.delete(t.id);
+                                    testResults[t.id] = 'passed';
+                                    saveTestResults(testResults);
+                                    ws.send(JSON.stringify({ type: 'testResult', id: t.id, passed: true }));
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    
+                    workerTestNames.set(targetWorker, lastTestName);
+                    ws.send(JSON.stringify({ 
+                        type: 'workerName', 
+                        worker: targetWorker,
+                        name: lastTestName
                     }));
-                    console.log(`\n📸 Opening image comparison tabs:\n  Expected: ${expectedPath}\n  Actual: ${actualPath}\n  Diff: ${diffPath}\n`);
+                    lastTestName = null;
                 }
             }
-        }
-        
-        // For other output, send to the detected worker
-        ws.send(JSON.stringify({ type: 'output', text, worker: targetWorker }));
-    });
-
-    testProcess.stderr.on('data', (data) => {
-        const text = data.toString();
-        process.stderr.write(text);
-        ws.send(JSON.stringify({ type: 'output', text }));
-    });
-
-    testProcess.on('close', (code) => {
-        if (isAborting) {
-            console.log(`\nTests aborted by user\n`);
-            if (exitAfterTests) {
-                setTimeout(() => {
-                    console.log('Closing test viewer...\n');
-                    process.exit(1);
-                }, 2000);
+            
+            const countMatch = text.match(/Running (\d+) tests? using/);
+            if (countMatch) {
+                totalTests = parseInt(countMatch[1]);
+                ws.send(JSON.stringify({ type: 'status', current: 0, total: totalTests }));
+                for (let i = 0; i < 4; i++) {
+                    ws.send(JSON.stringify({ type: 'output', text, worker: i }));
+                }
+                return;
             }
-            return;
-        }
-        
-        console.log(`\nTests completed with code ${code}\n`);
-        ws.send(JSON.stringify({ type: 'complete', code }));
-        
-        if (exitAfterTests) {
-            // In deploy mode: exit after tests complete
-            // Note: redirect to deployed site is handled by deploy.sh after upload succeeds
-            if (code === 0) {
-                console.log('Tests passed!\n');
+            
+            const startMatch = text.match(/\[(\d+)\/(\d+)\]\s+\[chromium\].*?›\s+(.+?)\s*$/m);
+            if (startMatch) {
+                const testNum = parseInt(startMatch[1]);
+                const total = parseInt(startMatch[2]);
+                const testDesc = startMatch[3].trim();
+                if (total > totalTests) totalTests = total;
+                ws.send(JSON.stringify({ type: 'status', current: testNum - 1, total: totalTests }));
                 
-                setTimeout(() => {
-                    console.log('Closing test viewer...\n');
-                    process.exit(0);
-                }, 2000);
-            } else {
-                console.log(`Tests failed with code ${code}. Not redirecting.\n`);
-                setTimeout(() => {
-                    console.log('Closing test viewer...\n');
-                    process.exit(code);
-                }, 2000);
+                // Find which test is starting and mark it as running
+                for (const t of TEST_REGISTRY) {
+                    if (testIds.includes(t.id) && testDesc.toLowerCase().includes(t.grep.toLowerCase())) {
+                        if (!runningTests.has(t.id) && !failedTests.has(t.id) && !testResults[t.id]) {
+                            console.log(`TEST STARTED: ${t.id} (${testDesc})`);
+                            runningTests.add(t.id);
+                            ws.send(JSON.stringify({ type: 'testStarted', id: t.id }));
+                        }
+                        break;
+                    }
+                }
+                
+                for (let i = 0; i < 4; i++) {
+                    ws.send(JSON.stringify({ type: 'output', text, worker: i }));
+                }
+                return;
             }
-        } else {
-            // In interactive mode: keep server open
-            setTimeout(() => {
-                console.log('Keeping server open. Press Ctrl+C to exit.\n');
-            }, 1000);
-        }
-    });
+            
+            // Detect individual test failure: "  N) [chromium] › file:line › Suite › test name"
+            const failMatch = text.match(/^\s*\d+\)\s+\[chromium\]\s*›.*?›\s*.*?›\s*(.+?)\s*$/m);
+            if (failMatch) {
+                const testDesc = failMatch[1].trim();
+                console.log(`FAILURE DETECTED: ${testDesc}`);
+                
+                for (const t of TEST_REGISTRY) {
+                    if (testIds.includes(t.id) && testDesc.toLowerCase().includes(t.grep.toLowerCase())) {
+                        console.log(`  -> Matched failed test: ${t.id}`);
+                        runningTests.delete(t.id);
+                        failedTests.add(t.id);
+                        testResults[t.id] = 'failed';
+                        saveTestResults(testResults);
+                        ws.send(JSON.stringify({ type: 'testResult', id: t.id, passed: false }));
+                        break;
+                    }
+                }
+            }
+            
+            // Detect summary line with passed count - mark remaining running tests as passed
+            const passedMatch = text.match(/(\d+)\s+passed/);
+            if (passedMatch) {
+                console.log(`SUMMARY PASSED: ${passedMatch[1]}`);
+                for (const t of TEST_REGISTRY) {
+                    if (testIds.includes(t.id) && !testResults[t.id] && !failedTests.has(t.id)) {
+                        console.log(`  -> Marking as passed: ${t.id}`);
+                        runningTests.delete(t.id);
+                        testResults[t.id] = 'passed';
+                        ws.send(JSON.stringify({ type: 'testResult', id: t.id, passed: true }));
+                    }
+                }
+                saveTestResults(testResults);
+            }
+            
+            if (text.match(/\d+\s+(passed|failed)/)) {
+                for (let i = 0; i < 4; i++) {
+                    ws.send(JSON.stringify({ type: 'output', text, worker: i }));
+                }
+                return;
+            }
+            
+            const lines = text.split('\n');
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (line.startsWith('Expected:') && i + 2 < lines.length) {
+                    const expectedPath = line.replace('Expected:', '').trim();
+                    const receivedLine = lines[i + 1].trim();
+                    const diffLine = lines[i + 2].trim();
+                    
+                    if (receivedLine.startsWith('Received:') && diffLine.startsWith('Diff:')) {
+                        const actualPath = receivedLine.replace('Received:', '').trim();
+                        const diffPath = diffLine.replace('Diff:', '').trim();
+                        
+                        ws.send(JSON.stringify({
+                            type: 'imageDiff',
+                            expected: `http://localhost:${port}/${expectedPath}`,
+                            actual: `http://localhost:${port}/${actualPath}`,
+                            diff: `http://localhost:${port}/${diffPath}`
+                        }));
+                    }
+                }
+            }
+            
+            ws.send(JSON.stringify({ type: 'output', text, worker: targetWorker }));
+        });
 
-    testProcess.on('error', (err) => {
-        console.error('Failed to start test process:', err);
-        ws.send(JSON.stringify({ type: 'error', message: err.message }));
-    });
+        testProcess.stderr.on('data', (data) => {
+            const text = data.toString();
+            process.stderr.write(text);
+            ws.send(JSON.stringify({ type: 'output', text }));
+        });
+
+        testProcess.on('close', (code) => {
+            if (isAborting) {
+                console.log(`\nTests aborted by user\n`);
+                if (exitAfterTests) {
+                    setTimeout(() => process.exit(1), 2000);
+                }
+                return;
+            }
+            
+            console.log(`\nTests completed with code ${code}\n`);
+            ws.send(JSON.stringify({ type: 'complete', code }));
+            
+            if (exitAfterTests) {
+                setTimeout(() => process.exit(code === 0 ? 0 : code), 2000);
+            }
+        });
+
+        testProcess.on('error', (err) => {
+            console.error('Failed to start test process:', err);
+            ws.send(JSON.stringify({ type: 'error', message: err.message }));
+        });
+    }
 });
+}
 
 console.log('Starting Sitrec Test Viewer...');
+startServer();
+
+if (exitAfterTests) {
+    console.log('Running in exit mode - will run all tests and exit\n');
+    setTimeout(() => {
+        const testProcess = spawn('npx', ['playwright', 'test', '--reporter=line'], {
+            cwd: __dirname,
+            shell: true,
+            stdio: 'inherit',
+            env: { ...process.env, FORCE_COLOR: '1' }
+        });
+
+        testProcess.on('close', (code) => {
+            console.log(`\nTests completed with code ${code}\n`);
+            process.exit(code);
+        });
+    }, 1000);
+}
