@@ -1569,6 +1569,7 @@ function initRendering() {
 
 // some sitch specific stuff that needs to be done before the main setup
 function legacySetup() {
+    assert(Sit !== undefined, "legacySetup called before Sit is defined");
     let _guiJetTweaks;
     if (Sit.jetStuff) {
         _guiJetTweaks = guiTweaks.addFolder('Jet Tweaks').close();

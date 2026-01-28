@@ -448,10 +448,10 @@ test.describe('Motion Analysis Integration', () => {
     test.setTimeout(300000);
 
     test('motion analysis runs with real video sitch', async ({ page }) => {
-        const sitchUrl = '?custom=https://sitrec.s3.us-west-2.amazonaws.com/99999999/GoFast%20Motion%20Tracking/20260104_065553.js&ignoreunload=1&regression=1';
-        
+        const sitchUrl = '?custom=https://sitrec.s3.us-west-2.amazonaws.com/99999999/GoFast%20Motion%20Tracking/20260128_121417.js&ignoreunload=1&regression=1';
+
         const motionResults = [];
-        
+
         page.on('console', msg => {
             const text = msg.text();
             if (text.includes('Motion:')) {
