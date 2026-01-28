@@ -930,24 +930,29 @@ export class QuadTreeTile {
     // if they are the same but not Web Mercator, uses optimized method with direct tile elevation lookup
     async recalculateCurve(radius = wgs84.RADIUS) {
 
+        this.isRecalculatingCurve = true;
         this.highestAltitude = 0;
 
-        if (this.map.options.elevationMap.options.elevationType === "Flat") {
-            return this.recalculateCurveFlat()
+        try {
+            if (this.map.options.elevationMap.options.elevationType === "Flat") {
+                return await this.recalculateCurveFlat()
+            }
+
+            // Use optimized Web Mercator version if we're using GoogleMapsCompatible projection
+            if (this.map.options.mapProjection && this.map.options.mapProjection.name === "GoogleMapsCompatible") {
+                return await this.recalculateCurveWebMercator(radius);
+            }
+
+            // if the map projection is different to the elevation map projection, fall back to old method
+            if (this.map.options.mapProjection.name !== this.map.elevationMap.options.mapProjection.name)
+                return await this.recalculateCurveOld(radius);
+
+            // Use optimized version with direct tile elevation lookup
+            // This works when both projections are the same and tiles are aligned
+            return await this.recalculateCurveOptimized(radius);
+        } finally {
+            this.isRecalculatingCurve = false;
         }
-
-        // Use optimized Web Mercator version if we're using GoogleMapsCompatible projection
-        if (this.map.options.mapProjection && this.map.options.mapProjection.name === "GoogleMapsCompatible") {
-            return this.recalculateCurveWebMercator(radius);
-        }
-
-        // if the map projection is different to the elevation map projection, fall back to old method
-        if (this.map.options.mapProjection.name !== this.map.elevationMap.options.mapProjection.name)
-            return this.recalculateCurveOld(radius);
-
-        // Use optimized version with direct tile elevation lookup
-        // This works when both projections are the same and tiles are aligned
-        return this.recalculateCurveOptimized(radius);
     }
 
     // NEW OPTIMIZED VERSION - works with elevation tiles at same or lower zoom levels

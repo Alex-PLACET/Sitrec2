@@ -1957,7 +1957,7 @@ function hasPendingTiles() {
         if (node.elevationMap !== undefined && node.elevationMap.getTileCount !== undefined) {
             // Check elevation map for pending tiles
             node.elevationMap.forEachTile((tile) => {
-                if (tile.isLoading || tile.isLoadingElevation) {
+                if (tile.isLoading || tile.isLoadingElevation || tile.isRecalculatingCurve) {
                     hasPending = true;
                 }
             });
@@ -1968,7 +1968,7 @@ function hasPendingTiles() {
             for (const mapID in node.maps) {
                 if (node.maps[mapID].map !== undefined && node.maps[mapID].map.forEachTile !== undefined) {
                     node.maps[mapID].map.forEachTile((tile) => {
-                        if (tile.isLoading) {
+                        if (tile.isLoading || tile.isRecalculatingCurve) {
                             hasPending = true;
                         }
                     });
