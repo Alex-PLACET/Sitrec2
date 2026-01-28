@@ -154,6 +154,12 @@ class CNode {
         // this.show(this.visible)
     }
 
+    applyEarlyMods() {
+        if (Sit.mods && Sit.mods[this.id]) {
+            this.modDeserialize(Sit.mods[this.id]);
+        }
+    }
+
     /**
      * Defer the deserialization process by storing the provided data.
      *

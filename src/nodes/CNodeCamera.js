@@ -47,6 +47,7 @@ export class CNodeCamera extends CNode3D {
                 .tooltip("Reset the camera to the default, or to .last snapshot position and heading\nAlso Numpad-.")
         }
 
+        this.applyEarlyMods();
     }
 
 

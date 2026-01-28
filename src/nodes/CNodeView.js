@@ -199,6 +199,7 @@ class CNodeView extends CNode {
                 .tooltip("Show/Hide the view: " + name);
         }
 
+        this.applyEarlyMods();
     }
 
     // virtual functions for mouseMouveView.js onDocumentMouseMove
