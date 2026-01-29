@@ -146,8 +146,12 @@ class CNodeView extends CNode {
                     onDrag: (event, data) => {
                         const view = data.viewInstance;
                         if (!view.draggable) return false;
-                        if (view.shiftDrag && !event.shiftKey) return false;
-                        if (view.dragKey && !isKeyHeld(view.dragKey)) return false;
+                        // If dragKey is set, use that instead of shiftDrag
+                        if (view.dragKey) {
+                            if (!isKeyHeld(view.dragKey)) return false;
+                        } else if (view.shiftDrag && !event.shiftKey) {
+                            return false;
+                        }
                         view.setFromDiv(view.div);
                         ViewMan.iterate((id, v) => {
                             if (v.overlayView === view) {

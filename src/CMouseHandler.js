@@ -1,3 +1,5 @@
+import {isKeyHeld} from "./KeyBoardHandler";
+
 // The basic functionality of a mouse handler attached to a view
 // stores last mouse position, delta, etc
 export class CMouseHandler {
@@ -96,6 +98,13 @@ export class CMouseHandler {
 
     handleMouseDown(e) {
 //        e.preventDefault();
+
+        // If the view has a dragKey and it's currently held, don't capture the pointer
+        // Let the event bubble up to the parent div's makeDraggable handler
+        if (this.view.dragKey && isKeyHeld(this.view.dragKey)) {
+            return;
+        }
+
         this.view.canvas.setPointerCapture(e.pointerId)
 
         // Track pointer for multi-touch detection

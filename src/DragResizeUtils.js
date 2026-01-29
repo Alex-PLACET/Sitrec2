@@ -101,43 +101,43 @@ export function makeDraggable(element, options = {}) {
         if (isEventInExcludedElement(e)) {
             return;
         }
-        
+
         // Check if shift key is required and pressed
         if (options.shiftKey && !e.shiftKey) return;
-        
+
         // Check if a specific key is required and held
         if (options.requiredKey && !isKeyHeld(options.requiredKey)) return;
         
         // Prevent default to avoid text selection during drag
         e.preventDefault();
         e.stopPropagation();
-        
+
         // Get initial positions - use element's current style for document-relative coordinates
         startX = e.clientX;
         startY = e.clientY;
-        
+
         // Get the element's current position in document coordinates, not viewport coordinates
         startLeft = parseFloat(element.style.left) || 0;
         startTop = parseFloat(element.style.top) || 0;
-        
+
         isDragging = true;
         isViewDragging = true;
-        
+
         // Call onDragStart callback if provided
         if (options.onDragStart && typeof options.onDragStart === 'function') {
             options.onDragStart(e, { left: startLeft, top: startTop, element });
         }
-        
+
         // Add global event listeners using pointer events for better off-screen support
         document.addEventListener('pointermove', onPointerMove);
         document.addEventListener('pointerup', onPointerUp);
     };
-    
+
     const onPointerMove = (e) => {
         if (!isDragging) {
             return;
         }
-        
+
         e.stopPropagation();
         
         // Calculate new position
