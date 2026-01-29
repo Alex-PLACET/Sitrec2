@@ -18,6 +18,15 @@ async function waitForFrames(page, count = 10) {
 }
 
 async function openChat(page) {
+    const alreadyVisible = await page.evaluate(() => {
+        const chatView = document.querySelector('.cnodeview-chatlog');
+        return chatView && chatView.offsetParent !== null;
+    });
+    
+    if (alreadyVisible) {
+        return;
+    }
+    
     await page.keyboard.press('Tab');
     await page.waitForTimeout(300);
     
@@ -169,6 +178,8 @@ test.describe.serial('Chatbot Tests', () => {
         console.log('[TEST:ai-math:STARTED]');
         try {
             test.setTimeout(60000);
+            
+            await openChat(sharedPage);
             
             const initialCount = await sendChatMessage(sharedPage, 'what is 2+2?');
             const response = await waitForBotResponse(sharedPage, initialCount);
