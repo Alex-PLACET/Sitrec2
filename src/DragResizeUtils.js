@@ -19,8 +19,239 @@
  */
 
 import {isKeyHeld} from "./KeyBoardHandler";
+import {ViewMan} from "./CViewManager";
 
 export let isViewDragging = false;
+
+// Snap distance in pixels
+const SNAP_DISTANCE = 10;
+
+// Border highlight color when drag key is held
+const DRAG_BORDER_COLOR = 'rgba(100, 150, 255, 0.6)';
+
+// Track elements with drag borders for cleanup
+const elementsWithDragBorder = new Set();
+
+/**
+ * Shows a border highlight on an element's resize handles when drag key is pressed
+ */
+function showDragBorder(element) {
+    if (!element._resizeHandles) return;
+    const handles = element._resizeHandles;
+    // Highlight the side handles (n, e, s, w) to form a border
+    ['n', 'e', 's', 'w'].forEach(dir => {
+        if (handles[dir]) {
+            handles[dir].style.backgroundColor = DRAG_BORDER_COLOR;
+        }
+    });
+    elementsWithDragBorder.add(element);
+}
+
+/**
+ * Hides the border highlight on an element's resize handles
+ */
+function hideDragBorder(element) {
+    if (!element._resizeHandles) return;
+    const handles = element._resizeHandles;
+    ['n', 'e', 's', 'w'].forEach(dir => {
+        if (handles[dir]) {
+            handles[dir].style.backgroundColor = 'transparent';
+        }
+    });
+    elementsWithDragBorder.delete(element);
+}
+
+/**
+ * Calculates snap positions for a dragging element
+ * Returns adjusted left/top if snapping should occur
+ */
+function calculateSnap(left, top, width, height, excludeView) {
+    let snappedLeft = left;
+    let snappedTop = top;
+
+    const right = left + width;
+    const bottom = top + height;
+
+    // Screen edges (using ViewMan container dimensions)
+    const screenLeft = 0;
+    const screenTop = 0;
+    const screenRight = ViewMan.widthPx;
+    const screenBottom = ViewMan.heightPx;
+
+    // Check screen edge snapping
+    if (Math.abs(left - screenLeft) < SNAP_DISTANCE) {
+        snappedLeft = screenLeft;
+    }
+    if (Math.abs(right - screenRight) < SNAP_DISTANCE) {
+        snappedLeft = screenRight - width;
+    }
+    if (Math.abs(top - screenTop) < SNAP_DISTANCE) {
+        snappedTop = screenTop;
+    }
+    if (Math.abs(bottom - screenBottom) < SNAP_DISTANCE) {
+        snappedTop = screenBottom - height;
+    }
+
+    // Check snapping to other views
+    ViewMan.iterate((id, view) => {
+        // Skip the view being dragged, overlay views, passthrough views, and relative views
+        if (view === excludeView) return;
+        if (view.overlayView) return;  // This view is an overlay of another view
+        if (view.passThrough) return;  // This view has pointer events disabled (overlay-like)
+        if (view.in && view.in.relativeTo) return;  // This view is positioned relative to another
+        if (!view.visible) return;
+
+        const vLeft = view.leftPx;
+        const vTop = view.topPx;
+        const vRight = vLeft + view.widthPx;
+        const vBottom = vTop + view.heightPx;
+
+        // Snap our left edge to their right edge
+        if (Math.abs(left - vRight) < SNAP_DISTANCE) {
+            snappedLeft = vRight;
+        }
+        // Snap our right edge to their left edge
+        if (Math.abs(right - vLeft) < SNAP_DISTANCE) {
+            snappedLeft = vLeft - width;
+        }
+        // Snap our top edge to their bottom edge
+        if (Math.abs(top - vBottom) < SNAP_DISTANCE) {
+            snappedTop = vBottom;
+        }
+        // Snap our bottom edge to their top edge
+        if (Math.abs(bottom - vTop) < SNAP_DISTANCE) {
+            snappedTop = vTop - height;
+        }
+
+        // Also snap matching edges (left-to-left, top-to-top, etc.)
+        if (Math.abs(left - vLeft) < SNAP_DISTANCE) {
+            snappedLeft = vLeft;
+        }
+        if (Math.abs(right - vRight) < SNAP_DISTANCE) {
+            snappedLeft = vRight - width;
+        }
+        if (Math.abs(top - vTop) < SNAP_DISTANCE) {
+            snappedTop = vTop;
+        }
+        if (Math.abs(bottom - vBottom) < SNAP_DISTANCE) {
+            snappedTop = vBottom - height;
+        }
+    });
+
+    return { left: snappedLeft, top: snappedTop };
+}
+
+/**
+ * Calculates snap for resize operations
+ * Returns adjusted left, top, width, height if snapping should occur
+ * @param {string} dir - Resize direction (n, e, s, w, ne, se, sw, nw)
+ */
+function calculateResizeSnap(left, top, width, height, dir, excludeView) {
+    let snappedLeft = left;
+    let snappedTop = top;
+    let snappedWidth = width;
+    let snappedHeight = height;
+
+    const right = left + width;
+    const bottom = top + height;
+
+    // Screen edges
+    const screenLeft = 0;
+    const screenTop = 0;
+    const screenRight = ViewMan.widthPx;
+    const screenBottom = ViewMan.heightPx;
+
+    // Determine which edges are being dragged based on direction
+    const affectsTop = ['n', 'ne', 'nw'].includes(dir);
+    const affectsBottom = ['s', 'se', 'sw'].includes(dir);
+    const affectsLeft = ['w', 'nw', 'sw'].includes(dir);
+    const affectsRight = ['e', 'ne', 'se'].includes(dir);
+
+    // Snap to screen edges
+    if (affectsLeft && Math.abs(left - screenLeft) < SNAP_DISTANCE) {
+        const diff = left - screenLeft;
+        snappedLeft = screenLeft;
+        snappedWidth = width + diff;
+    }
+    if (affectsRight && Math.abs(right - screenRight) < SNAP_DISTANCE) {
+        snappedWidth = screenRight - snappedLeft;
+    }
+    if (affectsTop && Math.abs(top - screenTop) < SNAP_DISTANCE) {
+        const diff = top - screenTop;
+        snappedTop = screenTop;
+        snappedHeight = height + diff;
+    }
+    if (affectsBottom && Math.abs(bottom - screenBottom) < SNAP_DISTANCE) {
+        snappedHeight = screenBottom - snappedTop;
+    }
+
+    // Snap to other views
+    ViewMan.iterate((id, view) => {
+        // Skip the view being resized, overlay views, passthrough views, and relative views
+        if (view === excludeView) return;
+        if (view.overlayView) return;  // This view is an overlay of another view
+        if (view.passThrough) return;  // This view has pointer events disabled (overlay-like)
+        if (view.in && view.in.relativeTo) return;  // This view is positioned relative to another
+        if (!view.visible) return;
+
+        const vLeft = view.leftPx;
+        const vTop = view.topPx;
+        const vRight = vLeft + view.widthPx;
+        const vBottom = vTop + view.heightPx;
+
+        // Snap left edge
+        if (affectsLeft) {
+            if (Math.abs(left - vRight) < SNAP_DISTANCE) {
+                const diff = left - vRight;
+                snappedLeft = vRight;
+                snappedWidth = width + diff;
+            }
+            if (Math.abs(left - vLeft) < SNAP_DISTANCE) {
+                const diff = left - vLeft;
+                snappedLeft = vLeft;
+                snappedWidth = width + diff;
+            }
+        }
+
+        // Snap right edge
+        if (affectsRight) {
+            const currentRight = snappedLeft + snappedWidth;
+            if (Math.abs(currentRight - vLeft) < SNAP_DISTANCE) {
+                snappedWidth = vLeft - snappedLeft;
+            }
+            if (Math.abs(currentRight - vRight) < SNAP_DISTANCE) {
+                snappedWidth = vRight - snappedLeft;
+            }
+        }
+
+        // Snap top edge
+        if (affectsTop) {
+            if (Math.abs(top - vBottom) < SNAP_DISTANCE) {
+                const diff = top - vBottom;
+                snappedTop = vBottom;
+                snappedHeight = height + diff;
+            }
+            if (Math.abs(top - vTop) < SNAP_DISTANCE) {
+                const diff = top - vTop;
+                snappedTop = vTop;
+                snappedHeight = height + diff;
+            }
+        }
+
+        // Snap bottom edge
+        if (affectsBottom) {
+            const currentBottom = snappedTop + snappedHeight;
+            if (Math.abs(currentBottom - vTop) < SNAP_DISTANCE) {
+                snappedHeight = vTop - snappedTop;
+            }
+            if (Math.abs(currentBottom - vBottom) < SNAP_DISTANCE) {
+                snappedHeight = vBottom - snappedTop;
+            }
+        }
+    });
+
+    return { left: snappedLeft, top: snappedTop, width: snappedWidth, height: snappedHeight };
+}
 
 /**
  * Makes an element draggable
@@ -66,18 +297,25 @@ export function makeDraggable(element, options = {}) {
         handleElement.style.cursor = 'move';
     }
     
-    // Update cursor based on key state
-    const updateCursor = () => {
+    // Update cursor and border based on key state
+    const updateCursorAndBorder = () => {
         if (!requiresKey) return;
-        const keyHeld = (options.shiftKey && isKeyHeld('shift')) || 
+        const keyHeld = (options.shiftKey && isKeyHeld('shift')) ||
                        (options.requiredKey && isKeyHeld(options.requiredKey));
         handleElement.style.cursor = keyHeld ? 'move' : originalCursor;
+
+        // Show/hide drag border on this element
+        if (keyHeld) {
+            showDragBorder(element);
+        } else {
+            hideDragBorder(element);
+        }
     };
-    
+
     // Listen for key changes if a key is required
     if (requiresKey) {
-        document.addEventListener('keydown', updateCursor);
-        document.addEventListener('keyup', updateCursor);
+        document.addEventListener('keydown', updateCursorAndBorder);
+        document.addEventListener('keyup', updateCursorAndBorder);
     }
     
     const isEventInExcludedElement = (e) => {
@@ -139,14 +377,23 @@ export function makeDraggable(element, options = {}) {
         }
 
         e.stopPropagation();
-        
+
         // Calculate new position
         const dx = e.clientX - startX;
         const dy = e.clientY - startY;
-        
-        const newLeft = startLeft + dx;
-        const newTop = startTop + dy;
-        
+
+        let newLeft = startLeft + dx;
+        let newTop = startTop + dy;
+
+        // Apply snapping if we have a view instance
+        if (viewInstance) {
+            const width = viewInstance.widthPx || parseFloat(element.style.width) || element.offsetWidth;
+            const height = viewInstance.heightPx || parseFloat(element.style.height) || element.offsetHeight;
+            const snapped = calculateSnap(newLeft, newTop, width, height, viewInstance);
+            newLeft = snapped.left;
+            newTop = snapped.top;
+        }
+
         // Update element position
         element.style.left = `${newLeft}px`;
         element.style.top = `${newTop}px`;
@@ -201,9 +448,10 @@ export function makeDraggable(element, options = {}) {
         document.removeEventListener('pointermove', onPointerMove);
         document.removeEventListener('pointerup', onPointerUp);
         if (requiresKey) {
-            document.removeEventListener('keydown', updateCursor);
-            document.removeEventListener('keyup', updateCursor);
+            document.removeEventListener('keydown', updateCursorAndBorder);
+            document.removeEventListener('keyup', updateCursorAndBorder);
         }
+        hideDragBorder(element);
         delete element._dragData;
         delete element._dragCleanup;
     };
@@ -252,10 +500,16 @@ export function makeResizable(element, options = {}) {
         // Add subtle hover effect to make handles more discoverable
         handle.style.transition = 'background-color 0.2s ease';
         handle.addEventListener('mouseenter', () => {
-            handle.style.backgroundColor = 'rgba(100, 150, 255, 0.3)';
+            // Don't override drag border highlight
+            if (!elementsWithDragBorder.has(element)) {
+                handle.style.backgroundColor = 'rgba(100, 150, 255, 0.3)';
+            }
         });
         handle.addEventListener('mouseleave', () => {
-            handle.style.backgroundColor = 'transparent';
+            // Don't remove drag border highlight
+            if (!elementsWithDragBorder.has(element)) {
+                handle.style.backgroundColor = 'transparent';
+            }
         });
         
         // Position the handle
@@ -451,11 +705,20 @@ export function makeResizable(element, options = {}) {
                     newWidth = newHeight * aspectRatio;
                 }
             }
-            
+
+            // Apply snapping if we have a view instance (and not maintaining aspect ratio, as snapping would break it)
+            if (viewInstance && !options.aspectRatio) {
+                const snapped = calculateResizeSnap(newLeft, newTop, newWidth, newHeight, dir, viewInstance);
+                newLeft = snapped.left;
+                newTop = snapped.top;
+                newWidth = snapped.width;
+                newHeight = snapped.height;
+            }
+
             // Update element dimensions
             element.style.width = `${newWidth}px`;
             element.style.height = `${newHeight}px`;
-            
+
             // Update position for handles that affect position
             if (['n', 'w', 'nw', 'ne', 'sw'].includes(dir)) {
                 element.style.left = `${newLeft}px`;
@@ -511,7 +774,10 @@ export function makeResizable(element, options = {}) {
             handle.removeEventListener('pointerdown', onPointerDown);
         };
     });
-    
+
+    // Store handles on element for border highlighting
+    element._resizeHandles = handleElements;
+
     // Store cleanup function on element
     element._resizeCleanup = () => {
         handles.forEach(dir => {
