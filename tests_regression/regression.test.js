@@ -5,7 +5,7 @@ import {takeScreenshotOrCompare} from './snapshot-utils.js';
 // URLs are relative to baseURL configured in playwright.config.js
 // Update TEST_REGISTRY is these are changed
 const testDataDefault = [
-    { id: "testquick", name: "testquick", url: "?sitch=testquick", waitFor: "All tests complete"},
+    { id: "testquick", name: "testquick", url: "?testAll=2", waitFor: "All tests complete"},
     { id: 'default', name: 'default', url: '?frame=10' },
  //   { id: 'wmts', name: 'WMTS', url: '?custom=https://sitrec.s3.us-west-2.amazonaws.com/99999999/Regression%20test%20NRL%20WMTS/20251204_001658.js&mapType=WMTS' },
     { id: 'agua', name: 'agua', url: '?sitch=agua&frame=10' },

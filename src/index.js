@@ -338,6 +338,8 @@ const queryString = window.location.search;
 urlParams = new URLSearchParams(queryString);
 setGlobalURLParams(urlParams)
 
+Globals.regression = urlParams.get("regression") === "1";
+
 // a count of async pending actions, so we can tell when a level has fully loaded and settled up
 Globals.pendingActions = 0;
 
@@ -494,23 +496,16 @@ if (latlon) {
 
 const mapType = urlParams.get("mapType");
 const elevationType = urlParams.get("elevationType");
-const isRegression = urlParams.get("regression") === "1";
 
 if (Sit.TerrainModel) {
     if (mapType) {
         console.log("Setting mapType from URL param: " + mapType);
         Sit.TerrainModel.mapType = mapType;
-    } else if (isRegression) {
-        console.log("Setting mapType to Local for regression test");
-        Sit.TerrainModel.mapType = "Local";
     }
     
     if (elevationType) {
         console.log("Setting elevationType from URL param: " + elevationType);
         Sit.TerrainModel.elevationType = elevationType;
-    } else if (isRegression) {
-        console.log("Setting elevationType to Local for regression test");
-        Sit.TerrainModel.elevationType = "Local";
     }
 }
 
@@ -1124,8 +1119,6 @@ async function initializeOnce() {
             }
         });
     }
-
-    Globals.regression = urlParams.get("regression");
 
     setCustomManager(new CCustomManager());
 

@@ -249,7 +249,8 @@ export class CNodeTerrainUI extends CNode {
             : (process.env.DEFAULT_MAP_TYPE ?? "Debug");
 
         // map type from the terrain object in a a saved sitch, or default to the first one
-        this.mapType = v.mapType ?? defaultMapType ?? Object.keys(this.mapSources)[0];
+        // Force "Local" in regression mode to avoid network requests
+        this.mapType = Globals.regression ? "Local" : (v.mapType ?? defaultMapType ?? Object.keys(this.mapSources)[0]);
 
         this.gui = guiMenus.terrain;
         this.mapTypeMenu = this.gui.add(this, "mapType", this.mapTypesKV).listen().name("Map Type")
@@ -298,7 +299,8 @@ export class CNodeTerrainUI extends CNode {
             ? (process.env.DOCKER_ELEVATION_TYPE ?? "Flat")
             : (process.env.DEFAULT_ELEVATION_TYPE ?? "Flat");
 
-        this.elevationType = v.elevationType ?? defaultElevationType ?? Object.keys(this.elevationSources)[0]
+        // Force "Local" in regression mode to avoid network requests
+        this.elevationType = Globals.regression ? "Local" : (v.elevationType ?? defaultElevationType ?? Object.keys(this.elevationSources)[0])
         // add the menu
         this.elevationTypeMenu = this.gui.add(this, "elevationType", this.elevationTypesKV).listen().name("Elevation Type")
             .tooltip("Elevation data source for terrain height data")
