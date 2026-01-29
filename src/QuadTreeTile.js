@@ -2710,6 +2710,13 @@ export class QuadTreeTile {
     async fetchElevationTile(signal) {
         const elevationURL = this.elevationURL();
 
+        // make sure X,Y and Z are valid. Assert on Dev, throw error otherwise
+        if (this.x < 0 || this.y < 0 || this.z < 0) {
+            assert(0, `Invalid tile coordinates for elevation fetch: x=${this.x}, y=${this.y}, z=${this.z}`);
+            throw new Error(`Invalid tile coordinates for elevation fetch: x=${this.x}, y=${this.y}, z=${this.z}`);
+        }
+
+
         if (signal?.aborted) {
             throw new Error('Aborted');
         }
