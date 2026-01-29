@@ -490,7 +490,7 @@ class QuadTreeMapTexture extends QuadTreeMap {
             
             // If ancestor doesn't exist or isn't loaded yet, force-load it
             if (!ancestorTile || !ancestorTile.loaded || 
-                !ancestorTile.mesh?.material?.map || ancestorTile.mesh.material.wireframe) {
+                !ancestorTile.mesh?.getMap() || ancestorTile.mesh.material.wireframe) {
                 
                 // Activate the ancestor tile to trigger loading (if it doesn't exist)
                 // Pass layerMask=0 so ancestor is loaded but NOT visible in the scene
@@ -500,7 +500,7 @@ class QuadTreeMapTexture extends QuadTreeMap {
                 
                 // If ancestor is still loading, mark this tile as pending and return
                 // The tile will be reactivated once the ancestor loads
-                if (!ancestorTile.loaded || !ancestorTile.mesh?.material?.map || 
+                if (!ancestorTile.loaded || !ancestorTile.mesh?.getMap() || 
                     ancestorTile.mesh.material.wireframe) {
                     
                     // Mark tile as pending ancestor load
@@ -512,7 +512,7 @@ class QuadTreeMapTexture extends QuadTreeMap {
                     const checkAncestorLoaded = () => {
                         const loadedAncestor = this.getTile(ancestorX, ancestorY, ancestorZ);
                         if (loadedAncestor && loadedAncestor.loaded && 
-                            loadedAncestor.mesh?.material?.map && 
+                            loadedAncestor.mesh?.getMap() && 
                             !loadedAncestor.mesh.material.wireframe) {
                             
                             // Ancestor is now loaded, extract texture and update this tile
