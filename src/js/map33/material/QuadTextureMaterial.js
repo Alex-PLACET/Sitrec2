@@ -1,8 +1,15 @@
 import {CanvasTexture, TextureLoader} from "three";
 import {createTerrainDayNightMaterial} from "./TerrainDayNightMaterial";
 import {TileUsageTracker} from "../../../TileUsageTracker";
+import {Globals} from "../../../Globals";
 
 const loader = new TextureLoader()
+
+function logNetwork(url, status) {
+    if (Globals.regression) {
+        console.log(`[NET:${url}:${status}]`);
+    }
+}
 
 
 // Queue to hold pending requests
@@ -43,6 +50,7 @@ export function loadTextureWithRetries(url, maxRetries = 0, delay = 100, current
         return;
       }
 
+      logNetwork(url[urlIndex], 'pending');
       loader.load(url[urlIndex],
           // On load
           (texture) => {
@@ -57,6 +65,7 @@ export function loadTextureWithRetries(url, maxRetries = 0, delay = 100, current
 
             TileUsageTracker.trackTile(url[urlIndex]);
 
+            logNetwork(url[urlIndex], 200);
             resolve(texture);
             activeRequests--;
             processQueue();
@@ -96,6 +105,7 @@ export function loadTextureWithRetries(url, maxRetries = 0, delay = 100, current
               }, delay);
             } else {
               console.log(`Failed to load ${url[urlIndex]} after ${maxRetries} attempts`);
+              logNetwork(url[urlIndex], 404);
               reject(err);
               processQueue();
             }

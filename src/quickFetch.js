@@ -1,7 +1,14 @@
 import {indexedDBManager} from "./IndexedDBManager";
 import {LoadingManager} from "./CLoadingManager";
+import {Globals} from "./Globals";
 
 const INITIAL_CHUNK_SIZE = 3 * 1024 * 1024; // 3MB initial request
+
+function logNetwork(url, status) {
+    if (Globals.regression) {
+        console.log(`[NET:${url}:${status}]`);
+    }
+}
 const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB subsequent chunks
 const CONCURRENCY = 4;
 const CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -97,7 +104,10 @@ export async function quickFetch(url, options = {}) {
     } = options;
     
     if (!quickFetchEnabled) {
-        return fetch(url, { signal, ...fetchOptions });
+        logNetwork(url, 'pending');
+        const response = await fetch(url, { signal, ...fetchOptions });
+        logNetwork(url, response.status);
+        return response;
     }
     
     if (useCache) {
@@ -105,6 +115,7 @@ export async function quickFetch(url, options = {}) {
             const cached = await indexedDBManager.getCachedData(getCacheKey(url));
             if (cached) {
                 console.log(`[quickFetch] Cache hit: ${url}`);
+                logNetwork(url, 200);
                 return new Response(cached, {
                     status: 200,
                     headers: new Headers({ 'Content-Type': 'application/octet-stream' }),
@@ -115,7 +126,10 @@ export async function quickFetch(url, options = {}) {
     }
     
     if (!isS3Url(url)) {
-        return fetch(url, { signal, ...fetchOptions });
+        logNetwork(url, 'pending');
+        const response = await fetch(url, { signal, ...fetchOptions });
+        logNetwork(url, response.status);
+        return response;
     }
     
     let loadingId = null;
@@ -123,6 +137,8 @@ export async function quickFetch(url, options = {}) {
         loadingId = `quickfetch-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         LoadingManager.registerLoading(loadingId, url, loadingCategory);
     }
+    
+    logNetwork(url, 'pending');
     
     try {
         const initialResponse = await fetch(url, {
@@ -138,6 +154,7 @@ export async function quickFetch(url, options = {}) {
                     await indexedDBManager.cacheData(getCacheKey(url), buffer, CACHE_TTL);
                 } catch (e) {}
             }
+            logNetwork(url, 200);
             return new Response(buffer, {
                 status: 200,
                 headers: new Headers({
@@ -149,6 +166,7 @@ export async function quickFetch(url, options = {}) {
         
         if (initialResponse.status !== 206) {
             if (loadingId) LoadingManager.completeLoading(loadingId);
+            logNetwork(url, initialResponse.status);
             return initialResponse;
         }
         
@@ -157,6 +175,7 @@ export async function quickFetch(url, options = {}) {
         if (!match) {
             if (loadingId) LoadingManager.completeLoading(loadingId);
             const buffer = await initialResponse.arrayBuffer();
+            logNetwork(url, 200);
             return new Response(buffer, { status: 200, headers: initialResponse.headers });
         }
         
@@ -175,6 +194,7 @@ export async function quickFetch(url, options = {}) {
                     await indexedDBManager.cacheData(getCacheKey(url), initialBuffer, CACHE_TTL);
                 } catch (e) {}
             }
+            logNetwork(url, 200);
             return new Response(initialBuffer, {
                 status: 200,
                 headers: new Headers({
@@ -207,6 +227,7 @@ export async function quickFetch(url, options = {}) {
             }
         }
         
+        logNetwork(url, 200);
         return new Response(combined.buffer, {
             status: 200,
             headers: new Headers({
@@ -219,11 +240,14 @@ export async function quickFetch(url, options = {}) {
         if (loadingId) LoadingManager.completeLoading(loadingId);
         
         if (err.name === 'AbortError') {
+            logNetwork(url, 0);
             throw err;
         }
         
         console.warn(`[quickFetch] Parallel download failed, falling back to regular fetch:`, err);
-        return fetch(url, { signal, ...fetchOptions });
+        const response = await fetch(url, { signal, ...fetchOptions });
+        logNetwork(url, response.status);
+        return response;
     }
 }
 

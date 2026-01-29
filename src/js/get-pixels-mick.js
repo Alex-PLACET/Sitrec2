@@ -1,5 +1,12 @@
 "use strict"
 const ndarray = require("ndarray")
+import {Globals} from "../Globals";
+
+function logNetwork(url, status) {
+    if (Globals.regression) {
+        console.log(`[NET:${url}:${status}]`);
+    }
+}
 
 // Web Worker code for processing images
 const workerCode = `
@@ -90,6 +97,7 @@ class ImageQueueManager {
             const pixelArray = new Uint8Array(data);
             const shape = [height, width, 4];
             const stride = [4 * width, 4, 1];
+            logNetwork(url, 200);
             request.cb(null, ndarray(pixelArray, shape, stride, 0));
         } else {
             this.errorOccurred = true;
@@ -97,6 +105,7 @@ class ImageQueueManager {
                 console.warn(`Retrying (re-queueing) ${url}`);
                 this.enqueueImage(url, request.cb, request.retries + 1);
             } else {
+                logNetwork(url, 404);
                 request.cb(new Error(error || 'Image load failed'));
             }
         }
@@ -156,6 +165,7 @@ class ImageQueueManager {
         availableWorker.busy = true;
         this.pendingRequests.set(requestId, { url, cb, retries });
 
+        logNetwork(url, 'pending');
         availableWorker.postMessage({ url, id: requestId });
     }
 
@@ -174,6 +184,7 @@ class ImageQueueManager {
         const { url, cb, retries } = this.queue.shift();
         this.activeRequests++;
 
+        logNetwork(url, 'pending');
         this.defaultImage(url, (err, result) => {
             this.activeRequests--;
             if (err) {
@@ -183,9 +194,11 @@ class ImageQueueManager {
                     console.warn("Retrying (re-queueing) " + url);
                     this.enqueueImage(url, cb, retries + 1);
                 } else {
+                    logNetwork(url, 404);
                     cb(err, null);
                 }
             } else {
+                logNetwork(url, 200);
                 cb(null, result);
             }
 

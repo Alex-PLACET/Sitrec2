@@ -2,6 +2,13 @@
 // This allows loading files from the local filesystem when running from file:// protocol
 
 import {quickFetch} from "./quickFetch";
+import {Globals} from "./Globals";
+
+function logNetwork(url, status) {
+    if (Globals.regression) {
+        console.log(`[NET:${url}:${status}]`);
+    }
+}
 
 export async function fileSystemFetch(url, options = {}) {
     if (window.location.protocol !== 'file:' || !window.fileSystemDirectoryHandle) {
@@ -14,6 +21,7 @@ export async function fileSystemFetch(url, options = {}) {
     
     // We're running from file:// with directory access and have a relative URL
     console.log("Using File System Access API for:", url);
+    logNetwork(url, 'pending');
     
     try {
         // Clean up the URL - remove query strings first
@@ -104,10 +112,12 @@ export async function fileSystemFetch(url, options = {}) {
         }
         
         console.log(`Successfully loaded ${fileName} via File System Access API`);
+        logNetwork(url, 200);
         return response;
         
     } catch (err) {
         console.error("File System Access API fetch failed, falling back to quickFetch:", err);
+        logNetwork(url, 500);
         return quickFetch(url, options);
     }
 }

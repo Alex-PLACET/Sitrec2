@@ -160,6 +160,34 @@ app.get('/', (req, res) => {
             font-size: 11px;
             line-height: 1.4;
         }
+        .network-log {
+            height: 120px;
+            min-height: 80px;
+            max-height: 200px;
+            padding: 6px;
+            overflow-y: auto;
+            font-size: 10px;
+            line-height: 1.3;
+            background: #1a1a1c;
+            border-top: 1px solid #3e3e42;
+        }
+        .network-log-header {
+            font-size: 10px;
+            color: #569cd6;
+            padding: 4px 6px;
+            background: #252526;
+            border-top: 1px solid #3e3e42;
+        }
+        .net-entry {
+            padding: 1px 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .net-entry.pending { color: #9cdcfe; }
+        .net-entry.success { color: #6a9955; }
+        .net-entry.error { color: #f48771; }
+        .net-url { color: #d4d4d4; }
         .passed { color: #6a9955; }
         .failed { color: #f48771; }
         .test-line { color: #4ec9b0; }
@@ -296,18 +324,26 @@ app.get('/', (req, res) => {
             <div class="worker-column" id="column-0">
                 <div class="worker-header"><span class="worker-name" id="name-0">Idle</span><span class="worker-timer" id="timer-0"></span></div>
                 <div class="worker-output" id="worker-1"></div>
+                <div class="network-log-header">Network</div>
+                <div class="network-log" id="netlog-0"></div>
             </div>
             <div class="worker-column" id="column-1">
                 <div class="worker-header"><span class="worker-name" id="name-1">Idle</span><span class="worker-timer" id="timer-1"></span></div>
                 <div class="worker-output" id="worker-2"></div>
+                <div class="network-log-header">Network</div>
+                <div class="network-log" id="netlog-1"></div>
             </div>
             <div class="worker-column" id="column-2">
                 <div class="worker-header"><span class="worker-name" id="name-2">Idle</span><span class="worker-timer" id="timer-2"></span></div>
                 <div class="worker-output" id="worker-3"></div>
+                <div class="network-log-header">Network</div>
+                <div class="network-log" id="netlog-2"></div>
             </div>
             <div class="worker-column" id="column-3">
                 <div class="worker-header"><span class="worker-name" id="name-3">Idle</span><span class="worker-timer" id="timer-3"></span></div>
                 <div class="worker-output" id="worker-4"></div>
+                <div class="network-log-header">Network</div>
+                <div class="network-log" id="netlog-3"></div>
             </div>
             <div id="testList">
                 <div class="test-list-header">
@@ -337,6 +373,60 @@ app.get('/', (req, res) => {
             document.getElementById('worker-3'),
             document.getElementById('worker-4')
         ];
+        
+        const netlogs = [
+            document.getElementById('netlog-0'),
+            document.getElementById('netlog-1'),
+            document.getElementById('netlog-2'),
+            document.getElementById('netlog-3')
+        ];
+        
+        const netlogAutoScroll = [true, true, true, true];
+        
+        netlogs.forEach((netlog, idx) => {
+            netlog.addEventListener('scroll', () => {
+                const atBottom = netlog.scrollHeight - netlog.scrollTop <= netlog.clientHeight + 20;
+                netlogAutoScroll[idx] = atBottom;
+            });
+        });
+        
+        function addNetworkEntry(workerIdx, url, status) {
+            const netlog = netlogs[workerIdx];
+            if (!netlog) return;
+            
+            const shortUrl = url;
+            const statusClass = status === 'pending' ? 'pending' : (status >= 200 && status < 400) ? 'success' : 'error';
+            const statusText = status === 'pending' ? '⟳' : status;
+            
+            const entry = document.createElement('div');
+            entry.className = 'net-entry ' + statusClass;
+            entry.innerHTML = '<span>' + statusText + '</span> <span class="net-url">' + shortUrl + '</span>';
+            entry.title = url;
+            entry.dataset.url = url;
+            
+            netlog.appendChild(entry);
+            
+            if (netlogAutoScroll[workerIdx]) {
+                netlog.scrollTop = netlog.scrollHeight;
+            }
+            
+            return entry;
+        }
+        
+        function updateNetworkEntry(workerIdx, url, status) {
+            const netlog = netlogs[workerIdx];
+            if (!netlog) return;
+            
+            const entries = netlog.querySelectorAll('.net-entry');
+            for (let i = entries.length - 1; i >= 0; i--) {
+                if (entries[i].dataset.url === url) {
+                    const statusClass = (status >= 200 && status < 400) ? 'success' : 'error';
+                    entries[i].className = 'net-entry ' + statusClass;
+                    entries[i].querySelector('span').textContent = status;
+                    break;
+                }
+            }
+        }
         
         const workerTimers = [
             document.getElementById('timer-0'),
@@ -477,6 +567,7 @@ app.get('/', (req, res) => {
             });
 
             workers.forEach(w => w.innerHTML = '');
+            netlogs.forEach(n => n.innerHTML = '');
             workerNames.forEach(n => n.textContent = 'Waiting...');
             workerTimers.forEach(t => t.textContent = '');
             
@@ -560,6 +651,13 @@ app.get('/', (req, res) => {
                     window.open(data.expected, '_blank');
                     window.open(data.actual, '_blank');
                     window.open(data.diff, '_blank');
+                } else if (data.type === 'network') {
+                    const workerIdx = data.worker || 0;
+                    if (data.status === 'pending') {
+                        addNetworkEntry(workerIdx, data.url, 'pending');
+                    } else {
+                        updateNetworkEntry(workerIdx, data.url, data.status);
+                    }
                 }
             };
             
@@ -582,6 +680,7 @@ app.get('/', (req, res) => {
 
         function clearOutput() {
             workers.forEach(worker => worker.innerHTML = '');
+            netlogs.forEach(netlog => netlog.innerHTML = '');
             setVisibleWorkers(4);
         }
 
@@ -859,6 +958,14 @@ wss.on('connection', (ws) => {
                 }
             }
             
+            const netMatches = text.matchAll(/\[WORKER-(\d+)\].*?\[NET:(.+):(\d+|pending)\]/g);
+            for (const match of netMatches) {
+                const worker = parseInt(match[1]);
+                const url = match[2];
+                const status = match[3] === 'pending' ? 'pending' : parseInt(match[3]);
+                ws.send(JSON.stringify({ type: 'network', worker, url, status }));
+            }
+            
             const bareTestMatch = text.match(/^\[chromium\]\s+›.*?›\s+([^›]+?)\s*$/m);
             if (bareTestMatch) {
                 lastTestName = bareTestMatch[1].trim();
@@ -996,7 +1103,10 @@ wss.on('connection', (ws) => {
                 }
             }
             
-            ws.send(JSON.stringify({ type: 'output', text, worker: targetWorker }));
+            const filteredText = text.split('\n').filter(line => !line.includes('[NET:')).join('\n');
+            if (filteredText.trim()) {
+                ws.send(JSON.stringify({ type: 'output', text: filteredText, worker: targetWorker }));
+            }
         });
 
         testProcess.stderr.on('data', (data) => {

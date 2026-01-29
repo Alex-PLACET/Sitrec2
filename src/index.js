@@ -298,6 +298,9 @@ window.Globals = Globals;
 // 5 just means wait 5 frames before showing the message
 Globals.wasPending = 5;
 
+// Set regression mode early so network logging works from the start
+Globals.regression = new URLSearchParams(window.location.search).get("regression") === "1";
+
 await checkServerlessMode();
 await setupConfigPaths();
 
@@ -491,6 +494,7 @@ if (latlon) {
         }
     } else {
         showError("Invalid lat/lon format: " + latlon);
+
     }
 }
 
