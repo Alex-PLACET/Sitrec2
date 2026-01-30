@@ -767,12 +767,22 @@ export class CNodeSynthBuilding extends CNode3DGroup {
             this.wireframe.geometry.dispose();
             this.wireframe.material.dispose();
         }
-        
+
         // Rebuild roof faces based on current roofline height
         this.buildRoofFaces();
-        
+
         // Recompute edges to include roof faces
         this.computeEdges();
+
+        // Calculate local origin (centroid of all vertices) for precision
+        // This prevents floating-point precision issues when coordinates are far from world origin
+        this.meshLocalOrigin = new Vector3();
+        if (this.vertices.length > 0) {
+            for (const vertex of this.vertices) {
+                this.meshLocalOrigin.add(vertex.position);
+            }
+            this.meshLocalOrigin.divideScalar(this.vertices.length);
+        }
         
         // Helper function to get position with inset and eaves applied
         const getPositionWithModifiers = (idx) => {
@@ -829,14 +839,15 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         let vertexOffset = this.vertices.length; // Offset for extended roof vertices when eaves != 0
         
         // Add original vertices (without eaves for walls)
+        // Use local coordinates (relative to meshLocalOrigin) for GPU precision
         this.vertices.forEach((vertex, idx) => {
             let pos = vertex.position.clone();
-            
+
             // Apply ridgeline inset for roofline vertices
             if ((idx === 8 || idx === 9) && vertex.type === 'roofline' && this.ridgelineInset !== 0) {
                 const roof1EdgePos = this.vertices[4].position.clone().add(this.vertices[5].position).multiplyScalar(0.5);
                 const roof2EdgePos = this.vertices[6].position.clone().add(this.vertices[7].position).multiplyScalar(0.5);
-                
+
                 if (idx === 8) {
                     pos = this.calculateInsetRidgelinePosition(roof1EdgePos, roof2EdgePos)
                         .add(getLocalUpVector(this.calculateInsetRidgelinePosition(roof1EdgePos, roof2EdgePos))
@@ -847,15 +858,19 @@ export class CNodeSynthBuilding extends CNode3DGroup {
                             .multiplyScalar(this.rooflineHeightAGL));
                 }
             }
-            
+
+            // Convert to local coordinates
+            pos.sub(this.meshLocalOrigin);
             positions.push(pos.x, pos.y, pos.z);
         });
-        
+
         // If eaves are enabled, add extended roof vertices
         if (this.roofEaves !== 0) {
             // Add extended versions of vertices 4-7 and 8-9
             for (let idx = 4; idx <= 9; idx++) {
                 const pos = getPositionWithModifiers(idx);
+                // Convert to local coordinates
+                pos.sub(this.meshLocalOrigin);
                 positions.push(pos.x, pos.y, pos.z);
             }
         }
@@ -938,8 +953,10 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         
         this.solidMesh = new Mesh(geometry, [wallMaterial, roofMaterial, soffitMaterial]);
         this.solidMesh.layers.mask = LAYER.MASK_MAIN | LAYER.MASK_LOOK;
+        // Position mesh at local origin to place it correctly in world space
+        this.solidMesh.position.copy(this.meshLocalOrigin);
         this.group.add(this.solidMesh);
-        
+
         // Create wireframe from edges
         const edgeGeometry = new BufferGeometry();
         const edgePositions = [];
@@ -986,6 +1003,8 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         
         this.wireframe = new LineSegments(edgeGeometry, edgeMaterial);
         this.wireframe.layers.mask = LAYER.MASK_MAIN | LAYER.MASK_LOOK;
+        // Position wireframe at local origin to match solidMesh
+        this.wireframe.position.copy(this.meshLocalOrigin);
         this.group.add(this.wireframe);
     }
     
@@ -1593,10 +1612,14 @@ export class CNodeSynthBuilding extends CNode3DGroup {
             if (duplicate) {
                 // Enter edit mode on the duplicate
                 duplicate.setEditMode(true);
-                
+
+                // Force update of world matrices so raycasting works immediately
+                // (normally matrices are updated during the render loop, but we need them now)
+                duplicate.group.updateMatrixWorld(true);
+
                 // Mark the event as having triggered duplication to prevent recursion
                 event._duplicatedBuilding = true;
-                
+
                 // Continue with the drag/rotate logic on the duplicate
                 // by re-triggering the event handling on the duplicate
                 duplicate.onPointerDown(event);
