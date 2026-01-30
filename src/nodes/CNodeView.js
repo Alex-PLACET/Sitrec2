@@ -187,7 +187,9 @@ class CNodeView extends CNode {
         assert(!ViewMan.exists(v.id),"Adding "+v.id+" to ViewMan twice")
         ViewMan.add(v.id,this)
 
-        if (!this.overlayView) {
+        this.excludeFromViewsMenu = v.excludeFromViewsMenu ?? false;
+
+        if (!this.overlayView && !this.excludeFromViewsMenu) {
             const name = v.menuName ?? this.id;
             this.showHideName = name;
             // menu entry to show/hide this view

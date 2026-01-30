@@ -64,6 +64,7 @@ import {parseObjectInput as parseObjectInputUtil} from "./utils/parseObjectInput
 import {initializeSettings, SettingsSaver} from "./SettingsManager";
 import {CNodeCurveEditor2} from "./nodes/CNodeCurveEdit2";
 import {CNodeViewDAG} from "./nodes/CNodeViewDAG";
+import {CNodeNotes} from "./nodes/CNodeNotes";
 import {createCustomModalWithCopy, saveFilePrompted} from "./FileUtils";
 import {deserializeMotionAnalysis, getMotionAnalysisOverlays, serializeMotionAnalysis} from "./CMotionAnalysis";
 import {setupPanoramaExport} from "./PanoramaExporter";
@@ -652,6 +653,20 @@ export class CCustomManager {
                 width: 1,
                 height: 1,
                 draggable: false,
+            });
+        }
+
+        if (!NodeMan.exists("notesView")) {
+            new CNodeNotes({
+                id: "notesView",
+                visible: false,
+                left: 0.60,
+                top: 0.10,
+                width: 0.35,
+                height: 0.50,
+                draggable: true,
+                resizable: true,
+                freeAspect: true,
             });
         }
 
