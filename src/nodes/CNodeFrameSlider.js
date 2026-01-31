@@ -957,17 +957,20 @@ export class CNodeFrameSlider extends CNode {
             ctx.lineWidth = 2;
             ctx.beginPath();
             let inSegment = false;
+            let segmentStartX = 0;
             for (let i = 0; i < this.statusOverlay.length; i++) {
                 const x = padding + (drawableWidth * i / Sit.frames);
                 if (this.statusOverlay[i]) {
                     if (!inSegment) {
                         ctx.moveTo(x, this.statusOverlayOffset);
+                        segmentStartX = x;
                         inSegment = true;
                     } else {
                         ctx.lineTo(x, this.statusOverlayOffset);
                     }
                 } else {
                     if (inSegment) {
+                        ctx.lineTo(Math.max(x, segmentStartX + 1), this.statusOverlayOffset);
                         ctx.stroke();
                         ctx.beginPath();
                         inSegment = false;
@@ -975,6 +978,8 @@ export class CNodeFrameSlider extends CNode {
                 }
             }
             if (inSegment) {
+                const lastX = padding + drawableWidth;
+                ctx.lineTo(Math.max(lastX, segmentStartX + 1), this.statusOverlayOffset);
                 ctx.stroke();
             }
         }
