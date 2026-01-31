@@ -1,5 +1,40 @@
 import {assert} from "./assert.js";
 
+export function interpolatePosition(positionsMap, frame) {
+    if (positionsMap.has(frame)) {
+        return positionsMap.get(frame);
+    }
+    if (positionsMap.size === 0) {
+        return null;
+    }
+    const frames = Array.from(positionsMap.keys()).sort((a, b) => a - b);
+    let prevFrame = null;
+    let nextFrame = null;
+    for (const f of frames) {
+        if (f < frame) prevFrame = f;
+        else if (f > frame) {
+            nextFrame = f;
+            break;
+        }
+    }
+    if (prevFrame !== null && nextFrame !== null) {
+        const prevPos = positionsMap.get(prevFrame);
+        const nextPos = positionsMap.get(nextFrame);
+        const t = (frame - prevFrame) / (nextFrame - prevFrame);
+        return {
+            x: prevPos.x + (nextPos.x - prevPos.x) * t,
+            y: prevPos.y + (nextPos.y - prevPos.y) * t
+        };
+    }
+    if (prevFrame !== null) {
+        return positionsMap.get(prevFrame);
+    }
+    if (nextFrame !== null) {
+        return positionsMap.get(nextFrame);
+    }
+    return null;
+}
+
 export class CVideoData {
     constructor(v) {
         this.id = v.id;
@@ -186,9 +221,8 @@ export class CVideoData {
             return this.stabilizedImageCache[f];
         }
 
-        const trackPos = this.stabilizationData.get(f);
+        const trackPos = interpolatePosition(this.stabilizationData, f);
         if (!trackPos) {
-            // No tracking data for this frame, return original
             return originalImage;
         }
 

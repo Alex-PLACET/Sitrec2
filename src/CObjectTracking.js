@@ -1,6 +1,8 @@
 import {Globals, guiMenus, NodeMan, setRenderOne, Sit, unregisterFrameBlocker} from "./Globals";
 import {par} from "./par";
 import {getCV, loadOpenCV} from "./openCVLoader";
+import {interpolatePosition} from "./CVideoData";
+import {EventManager} from "./CEventManager";
 
 let cv = null;
 
@@ -20,8 +22,10 @@ class ObjectTracker {
         this.trackRadius = 30;
 
         this.trackedPositions = new Map();
+        this.manualKeyframes = new Set();
 
         this.isDragging = false;
+        this.draggingKeyframe = null;
         this.lastMouseX = 0;
         this.lastMouseY = 0;
 
@@ -39,6 +43,8 @@ class ObjectTracker {
         // Track video dimensions to detect when video changes
         this.lastVideoWidth = 0;
         this.lastVideoHeight = 0;
+        
+        this.thresholdPreview = false;
     }
     
     createOverlay() {
@@ -75,8 +81,15 @@ class ObjectTracker {
                 const y = mouse.y;
                 const [vX, vY] = this.videoView.canvasToVideoCoords(x, y);
                 
-                if (this.isWithinTrackPoint(vX, vY)) {
+                const clickedKeyframe = this.findClickedKeyframe(vX, vY);
+                if (clickedKeyframe !== null) {
                     this.isDragging = true;
+                    this.draggingKeyframe = clickedKeyframe;
+                    this.lastMouseX = vX;
+                    this.lastMouseY = vY;
+                } else if (this.isWithinTrackPoint(vX, vY)) {
+                    this.isDragging = true;
+                    this.draggingKeyframe = null;
                     this.lastMouseX = vX;
                     this.lastMouseY = vY;
                 }
@@ -89,11 +102,26 @@ class ObjectTracker {
                 const y = mouse.y;
                 const [vX, vY] = this.videoView.canvasToVideoCoords(x, y);
                 
-                this.trackX = vX;
-                this.trackY = vY;
+                const dx = vX - this.lastMouseX;
+                const dy = vY - this.lastMouseY;
+                this.lastMouseX = vX;
+                this.lastMouseY = vY;
                 
-                const frame = Math.floor(par.frame);
-                this.trackedPositions.set(frame, {x: this.trackX, y: this.trackY});
+                if (this.draggingKeyframe !== null) {
+                    const pos = this.trackedPositions.get(this.draggingKeyframe);
+                    if (pos) {
+                        pos.x += dx;
+                        pos.y += dy;
+                        this.trackedPositions.set(this.draggingKeyframe, pos);
+                    }
+                } else {
+                    this.trackX += dx;
+                    this.trackY += dy;
+                    const frame = Math.floor(par.frame);
+                    this.trackedPositions.set(frame, {x: this.trackX, y: this.trackY});
+                    this.manualKeyframes.add(frame);
+                }
+                this.updateSliderStatus();
                 
                 setRenderOne(true);
                 return;
@@ -104,11 +132,29 @@ class ObjectTracker {
         mouse.handlers.up = (e) => {
             if (this.isDragging) {
                 this.isDragging = false;
+                this.draggingKeyframe = null;
                 if (this.tracking) {
                     this.initializeTracker();
                 }
             }
         };
+        
+        EventManager.addEventListener("keydown", (data) => {
+            if (!this.enabled) return;
+            const key = data.key.toLowerCase();
+            if (key === 'backspace' || key === 'delete') {
+                const x = mouse.x;
+                const y = mouse.y;
+                const [vX, vY] = this.videoView.canvasToVideoCoords(x, y);
+                const clickedKeyframe = this.findClickedKeyframe(vX, vY);
+                if (clickedKeyframe !== null) {
+                    this.trackedPositions.delete(clickedKeyframe);
+                    this.manualKeyframes.delete(clickedKeyframe);
+                    this.updateSliderStatus();
+                    setRenderOne(true);
+                }
+            }
+        });
     }
     
     getImageDimensions() {
@@ -244,6 +290,21 @@ class ObjectTracker {
         return (dx * dx + dy * dy) <= (this.trackRadius * this.trackRadius);
     }
 
+    findClickedKeyframe(vX, vY) {
+        const clickRadius = this.trackRadius * 0.5;
+        for (const frame of this.manualKeyframes) {
+            const pos = this.trackedPositions.get(frame);
+            if (pos) {
+                const dx = vX - pos.x;
+                const dy = vY - pos.y;
+                if (dx * dx + dy * dy <= clickRadius * clickRadius) {
+                    return frame;
+                }
+            }
+        }
+        return null;
+    }
+
     // Calculate centroid (center of mass) of bright pixels within radius
     // Returns {x, y} or null if no bright pixels found
     calculateBrightCentroid(image, centerX, centerY, radius) {
@@ -335,14 +396,8 @@ class ObjectTracker {
             return;
         }
 
-        let prevFrame = frame - 1;
-        while (prevFrame >= 0 && !this.trackedPositions.has(prevFrame)) {
-            prevFrame--;
-        }
-
-        if (prevFrame < 0) return;
-
-        const prevPos = this.trackedPositions.get(prevFrame);
+        const prevPos = this.getInterpolatedPosition(frame - 1);
+        if (!prevPos) return;
 
         const videoData = this.videoView?.videoData;
         if (!videoData) return;
@@ -369,8 +424,8 @@ class ObjectTracker {
             return;
         }
 
-        // Standard template matching tracking
-        const prevImage = videoData.getImage(prevFrame);
+        // Standard template matching tracking - use previous frame's image with interpolated position
+        const prevImage = videoData.getImage(frame - 1);
         if (!prevImage || !prevImage.width) return;
 
         const width = prevImage.width || prevImage.videoWidth;
@@ -426,6 +481,47 @@ class ObjectTracker {
         result.delete();
     }
     
+    renderThresholdPreview(ctx, width, height) {
+        const videoData = this.videoView?.videoData;
+        if (!videoData) return;
+        
+        const frame = Math.floor(par.frame);
+        const image = videoData.getImage(frame);
+        if (!image || !image.width) return;
+        
+        const imgWidth = image.width || image.videoWidth;
+        const imgHeight = image.height || image.videoHeight;
+        
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = imgWidth;
+        tempCanvas.height = imgHeight;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.drawImage(image, 0, 0, imgWidth, imgHeight);
+        
+        const imageData = tempCtx.getImageData(0, 0, imgWidth, imgHeight);
+        const data = imageData.data;
+        
+        for (let i = 0; i < data.length; i += 4) {
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
+            
+            if (brightness > this.brightnessThreshold) {
+                data[i] = 255;
+                data[i + 1] = 255;
+                data[i + 2] = 255;
+            } else {
+                data[i] = 0;
+                data[i + 1] = 0;
+                data[i + 2] = 0;
+            }
+        }
+        
+        tempCtx.putImageData(imageData, 0, 0);
+        ctx.drawImage(tempCanvas, 0, 0, width, height);
+    }
+    
     renderOverlay(frame) {
         if (!this.enabled || !this.overlay) return;
 
@@ -439,6 +535,11 @@ class ObjectTracker {
 
         const ctx = this.overlayCtx;
         ctx.clearRect(0, 0, width, height);
+        
+        if (this.thresholdPreview) {
+            this.renderThresholdPreview(ctx, width, height);
+            return;
+        }
 
         // Check if video dimensions have changed (e.g., new video loaded)
         const videoDims = this.getImageDimensions();
@@ -461,8 +562,8 @@ class ObjectTracker {
             this.trackFrame(frame);
         } else {
             const f = Math.floor(frame);
-            if (this.trackedPositions.has(f)) {
-                const pos = this.trackedPositions.get(f);
+            const pos = this.getInterpolatedPosition(f);
+            if (pos) {
                 this.trackX = pos.x;
                 this.trackY = pos.y;
             }
@@ -470,6 +571,8 @@ class ObjectTracker {
 
         const videoData = this.videoView?.videoData;
         const stabEnabled = videoData?.stabilizationEnabled && videoData?.stabilizationData && videoData?.stabilizationReferencePoint;
+
+        if (stabEnabled) return;
         
         const getStabOffset = (f) => {
             if (!stabEnabled) return {x: 0, y: 0};
@@ -533,32 +636,62 @@ class ObjectTracker {
             }
             ctx.stroke();
         }
+
+        const keyframeRadius = canvasRadius * 0.3;
+        for (const f of this.manualKeyframes) {
+            const pos = this.trackedPositions.get(f);
+            if (pos) {
+                const offset = getStabOffset(f);
+                const [kx, ky] = this.videoView.videoToCanvasCoords(pos.x + offset.x, pos.y + offset.y);
+                ctx.strokeStyle = '#ff00ff';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.arc(kx, ky, keyframeRadius, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(kx - keyframeRadius - 3, ky);
+                ctx.lineTo(kx + keyframeRadius + 3, ky);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(kx, ky - keyframeRadius - 3);
+                ctx.lineTo(kx, ky + keyframeRadius + 3);
+                ctx.stroke();
+            }
+        }
     }
     
     clearTrack() {
         this.trackedPositions.clear();
+        this.manualKeyframes.clear();
         const frame = Math.floor(par.frame);
         this.trackedPositions.set(frame, {x: this.trackX, y: this.trackY});
+        this.updateSliderStatus();
+        
+        const videoData = this.videoView?.videoData;
+        if (videoData) {
+            videoData.setStabilizationEnabled(false);
+            videoData.stabilizationData = null;
+            videoData.stabilizationReferencePoint = null;
+        }
+        
+        setRenderOne(true);
+    }
+
+    clearFromHere() {
+        const currentFrame = Math.floor(par.frame);
+        const bFrame = Sit.bFrame ?? (Sit.frames - 1);
+        for (const f of this.trackedPositions.keys()) {
+            if (f >= currentFrame && f <= bFrame) {
+                this.trackedPositions.delete(f);
+                this.manualKeyframes.delete(f);
+            }
+        }
         this.updateSliderStatus();
         setRenderOne(true);
     }
 
-    continueTracking() {
-        if (!this.enabled) return;
-        const currentFrame = Math.floor(par.frame);
-        for (const f of this.trackedPositions.keys()) {
-            if (f >= currentFrame) {
-                this.trackedPositions.delete(f);
-            }
-        }
-        this.trackedPositions.set(currentFrame, {x: this.trackX, y: this.trackY});
-        this.tracking = true;
-        this.updateSliderStatus();
-        this.savedPaused = par.paused;
-        this.savedFrame = par.frame;
-        Globals.justVideoAnalysis = true;
-        par.paused = true;
-        this.runFastTrackingLoop();
+    getInterpolatedPosition(frame) {
+        return interpolatePosition(this.trackedPositions, frame);
     }
     
     getCacheStatusArray() {
@@ -703,25 +836,16 @@ function toggleStartTracking() {
 function clearTrack() {
     if (objectTracker) {
         objectTracker.clearTrack();
+        if (stabilizeToggleMenuItem) {
+            stabilizeToggleMenuItem.name("Enable Stabilization");
+        }
     }
 }
 
-function continueTrack() {
-    if (!objectTracker || !objectTracker.enabled) {
-        toggleEnableTracking();
-        if (!objectTracker || !objectTracker.enabled) {
-            return;
-        }
+function clearFromHere() {
+    if (objectTracker) {
+        objectTracker.clearFromHere();
     }
-    if (objectTracker.tracking) {
-        objectTracker.stopTracking();
-        if (startMenuItem) startMenuItem.name("Start Auto Tracking");
-        setRenderOne(true);
-        return;
-    }
-    objectTracker.continueTracking();
-    if (startMenuItem) startMenuItem.name("Stop Auto Tracking");
-    setRenderOne(true);
 }
 
 function stabilizeVideo() {
@@ -797,7 +921,7 @@ export function addObjectTrackingMenu() {
     const menuActions = {
         enableTracking: toggleEnableTracking,
         startTracking: toggleStartTracking,
-        continueTrack: continueTrack,
+        clearFromHere: clearFromHere,
         clearTrack: clearTrack,
         stabilizeVideo: stabilizeVideo,
         toggleStabilization: toggleStabilization,
@@ -813,9 +937,9 @@ export function addObjectTrackingMenu() {
         .tooltip("Automatically track the object inside the cursor as video plays")
         .perm();
 
-    trackingFolder.add(menuActions, 'continueTrack')
-        .name("Continue Track")
-        .tooltip("Continue tracking from current frame, keeping existing data before this frame")
+    trackingFolder.add(menuActions, 'clearFromHere')
+        .name("Clear from Here")
+        .tooltip("Clear all tracked positions from current frame to end")
         .perm();
 
     trackingFolder.add(menuActions, 'clearTrack')
@@ -880,6 +1004,18 @@ export function addObjectTrackingMenu() {
     trackingFolder.add(brightnessParams, 'brightnessThreshold', 0, 255, 1)
         .name("Brightness Threshold")
         .tooltip("Minimum brightness to consider (0-255). Only used in Center on Bright mode")
+        .onChange(() => {
+            if (objectTracker) {
+                objectTracker.thresholdPreview = true;
+                setRenderOne(true);
+            }
+        })
+        .onFinishChange(() => {
+            if (objectTracker) {
+                objectTracker.thresholdPreview = false;
+                setRenderOne(true);
+            }
+        })
         .perm();
 }
 
