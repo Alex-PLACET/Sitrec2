@@ -468,7 +468,24 @@ class ObjectTracker {
             }
         }
 
-        const [cx, cy] = this.videoView.videoToCanvasCoords(this.trackX, this.trackY);
+        const videoData = this.videoView?.videoData;
+        const stabEnabled = videoData?.stabilizationEnabled && videoData?.stabilizationData && videoData?.stabilizationReferencePoint;
+        
+        const getStabOffset = (f) => {
+            if (!stabEnabled) return {x: 0, y: 0};
+            const trackPos = videoData.stabilizationData.get(Math.floor(f));
+            if (!trackPos) return {x: 0, y: 0};
+            if (videoData.stabilizationDirectOffset) {
+                return {x: trackPos.x, y: trackPos.y};
+            }
+            return {
+                x: videoData.stabilizationReferencePoint.x - trackPos.x,
+                y: videoData.stabilizationReferencePoint.y - trackPos.y
+            };
+        };
+
+        const stabOffset = getStabOffset(frame);
+        const [cx, cy] = this.videoView.videoToCanvasCoords(this.trackX + stabOffset.x, this.trackY + stabOffset.y);
         
         const {dWidth} = this.videoView;
         const videoWidth = this.videoView.videoWidth || 1;
@@ -505,7 +522,8 @@ class ObjectTracker {
             const sortedFrames = Array.from(this.trackedPositions.keys()).sort((a, b) => a - b);
             for (const f of sortedFrames) {
                 const pos = this.trackedPositions.get(f);
-                const [px, py] = this.videoView.videoToCanvasCoords(pos.x, pos.y);
+                const offset = getStabOffset(f);
+                const [px, py] = this.videoView.videoToCanvasCoords(pos.x + offset.x, pos.y + offset.y);
                 if (!started) {
                     ctx.moveTo(px, py);
                     started = true;
