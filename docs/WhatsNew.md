@@ -3,19 +3,22 @@
 <!--
 ## AI Instructions for Updating This Document
 
+IMPORTANT: Always check what the last documented version is, and update ALL missing versions up to the current version.
+
 When updating this changelog:
 
-1. **Get recent commits**: Run `git log --since="[date]" --pretty=format:"%h|%ad|%s" --date=short` from the sitrec directory
+1. **Check last documented version**: Look at the first version heading below these instructions
 2. **Get version tags**: Run `git tag -l "2.*" --sort=-version:refname --format='%(refname:short)|%(creatordate:short)' | head -20`
-3. **Organize by version**: Group commits between version tag dates
-4. **Categorize entries**:
+3. **Get commits between versions**: Run `git log [old_tag]..[new_tag] --pretty=format:"%s"` for each missing version
+4. **Get commits since last tag**: Run `git log [latest_tag]..HEAD --pretty=format:"%s"` for unreleased changes
+5. **Categorize entries**:
    - **New Features**: New functionality, UI additions, new file format support
    - **Improvements**: Enhancements to existing features, performance, UX improvements
    - **Bug Fixes**: Entries starting with "Fixed", "Fix", corrections to existing behavior
-5. **Write clean descriptions**: Convert commit messages to user-friendly descriptions. Look at actual code changes if the commit message is unclear.
-6. **Format**: Use present tense, focus on user benefit, be concise
-7. **Add new versions at the top** of the document, below the AI instructions
-8. **Include the date** with each version heading
+6. **Write clean descriptions**: Convert commit messages to user-friendly descriptions. Look at actual code changes if the commit message is unclear.
+7. **Format**: Use present tense, focus on user benefit, be concise
+8. **Add new versions at the top** of the document, below these instructions
+9. **Include the date** with each version heading
 
 Example entry format:
 ## Version X.Y.Z (YYYY-MM-DD)
@@ -29,6 +32,75 @@ Example entry format:
 ### Bug Fixes
 - Fixed issue description
 -->
+
+---
+
+## Version 2.26.4 (2026-01-31)
+
+### New Features
+- **Render Stabilized Video**: Export stabilized video at original size from Auto Tracking menu
+- **Render Stabilized Expanded**: Export stabilized video with expanded canvas so no pixels are lost during stabilization shifts
+- **Notes Panel**: Add and edit notes within the application
+- **V-B Measure from Look View**: Set camera, target, and V-B measure positions directly from the look view
+- **Undo/Redo for Camera and Target**: Full undo/redo support for camera and target positioning
+- **Undo/Redo for V-B Measure**: Full undo/redo support for V-B measurement tool
+- **Lock Altitude to Ground**: Track editor can now lock altitude relative to the ground
+- **Delete Key Support**: Delete selected objects using the Delete key
+
+### Improvements
+- **Video Export Memory Fix**: Added backpressure to video encoder to prevent unbounded memory growth and long "flushing encoder" delays during video export
+- **Auto Tracking Enhancements**: Keyframe editing, threshold preview, "Clear from Here" option, "Continue Tracking" feature
+- **Snapping Windows**: Windows now snap to edges and other windows when dragging
+- **All Views Draggable**: All viewport views can now be dragged and repositioned
+- **Z-ordering for Viewports**: Proper layering of overlapping viewports
+- **Cmd-S Shortcut**: Save with Cmd-S (Mac) or Ctrl-S (Windows), with smart detection of changes
+- **Spline Precision**: Splines use local coordinates to avoid precision jittering
+- **Updated Keyboard Shortcuts**: Refreshed keyboard shortcut documentation
+
+### Bug Fixes
+- Fixed deleting buildings (broke with local origin changes)
+- Fixed caching of incorrect frames when stabilizing video
+- Fixed sidebar mouse interaction issues
+- Fixed Q-drag of video views
+
+---
+
+## Version 2.26.3 (2026-01-27)
+
+### Improvements
+- **Optimized Settings Saving**: Only save settings when actually changed, avoiding unnecessary server calls
+- **Robust Error Handling**: More graceful handling of errors during loading
+- **Model Loading**: More robust handling of model loading errors
+- **Admin Panel**: Additional admin panel information
+
+### Bug Fixes
+- Fixed handling of missing .ts files
+
+---
+
+## Version 2.26.2 (2026-01-26)
+
+### Bug Fixes
+- Fixed tiles not subdividing when their center is behind the frustum, which led to low resolution tiles near the camera
+- Fixed mouse coordinates and other view/screen transforms when sidebar is active
+
+---
+
+## Version 2.26.0 (2026-01-26)
+
+### New Features
+- **Sidebar Docking**: Dock menus in left and right sidebars for a customizable workspace
+- **Drop Indicator for Sidebar**: Visual indicator shows where menus will dock when dragging
+- **Convolution Filters at Source Level**: Image convolution filters now applied at source image level for better quality
+- **Video URL Support**: Load videos directly from URLs
+- **Video Viewer Electron App**: Basic video viewer extracted to standalone Electron application
+
+### Improvements
+- **Sidebar Serialization**: Sidebar configurations are saved and restored between sessions
+
+### Bug Fixes
+- Fixed drift when mouse dragging menus
+- Fixed spurious scrollbar appearing when dragging a menu into the right dock
 
 ---
 
