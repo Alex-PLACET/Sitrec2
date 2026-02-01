@@ -32,16 +32,17 @@ export function extractPBACSV(text) {
 // case is ignored for header matching
 const CustomCSVFormats = {
     CUSTOM1: {
-        trackID:  ["THRESHERID", "TRACK_ID"],
+        trackID:  ["THRESHERID", "TRACK_ID", "STAGENUMBER"],
         time:     ["TIME", "TIMESTAMP", "DATE", "UTC", "DATETIME", "DATE_TIME", "DATETIME_UTC", "DTG", "DT"],
-        lat:      ["LAT", "LATITUDE", "TPLAT"],
-        lon:      ["LON", "LONG", "LONGITUDE", "TPLON"],
+        lat:      ["LAT", "LATITUDE", "TPLAT", "LATITUDEDEGS"],
+        lon:      ["LON", "LONG", "LONGITUDE", "TPLON", "LONGITUDEDEGS"],
         alt:      ["ALTITUDE", "ALT", "ALTITUDE (m)*", "TPHAE", "alt_m"],
         agl:      ["AGL", "ALT (m/agl)"],
         altFeet:  ["ALTITUDE (FT)", "ALT (FT)", "ALTITUDE(FT)", "ALT(FT)"],
+        altKm:    ["ALTITUDEKM"],
         aircraft: ["AIRCRAFT", "AIRCRAFTSPECIFICTYPE"],
         callsign: ["CALLSIGN", "TAILNUMBER", "BALLOON_CALLSIGN"],
-        az:       ["AZIMUTH", "AZ"],
+        az:       ["AZIMUTH", "AZ", "AZIMUTHDEGS"],
     }
 }
 
@@ -85,6 +86,7 @@ export function parseCustom1CSV(csv) {
     const lonCol =      findColumn(csv, headerValues.lon, true)
     const altCol =      findColumn(csv, headerValues.alt, true)
     const altFeet =     findColumn(csv, headerValues.altFeet, true)
+    const altKmCol =    findColumn(csv, headerValues.altKm, true)
     const aglCol =      findColumn(csv, headerValues.agl, true)
     const azCol =       findColumn(csv, headerValues.az, true)
     const aircraftCol = findColumn(csv, headerValues.aircraft, true)
@@ -96,6 +98,7 @@ export function parseCustom1CSV(csv) {
         ", lonCol=" + lonCol + ", altCol=" + altCol +
         ", aglCol=" + aglCol +
         ", altFeet=" + altFeet +
+        ", altKmCol=" + altKmCol +
         ", aircraftCol=" + aircraftCol +
         ", callsignCol=" + callsignCol);
 
@@ -105,19 +108,55 @@ export function parseCustom1CSV(csv) {
   //  const startTime = parseISODate(csv[1][dateCol])
   //  console.log("Detected Airdata start time of " + startTime)
 
+
+    let isNumberTime = false;
+    let isRelativeTime = false;
+
+    const firstDateValue = csv[1][dateCol];
+    // is it just a postive number, possible with decimal point?
+    const relativeTimeRegex = /^\d+(\.\d+)?$/;
+    if (relativeTimeRegex.test(firstDateValue)) {
+        isNumberTime = true;
+
+        // detect to see if the time is relative in seconds
+        // not perfect, but works for most cases
+        // we assume if the first date is less than 1, it's relative time in seconds
+        const firstDate = Number(csv[1][dateCol]);
+        if (firstDate < 1) {
+            isRelativeTime = true;
+        }
+    }
+
     for (let i = 1; i < rows; i++) {
-        // any empty column will be null
+        // any empty cell will be null
         MISBArray[i - 1] = new Array(MISBFields).fill(null);
 
+        let date = null;
         // date can either be an ISO date string, or a number (epoch time in µs, ms or seconds)
         // parseISODate assumes Zulu time if no timezone specified
-        let date = parseISODate(csv[i][dateCol]).getTime();
-        if (isNaN(date)) {
+        if (isNumberTime) {
             // try to parse as a number
             // we don't distinguish the units here, as that's handled by CNodeMISBData::getTime()
             date = Number(csv[i][dateCol]);
+            if (isRelativeTime) {
+                const startTime = GlobalDateTimeNode.dateStart.valueOf();
+                date = startTime + date * 1000;
+
+                if (i<200) {
+                    console.log(`Relative time detected, row ${i} time=${csv[i][dateCol]} converted to ${date} ms`);
+                }
+
+            }
+        }
+        else {
+            date = parseISODate(csv[i][dateCol]).getTime();
+
+            if (i < 200) {
+                console.log(`ISO date string detected, row ${i} time=${csv[i][dateCol]} converted to ${date} ms`);
+            }
         }
 
+        // at this point date is in milliseconds or microseconds since epoch
         MISBArray[i - 1][MISB.UnixTimeStamp] = date;
 
         MISBArray[i - 1][MISB.SensorLatitude] = Number(csv[i][latCol])
@@ -144,6 +183,12 @@ export function parseCustom1CSV(csv) {
         // altFeet takes precedence over alt in meters
         if (altFeet !== -1) {
             const altitude = f2m(Number(csv[i][altFeet]));
+            MISBArray[i - 1][MISB.SensorTrueAltitude] = isNaN(altitude) ? null : altitude;
+        }
+
+        // altKm takes precedence over altFeet
+        if (altKmCol !== -1) {
+            const altitude = Number(csv[i][altKmCol]) * 1000;
             MISBArray[i - 1][MISB.SensorTrueAltitude] = isNaN(altitude) ? null : altitude;
         }
 

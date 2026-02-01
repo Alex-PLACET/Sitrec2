@@ -127,6 +127,7 @@ export class CNodeMISBDataTrack extends CNodeEmptyArray {
                 // otherwise, just give it an empty structure
                 console.warn("CNodeMISBDataTrack: invalid data at frame " + f + " in track " + this.id + " lat=" + this.getLat(f) + " lon=" + this.getLon(f) + " alt=" + this.getAlt(f));
                 console.warn("Returning empty object {}")
+                assert(0, "CNodeMISBDataTrack: invalid data at frame " + f + " in track " + this.id);
                 this.array.push({})
             }
 
