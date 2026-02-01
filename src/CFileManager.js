@@ -67,6 +67,7 @@ import {createImageFromArrayBuffer} from "./FileUtils";
 import {ModelFiles} from "./nodes/CNode3DObject";
 import {LoadingManager} from "./CLoadingManager";
 import {convertTiffBufferToPngImage} from "./TIFFUtils";
+import {extractFlightClubInfo, flightClubToCSVStrings, isFlightClubJSON} from "./ParseFlightClubJSON";
 
 const trackFileClasses = [
     CTrackFileKML,
@@ -1464,6 +1465,12 @@ export class CFileManager extends CManager {
             return;
         }
 
+        // Handle FlightClub JSON files - convert to CSV tracks
+        if (fileManagerEntry.dataType === "flightclub") {
+            this.handleFlightClubJSON(filename, parsedFile, fileManagerEntry);
+            return;
+        }
+
         // Handle image files that were imported as video source
         if (fileManagerEntry.dataType === "videoImage") {
             // If a multi-video restore is in progress, skip this - loadVideoFromEntry will handle it
@@ -1886,6 +1893,52 @@ export class CFileManager extends CManager {
         }
     }
 
+    handleFlightClubJSON(filename, jsonData, fileManagerEntry) {
+        console.log("Processing FlightClub JSON: " + filename);
+
+        fileManagerEntry.skipSerialization = true;
+
+        const csvResults = flightClubToCSVStrings(jsonData);
+        const missionInfo = extractFlightClubInfo(jsonData);
+        const baseName = filename.replace(/\.[^.]+$/, '');
+
+        const trackFilenames = [];
+
+        csvResults.forEach((result) => {
+            const csvFilename = `${baseName}-${result.stageName.replace(/\s+/g, '_')}.csv`;
+            const encoder = new TextEncoder();
+            const csvBuffer = encoder.encode(result.csvString).buffer;
+
+            const parsed = csv.toArrays(result.csvString);
+            const misbData = parseCustom1CSV(parsed);
+            const trackFile = new CTrackFileMISB(stripDuplicateTimes(misbData));
+
+            this.add(csvFilename, trackFile, csvBuffer);
+            this.list[csvFilename].filename = csvFilename;
+            this.list[csvFilename].dataType = "trackfile";
+            this.list[csvFilename].dynamicLink = true;
+
+            trackFilenames.push(csvFilename);
+            console.log(`Created track file "${result.stageName}" as ${csvFilename}`);
+        });
+
+        TrackManager.addTracks(trackFilenames, true);
+
+        if (NodeMan.exists("notesView")) {
+            const notesView = NodeMan.get("notesView");
+            const existingNotes = notesView.notesText || "";
+            const separator = existingNotes ? "\n\n" : "";
+            notesView.notesText = existingNotes + separator + missionInfo;
+            if (notesView.textArea) {
+                notesView.textArea.value = notesView.notesText;
+            }
+            notesView.show(true);
+        }
+
+        setRenderOne();
+        console.log(`FlightClub JSON processed: ${csvResults.length} tracks created`);
+    }
+
     /**
      * Low-level parser that converts a raw ArrayBuffer to typed data based on file extension.
      * Recursively handles container formats:
@@ -2253,6 +2306,9 @@ export class CFileManager extends CManager {
                     if (jsonParsed.isASitchFile) {
                         dataType = "sitch";
                         parsed = buffer;
+                    } else if (isFlightClubJSON(jsonParsed)) {
+                        dataType = "flightclub";
+                        parsed = jsonParsed;
                     } else {
                         parsed = this.detectTrackFile(filename, jsonParsed);
                         if (parsed) {
