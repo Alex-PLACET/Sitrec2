@@ -2014,6 +2014,10 @@ export class CCustomManager {
                         mirroredController._originalMaxSI = controller._originalMaxSI;
                         mirroredController._originalStepSI = controller._originalStepSI;
                     }
+                    // Copy original name for unit change updates
+                    if (controller._originalName) {
+                        mirroredController._originalName = controller._originalName;
+                    }
                 }
 
                 // Set up bidirectional sync by wrapping onChange handlers

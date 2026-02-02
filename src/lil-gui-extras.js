@@ -317,6 +317,27 @@ Controller.prototype.setUnitType = function (unitType) {
         updateRanges();
         updateName();
         this.updateDisplay();
+        
+        // Update any mirrored controllers (they share the proxy but need display/range updates)
+        if (this._mirrorControllers) {
+            for (const mirror of this._mirrorControllers) {
+                if (mirror.domElement && mirror._unitType) {
+                    // Update mirror's name and ranges for new units
+                    if (mirror._originalName) {
+                        const mirrorUnitInfo = Units.factors[Units.units][mirror._unitType];
+                        if (mirrorUnitInfo) {
+                            mirror._name = mirror._originalName + ' (' + mirrorUnitInfo.abbrev + ')';
+                            mirror.$name.innerHTML = mirror._name;
+                            mirror._min = mirror._originalMinSI / mirrorUnitInfo.toM;
+                            mirror._max = mirror._originalMaxSI / mirrorUnitInfo.toM;
+                            mirror._step = mirror._originalStepSI / mirrorUnitInfo.toM;
+                            mirror._onUpdateMinMax();
+                        }
+                    }
+                    mirror.updateDisplay();
+                }
+            }
+        }
     };
 
     // Listen for global units changes
@@ -375,7 +396,10 @@ Controller.prototype.setSIValue = function (siValue, _fromMirror = false) {
     // Update any mirrored controllers (without recursing back)
     if (!_fromMirror && this._mirrorControllers) {
         for (const mirror of this._mirrorControllers) {
-            mirror.setSIValue(siValue, true);
+            // Skip destroyed controllers (domElement is null after destroy)
+            if (mirror.domElement) {
+                mirror.setSIValue(siValue, true);
+            }
         }
     }
     
