@@ -353,27 +353,32 @@ Controller.prototype.getSIValue = function () {
 }
 
 // Set value in SI units (meters) 
-// This updates the controller WITHOUT triggering onChange (used for syncing from model)
-Controller.prototype.setSIValue = function (siValue) {
+// This updates the controller and any mirrored controllers
+// Pass _fromMirror=true to prevent recursive updates
+Controller.prototype.setSIValue = function (siValue, _fromMirror = false) {
     if (!this._unitType || !Units) {
         // No unit conversion - just update directly without triggering onChange
         this.object[this.property] = siValue;
         this.updateDisplay();
-        return this;
+    } else {
+        const unitInfo = Units.factors[Units.units][this._unitType];
+        if (!unitInfo) {
+            this.object[this.property] = siValue;
+            this.updateDisplay();
+        } else {
+            const displayValue = siValue / unitInfo.toM;
+            this.object[this.property] = displayValue;
+            this.updateDisplay();
+        }
     }
-
-    const unitInfo = Units.factors[Units.units][this._unitType];
-    if (!unitInfo) {
-        // No unit info - update directly without triggering onChange
-        this.object[this.property] = siValue;
-        this.updateDisplay();
-        return this;
+    
+    // Update any mirrored controllers (without recursing back)
+    if (!_fromMirror && this._mirrorControllers) {
+        for (const mirror of this._mirrorControllers) {
+            mirror.setSIValue(siValue, true);
+        }
     }
-
-    // Convert from SI units to display units and update WITHOUT triggering onChange
-    const displayValue = siValue / unitInfo.toM;
-    this.object[this.property] = displayValue;
-    this.updateDisplay();
+    
     return this;
 }
 

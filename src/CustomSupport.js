@@ -2035,6 +2035,12 @@ export class CCustomManager {
                     controller.updateDisplay();
                 });
 
+                // Store bidirectional mirror references for setSIValue sync
+                if (!controller._mirrorControllers) controller._mirrorControllers = [];
+                if (!mirroredController._mirrorControllers) mirroredController._mirrorControllers = [];
+                controller._mirrorControllers.push(mirroredController);
+                mirroredController._mirrorControllers.push(controller);
+
                 // Copy visibility state
                 mirroredController.show(!controller._hidden);
 
