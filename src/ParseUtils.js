@@ -186,6 +186,12 @@ export function stripDuplicateTimes(data) {
         console.log(`Removed ${numDuplicates} duplicate times. Last duplicate time was ${lastDuplicate}`);
     }
 
+    // Preserve relative-time metadata attached by parsers, needed for trackStartTime feature
+    if (data.isRelativeTime) {
+        uniqueData.isRelativeTime = data.isRelativeTime;
+        uniqueData.parsingBaseTime = data.parsingBaseTime;
+    }
+
     // Return the array of unique data points
     return uniqueData;
 }

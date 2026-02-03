@@ -141,11 +141,6 @@ export function parseCustom1CSV(csv) {
             if (isRelativeTime) {
                 const startTime = GlobalDateTimeNode.dateStart.valueOf();
                 date = startTime + date * 1000;
-
-                if (i<200) {
-                    console.log(`Relative time detected, row ${i} time=${csv[i][dateCol]} converted to ${date} ms`);
-                }
-
             }
         }
         else {
@@ -207,9 +202,12 @@ export function parseCustom1CSV(csv) {
 
     }
 
-    // } catch (error) {
-    //     showError(error.message)
-    // }
+    // For relative-time tracks, attach metadata so downstream consumers can
+    // allow user to override the start time via trackStartTime GUI field
+    if (isRelativeTime) {
+        MISBArray.isRelativeTime = true;
+        MISBArray.parsingBaseTime = GlobalDateTimeNode.dateStart.valueOf();
+    }
 
     return MISBArray;
 
@@ -245,6 +243,11 @@ export function parseCustomFLLCSV(csv) {
         }
 
     }
+
+    // FLL format uses frame numbers relative to sitch start time,
+    // so always mark as relative time for trackStartTime GUI support
+    MISBArray.isRelativeTime = true;
+    MISBArray.parsingBaseTime = startTime;
 
     return MISBArray;
 }

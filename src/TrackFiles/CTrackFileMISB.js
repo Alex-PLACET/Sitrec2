@@ -2,6 +2,15 @@ import {CTrackFile} from "./CTrackFile";
 import {MISB, MISBFields} from "../MISBFields";
 
 export class CTrackFileMISB extends CTrackFile {
+    constructor(data) {
+        super(data);
+        // Store relative-time metadata from parser for trackStartTime GUI feature
+        if (data && data.isRelativeTime) {
+            this.isRelativeTime = true;
+            this.parsingBaseTime = data.parsingBaseTime;
+        }
+    }
+
     static canHandle(filename, data) {
         if (!data || !Array.isArray(data)) {
             return false;

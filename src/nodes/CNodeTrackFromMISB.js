@@ -249,15 +249,11 @@ export class CNodeTrackFromMISB extends CNodeTrack {
         this.frames = Sit.frames;
         this.useSitFrames = true; // flag to say we need recalculate if Sit.frames changes
 
-        // we need to do this again in case the elevation has changed
-        // even if not, the recalculate has been trigggered by an input, so we can't rely on that input
-        // might be  aperformance issue? In which case need to detect if we need to call this
-        // for now just do it if useing AGL
-
-        if (misb.useAGL) {
+        // Re-cache values when needed:
+        // - useAGL: elevation may have changed, affecting altitude
+        // - isRelativeTime: trackStartTimeOffset may have changed, affecting getTime()
+        if (misb.useAGL || misb.isRelativeTime) {
             this.cacheValues();
-        } else {
-//            console.warn("CNodeTrackFromMISB:recalculate(): Not using AGL, so not re-caching values from this.in.misb")
         }
 
         assert(this.frames === Math.floor(this.frames),`Frames must be an integer, it's ${this.frames}`)

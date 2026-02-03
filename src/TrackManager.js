@@ -194,6 +194,7 @@ class CTrackManager extends CManager {
             id: dataID,
             misb: misb,
             exportable: true,
+            trackFile: trackFile, // pass trackFile for relative-time metadata (trackStartTime feature)
         });
 
         return true;
@@ -380,7 +381,8 @@ class CTrackManager extends CManager {
                     // add a remove button to the folder
                     trackOb.guiFolder.add(dummy, "removeTrack").name("Remove Track");
 
-
+                    // For relative-time tracks, add GUI field to override start time
+                    trackDataNode.setupTrackStartTimeGUI(trackOb.guiFolder);
 
                     // how many tracks are there now?
                     const trackNumber = TrackManager.size();
