@@ -69,6 +69,7 @@ import {createCustomModalWithCopy, saveFilePrompted} from "./FileUtils";
 import {deserializeMotionAnalysis, getMotionAnalysisOverlays, serializeMotionAnalysis} from "./CMotionAnalysis";
 import {setupPanoramaExport} from "./PanoramaExporter";
 import {getCursorPositionFromTopView} from "./mouseMoveView";
+import {addMenuToLeftSidebar, addMenuToRightSidebar, isInLeftSidebar, isInRightSidebar} from "./PageStructure";
 
 export class CCustomManager {
     constructor() {
@@ -2812,10 +2813,20 @@ export class CCustomManager {
             building.setEditMode(true);
         }
 
+        // Check saved sidebar state first (saved before menu destruction in setEditMode)
+        let wasInLeftSidebar = this.lastBuildingEditMenuSidebar === 'left';
+        let wasInRightSidebar = this.lastBuildingEditMenuSidebar === 'right';
+        
+        // Also check current menu if it still exists
         if (this.buildingEditMenu) {
+            if (isInLeftSidebar(this.buildingEditMenu)) wasInLeftSidebar = true;
+            if (isInRightSidebar(this.buildingEditMenu)) wasInRightSidebar = true;
             this.buildingEditMenu.destroy(true, true); // skipEditModeDisable=true since we're just relocating
             this.buildingEditMenu = null;
         }
+        
+        // Clear saved state after using it
+        this.lastBuildingEditMenuSidebar = null;
 
         const buildingName = building.name || building.buildingID;
         const standaloneMenu = Globals.menuBar.createStandaloneMenu(`Edit: ${buildingName}`, mouseX, mouseY);
@@ -2823,7 +2834,23 @@ export class CCustomManager {
         
         this.setupDynamicMirroring(building.guiFolder, standaloneMenu);
         
-        standaloneMenu.open();
+        if (wasInLeftSidebar) {
+            addMenuToLeftSidebar(standaloneMenu);
+            standaloneMenu.mode = "SIDEBAR_LEFT";
+            standaloneMenu.lockOpenClose = false;
+            standaloneMenu.open();
+            standaloneMenu.lockOpenClose = true;
+            Globals.menuBar.applyModeStyles(standaloneMenu);
+        } else if (wasInRightSidebar) {
+            addMenuToRightSidebar(standaloneMenu);
+            standaloneMenu.mode = "SIDEBAR_RIGHT";
+            standaloneMenu.lockOpenClose = false;
+            standaloneMenu.open();
+            standaloneMenu.lockOpenClose = true;
+            Globals.menuBar.applyModeStyles(standaloneMenu);
+        } else {
+            standaloneMenu.open();
+        }
     }
 
     showCloudsEditingMenu(mouseX, mouseY) {
@@ -2838,7 +2865,11 @@ export class CCustomManager {
             clouds.setEditMode(true);
         }
 
+        let wasInLeftSidebar = false;
+        let wasInRightSidebar = false;
         if (this.cloudsEditMenu) {
+            wasInLeftSidebar = isInLeftSidebar(this.cloudsEditMenu);
+            wasInRightSidebar = isInRightSidebar(this.cloudsEditMenu);
             this.cloudsEditMenu.destroy(true, true); // skipEditModeDisable=true since we're just relocating
             this.cloudsEditMenu = null;
         }
@@ -2849,7 +2880,23 @@ export class CCustomManager {
         
         this.setupDynamicMirroring(clouds.guiFolder, standaloneMenu);
         
-        standaloneMenu.open();
+        if (wasInLeftSidebar) {
+            addMenuToLeftSidebar(standaloneMenu);
+            standaloneMenu.mode = "SIDEBAR_LEFT";
+            standaloneMenu.lockOpenClose = false;
+            standaloneMenu.open();
+            standaloneMenu.lockOpenClose = true;
+            Globals.menuBar.applyModeStyles(standaloneMenu);
+        } else if (wasInRightSidebar) {
+            addMenuToRightSidebar(standaloneMenu);
+            standaloneMenu.mode = "SIDEBAR_RIGHT";
+            standaloneMenu.lockOpenClose = false;
+            standaloneMenu.open();
+            standaloneMenu.lockOpenClose = true;
+            Globals.menuBar.applyModeStyles(standaloneMenu);
+        } else {
+            standaloneMenu.open();
+        }
     }
 
     showOverlayEditingMenu(overlay, mouseX, mouseY) {
@@ -2863,7 +2910,11 @@ export class CCustomManager {
             overlay.setEditMode(true);
         }
 
+        let wasInLeftSidebar = false;
+        let wasInRightSidebar = false;
         if (this.overlayEditMenu) {
+            wasInLeftSidebar = isInLeftSidebar(this.overlayEditMenu);
+            wasInRightSidebar = isInRightSidebar(this.overlayEditMenu);
             this.overlayEditMenu.destroy(true, true); // skipEditModeDisable=true since we're just relocating
             this.overlayEditMenu = null;
         }
@@ -2874,7 +2925,23 @@ export class CCustomManager {
         
         this.setupDynamicMirroring(overlay.guiFolder, standaloneMenu);
         
-        standaloneMenu.open();
+        if (wasInLeftSidebar) {
+            addMenuToLeftSidebar(standaloneMenu);
+            standaloneMenu.mode = "SIDEBAR_LEFT";
+            standaloneMenu.lockOpenClose = false;
+            standaloneMenu.open();
+            standaloneMenu.lockOpenClose = true;
+            Globals.menuBar.applyModeStyles(standaloneMenu);
+        } else if (wasInRightSidebar) {
+            addMenuToRightSidebar(standaloneMenu);
+            standaloneMenu.mode = "SIDEBAR_RIGHT";
+            standaloneMenu.lockOpenClose = false;
+            standaloneMenu.open();
+            standaloneMenu.lockOpenClose = true;
+            Globals.menuBar.applyModeStyles(standaloneMenu);
+        } else {
+            standaloneMenu.open();
+        }
     }
 
     updateViewFromPreset() {

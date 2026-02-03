@@ -1794,23 +1794,71 @@ export class CGuiMenuBar {
         // Enable double-click on title to close menu (can be overridden with setDoubleClickAction)
         gui.setDoubleClickAction();
 
-        // Add drag functionality to the title
+        // Add drag functionality to the title (with sidebar docking support)
         gui.$title.addEventListener("mousedown", (event) => {
             this.bringToFront(gui);
 
+            const startX = event.clientX;
+            const startY = event.clientY;
             let mouseX = event.clientX;
             let mouseY = event.clientY;
+            let hasDragged = false;
 
-            gui.mode = "DRAGGING";
-            this.applyModeStyles(gui);
+            const wasInLeftSidebar = isInLeftSidebar(gui);
+            const wasInRightSidebar = isInRightSidebar(gui);
+            let hasUndockedFromSidebar = false;
 
-            const boundHandleMouseMove = (event) => {
-                // Ensure it stays open while dragging
+            const divRect = containerDiv.getBoundingClientRect();
+            const dragOffsetX = event.clientX - divRect.left;
+            const dragOffsetY = event.clientY - divRect.top;
+
+            if (!(wasInLeftSidebar || wasInRightSidebar)) {
+                gui.mode = "DRAGGING";
+                this.applyModeStyles(gui);
+
                 if (gui._closed) {
                     gui.lockOpenClose = false;
                     gui.open();
                 }
                 gui.lockOpenClose = true;
+            }
+
+            const boundHandleMouseMove = (event) => {
+                const dx = Math.abs(event.clientX - startX);
+                const dy = Math.abs(event.clientY - startY);
+                if (dx > 10 || dy > 10) {
+                    hasDragged = true;
+                }
+
+                if ((wasInLeftSidebar || wasInRightSidebar) && !hasUndockedFromSidebar && hasDragged) {
+                    this.menuBar.appendChild(containerDiv);
+                    containerDiv.style.position = 'absolute';
+                    containerDiv.style.left = (event.clientX - dragOffsetX) + 'px';
+                    containerDiv.style.top = (event.clientY - dragOffsetY) + 'px';
+                    containerDiv.style.width = '240px';
+                    containerDiv.style.height = 'auto';
+
+                    gui.domElement.style.position = '';
+                    gui.domElement.style.width = '';
+
+                    if (wasInLeftSidebar) {
+                        removeMenuFromLeftSidebar(gui);
+                    } else {
+                        removeMenuFromRightSidebar(gui);
+                    }
+                    hasUndockedFromSidebar = true;
+
+                    gui.mode = "DRAGGING";
+                    this.applyModeStyles(gui);
+                    gui.lockOpenClose = true;
+
+                    event.preventDefault();
+                    return;
+                }
+
+                if (!hasUndockedFromSidebar && (wasInLeftSidebar || wasInRightSidebar)) {
+                    return;
+                }
 
                 containerDiv.style.left = (parseInt(containerDiv.style.left) + event.clientX - mouseX) + "px";
                 containerDiv.style.top = (parseInt(containerDiv.style.top) + event.clientY - mouseY) + "px";
@@ -1821,8 +1869,21 @@ export class CGuiMenuBar {
                 if (this.isMenuOffScreen(containerDiv)) {
                     document.removeEventListener("mousemove", boundHandleMouseMove);
                     document.removeEventListener("mouseup", boundHandleMouseUp);
+                    this._hideDropIndicators();
                     gui.destroy();
                     return;
+                }
+
+                const viewportWidth = window.innerWidth;
+                const menuLeft = parseInt(containerDiv.style.left);
+                const menuRight = menuLeft + gui.domElement.offsetWidth;
+
+                if (menuLeft < 0) {
+                    this._showDropIndicator('left');
+                } else if (menuRight > viewportWidth) {
+                    this._showDropIndicator('right');
+                } else {
+                    this._hideDropIndicators();
                 }
 
                 event.preventDefault();
@@ -1831,6 +1892,38 @@ export class CGuiMenuBar {
             const boundHandleMouseUp = (event) => {
                 document.removeEventListener("mousemove", boundHandleMouseMove);
                 document.removeEventListener("mouseup", boundHandleMouseUp);
+                this._hideDropIndicators();
+
+                if ((wasInLeftSidebar || wasInRightSidebar) && !hasUndockedFromSidebar) {
+                    event.preventDefault();
+                    return;
+                }
+
+                const viewportWidth = window.innerWidth;
+                const menuLeft = parseInt(containerDiv.style.left);
+                const menuRight = menuLeft + gui.domElement.offsetWidth;
+
+                if (hasDragged && menuLeft < 0) {
+                    addMenuToLeftSidebar(gui);
+                    gui.mode = "SIDEBAR_LEFT";
+                    gui.lockOpenClose = false;
+                    gui.open();
+                    gui.lockOpenClose = true;
+                    this.applyModeStyles(gui);
+                    event.preventDefault();
+                    return;
+                }
+
+                if (hasDragged && menuRight > viewportWidth) {
+                    addMenuToRightSidebar(gui);
+                    gui.mode = "SIDEBAR_RIGHT";
+                    gui.lockOpenClose = false;
+                    gui.open();
+                    gui.lockOpenClose = true;
+                    this.applyModeStyles(gui);
+                    event.preventDefault();
+                    return;
+                }
 
                 // Check if menu ended up >80% off-screen - close it
                 if (this.isMenuOffScreen(containerDiv)) {
@@ -1910,6 +2003,14 @@ export class CGuiMenuBar {
                 };
                 findEditModeControllers(gui);
                 window._menuBeingDestroyed = false;
+            }
+
+            // Remove from sidebar if docked there
+            if (isInLeftSidebar(gui)) {
+                removeMenuFromLeftSidebar(gui);
+            }
+            if (isInRightSidebar(gui)) {
+                removeMenuFromRightSidebar(gui);
             }
             
             if (containerDiv.parentElement) {

@@ -30,6 +30,7 @@ import {CustomManager, Globals, guiMenus, setRenderOne, Synth3DManager, UndoMana
 import {mouseInViewOnly} from "../ViewUtils";
 import {getPointBelow, pointAbove} from "../threeExt";
 import {EventManager} from "../CEventManager";
+import {isInLeftSidebar, isInRightSidebar} from "../PageStructure";
 
 export class CNodeSynthBuilding extends CNode3DGroup {
     constructor(v) {
@@ -1310,6 +1311,14 @@ export class CNodeSynthBuilding extends CNode3DGroup {
             
             // Only destroy menu if not already being destroyed (prevents recursion)
             if (!window._menuBeingDestroyed && CustomManager.buildingEditMenu) {
+                // Save sidebar state before destroying so new menu can use same position
+                if (isInLeftSidebar(CustomManager.buildingEditMenu)) {
+                    CustomManager.lastBuildingEditMenuSidebar = 'left';
+                } else if (isInRightSidebar(CustomManager.buildingEditMenu)) {
+                    CustomManager.lastBuildingEditMenuSidebar = 'right';
+                } else {
+                    CustomManager.lastBuildingEditMenuSidebar = null;
+                }
                 CustomManager.buildingEditMenu.destroy();
                 CustomManager.buildingEditMenu = null;
             }
