@@ -149,6 +149,12 @@ class CNodeNotes extends CNodeView {
             if (e.key === 'Escape' && this.visible && document.activeElement !== this.textArea) {
                 this.hide();
             }
+            if (e.key === 'n' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                const tag = document.activeElement?.tagName?.toLowerCase();
+                if (tag === 'input' || tag === 'textarea') return;
+                e.preventDefault();
+                this.toggleVisibility();
+            }
         });
 
         this.textArea.addEventListener('focus', () => {
@@ -166,6 +172,14 @@ class CNodeNotes extends CNodeView {
     showTextArea() {
         this.textArea.style.display = 'block';
         this.linkOverlay.style.display = 'none';
+    }
+
+    toggleVisibility() {
+        if (this.visible) {
+            this.hide();
+        } else {
+            this.show(true);
+        }
     }
 
     linkifyContent() {

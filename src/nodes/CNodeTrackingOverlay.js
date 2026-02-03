@@ -286,7 +286,7 @@ export class CNodeTrackingOverlay extends CNodeActiveOverlay {
             }
 
             NodeMan.recalculateAllRootFirst();
-
+n
         })
             .tooltip("Limit the A and B frames to the range of the video tracking keyframes. This will preven extrapolation beyond the first and last keyframes, which is not alwyays desired.")
 
