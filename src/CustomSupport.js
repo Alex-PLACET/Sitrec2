@@ -1511,7 +1511,7 @@ export class CCustomManager {
 
         // Clean up when menu is destroyed
         const originalDestroy = standaloneMenu.destroy.bind(standaloneMenu);
-        standaloneMenu.destroy = () => {
+        standaloneMenu.destroy = (...args) => {
             if (standaloneMenu._mirrorUpdateInterval) {
                 clearInterval(standaloneMenu._mirrorUpdateInterval);
                 standaloneMenu._mirrorUpdateInterval = null;
@@ -1520,7 +1520,7 @@ export class CCustomManager {
                 standaloneMenu._mirrorEventCleanup();
                 standaloneMenu._mirrorEventCleanup = null;
             }
-            originalDestroy();
+            originalDestroy(...args);
         };
     }
 
@@ -2345,21 +2345,14 @@ export class CCustomManager {
             return;
         }
 
-        // Check if we're in building editing mode
-        if (Globals.editingBuilding) {
-            this.showBuildingEditingMenu(mouseX, mouseY);
+        // If we're in building/clouds/overlay editing mode with menu open, do nothing
+        if (Globals.editingBuilding && this.buildingEditMenu) {
             return;
         }
-
-        // Check if we're in clouds editing mode
-        if (Globals.editingClouds) {
-            this.showCloudsEditingMenu(mouseX, mouseY);
+        if (Globals.editingClouds && this.cloudsEditMenu) {
             return;
         }
-
-        // Check if we're in overlay editing mode
-        if (Globals.editingOverlay) {
-            this.showOverlayEditingMenu(Globals.editingOverlay, mouseX, mouseY);
+        if (Globals.editingOverlay && this.overlayEditMenu) {
             return;
         }
 
@@ -2813,9 +2806,14 @@ export class CCustomManager {
             console.warn("No building being edited or no GUI folder");
             return;
         }
+        
+        // Ensure edit mode is enabled when showing the menu
+        if (!building.editMode) {
+            building.setEditMode(true);
+        }
 
         if (this.buildingEditMenu) {
-            this.buildingEditMenu.destroy();
+            this.buildingEditMenu.destroy(true, true); // skipEditModeDisable=true since we're just relocating
             this.buildingEditMenu = null;
         }
 
@@ -2835,8 +2833,13 @@ export class CCustomManager {
             return;
         }
 
+        // Ensure edit mode is enabled when showing the menu
+        if (!clouds.editMode) {
+            clouds.setEditMode(true);
+        }
+
         if (this.cloudsEditMenu) {
-            this.cloudsEditMenu.destroy();
+            this.cloudsEditMenu.destroy(true, true); // skipEditModeDisable=true since we're just relocating
             this.cloudsEditMenu = null;
         }
 
@@ -2855,8 +2858,13 @@ export class CCustomManager {
             return;
         }
 
+        // Ensure edit mode is enabled when showing the menu
+        if (!overlay.editMode && overlay.setEditMode) {
+            overlay.setEditMode(true);
+        }
+
         if (this.overlayEditMenu) {
-            this.overlayEditMenu.destroy();
+            this.overlayEditMenu.destroy(true, true); // skipEditModeDisable=true since we're just relocating
             this.overlayEditMenu = null;
         }
 

@@ -1890,21 +1890,27 @@ export class CGuiMenuBar {
 
         // Add destroy method override to clean up the container
         const originalDestroy = gui.destroy.bind(gui);
-        gui.destroy = (all = true) => {
+        gui.destroy = (all = true, skipEditModeDisable = false) => {
             // Find and disable any "editMode" controllers before destroying
             // This ensures edit mode is properly exited when the menu is closed
-            const findEditModeControllers = (folder) => {
-                for (const child of folder.children) {
-                    if (child.controllers) {
-                        // It's a folder, recurse
-                        findEditModeControllers(child);
-                    } else if (child.property === 'editMode' && child.getValue() === true) {
-                        // It's an editMode controller that's enabled - disable it
-                        child.setValue(false);
+            // Skip this when just relocating the menu (skipEditModeDisable = true)
+            if (!skipEditModeDisable) {
+                // Set global flag so setEditMode knows not to try destroying the menu (prevents recursion)
+                window._menuBeingDestroyed = true;
+                const findEditModeControllers = (folder) => {
+                    for (const child of folder.children) {
+                        if (child.controllers) {
+                            // It's a folder, recurse
+                            findEditModeControllers(child);
+                        } else if (child.property === 'editMode' && child.getValue() === true) {
+                            // It's an editMode controller that's enabled - disable it
+                            child.setValue(false);
+                        }
                     }
-                }
-            };
-            findEditModeControllers(gui);
+                };
+                findEditModeControllers(gui);
+                window._menuBeingDestroyed = false;
+            }
             
             if (containerDiv.parentElement) {
                 containerDiv.parentElement.removeChild(containerDiv);

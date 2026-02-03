@@ -1264,7 +1264,7 @@ export class CNodeSynthBuilding extends CNode3DGroup {
      */
     setEditMode(enable) {
         if (this.editMode === enable) return;
-        
+
         this.editMode = enable;
         
         if (enable) {
@@ -1308,7 +1308,8 @@ export class CNodeSynthBuilding extends CNode3DGroup {
                 Globals.editingBuilding = null;
             }
             
-            if (CustomManager.buildingEditMenu) {
+            // Only destroy menu if not already being destroyed (prevents recursion)
+            if (!window._menuBeingDestroyed && CustomManager.buildingEditMenu) {
                 CustomManager.buildingEditMenu.destroy();
                 CustomManager.buildingEditMenu = null;
             }
@@ -2351,6 +2352,7 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         
         const editModeData = {editMode: this.editMode};
         this.editModeController = this.guiFolder.add(editModeData, 'editMode').name('Edit Mode').onChange((value) => {
+
             if (value && Globals.editingBuilding && Globals.editingBuilding !== this) {
                 Globals.editingBuilding.setEditMode(false);
             }

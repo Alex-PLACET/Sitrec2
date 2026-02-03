@@ -829,7 +829,7 @@ export class CNodeSynthClouds extends CNode3DGroup {
             }
             this.removeControlHandles();
             
-            if (CustomManager.cloudsEditMenu) {
+            if (!window._menuBeingDestroyed && CustomManager.cloudsEditMenu) {
                 CustomManager.cloudsEditMenu.destroy();
                 CustomManager.cloudsEditMenu = null;
             }

@@ -983,7 +983,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
             }
             this.removeControlPoints();
             
-            if (CustomManager.overlayEditMenu) {
+            if (!window._menuBeingDestroyed && CustomManager.overlayEditMenu) {
                 CustomManager.overlayEditMenu.destroy();
                 CustomManager.overlayEditMenu = null;
             }
