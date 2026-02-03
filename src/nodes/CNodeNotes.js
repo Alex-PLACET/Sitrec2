@@ -1,6 +1,7 @@
 import {CNodeView} from "./CNodeView.js";
 import {guiShowHide, setRenderOne} from "../Globals";
 import {makeDraggable} from "../DragResizeUtils";
+import {ViewMan} from "../CViewManager";
 
 class CNodeNotes extends CNodeView {
     constructor(v) {
@@ -8,8 +9,12 @@ class CNodeNotes extends CNodeView {
         v.excludeFromViewsMenu = true;
         super(v);
 
+        this.alwaysOnTop = true;
         this.notesText = v.notesText || "";
         this.addSimpleSerial("notesText");
+        
+        this.dockedMode = false;
+        this.savedViewPositions = null;
 
         this.div.id = 'notes-view-' + v.id;
         this.div.style.backgroundColor = '#222';
@@ -149,11 +154,15 @@ class CNodeNotes extends CNodeView {
             if (e.key === 'Escape' && this.visible && document.activeElement !== this.textArea) {
                 this.hide();
             }
-            if (e.key === 'n' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            if ((e.key === 'n' || e.key === 'N') && !e.ctrlKey && !e.metaKey && !e.altKey) {
                 const tag = document.activeElement?.tagName?.toLowerCase();
                 if (tag === 'input' || tag === 'textarea') return;
                 e.preventDefault();
-                this.toggleVisibility();
+                if (e.shiftKey) {
+                    this.toggleDockedMode();
+                } else {
+                    this.toggleVisibility();
+                }
             }
         });
 
@@ -180,6 +189,65 @@ class CNodeNotes extends CNodeView {
         } else {
             this.show(true);
         }
+    }
+
+    toggleDockedMode() {
+        if (this.visible && this.dockedMode) {
+            this.hide();
+        } else {
+            this.showDocked();
+        }
+    }
+
+    showDocked() {
+        if (this.dockedMode) return;
+        
+        const notesWidth = 0.2;
+        
+        this.savedViewPositions = {};
+        ViewMan.iterate((id, view) => {
+            if (view !== this && !view.overlayView && view.div) {
+                this.savedViewPositions[id] = {
+                    left: view.left,
+                    top: view.top,
+                    width: view.width,
+                    height: view.height
+                };
+                view.left = view.left * (1 - notesWidth);
+                if (view.width > 0) {
+                    view.width = view.width * (1 - notesWidth);
+                }
+                view.updateWH();
+            }
+        });
+
+        this.left = 1 - notesWidth;
+        this.top = 0;
+        this.width = notesWidth;
+        this.height = 1;
+        this.updateWH();
+        
+        this.div.style.borderRadius = '0';
+        this.dockedMode = true;
+        this.show(true);
+    }
+
+    restoreViewPositions() {
+        if (!this.savedViewPositions) return;
+        
+        ViewMan.iterate((id, view) => {
+            const saved = this.savedViewPositions[id];
+            if (saved) {
+                view.left = saved.left;
+                view.top = saved.top;
+                view.width = saved.width;
+                view.height = saved.height;
+                view.updateWH();
+            }
+        });
+        
+        this.savedViewPositions = null;
+        this.dockedMode = false;
     }
 
     linkifyContent() {
@@ -216,6 +284,14 @@ class CNodeNotes extends CNodeView {
         if (visible) {
             this.linkifyContent();
         }
+    }
+
+    hide() {
+        if (this.dockedMode) {
+            this.restoreViewPositions();
+            this.div.style.borderRadius = '8px';
+        }
+        super.hide();
     }
 
     modSerialize() {

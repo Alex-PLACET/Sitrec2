@@ -41,6 +41,7 @@ export class CNodeViewText extends CNodeView {
         v.draggable = false;
         
         super(v);
+        this.alwaysOnTop = true;
         this.div.id = (v.idPrefix || 'text-view') + '-' + v.id;
         // Keep the absolute positioning from base class - don't override to relative
 

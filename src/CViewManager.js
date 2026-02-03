@@ -111,6 +111,9 @@ class CViewManager extends CManager {
         });
         
         nonOverlayViews.sort((a, b) => {
+            if (a.alwaysOnTop !== b.alwaysOnTop) {
+                return a.alwaysOnTop ? 1 : -1;
+            }
             const areaA = (a.widthPx || 0) * (a.heightPx || 0);
             const areaB = (b.widthPx || 0) * (b.heightPx || 0);
             return areaB - areaA;
