@@ -9,6 +9,7 @@ import {makeArrayNodeFromMISBColumn} from "./CNodeArrayFromMISBColumn";
 import {assert} from "../assert";
 import {EventManager} from "../CEventManager";
 import {elevationAtLL} from "../threeExt";
+import {parsePartialDateTime} from "../ParseUtils";
 
 //export const MISBFields = Object.keys(MISB).length;
 
@@ -65,21 +66,37 @@ export class CNodeMISBDataTrack extends CNodeEmptyArray {
 
     // Add GUI text field for overriding the start time of relative-time tracks.
     // Uses onFinishChange to avoid parsing partial input while user is typing.
+    // Supports partial datetime input (e.g., "10:30", "January 15") via chrono-node.
     setupTrackStartTimeGUI(guiFolder) {
         if (!this.isRelativeTime) return;
 
-        guiFolder.add(this, "trackStartTime").name("Track Start Time").listen()
-            .onFinishChange(() => {
-                // Validate that it's either empty or a valid date
-                if (this.trackStartTime && this.trackStartTime.trim() !== "") {
-                    const parsed = Date.parse(this.trackStartTime);
-                    if (isNaN(parsed)) return;  // Invalid date, don't update
-                }
-                this.recalculateCascade();
-            })
-            .tooltip("Override the start time for this relative-time track (ISO format, e.g., 2024-01-15T10:30:00Z). Leave blank to use global start time.");
+        this.trackStartTimeController = guiFolder.add(this, "trackStartTime").name("Track Start Time").listen()
+            .onFinishChange(() => this.handleTrackStartTimeChange())
+            .tooltip("Override start time (e.g., '10:30', 'Jan 15', '2024-01-15T10:30:00Z'). Leave blank for global start time.");
 
         this.addSimpleSerial("trackStartTime");
+    }
+
+    // Parse trackStartTime using chrono-node with parsingBaseTime as reference.
+    // Updates trackStartTime to the normalized ISO string if parsing succeeds.
+    async handleTrackStartTimeChange() {
+        if (!this.trackStartTime || this.trackStartTime.trim() === "") {
+            this.recalculateCascade();
+            return;
+        }
+        
+        const referenceDate = new Date(this.parsingBaseTime);
+        const parsed = await parsePartialDateTime(this.trackStartTime, referenceDate);
+        
+        if (parsed) {
+            const isoString = parsed.toISOString();
+            // Skip if already normalized to avoid setValue() triggering onFinishChange loop
+            if (this.trackStartTime !== isoString) {
+                // Use setValue() to update both value and display
+                this.trackStartTimeController?.setValue(isoString);
+            }
+            this.recalculateCascade();
+        }
     }
 
     // Compute time offset in seconds from trackStartTime.

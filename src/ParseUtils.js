@@ -1,4 +1,5 @@
 import {assert} from "./assert";
+import * as chrono from 'chrono-node';
 
 export function splitOnCommas(str) {
     // Regular expression to match commas that are not inside parentheses
@@ -117,6 +118,36 @@ export function parseISODate(dateStr) {
     
     const date = new Date(isoStr);
     return date
+}
+
+// Parse a partial date/time string using chrono-node, with referenceDate to fill in missing parts.
+// Returns a Date object, or null if parsing fails.
+// Async to allow future AI-based parsing if chrono fails.
+export async function parsePartialDateTime(input, referenceDate) {
+    if (!input || typeof input !== 'string') {
+        return null;
+    }
+    
+    const trimmed = input.trim();
+    if (trimmed === '') {
+        return null;
+    }
+    
+    // Use chrono-node to parse with referenceDate as context
+    const results = chrono.parse(trimmed, referenceDate, { forwardDate: false });
+    
+    if (results.length > 0 && results[0].start) {
+        return results[0].start.date();
+    }
+    
+    // If chrono fails, try standard Date.parse as fallback
+    const parsed = Date.parse(trimmed);
+    if (!isNaN(parsed)) {
+        return new Date(parsed);
+    }
+    
+    // Future: could call AI here for natural language parsing
+    return null;
 }
 
 // Parse a date string in the format "YYYY-MM-DD HH:MM:SS" as a UTC date

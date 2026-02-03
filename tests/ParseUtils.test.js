@@ -3,6 +3,7 @@ import {
     extractLLA,
     findColumn,
     parseISODate,
+    parsePartialDateTime,
     parseUTCDate,
     splitOnCommas
 } from "../src/ParseUtils";
@@ -299,6 +300,121 @@ describe('parseISODate', () => {
                 const date = parseISODate(dateStr);
                 expect(isNaN(date.getTime())).toBe(false);
             });
+        });
+    });
+});
+
+describe('parsePartialDateTime', () => {
+    const referenceDate = new Date('2024-01-15T10:30:00Z');
+
+    describe('full date/time formats', () => {
+        test('parses full ISO datetime', async () => {
+            const result = await parsePartialDateTime('2024-01-20T14:45:00Z', referenceDate);
+            expect(result.toISOString()).toBe('2024-01-20T14:45:00.000Z');
+        });
+
+        test('parses ISO date without timezone', async () => {
+            const result = await parsePartialDateTime('2024-01-20T14:45:00', referenceDate);
+            expect(result).not.toBeNull();
+            expect(result.getUTCFullYear()).toBe(2024);
+            expect(result.getUTCMonth()).toBe(0);
+            expect(result.getUTCDate()).toBe(20);
+        });
+    });
+
+    describe('partial time formats with reference date', () => {
+        test('parses time only (HH:MM) using reference date', async () => {
+            const result = await parsePartialDateTime('14:45', referenceDate);
+            expect(result).not.toBeNull();
+            expect(result.getUTCFullYear()).toBe(2024);
+            expect(result.getUTCMonth()).toBe(0);
+            expect(result.getUTCDate()).toBe(15);
+            expect(result.getHours()).toBe(14);
+            expect(result.getMinutes()).toBe(45);
+        });
+
+        test('parses time with seconds (HH:MM:SS)', async () => {
+            const result = await parsePartialDateTime('14:45:30', referenceDate);
+            expect(result).not.toBeNull();
+            expect(result.getHours()).toBe(14);
+            expect(result.getMinutes()).toBe(45);
+            expect(result.getSeconds()).toBe(30);
+        });
+    });
+
+    describe('natural language parsing', () => {
+        test('parses "tomorrow"', async () => {
+            const result = await parsePartialDateTime('tomorrow', referenceDate);
+            expect(result).not.toBeNull();
+            expect(result.getDate()).toBe(referenceDate.getDate() + 1);
+        });
+
+        test('parses "yesterday"', async () => {
+            const result = await parsePartialDateTime('yesterday', referenceDate);
+            expect(result).not.toBeNull();
+            expect(result.getDate()).toBe(referenceDate.getDate() - 1);
+        });
+
+        test('parses "January 20"', async () => {
+            const result = await parsePartialDateTime('January 20', referenceDate);
+            expect(result).not.toBeNull();
+            expect(result.getMonth()).toBe(0);
+            expect(result.getDate()).toBe(20);
+        });
+
+        test('parses "Jan 20 2024"', async () => {
+            const result = await parsePartialDateTime('Jan 20 2024', referenceDate);
+            expect(result).not.toBeNull();
+            expect(result.getFullYear()).toBe(2024);
+            expect(result.getMonth()).toBe(0);
+            expect(result.getDate()).toBe(20);
+        });
+    });
+
+    describe('edge cases and invalid input', () => {
+        test('returns null for empty string', async () => {
+            const result = await parsePartialDateTime('', referenceDate);
+            expect(result).toBeNull();
+        });
+
+        test('returns null for whitespace only', async () => {
+            const result = await parsePartialDateTime('   ', referenceDate);
+            expect(result).toBeNull();
+        });
+
+        test('returns null for null input', async () => {
+            const result = await parsePartialDateTime(null, referenceDate);
+            expect(result).toBeNull();
+        });
+
+        test('returns null for undefined input', async () => {
+            const result = await parsePartialDateTime(undefined, referenceDate);
+            expect(result).toBeNull();
+        });
+
+        test('returns null for unparseable string', async () => {
+            const result = await parsePartialDateTime('qwerty asdf zxcv', referenceDate);
+            expect(result).toBeNull();
+        });
+    });
+
+    describe('reference date context', () => {
+        test('uses reference date year for partial dates', async () => {
+            const ref2025 = new Date('2025-06-15T12:00:00Z');
+            const result = await parsePartialDateTime('March 10', ref2025);
+            expect(result).not.toBeNull();
+            expect(result.getFullYear()).toBe(2025);
+        });
+
+        test('different reference dates produce different results for "tomorrow"', async () => {
+            const ref1 = new Date('2024-01-15T10:00:00Z');
+            const ref2 = new Date('2024-06-20T10:00:00Z');
+            
+            const result1 = await parsePartialDateTime('tomorrow', ref1);
+            const result2 = await parsePartialDateTime('tomorrow', ref2);
+            
+            expect(result1.getMonth()).toBe(0);
+            expect(result2.getMonth()).toBe(5);
         });
     });
 });
