@@ -72,7 +72,6 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         
         this.cornerHandles = [];
         this.rotationHandle = null;
-        this.moveHandle = null;
         
         this.highlightBorder = null;
         this.highlightBorderMaterial = null;
@@ -910,34 +909,26 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         const centerLon = (this.east + this.west) / 2;
         const centerEUS = LLAToEUS(centerLat, centerLon, 0);
 
-        if (!this.freeTransform) {
-            const northMidEUS = LLAToEUS(this.north, centerLon, 0);
-            let rotHandleEUS = northMidEUS.clone();
-            if (this.rotation !== 0) {
-                const offset = northMidEUS.clone().sub(centerEUS);
-                const up = getLocalUpVector(centerEUS);
-                const rotatedOffset = offset.clone().applyAxisAngle(up, radians(this.rotation));
-                rotHandleEUS = centerEUS.clone().add(rotatedOffset);
-            }
-
-            const toNorthMid = rotHandleEUS.clone().sub(centerEUS);
-            const rotHandlePos = centerEUS.clone().add(toNorthMid.multiplyScalar(0.9));
-            const adjustedRotHandle = pointAbove(getPointBelow(rotHandlePos), 5);
-
-            this.rotationHandle = new Mesh(handleGeometry.clone(), this.createHandleMaterial(0x00ffff));
-            this.rotationHandle.position.copy(adjustedRotHandle).sub(groupPos);
-            this.rotationHandle.layers.mask = LAYER.MASK_HELPERS;
-            this.rotationHandle.userData.handleType = 'rotation';
-            this.group.add(this.rotationHandle);
+        const northMidEUS = this.freeTransform && this.corners
+            ? LLAToEUS((this.corners[0].lat + this.corners[1].lat) / 2, (this.corners[0].lon + this.corners[1].lon) / 2, 0)
+            : LLAToEUS(this.north, centerLon, 0);
+        let rotHandleEUS = northMidEUS.clone();
+        if (!this.freeTransform && this.rotation !== 0) {
+            const offset = northMidEUS.clone().sub(centerEUS);
+            const up = getLocalUpVector(centerEUS);
+            const rotatedOffset = offset.clone().applyAxisAngle(up, radians(this.rotation));
+            rotHandleEUS = centerEUS.clone().add(rotatedOffset);
         }
 
-        const adjustedCenter = pointAbove(getPointBelow(centerEUS), 5);
+        const toNorthMid = rotHandleEUS.clone().sub(centerEUS);
+        const rotHandlePos = centerEUS.clone().add(toNorthMid.multiplyScalar(0.9));
+        const adjustedRotHandle = pointAbove(getPointBelow(rotHandlePos), 5);
 
-        this.moveHandle = new Mesh(handleGeometry.clone(), this.createHandleMaterial(0x00ff00));
-        this.moveHandle.position.copy(adjustedCenter).sub(groupPos);
-        this.moveHandle.layers.mask = LAYER.MASK_HELPERS;
-        this.moveHandle.userData.handleType = 'move';
-        this.group.add(this.moveHandle);
+        this.rotationHandle = new Mesh(handleGeometry.clone(), this.createHandleMaterial(0x00ffff));
+        this.rotationHandle.position.copy(adjustedRotHandle).sub(groupPos);
+        this.rotationHandle.layers.mask = LAYER.MASK_HELPERS;
+        this.rotationHandle.userData.handleType = 'rotation';
+        this.group.add(this.rotationHandle);
 
         handleGeometry.dispose();
     }
@@ -955,13 +946,6 @@ export class CNodeGroundOverlay extends CNode3DGroup {
             this.rotationHandle.geometry.dispose();
             this.rotationHandle.material.dispose();
             this.rotationHandle = null;
-        }
-
-        if (this.moveHandle) {
-            this.group.remove(this.moveHandle);
-            this.moveHandle.geometry.dispose();
-            this.moveHandle.material.dispose();
-            this.moveHandle = null;
         }
     }
     
@@ -1101,22 +1085,34 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         const view = ViewMan.get("mainView");
         if (!view || !mouseInViewOnly(view, event.clientX, event.clientY)) return;
         
-        const handle = this.getHandleAtMouse(event.clientX, event.clientY);
+        let handle = this.getHandleAtMouse(event.clientX, event.clientY);
+        
+        if (!handle) {
+            const overlayHit = this.getOverlayAtMouse(event.clientX, event.clientY);
+            if (overlayHit) {
+                handle = {type: 'move'};
+            }
+        }
+        
         if (handle) {
             this.isDragging = true;
             this.draggingHandle = handle;
             this.stateBeforeDrag = this.captureState();
 
-            // For rotation or move handle, store initial state for relative dragging
             if (handle.type === 'rotation' || handle.type === 'move') {
-                // Store initial bounds for move handle
                 this.dragInitialNorth = this.north;
                 this.dragInitialSouth = this.south;
                 this.dragInitialEast = this.east;
                 this.dragInitialWest = this.west;
                 this.dragInitialRotation = this.rotation;
+                if (this.freeTransform && this.corners) {
+                    this.dragInitialCorners = this.corners.map(c => ({lat: c.lat, lon: c.lon}));
+                    this.dragInitialCornersEUS = this.corners.map(c => LLAToEUS(c.lat, c.lon, 0));
+                    this.dragCenterEUS = this.dragInitialCornersEUS.reduce(
+                        (acc, p) => acc.add(p), new Vector3()
+                    ).multiplyScalar(0.25);
+                }
 
-                // Get the terrain intersection point for the initial click
                 const mouseRay = screenToNDC(view, event.clientX, event.clientY);
                 this.raycaster.setFromCamera(mouseRay, view.camera);
 
@@ -1127,14 +1123,21 @@ export class CNodeGroundOverlay extends CNode3DGroup {
                     const terrainNode = NodeMan.get("TerrainModel");
                     const intersect = terrainNode.getClosestIntersect(this.raycaster);
                     if (intersect) {
-                        const centerLat = (this.north + this.south) / 2;
-                        const centerLon = (this.east + this.west) / 2;
                         const lla = EUSToLLA(intersect.point);
-                        // Store initial click position for move handle
                         this.dragInitialClickLat = lla.x;
                         this.dragInitialClickLon = lla.y;
-                        // Store the initial angle from center to click point for rotation handle
-                        this.dragInitialAngle = Math.atan2(lla.y - centerLon, lla.x - centerLat);
+                        this.dragInitialClickEUS = intersect.point.clone();
+                        
+                        if (this.freeTransform && this.dragCenterEUS) {
+                            const up = getLocalUpVector(this.dragCenterEUS);
+                            const toClick = intersect.point.clone().sub(this.dragCenterEUS);
+                            const toClickFlat = toClick.clone().sub(up.clone().multiplyScalar(toClick.dot(up)));
+                            this.dragInitialAngleEUS = Math.atan2(toClickFlat.z, toClickFlat.x);
+                        } else {
+                            const centerLat = (this.north + this.south) / 2;
+                            const centerLon = (this.east + this.west) / 2;
+                            this.dragInitialAngle = Math.atan2(lla.y - centerLon, lla.x - centerLat);
+                        }
                     }
                 }
 
@@ -1150,6 +1153,31 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         }
     }
     
+    getOverlayAtMouse(mouseX, mouseY) {
+        const view = ViewMan.get("mainView");
+        if (!view) return null;
+        
+        const corners = this.getCornerPositions();
+        if (corners.length !== 4) return null;
+        
+        const mouseRay = screenToNDC(view, mouseX, mouseY);
+        this.raycaster.setFromCamera(mouseRay, view.camera);
+        const ray = this.raycaster.ray;
+        
+        const target = new Vector3();
+        const hit1 = ray.intersectTriangle(corners[0], corners[1], corners[2], false, target);
+        if (hit1) {
+            return {point: target.clone()};
+        }
+        
+        const hit2 = ray.intersectTriangle(corners[0], corners[2], corners[3], false, target);
+        if (hit2) {
+            return {point: target.clone()};
+        }
+        
+        return null;
+    }
+    
     getHandleAtMouse(mouseX, mouseY) {
         const view = ViewMan.get("mainView");
         if (!view) return null;
@@ -1163,9 +1191,6 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         });
         if (this.rotationHandle) {
             handles.push({mesh: this.rotationHandle, type: 'rotation'});
-        }
-        if (this.moveHandle) {
-            handles.push({mesh: this.moveHandle, type: 'move'});
         }
         
         let closest = null;
@@ -1210,23 +1235,50 @@ export class CNodeGroundOverlay extends CNode3DGroup {
                     if (this.draggingHandle.type === 'corner') {
                         this.updateCorner(this.draggingHandle.index, lla.x, lla.y);
                     } else if (this.draggingHandle.type === 'rotation') {
-                        const centerLat = (this.north + this.south) / 2;
-                        const centerLon = (this.east + this.west) / 2;
-                        // Calculate current angle from center to mouse
-                        const currentAngle = Math.atan2(lla.y - centerLon, lla.x - centerLat);
-                        // Apply the delta from initial click angle to initial rotation (negated for correct direction)
-                        const angleDelta = currentAngle - this.dragInitialAngle;
-                        this.rotation = this.dragInitialRotation - degrees(angleDelta);
+                        if (this.freeTransform && this.dragInitialCornersEUS && this.dragCenterEUS) {
+                            const up = getLocalUpVector(this.dragCenterEUS);
+                            const toMouse = intersect.point.clone().sub(this.dragCenterEUS);
+                            const toMouseFlat = toMouse.clone().sub(up.clone().multiplyScalar(toMouse.dot(up)));
+                            const currentAngle = Math.atan2(toMouseFlat.z, toMouseFlat.x);
+                            const angleDelta = currentAngle - this.dragInitialAngleEUS;
+                            
+                            this.corners = this.dragInitialCornersEUS.map(pos => {
+                                const offset = pos.clone().sub(this.dragCenterEUS);
+                                const rotatedOffset = offset.clone().applyAxisAngle(up, -angleDelta);
+                                const rotatedPos = this.dragCenterEUS.clone().add(rotatedOffset);
+                                const groundPos = getPointBelow(rotatedPos);
+                                const finalLLA = EUSToLLA(groundPos);
+                                return {lat: finalLLA.x, lon: finalLLA.y};
+                            });
+                            this._cachedHomography = null;
+                            this.updateBoundsFromCorners();
+                        } else {
+                            const centerLat = (this.north + this.south) / 2;
+                            const centerLon = (this.east + this.west) / 2;
+                            const currentAngle = Math.atan2(lla.y - centerLon, lla.x - centerLat);
+                            const angleDelta = currentAngle - this.dragInitialAngle;
+                            this.rotation = this.dragInitialRotation - degrees(angleDelta);
+                        }
                     } else if (this.draggingHandle.type === 'move') {
-                        // Calculate the displacement from initial click position
-                        const deltaLat = lla.x - this.dragInitialClickLat;
-                        const deltaLon = lla.y - this.dragInitialClickLon;
-
-                        // Apply displacement to all bounds
-                        this.north = this.dragInitialNorth + deltaLat;
-                        this.south = this.dragInitialSouth + deltaLat;
-                        this.east = this.dragInitialEast + deltaLon;
-                        this.west = this.dragInitialWest + deltaLon;
+                        if (this.freeTransform && this.dragInitialCornersEUS && this.dragInitialClickEUS) {
+                            const displacement = intersect.point.clone().sub(this.dragInitialClickEUS);
+                            
+                            this.corners = this.dragInitialCornersEUS.map(pos => {
+                                const movedPos = pos.clone().add(displacement);
+                                const groundPos = getPointBelow(movedPos);
+                                const finalLLA = EUSToLLA(groundPos);
+                                return {lat: finalLLA.x, lon: finalLLA.y};
+                            });
+                            this._cachedHomography = null;
+                            this.updateBoundsFromCorners();
+                        } else {
+                            const deltaLat = lla.x - this.dragInitialClickLat;
+                            const deltaLon = lla.y - this.dragInitialClickLon;
+                            this.north = this.dragInitialNorth + deltaLat;
+                            this.south = this.dragInitialSouth + deltaLat;
+                            this.east = this.dragInitialEast + deltaLon;
+                            this.west = this.dragInitialWest + deltaLon;
+                        }
                     }
 
                     this.updateMesh();
@@ -1396,12 +1448,6 @@ export class CNodeGroundOverlay extends CNode3DGroup {
             this.rotationHandle.getWorldPosition(worldPos);
             const scale = view.pixelsToMeters(worldPos, handlePixelSize);
             this.rotationHandle.scale.set(scale / 3, scale / 3, scale / 3);
-        }
-
-        if (this.moveHandle) {
-            this.moveHandle.getWorldPosition(worldPos);
-            const scale = view.pixelsToMeters(worldPos, handlePixelSize);
-            this.moveHandle.scale.set(scale / 3, scale / 3, scale / 3);
         }
     }
     
