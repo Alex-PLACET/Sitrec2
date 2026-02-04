@@ -133,14 +133,28 @@ export class   CNodeMQ9UI extends CNodeViewUI {
         const c = this.ctx;
 
         // Get video rect to match grid to video aspect
+        // Use mirrorVideo (overlay on lookView) if available, otherwise video
         let gridX = 0, gridY = 0, gridW = this.widthPx, gridH = this.heightPx;
-        const videoView = NodeMan.get("video", false);
+        let videoView = NodeMan.get("mirrorVideo", false);
+        if (!videoView) {
+            videoView = NodeMan.get("video", false);
+        }
         if (videoView && videoView.getSourceAndDestCoords) {
             videoView.getSourceAndDestCoords();
             gridX = videoView.dx;
             gridY = videoView.dy;
             gridW = videoView.dWidth;
             gridH = videoView.dHeight;
+        } else {
+            // No video: center on look view, clamp to 16:9 max aspect
+            const maxAspect = 16 / 9;
+            const viewAspect = this.widthPx / this.heightPx;
+            if (viewAspect > maxAspect) {
+                gridW = this.heightPx * maxAspect;
+                gridH = this.heightPx;
+                gridX = (this.widthPx - gridW) / 2;
+                gridY = 0;
+            }
         }
 
         // Render grid-based text (inset by one character on left and right)
