@@ -463,7 +463,10 @@ class Controller {
 //            console.log("destroying controller, childIndex: " + childIndex + " controllerIndex: " + controllerIndex);
             this.parent.children.splice(childIndex, 1);
             this.parent.controllers.splice(controllerIndex, 1);
-            this.parent.$children.removeChild(this.domElement);
+            // Remove from actual parent (may differ from expected parent after menu relocation)
+            if (this.domElement && this.domElement.parentNode) {
+                this.domElement.parentNode.removeChild(this.domElement);
+            }
         }
     }
 
