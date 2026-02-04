@@ -51,23 +51,29 @@ export class CNodePositionLLA extends CNodeTrack {
                    stepExplicit: false, // prevent snapping
                    noSlider: true,
                    onChange: (v) => {
-                       const input = this.guiLat.guiEntry.$input.value;
-                       const pair = parseLatLonPair(input);
-                       if (pair) {
-                           this.guiLat.guiEntry.$input.value = pair.lat;
-                           this._LLA[0] = pair.lat;
-                           this._LLA[1] = pair.lon;
-                           this.guiLon.value = pair.lon;
-                           this.recalculateCascade()
-                           EventManager.dispatchEvent("PositionLLA.onChange", {id: this.id})
-                           return;
+                       const $input = this.guiLat.guiEntry?.$input;
+                       const input = $input?.value;
+                       const isFocused = $input && document.activeElement === $input;
+                       if (isFocused && input && String(v) !== input) {
+                           const pair = parseLatLonPair(input);
+                           if (pair) {
+                               this.guiLat.guiEntry.$input.value = pair.lat;
+                               this._LLA[0] = pair.lat;
+                               this._LLA[1] = pair.lon;
+                               this.guiLon.value = pair.lon;
+                               this.recalculateCascade()
+                               EventManager.dispatchEvent("PositionLLA.onChange", {id: this.id})
+                               return;
+                           }
+                           const single = parseSingleCoordinate(input);
+                           if (single !== null) {
+                               this._LLA[0] = single;
+                               this.recalculateCascade()
+                               EventManager.dispatchEvent("PositionLLA.onChange", {id: this.id})
+                               return;
+                           }
                        }
-                       const single = parseSingleCoordinate(input);
-                       if (single !== null) {
-                           this._LLA[0] = single;
-                       } else {
-                           this._LLA[0] = parseFloat(v);
-                       }
+                       this._LLA[0] = parseFloat(v);
                        EventManager.dispatchEvent("PositionLLA.onChange", {id: this.id})
                        this.recalculateCascade()
                    }
@@ -82,13 +88,19 @@ export class CNodePositionLLA extends CNodeTrack {
                    stepExplicit: false, // prevent snapping
                    noSlider: true,
                    onChange: (v) => {
-                       const input = this.guiLon.guiEntry.$input.value;
-                       const single = parseSingleCoordinate(input);
-                       if (single !== null) {
-                           this._LLA[1] = single;
-                       } else {
-                           this._LLA[1] = v;
+                       const $input = this.guiLon.guiEntry?.$input;
+                       const input = $input?.value;
+                       const isFocused = $input && document.activeElement === $input;
+                       if (isFocused && input && String(v) !== input) {
+                           const single = parseSingleCoordinate(input);
+                           if (single !== null) {
+                               this._LLA[1] = single;
+                               this.recalculateCascade()
+                               EventManager.dispatchEvent("PositionLLA.onChange", {id: this.id})
+                               return;
+                           }
                        }
+                       this._LLA[1] = v;
                        this.recalculateCascade()
                        EventManager.dispatchEvent("PositionLLA.onChange", {id: this.id})
                    }
