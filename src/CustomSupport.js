@@ -2609,6 +2609,15 @@ export class CCustomManager {
                     console.log(`Created overlay at ground point, now in edit mode`);
                 }
             },
+            googleMapsHere: () => {
+                this.groundContextMenu = null;
+                menu.destroy();
+
+                // Open Google Maps at the clicked location
+                const googleMapsUrl = `https://www.google.com/maps?q=${lat},${lon}`;
+                window.open(googleMapsUrl, '_blank');
+                console.log(`Opening Google Maps at: ${lat}, ${lon}`);
+            },
         };
         
         const overlayAtPoint = Synth3DManager.findOverlayAtLatLon(lat, lon);
@@ -2688,6 +2697,11 @@ export class CCustomManager {
                 menu.add(menuData, "centerTerrain").name("Center Terrain square here");
             }
 
+        }
+
+        // Add Google Maps link if extraHelpLinks is enabled
+        if (configParams.extraHelpLinks) {
+            menu.add(menuData, "googleMapsHere").name("Google Maps Here");
         }
     }
 
