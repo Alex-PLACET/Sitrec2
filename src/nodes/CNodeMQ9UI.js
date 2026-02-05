@@ -95,9 +95,22 @@ export class   CNodeMQ9UI extends CNodeViewUI {
         this.addGridText(1, 29, "00:03:59", grey, 'left');
         this.addGridText(30, 28, "ELRF", grey, 'center');
 
-        // Enable pointer events for click detection
-        this.canvas.style.pointerEvents = 'auto';
-        this.canvas.addEventListener('click', (e) => this.handleClick(e));
+        // Dynamic pointer-events approach:
+        // - Default: pointer-events: none (events pass through to 3D view)
+        // - When mouse is over a clickable text element: pointer-events: auto
+        // This allows all events (mousedown, mousemove, wheel) to naturally pass
+        // through to the 3D view when not over text, while still capturing clicks on text.
+
+        // Start with pointer-events disabled (parent's ignoreMouseEvents already did this)
+        this.canvas.style.pointerEvents = 'none';
+
+        // Track mouse position to toggle pointer-events dynamically
+        this.boundHandleDocumentMouseMove = (e) => this.handleDocumentMouseMove(e);
+        document.addEventListener('mousemove', this.boundHandleDocumentMouseMove);
+
+        // Handle clicks when pointer-events is enabled (i.e., when over text)
+        this.boundHandleMouseDown = (e) => this.handleMouseDown(e);
+        this.canvas.addEventListener('mousedown', this.boundHandleMouseDown);
     }
 
     addGridText(col, row, text, color = '#FFFFFF', align = 'left', clickGroup = null) {
@@ -106,19 +119,59 @@ export class   CNodeMQ9UI extends CNodeViewUI {
         return entry;
     }
 
-    handleClick(e) {
-        const rect = this.canvas.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-
+    // Check if coordinates (relative to canvas) are over a clickable text element
+    getClickedTextElement(x, y) {
         for (const t of this.gridTexts) {
             if (t.clickGroup && t.bbox) {
                 if (x >= t.bbox.x && x <= t.bbox.x + t.bbox.w &&
                     y >= t.bbox.y && y <= t.bbox.y + t.bbox.h) {
-                    this.cycleDisplayMode(t.clickGroup);
-                    return;
+                    return t;
                 }
             }
+        }
+        return null;
+    }
+
+    handleDocumentMouseMove(e) {
+        // Check if mouse is within our canvas bounds
+        const rect = this.canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        // Check if mouse is inside canvas bounds
+        if (x < 0 || x > rect.width || y < 0 || y > rect.height) {
+            // Mouse is outside canvas - disable pointer events
+            this.canvas.style.pointerEvents = 'none';
+            return;
+        }
+
+        // Check if mouse is over a clickable text element
+        const overText = this.getClickedTextElement(x, y);
+
+        if (overText) {
+            // Over a clickable text element - enable pointer events to capture clicks
+            this.canvas.style.pointerEvents = 'auto';
+            this.canvas.style.cursor = 'pointer';
+        } else {
+            // Not over text - disable pointer events so they pass through to 3D view
+            this.canvas.style.pointerEvents = 'none';
+            this.canvas.style.cursor = '';
+        }
+    }
+
+    handleMouseDown(e) {
+        // This only fires when pointer-events is 'auto' (i.e., when over text)
+        const rect = this.canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        const clickedText = this.getClickedTextElement(x, y);
+
+        if (clickedText) {
+            // Clicked on a text element - handle it
+            this.cycleDisplayMode(clickedText.clickGroup);
+            e.stopPropagation();
+            e.preventDefault();
         }
     }
 
@@ -207,9 +260,12 @@ export class   CNodeMQ9UI extends CNodeViewUI {
 
         // get the three.js camera from the camera node
         const camera = this.in.camera.camera;
+
+        camera.updateMatrixWorld();
+
         // get the camera's forward vector, the negative z basis from its matrix
         const forward = MV3(camera.matrixWorld.elements.slice(8,11));
-
+        forward.negate();
 
         // get the heading of the camera, in radians
         // also used by CNodeCompassUI
@@ -385,8 +441,8 @@ export class   CNodeMQ9UI extends CNodeViewUI {
         c.textAlign = 'center';
         c.textBaseline = 'middle';
 
-        const x = this.rx_square(this.cx,this.cy+27,heading);
-        const y = this.ry(this.cx,this.cy+27,heading);
+        const x = this.rx_square(this.cx,this.cy+27,heading+Math.PI);
+        const y = this.ry(this.cx,this.cy+27,heading+Math.PI);
 
         c.fillText('N', x, y);
 
@@ -499,5 +555,15 @@ export class   CNodeMQ9UI extends CNodeViewUI {
 
     }
 
+    dispose() {
+        // Clean up event listeners
+        if (this.boundHandleDocumentMouseMove) {
+            document.removeEventListener('mousemove', this.boundHandleDocumentMouseMove);
+        }
+        if (this.canvas && this.boundHandleMouseDown) {
+            this.canvas.removeEventListener('mousedown', this.boundHandleMouseDown);
+        }
+        super.dispose();
+    }
 
 }

@@ -30,7 +30,7 @@ import {CNodeDisplayTrack} from "../nodes/CNodeDisplayTrack";
 import {CNodeConstant} from "../nodes/CNode";
 import {AddGenericNodeGraph} from "../JetGraphs";
 import {CNodeLOSTraverseConstantSpeed} from "../nodes/CNodeLOSTraverseConstantSpeed";
-import {CNodeDisplayTargetModel} from "../nodes/CNodeDisplayTargetModel";
+import {CNode3DObject, ModelFiles} from "../nodes/CNode3DObject";
 import {CNodeScale} from "../nodes/CNodeScale";
 import {CNodeDisplayTargetSphere} from "../nodes/CNodeDisplayTargetSphere";
 import {setupOpts} from "../JetChart";
@@ -440,29 +440,39 @@ export const SitGimbal = {
 
     setup2: function () {
 
-        new CNodeDisplayTargetModel({
+        // Modernized: Using CNode3DObject with controllers instead of legacy CNodeDisplayTargetModel
+        // This provides full Objects menu integration
+        ModelFiles["TargetObjectFile"] = {file: "TargetObjectFile"};
+
+        const targetModel = new CNode3DObject({
             id: "targetModel",
-            inputs: {
-                track: "LOSTraverseSelect",
-                // the size node has the UI in feet, but returns meters
-                // we use it to scale a 1m diameter (0.5m radius) sphere
-                // so If the UI shows 1 foot, the sphere with had a 1 foot diameter.
-                size: new CNodeScale("sizeScaled", scaleF2M,
-                    new CNodeGUIValue({
-                        value: Sit.targetSize,
-                        start: 0,
-                        end: 2000,
-                        step: 0.1,
-                        desc: "Target size ft"
-                    }, gui)
-                )
-            },
+            model: "TargetObjectFile",
+            // the size node has the UI in feet, but returns meters
+            // we use it to scale a 1m diameter (0.5m radius) sphere
+            // so If the UI shows 1 foot, the sphere with had a 1 foot diameter.
+            size: new CNodeScale("sizeScaled", scaleF2M,
+                new CNodeGUIValue({
+                    value: Sit.targetSize,
+                    start: 0,
+                    end: 2000,
+                    step: 0.1,
+                    desc: "Target size ft"
+                }, gui)
+            ),
+        });
 
-            wind:"targetWind",
+        // Add TrackPosition controller to position the object on the track
+        targetModel.addController("TrackPosition", {
+            sourceTrack: "LOSTraverseSelect",
+        });
+
+        // Add ObjectTilt controller for orientation
+        targetModel.addController("ObjectTilt", {
+            track: "LOSTraverseSelect",
+            tiltType: "none",
+            wind: "targetWind",
             airTrack: "airTrack",
-
-            //  model: FA182,
-        })
+        });
 
         new CNodeDisplayTargetSphere({
             id: "targetSphere",
@@ -563,27 +573,37 @@ export const SitGimbalNear = {
         })
 
 
-        new CNodeDisplayTargetModel({
-            id: "targetModel",
-            inputs: {
-                track: "LOSTraverseSelect",
-                airTrack: "airTrack",
-                size: new CNodeScale("sizeScaled", scaleF2M,
-                    new CNodeGUIValue({
-                        id:"targetSize",
-                        value: Sit.targetSize,
-                        start: 1,
-                        end: 2000,
-                        step: 0.1,
-                        desc: "Target size ft"
-                    }, gui)
-                )
-            },
-            tiltType: "glareAngle",
-            wind:"targetWind",
+        // Modernized: Using CNode3DObject with controllers instead of legacy CNodeDisplayTargetModel
+        // This provides full Objects menu integration
+        ModelFiles["TargetObjectFile"] = {file: "TargetObjectFile"};
 
-            //  model: FA182,
-        })
+        const targetModel = new CNode3DObject({
+            id: "targetModel",
+            model: "TargetObjectFile",
+            size: new CNodeScale("sizeScaled", scaleF2M,
+                new CNodeGUIValue({
+                    id:"targetSize",
+                    value: Sit.targetSize,
+                    start: 1,
+                    end: 2000,
+                    step: 0.1,
+                    desc: "Target size ft"
+                }, gui)
+            ),
+        });
+
+        // Add TrackPosition controller to position the object on the track
+        targetModel.addController("TrackPosition", {
+            sourceTrack: "LOSTraverseSelect",
+        });
+
+        // Add ObjectTilt controller for orientation (glareAngle for this sitch)
+        targetModel.addController("ObjectTilt", {
+            track: "LOSTraverseSelect",
+            tiltType: "glareAngle",
+            wind: "targetWind",
+            airTrack: "airTrack",
+        });
 
 
         new CNodeDisplayTargetSphere({

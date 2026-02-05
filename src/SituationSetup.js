@@ -23,7 +23,7 @@ import {DragDropHandler} from "./DragDropHandler";
 import {CNodeSplineEditor} from "./nodes/CNodeSplineEdit";
 import {GlobalScene} from "./LocalFrame";
 import {CNodeScale} from "./nodes/CNodeScale";
-import {CNodeDisplayTargetModel} from "./nodes/CNodeDisplayTargetModel";
+import {CNode3DObject, ModelFiles} from "./nodes/CNode3DObject";
 import {CNodeDisplayTargetSphere} from "./nodes/CNodeDisplayTargetSphere";
 import {CNodeArray} from "./nodes/CNodeArray";
 import {par} from "./par";
@@ -884,14 +884,39 @@ export async function SetupFromKeyAndData(key, _data, depth=0) {
 
         case "targetObject":
             SSLog();
-            node = new CNodeDisplayTargetModel({
-                id: data.id ?? "targetObject",
-                track: data.track ?? "targetTrack",
-                TargetObjectFile: data.file,
-                wind: data.wind ?? undefined,
-                tiltType: data.tiltType ?? "none",
-                //  ...maybeWind,
-            })
+            {
+                // Modernized implementation using CNode3DObject with controllers
+                // This replaces the legacy CNodeDisplayTargetModel while maintaining
+                // backwards compatibility with the shortcut syntax: targetObject: {file: "...", track: "...", ...}
+                const targetId = data.id ?? "targetObject";
+                const trackId = data.track ?? "targetTrack";
+                const modelFile = data.file ?? "TargetObjectFile";
+
+                // Add the model to ModelFiles dynamically (like drag-and-drop does)
+                // The FileManager will resolve the key to the actual file path
+                ModelFiles[modelFile] = {file: modelFile};
+
+                // Create a CNode3DObject with the model
+                // This gives us the full Objects menu integration
+                node = new CNode3DObject({
+                    id: targetId,
+                    model: modelFile,
+                    layers: data.layers ?? LAYER.MASK_LOOKRENDER,
+                });
+
+                // Add TrackPosition controller to position the object on the track
+                node.addController("TrackPosition", {
+                    sourceTrack: trackId,
+                });
+
+                // Add ObjectTilt controller for orientation (banking, front-pointing, etc.)
+                node.addController("ObjectTilt", {
+                    track: trackId,
+                    tiltType: data.tiltType ?? "none",
+                    wind: data.wind,
+                    airTrack: data.airTrack,
+                });
+            }
             break;
 
         case "targetSizedSphere":
