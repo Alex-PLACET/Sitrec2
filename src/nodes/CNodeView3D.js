@@ -2195,13 +2195,13 @@ export class CNodeView3D extends CNodeViewCanvas {
         if (celestialObject.type === 'planet') {
             const data = celestialObject.data;
             if (data.ra !== undefined) {
-                standaloneMenu.add({raHours: data.ra * 12 / Math.PI}, 'raHours').name('RA (hours)').listen().disable();
+                standaloneMenu.add({raHours: (data.ra * 12 / Math.PI).toFixed(3)}, 'raHours').name('RA (hours)').listen().disable();
             }
             if (data.dec !== undefined) {
-                standaloneMenu.add({decDegrees: data.dec * 180 / Math.PI}, 'decDegrees').name('Dec (degrees)').listen().disable();
+                standaloneMenu.add({decDegrees: (data.dec * 180 / Math.PI).toFixed(3)}, 'decDegrees').name('Dec (degrees)').listen().disable();
             }
             if (data.mag !== undefined) {
-                standaloneMenu.add({magnitude: data.mag}, 'magnitude').name('Magnitude').listen().disable();
+                standaloneMenu.add({magnitude: data.mag.toFixed(2)}, 'magnitude').name('Magnitude').listen().disable();
             }
         } else if (celestialObject.type === 'satellite') {
             standaloneMenu.add({noradNum: String(celestialObject.number)}, 'noradNum').name('NORAD Number').listen().disable();
@@ -2256,44 +2256,57 @@ export class CNodeView3D extends CNodeViewCanvas {
         console.log(`Checking celestial objects:`);
         console.log(`  Ray direction (from origin): (${rayDirection.x.toFixed(4)}, ${rayDirection.y.toFixed(4)}, ${rayDirection.z.toFixed(4)})`);
 
-        // Check planets
+        // Check planets (using pixel-based distance from edge)
+        const maxEdgeDistance = 20;
+        let closestEdgeDistance = maxEdgeDistance;
+        
         if (nightSkyNode.planets.planetSprites) {
-            console.log(`Checking ${Object.keys(nightSkyNode.planets.planetSprites).length} planets`);
+            console.log(`Checking ${Object.keys(nightSkyNode.planets.planetSprites).length} planets (edge threshold: ${maxEdgeDistance}px)`);
             for (const [planetName, planetData] of Object.entries(nightSkyNode.planets.planetSprites)) {
                 if (!planetData.sprite || !planetData.sprite.visible) continue;
 
-                // Get planet position in world space
-                // Planets are on a celestial sphere, so we only care about direction, not distance
-                // The sprite position is in the celestial sphere's local space, so we need world position
-                const planetLocalPos = planetData.sprite.position.clone();
+                // Get planet position and project to screen coordinates
                 const planetWorldPos = new Vector3();
                 planetData.sprite.getWorldPosition(planetWorldPos);
-                const planetDir = planetWorldPos.clone().normalize(); // Direction from world origin
-
-                // Calculate angle between ray and planet direction
-                const dot = rayDirection.dot(planetDir);
-                const angle = Math.acos(Math.max(-1, Math.min(1, dot))) * 180 / Math.PI;
                 
-                console.log(`  Planet ${planetName}: angle = ${angle.toFixed(2)}°, visible = ${planetData.sprite.visible}`);
-                if (planetName === "Sun") {
-                    // Calculate RA/Dec from local position to compare with stars
-                    const sunRA = Math.atan2(planetLocalPos.y, planetLocalPos.x);
-                    const sunDec = Math.asin(planetLocalPos.z / planetLocalPos.length());
-                    console.log(`    Sun RA=${sunRA.toFixed(4)} (${(sunRA*180/Math.PI).toFixed(2)}°), Dec=${sunDec.toFixed(4)} (${(sunDec*180/Math.PI).toFixed(2)}°)`);
-                    console.log(`    Sun local pos: (${planetLocalPos.x.toFixed(4)}, ${planetLocalPos.y.toFixed(4)}, ${planetLocalPos.z.toFixed(4)})`);
-                    console.log(`    Sun world pos: (${planetWorldPos.x.toFixed(4)}, ${planetWorldPos.y.toFixed(4)}, ${planetWorldPos.z.toFixed(4)})`);
-                    console.log(`    Sun world dir: (${planetDir.x.toFixed(4)}, ${planetDir.y.toFixed(4)}, ${planetDir.z.toFixed(4)})`);
-                }
+                // Project center to NDC
+                const pos = planetWorldPos.clone().project(this.camera);
+                
+                // Check if in front of camera and within view
+                if (pos.z > -1 && pos.z < 1 && pos.x >= -1 && pos.x <= 1 && pos.y >= -1 && pos.y <= 1) {
+                    // Convert NDC to screen coordinates, accounting for sidebar offset
+                    const containerOffsetX = ViewMan.screenOffsetX || 0;
+                    const screenX = (pos.x + 1) * this.widthPx / 2 + this.leftPx + containerOffsetX;
+                    const screenY = (-pos.y + 1) * this.heightPx / 2 + this.topPx;
+                    
+                    // Calculate screen radius by projecting an edge point
+                    const spriteScale = planetData.sprite.scale.x;
+                    const edgeWorldPos = planetWorldPos.clone();
+                    const right = new Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion);
+                    edgeWorldPos.addScaledVector(right, spriteScale);
+                    const edgePos = edgeWorldPos.project(this.camera);
+                    const edgeScreenX = (edgePos.x + 1) * this.widthPx / 2 + this.leftPx + containerOffsetX;
+                    const edgeScreenY = (-edgePos.y + 1) * this.heightPx / 2 + this.topPx;
+                    const screenRadius = Math.sqrt((edgeScreenX - screenX) ** 2 + (edgeScreenY - screenY) ** 2);
+                    
+                    const dx = screenX - mouseX;
+                    const dy = screenY - mouseY;
+                    const pixelDistanceFromCenter = Math.sqrt(dx * dx + dy * dy);
+                    const edgeDistance = pixelDistanceFromCenter - screenRadius;
+                    
+                    console.log(`  Planet ${planetName}: center=${pixelDistanceFromCenter.toFixed(1)}px, radius=${screenRadius.toFixed(1)}px, edge=${edgeDistance.toFixed(1)}px`);
 
-                if (angle < closestAngle) {
-                    closestAngle = angle;
-                    closestObject = {
-                        type: 'planet',
-                        name: planetName,
-                        data: planetData,
-                        angle: angle
-                    };
-                    console.log(`    -> New closest object: ${planetName} at ${angle.toFixed(2)}°`);
+                    if (edgeDistance < closestEdgeDistance) {
+                        closestEdgeDistance = edgeDistance;
+                        closestObject = {
+                            type: 'planet',
+                            name: planetName,
+                            data: planetData,
+                            pixelDistance: edgeDistance,
+                            angle: edgeDistance
+                        };
+                        console.log(`    -> New closest object: ${planetName} at ${edgeDistance.toFixed(1)}px from edge`);
+                    }
                 }
             }
         }
@@ -2391,7 +2404,7 @@ export class CNodeView3D extends CNodeViewCanvas {
         this.camera.updateMatrixWorld();
 
         if (closestObject) {
-            if (closestObject.type === 'star') {
+            if (closestObject.type === 'star' || closestObject.type === 'planet') {
                 console.log(`Found closest celestial object: ${closestObject.type} - ${closestObject.name} at ${closestObject.pixelDistance.toFixed(1)}px`);
             } else {
                 console.log(`Found closest celestial object: ${closestObject.type} - ${closestObject.name} at ${closestObject.angle.toFixed(2)}°`);
