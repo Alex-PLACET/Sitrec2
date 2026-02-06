@@ -261,7 +261,7 @@ export class CPlanets {
     updateMoonMesh(date, observer) {
         if (!this.moonMesh) return;
         
-        const celestialInfo = Astronomy.Equator("Moon", date, observer, false, true);
+        const celestialInfo = Astronomy.Equator("Moon", date, observer, false, false);
         const libration = Astronomy.Libration(date);
         const axisInfo = Astronomy.RotationAxis("Moon", date);
         
@@ -271,7 +271,7 @@ export class CPlanets {
         
         const moonRadius = Math.tan(radians(libration.diam_deg / 2)) * this.sphereRadius;
         
-        const sunInfo = Astronomy.Equator("Sun", date, observer, false, true);
+        const sunInfo = Astronomy.Equator("Sun", date, observer, false, false);
         const sunRa = (sunInfo.ra) / 24 * 2 * Math.PI;
         const sunDec = radians(sunInfo.dec);
         const sunEquatorial = raDec2Celestial(sunRa, sunDec, this.sphereRadius);
@@ -288,8 +288,8 @@ export class CPlanets {
         const rotMatrix = new Matrix4();
         rotMatrix.makeBasis(moonEast, moonNorth, toEarth);
         
-        const elonRad = radians(libration.elon);
-        const elatRad = radians(libration.elat);
+        const elonRad = radians(-libration.elon);
+        const elatRad = radians(-libration.elat);
         
         const librationMatrix = new Matrix4();
         librationMatrix.makeRotationFromEuler(new Euler(elatRad, elonRad, 0, 'YXZ'));
@@ -342,7 +342,7 @@ export class CPlanets {
             return;
         }
         
-        const celestialInfo = Astronomy.Equator(planet, date, observer, false, true);
+        const celestialInfo = Astronomy.Equator(planet, date, observer, false, false);
         const illumination = Astronomy.Illumination(planet, date);
         
         const ra = (celestialInfo.ra) / 24 * 2 * Math.PI;
