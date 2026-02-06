@@ -10,7 +10,7 @@ export default defineConfig({
   forbidOnly: false,
   retries: 0,
   workers: 4,
-  maxFailures: undefined,
+  maxFailures: 1,
   reporter: 'list',
   
   use: {

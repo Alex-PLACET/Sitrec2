@@ -61,8 +61,18 @@ test.describe('Visual Regression Testing', () => {
 
                 await page.setViewportSize({ width: 1920, height: 1080 });
 
+                let assertionReject;
+                const assertionPromise = new Promise((_, reject) => {
+                    assertionReject = reject;
+                });
+
                 page.on('console', msg => {
-                    console.log(`[WORKER-${testInfo.workerIndex}] PAGE CONSOLE [${msg.type()}]: ${msg.text()}`);
+                    const text = msg.text();
+                    console.log(`[WORKER-${testInfo.workerIndex}] PAGE CONSOLE [${msg.type()}]: ${text}`);
+                    if (text.includes('ASSERT:')) {
+                        console.error(`[WORKER-${testInfo.workerIndex}] ASSERTION FAILURE DETECTED: ${text}`);
+                        assertionReject(new Error(`ASSERTION FAILURE: ${text}`));
+                    }
                 });
 
                 page.on('pageerror', err => {
@@ -81,54 +91,58 @@ test.describe('Visual Regression Testing', () => {
 
                 const fullUrl = url + '&ignoreunload=1&regression=1';
 
-                const expectedText = waitFor || 'No pending actions';
-                const consoleTimeout = waitFor ? 600000 : (timeout || 60000);
-                const consolePromise = waitForConsoleText(page, expectedText, consoleTimeout);
+                const runTest = async () => {
+                    const expectedText = waitFor || 'No pending actions';
+                    const consoleTimeout = waitFor ? 600000 : (timeout || 60000);
+                    const consolePromise = waitForConsoleText(page, expectedText, consoleTimeout);
 
-                const response = await page.goto(fullUrl, {
-                    waitUntil: 'load',
-                    timeout: 30000
-                });
+                    const response = await page.goto(fullUrl, {
+                        waitUntil: 'load',
+                        timeout: 30000
+                    });
 
-                if (!response.ok()) {
-                    console.error(`[WORKER-${testInfo.workerIndex}] Page load failed with status: ${response.status()} for URL: ${fullUrl}`);
-                }
+                    if (!response.ok()) {
+                        console.error(`[WORKER-${testInfo.workerIndex}] Page load failed with status: ${response.status()} for URL: ${fullUrl}`);
+                    }
 
-                await consolePromise;
+                    await consolePromise;
 
-                await page.evaluate(() => {
-                    return new Promise((resolve) => {
-                        let frameCount = 0;
-                        function waitForFrames() {
-                            frameCount++;
-                            if (frameCount < 3) {
-                                requestAnimationFrame(waitForFrames);
-                            } else {
-                                resolve();
+                    await page.evaluate(() => {
+                        return new Promise((resolve) => {
+                            let frameCount = 0;
+                            function waitForFrames() {
+                                frameCount++;
+                                if (frameCount < 3) {
+                                    requestAnimationFrame(waitForFrames);
+                                } else {
+                                    resolve();
+                                }
+                            }
+                            requestAnimationFrame(waitForFrames);
+                        });
+                    });
+
+                    await takeScreenshotOrCompare(page, `${name}-snapshot`, testInfo);
+
+                    await page.evaluate(() => {
+                        if (window.Globals && window.Globals.renderData) {
+                            try {
+                                window.Globals.renderData.forEach(rd => {
+                                    if (rd.renderer) {
+                                        rd.renderer.dispose();
+                                    }
+                                    if (rd._resizeTimeout) {
+                                        clearTimeout(rd._resizeTimeout);
+                                        rd._resizeTimeout = null;
+                                    }
+                                });
+                            } catch (e) {
                             }
                         }
-                        requestAnimationFrame(waitForFrames);
                     });
-                });
+                };
 
-                await takeScreenshotOrCompare(page, `${name}-snapshot`, testInfo);
-
-                await page.evaluate(() => {
-                    if (window.Globals && window.Globals.renderData) {
-                        try {
-                            window.Globals.renderData.forEach(rd => {
-                                if (rd.renderer) {
-                                    rd.renderer.dispose();
-                                }
-                                if (rd._resizeTimeout) {
-                                    clearTimeout(rd._resizeTimeout);
-                                    rd._resizeTimeout = null;
-                                }
-                            });
-                        } catch (e) {
-                        }
-                    }
-                });
+                await Promise.race([runTest(), assertionPromise]);
 
                 console.log(`[TEST:${id}:PASSED]`);
             } catch (error) {
