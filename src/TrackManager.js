@@ -375,11 +375,29 @@ class CTrackManager extends CManager {
                         removeTrack : () => {
                             // remove the track from the TrackManager
                             TrackManager.disposeRemove(trackID);
+                        },
+                        createSpline : () => {
+                            const numPoints = 10;
+                            const frames = trackNode.frames;
+                            const initialPoints = [];
+                            for (let i = 0; i < numPoints; i++) {
+                                const frame = Math.floor(i * (frames - 1) / (numPoints - 1));
+                                const pos = trackNode.p(frame);
+                                initialPoints.push([frame, pos.x, pos.y, pos.z]);
+                            }
+                            const newName = shortName + "_sp";
+                            const newTrackOb = TrackManager.addSyntheticTrack({
+                                name: newName,
+                                initialPoints: initialPoints,
+                                curveType: "chordal",
+                                editMode: true,
+                            });
                         }
                     }
 
                     // add a remove button to the folder
                     trackOb.guiFolder.add(dummy, "removeTrack").name("Remove Track");
+                    trackOb.guiFolder.add(dummy, "createSpline").name("Create Spline");
 
                     // For relative-time tracks, add GUI field to override start time
                     trackDataNode.setupTrackStartTimeGUI(trackOb.guiFolder);
@@ -1002,8 +1020,10 @@ class CTrackManager extends CManager {
         }
 
         // Prepare initial points - CNodeSplineEditor expects [frame, x, y, z] format
-        const initialPoints = [];
-        if (options.startPoint) {
+        let initialPoints = [];
+        if (options.initialPoints) {
+            initialPoints = options.initialPoints;
+        } else if (options.startPoint) {
             const sp = options.startPoint;
             initialPoints.push([startFrame, sp.x, sp.y, sp.z]);
         }
