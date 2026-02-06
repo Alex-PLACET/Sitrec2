@@ -114,7 +114,9 @@ export class CPlanets {
                     float intensity = dot(vNormal, sunDir);
                     float blendFactor = smoothstep(-0.1, 0.1, intensity);
                     
-                    vec4 textureColor = texture2D(moonTexture, vUv);
+                    vec2 uv = vUv;
+                    uv.x = fract(uv.x + 0.25);
+                    vec4 textureColor = texture2D(moonTexture, uv);
                     vec4 dayColor = textureColor;
                     vec4 nightColor = textureColor * 0.02;
                     
@@ -253,6 +255,7 @@ export class CPlanets {
         
         const celestialInfo = Astronomy.Equator("Moon", date, observer, false, true);
         const libration = Astronomy.Libration(date);
+        const axisInfo = Astronomy.RotationAxis("Moon", date);
         
         const ra = (celestialInfo.ra) / 24 * 2 * Math.PI;
         const dec = radians(celestialInfo.dec);
@@ -267,19 +270,21 @@ export class CPlanets {
         
         const sunDir = new Vector3(sunEquatorial.x, sunEquatorial.y, sunEquatorial.z).normalize();
         
-        const moonDir = new Vector3(equatorial.x, equatorial.y, equatorial.z).normalize();
-        const celestialNorth = new Vector3(0, 0, 1);
-        const moonRight = new Vector3().crossVectors(celestialNorth, moonDir).normalize();
-        const moonUp = new Vector3().crossVectors(moonDir, moonRight).normalize();
+        const toMoon = new Vector3(equatorial.x, equatorial.y, equatorial.z).normalize();
+        const toEarth = toMoon.clone().negate();
+        
+        const moonNorthPole = new Vector3(axisInfo.north.x, axisInfo.north.y, axisInfo.north.z).normalize();
+        const moonNorth = moonNorthPole.clone().sub(toEarth.clone().multiplyScalar(moonNorthPole.dot(toEarth))).normalize();
+        const moonEast = new Vector3().crossVectors(moonNorth, toEarth).normalize();
         
         const rotMatrix = new Matrix4();
-        rotMatrix.makeBasis(moonRight, moonUp, moonDir);
+        rotMatrix.makeBasis(moonEast, moonNorth, toEarth);
         
         const elonRad = radians(libration.elon);
         const elatRad = radians(libration.elat);
         
         const librationMatrix = new Matrix4();
-        librationMatrix.makeRotationFromEuler(new Euler(-elatRad, -elonRad, 0, 'YXZ'));
+        librationMatrix.makeRotationFromEuler(new Euler(elatRad, elonRad, 0, 'YXZ'));
         
         const finalRotation = rotMatrix.clone().multiply(librationMatrix);
         
