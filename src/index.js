@@ -106,6 +106,7 @@ import {
     toggleMotionAnalysis
 } from "./CMotionAnalysis";
 import {addObjectTrackingMenu, resetObjectTracking} from "./CObjectTracking";
+import {addTextExtractionMenu} from "./CTextExtraction";
 import {QuadTreeTile} from "./QuadTreeTile";
 import {showError} from "./showError";
 import {destroyGlobalProfiler, globalProfiler, initGlobalProfiler} from "./VisualProfiler";
@@ -1422,6 +1423,7 @@ async function initializeOnce() {
     setupGUIGlobals(_gui,_guiShowHide,_guiTweaks, _guiShowHideViews, _guiPhysics)
     addMotionAnalysisMenu();
     addObjectTrackingMenu();
+    addTextExtractionMenu();
     setUnits(new CUnits("Nautical"));
     setFileManager(new CFileManager())
     
