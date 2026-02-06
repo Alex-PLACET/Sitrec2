@@ -373,31 +373,46 @@ class CTrackManager extends CManager {
 
                     const dummy = {
                         removeTrack : () => {
-                            // remove the track from the TrackManager
                             TrackManager.disposeRemove(trackID);
                         },
                         createSpline : () => {
-                            const numPoints = 10;
                             const frames = trackNode.frames;
+                            if (frames < 2) return;
+                            const newShortName = shortName + "_sp";
+                            let exists = false;
+                            TrackManager.iterate((k, t) => { if (t.menuText === newShortName) exists = true; });
+                            if (exists) return;
+                            const numPoints = 10;
                             const initialPoints = [];
                             for (let i = 0; i < numPoints; i++) {
                                 const frame = Math.floor(i * (frames - 1) / (numPoints - 1));
                                 const pos = trackNode.p(frame);
                                 initialPoints.push([frame, pos.x, pos.y, pos.z]);
                             }
-                            const newName = shortName + "_sp";
+                            trackOb.guiFolder.close();
                             const newTrackOb = TrackManager.addSyntheticTrack({
-                                name: newName,
+                                name: newShortName,
+                                shortName: newShortName,
                                 initialPoints: initialPoints,
                                 curveType: "chordal",
                                 editMode: true,
                             });
+                            if (newTrackOb && newTrackOb.guiFolder) {
+                                newTrackOb.guiFolder.open();
+                            }
                         }
                     }
 
-                    // add a remove button to the folder
                     trackOb.guiFolder.add(dummy, "removeTrack").name("Remove Track");
-                    trackOb.guiFolder.add(dummy, "createSpline").name("Create Spline");
+
+                    if (trackNode.frames >= 2) {
+                        const splineName = shortName + "_sp";
+                        let splineExists = false;
+                        TrackManager.iterate((k, t) => { if (t.menuText === splineName) splineExists = true; });
+                        if (!splineExists) {
+                            trackOb.guiFolder.add(dummy, "createSpline").name("Create Spline");
+                        }
+                    }
 
                     // For relative-time tracks, add GUI field to override start time
                     trackDataNode.setupTrackStartTimeGUI(trackOb.guiFolder);
@@ -998,8 +1013,8 @@ class CTrackManager extends CManager {
         const lineWidth = options.lineWidth || 2;
         const startFrame = options.startFrame !== undefined ? options.startFrame : 0;
         
-        // Generate unique short name for display (like "synth_01_d")
-        const shortName = `synth_${String(trackNumber + 1).padStart(2, '0')}_d`;
+        // Use provided shortName or generate unique short name for display (like "synth_01_d")
+        const shortName = options.shortName || `synth_${String(trackNumber + 1).padStart(2, '0')}_d`;
         
         // Use provided IDs if available (for deserialization), otherwise generate new ones
         const trackID = options.trackID || `syntheticTrack_${Date.now()}`;
