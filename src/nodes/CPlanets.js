@@ -123,7 +123,8 @@ export class CPlanets {
                     gl_FragColor = mix(nightColor, dayColor, blendFactor);
                 }
             `,
-            depthWrite: false,
+            depthWrite: true,
+            depthTest: true,
         });
     }
 
