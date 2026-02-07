@@ -716,9 +716,40 @@ export class CCustomManager {
             }
         }
 
+        this.setupVideoInfoMenu();
+
         this.setupSubSitches();
 
     } // end of setup()
+
+    setupVideoInfoMenu() {
+        const videoInfo = NodeMan.get("videoInfo", false);
+        if (!videoInfo) return;
+
+        const folder = guiMenus.view.addFolder("Video Info").close()
+            .tooltip("Video info display controls for frame counter, timecode, and timestamp");
+
+        folder.add(videoInfo, "showInfo").name("Show Video Info")
+            .tooltip("Master toggle - enable or disable all video info displays")
+            .listen()
+            .onChange(value => videoInfo.show(value));
+
+        folder.add(videoInfo, "showFrameCounter").name("Frame Counter")
+            .tooltip("Show the current frame number")
+            .listen();
+
+        folder.add(videoInfo, "showTimecode").name("Timecode")
+            .tooltip("Show timecode in HH:MM:SS:FF format")
+            .listen();
+
+        folder.add(videoInfo, "showTimestamp").name("Timestamp")
+            .tooltip("Show timestamp in HH:MM:SS.SS format")
+            .listen();
+
+        folder.add(videoInfo, "fontSize", 10, 80, 1).name("Font Size")
+            .tooltip("Adjust the font size of the info text")
+            .listen();
+    }
 
     setupSubSitches() {
         this.subSitches = [];
