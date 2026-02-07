@@ -262,11 +262,10 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
         const element = this.getElementAtPosition(x, y);
         if (element) {
             this.dragging = element;
-            const videoRect = this.getVideoRect();
             const pos = this.getElementPos(element);
             if (pos) {
-                this.dragOffsetX = x - this.videoPx(this[pos[0]], videoRect);
-                this.dragOffsetY = y - this.videoPy(this[pos[1]], videoRect);
+                this.dragOffsetX = x - this.videoPx(this[pos[0]]);
+                this.dragOffsetY = y - this.videoPy(this[pos[1]]);
             }
             this.canvas.style.pointerEvents = 'auto';
             e.stopPropagation();
@@ -282,17 +281,14 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
         const y = e.clientY - canvasRect.top;
 
         if (this.dragging) {
-            const videoRect = this.getVideoRect();
-            const newPctX = ((x - this.dragOffsetX - videoRect.x) / videoRect.w) * 100;
-            const newPctY = ((y - this.dragOffsetY - videoRect.y) / videoRect.h) * 100;
-
-            const clampedX = Math.max(5, Math.min(95, newPctX));
-            const clampedY = Math.max(5, Math.min(95, newPctY));
+            const canvasRect = this.canvas.getBoundingClientRect();
+            const newPctX = ((x - this.dragOffsetX) / canvasRect.width) * 100;
+            const newPctY = ((y - this.dragOffsetY) / canvasRect.height) * 100;
 
             const pos = this.getElementPos(this.dragging);
             if (pos) {
-                this[pos[0]] = clampedX;
-                this[pos[1]] = clampedY;
+                this[pos[0]] = newPctX;
+                this[pos[1]] = newPctY;
             }
             return;
         }
@@ -370,22 +366,45 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
         return { x: vx, y: vy, w: vw, h: vh };
     }
 
-    videoPx(pct, rect) {
-        return rect.x + (pct / 100) * rect.w;
+    videoPx(pct) {
+        return (pct / 100) * this.widthPx;
     }
 
-    videoPy(pct, rect) {
-        return rect.y + (pct / 100) * rect.h;
+    videoPy(pct) {
+        return (pct / 100) * this.heightPx;
+    }
+
+    snapPositionsToView() {
+        for (const id of this.getAllItemIds()) {
+            const pos = this.getElementPos(id);
+            if (pos) {
+                if (this[pos[0]] < 5) this[pos[0]] = 5;
+                if (this[pos[0]] > 95) this[pos[0]] = 95;
+                if (this[pos[1]] < 5) this[pos[1]] = 5;
+                if (this[pos[1]] > 95) this[pos[1]] = 95;
+            }
+        }
     }
 
     renderCanvas(frame) {
-        if (!this.isVideoReady()) return;
-        if (this.overlayView && !this.overlayView.visible) return;
-        if (this.in.relativeTo && !this.in.relativeTo.visible) return;
-        if (!this.shouldBeVisible()) return;
+        const shouldRender = this.isVideoReady() &&
+            (!this.overlayView || this.overlayView.visible) &&
+            (!this.in.relativeTo || this.in.relativeTo.visible) &&
+            this.shouldBeVisible();
+
+        if (!shouldRender) {
+            if (this.ctx) {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+            }
+            return;
+        }
 
         const rect = this.getVideoRect();
         if (!rect.w || !rect.h) return;
+
+        if (!this.dragging) {
+            this.snapPositionsToView();
+        }
 
         super.renderCanvas(frame);
 
@@ -403,8 +422,8 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
 
         if (this.showFrameCounter) {
             const text = `${Math.floor(par.frame)}`;
-            const x = this.videoPx(this.frameCounterX, rect);
-            const y = this.videoPy(this.frameCounterY, rect);
+            const x = this.videoPx(this.frameCounterX);
+            const y = this.videoPy(this.frameCounterY);
             const metrics = c.measureText(text);
             const textHeight = metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent;
             const vPad = textHeight * 0.05;
@@ -423,8 +442,8 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
 
         if (this.showTimecode) {
             const text = this.formatTimecode(par.frame, fps, showHours);
-            const x = this.videoPx(this.timecodeX, rect);
-            const y = this.videoPy(this.timecodeY, rect);
+            const x = this.videoPx(this.timecodeX);
+            const y = this.videoPy(this.timecodeY);
             const metrics = c.measureText(text);
             const textHeight = metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent;
             const vPad = textHeight * 0.05;
@@ -443,8 +462,8 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
 
         if (this.showTimestamp) {
             const text = this.formatTimestamp(par.frame, fps, showHours);
-            const x = this.videoPx(this.timestampX, rect);
-            const y = this.videoPy(this.timestampY, rect);
+            const x = this.videoPx(this.timestampX);
+            const y = this.videoPy(this.timestampY);
             const metrics = c.measureText(text);
             const textHeight = metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent;
             const vPad = textHeight * 0.05;
@@ -465,39 +484,39 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
         if (nowDate) {
             if (this.showDateLocal) {
                 const text = this.formatDateLocal(nowDate);
-                this._dateLocalBbox = this.renderInfoElement(c, text, this.dateLocalX, this.dateLocalY, rect, scaledFontSize, padding);
+                this._dateLocalBbox = this.renderInfoElement(c, text, this.dateLocalX, this.dateLocalY, scaledFontSize, padding);
             }
 
             if (this.showTimeLocal) {
                 const text = this.formatTimeLocal(nowDate);
-                this._timeLocalBbox = this.renderInfoElement(c, text, this.timeLocalX, this.timeLocalY, rect, scaledFontSize, padding);
+                this._timeLocalBbox = this.renderInfoElement(c, text, this.timeLocalX, this.timeLocalY, scaledFontSize, padding);
             }
 
             if (this.showDateTimeLocal) {
                 const text = this.formatDateTimeLocal(nowDate);
-                this._dateTimeLocalBbox = this.renderInfoElement(c, text, this.dateTimeLocalX, this.dateTimeLocalY, rect, scaledFontSize, padding);
+                this._dateTimeLocalBbox = this.renderInfoElement(c, text, this.dateTimeLocalX, this.dateTimeLocalY, scaledFontSize, padding);
             }
 
             if (this.showDateUTC) {
                 const text = this.formatDateUTC(nowDate);
-                this._dateUTCBbox = this.renderInfoElement(c, text, this.dateUTCX, this.dateUTCY, rect, scaledFontSize, padding);
+                this._dateUTCBbox = this.renderInfoElement(c, text, this.dateUTCX, this.dateUTCY, scaledFontSize, padding);
             }
 
             if (this.showTimeUTC) {
                 const text = this.formatTimeUTC(nowDate);
-                this._timeUTCBbox = this.renderInfoElement(c, text, this.timeUTCX, this.timeUTCY, rect, scaledFontSize, padding);
+                this._timeUTCBbox = this.renderInfoElement(c, text, this.timeUTCX, this.timeUTCY, scaledFontSize, padding);
             }
 
             if (this.showDateTimeUTC) {
                 const text = this.formatDateTimeUTC(nowDate);
-                this._dateTimeUTCBbox = this.renderInfoElement(c, text, this.dateTimeUTCX, this.dateTimeUTCY, rect, scaledFontSize, padding);
+                this._dateTimeUTCBbox = this.renderInfoElement(c, text, this.dateTimeUTCX, this.dateTimeUTCY, scaledFontSize, padding);
             }
         }
     }
 
-    renderInfoElement(c, text, pctX, pctY, rect, fontSize, padding) {
-        const x = this.videoPx(pctX, rect);
-        const y = this.videoPy(pctY, rect);
+    renderInfoElement(c, text, pctX, pctY, fontSize, padding) {
+        const x = this.videoPx(pctX);
+        const y = this.videoPy(pctY);
         const metrics = c.measureText(text);
         const textHeight = metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent;
         const vPad = textHeight * 0.05;
