@@ -462,6 +462,20 @@ class TextExtractor {
         const ctx = canvas.getContext('2d');
         ctx.drawImage(image, x1, y1, w, h, 0, 0, w, h);
 
+        if (this.useTemplates && this.templates.size > 0 && region.numChars > 0) {
+            const charWidth = w / region.numChars;
+            let result = '';
+
+            for (let i = 0; i < region.numChars; i++) {
+                const charX = Math.floor(i * charWidth);
+                const charW = Math.ceil(charWidth);
+                const charImageData = ctx.getImageData(charX, 0, charW, h);
+                const matched = this.matchTemplate(charImageData);
+                result += matched || '?';
+            }
+            return result;
+        }
+
         if (this.fixedWidthFont && region.numChars > 0) {
             const charWidth = w / region.numChars;
             let result = '';
@@ -601,6 +615,7 @@ class TextExtractor {
 
 let addRegionMenuItem = null;
 let startExtractMenuItem = null;
+let learnMenuItem = null;
 
 function toggleEnableExtraction() {
     const videoView = NodeMan.get("video", false);
@@ -696,6 +711,36 @@ export function addTextExtractionMenu() {
     textExtractionFolder.add(numCharsParams, 'numChars', 1, 30, 1)
         .name("Num Characters")
         .tooltip("Number of characters in the selected region (divides region evenly)")
+        .perm();
+
+    const templateActions = {
+        learnTemplates: () => {
+            if (textExtractor?.isLearning) {
+                textExtractor.stopLearning();
+            } else {
+                textExtractor?.startLearning();
+            }
+        },
+        clearTemplates: () => textExtractor?.clearTemplates(),
+    };
+
+    learnMenuItem = textExtractionFolder.add(templateActions, 'learnTemplates')
+        .name("Learn Templates")
+        .tooltip("Click character cells to teach their values (for template matching)")
+        .perm();
+
+    textExtractionFolder.add(templateActions, 'clearTemplates')
+        .name("Clear Templates")
+        .tooltip("Remove all learned character templates")
+        .perm();
+
+    const useTemplatesParams = {
+        get useTemplates() { return textExtractor?.useTemplates ?? true; },
+        set useTemplates(v) { if (textExtractor) textExtractor.useTemplates = v; }
+    };
+    textExtractionFolder.add(useTemplatesParams, 'useTemplates')
+        .name("Use Templates")
+        .tooltip("Use learned templates for matching (faster & more accurate when trained)")
         .perm();
 }
 
