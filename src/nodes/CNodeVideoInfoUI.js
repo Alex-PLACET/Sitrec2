@@ -397,7 +397,7 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
         const scaledFontSize = Math.round(this.fontSize * rect.h / referenceHeight);
         c.font = `${scaledFontSize}px monospace`;
         c.textAlign = 'center';
-        c.textBaseline = 'top';
+        c.textBaseline = 'alphabetic';
 
         const padding = Math.round(6 * rect.h / referenceHeight);
 
@@ -406,11 +406,12 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
             const x = this.videoPx(this.frameCounterX, rect);
             const y = this.videoPy(this.frameCounterY, rect);
             const metrics = c.measureText(text);
-            const textHeight = scaledFontSize;
+            const textHeight = metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent;
+            const vPad = textHeight * 0.05;
             const bgX = x - metrics.width / 2 - padding;
-            const bgY = y - padding;
+            const bgY = y - metrics.actualBoundingBoxAscent - padding - vPad;
             const bgW = metrics.width + padding * 2;
-            const bgH = textHeight + padding * 2;
+            const bgH = textHeight + padding * 2 + vPad * 2;
 
             c.fillStyle = 'rgba(0, 0, 0, 0.5)';
             c.fillRect(bgX, bgY, bgW, bgH);
@@ -425,11 +426,12 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
             const x = this.videoPx(this.timecodeX, rect);
             const y = this.videoPy(this.timecodeY, rect);
             const metrics = c.measureText(text);
-            const textHeight = scaledFontSize;
+            const textHeight = metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent;
+            const vPad = textHeight * 0.05;
             const bgX = x - metrics.width / 2 - padding;
-            const bgY = y - padding;
+            const bgY = y - metrics.actualBoundingBoxAscent - padding - vPad;
             const bgW = metrics.width + padding * 2;
-            const bgH = textHeight + padding * 2;
+            const bgH = textHeight + padding * 2 + vPad * 2;
 
             c.fillStyle = 'rgba(0, 0, 0, 0.5)';
             c.fillRect(bgX, bgY, bgW, bgH);
@@ -444,11 +446,12 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
             const x = this.videoPx(this.timestampX, rect);
             const y = this.videoPy(this.timestampY, rect);
             const metrics = c.measureText(text);
-            const textHeight = scaledFontSize;
+            const textHeight = metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent;
+            const vPad = textHeight * 0.05;
             const bgX = x - metrics.width / 2 - padding;
-            const bgY = y - padding;
+            const bgY = y - metrics.actualBoundingBoxAscent - padding - vPad;
             const bgW = metrics.width + padding * 2;
-            const bgH = textHeight + padding * 2;
+            const bgH = textHeight + padding * 2 + vPad * 2;
 
             c.fillStyle = 'rgba(0, 0, 0, 0.5)';
             c.fillRect(bgX, bgY, bgW, bgH);
@@ -496,10 +499,12 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
         const x = this.videoPx(pctX, rect);
         const y = this.videoPy(pctY, rect);
         const metrics = c.measureText(text);
+        const textHeight = metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent;
+        const vPad = textHeight * 0.05;
         const bgX = x - metrics.width / 2 - padding;
-        const bgY = y - padding;
+        const bgY = y - metrics.actualBoundingBoxAscent - padding - vPad;
         const bgW = metrics.width + padding * 2;
-        const bgH = fontSize + padding * 2;
+        const bgH = textHeight + padding * 2 + vPad * 2;
 
         c.fillStyle = 'rgba(0, 0, 0, 0.5)';
         c.fillRect(bgX, bgY, bgW, bgH);
