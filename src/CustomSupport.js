@@ -3303,6 +3303,7 @@ export class CCustomManager {
             "jetOffset",
             "TAS",
             "integrate",
+            "trackToTrackStopAt"
         ]
 
         const SitNeeded = [
