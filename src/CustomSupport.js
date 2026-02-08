@@ -2301,6 +2301,73 @@ export class CCustomManager {
                 window.open(googleMapsUrl, '_blank');
                 console.log(`Opening Google Maps at: ${lat}, ${lon}`);
             },
+            googleEarthHere: () => {
+                this.groundContextMenu = null;
+                menu.destroy();
+
+                const kmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2" xmlns:kml="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom">
+<Document>
+\t<name>Sitrec Pin.kml</name>
+\t<StyleMap id="m_ylw-pushpin">
+\t\t<Pair>
+\t\t\t<key>normal</key>
+\t\t\t<styleUrl>#s_ylw-pushpin</styleUrl>
+\t\t</Pair>
+\t\t<Pair>
+\t\t\t<key>highlight</key>
+\t\t\t<styleUrl>#s_ylw-pushpin_hl</styleUrl>
+\t\t</Pair>
+\t</StyleMap>
+\t<Style id="s_ylw-pushpin">
+\t\t<IconStyle>
+\t\t\t<scale>1.1</scale>
+\t\t\t<Icon>
+\t\t\t\t<href>http://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png</href>
+\t\t\t</Icon>
+\t\t\t<hotSpot x="20" y="2" xunits="pixels" yunits="pixels"/>
+\t\t</IconStyle>
+\t</Style>
+\t<Style id="s_ylw-pushpin_hl">
+\t\t<IconStyle>
+\t\t\t<scale>1.3</scale>
+\t\t\t<Icon>
+\t\t\t\t<href>http://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png</href>
+\t\t\t</Icon>
+\t\t\t<hotSpot x="20" y="2" xunits="pixels" yunits="pixels"/>
+\t\t</IconStyle>
+\t</Style>
+\t<Placemark>
+\t\t<name>Sitrec Pin</name>
+\t\t<LookAt>
+\t\t\t<longitude>${lon}</longitude>
+\t\t\t<latitude>${lat}</latitude>
+\t\t\t<altitude>0</altitude>
+\t\t\t<heading>0</heading>
+\t\t\t<tilt>0</tilt>
+\t\t\t<range>10000</range>
+\t\t\t<gx:altitudeMode>relativeToSeaFloor</gx:altitudeMode>
+\t\t</LookAt>
+\t\t<styleUrl>#m_ylw-pushpin</styleUrl>
+\t\t<Point>
+\t\t\t<gx:drawOrder>1</gx:drawOrder>
+\t\t\t<coordinates>${lon},${lat},0</coordinates>
+\t\t</Point>
+\t</Placemark>
+</Document>
+</kml>`;
+
+                const blob = new Blob([kmlContent], { type: 'application/vnd.google-earth.kml+xml' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'Sitrec Pin.kml';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                console.log(`Downloaded KML for Google Earth at: ${lat}, ${lon}`);
+            },
         };
         
         const overlayAtPoint = Synth3DManager.findOverlayAtLatLon(lat, lon);
@@ -2385,6 +2452,7 @@ export class CCustomManager {
         // Add Google Maps link if extraHelpLinks is enabled
         if (configParams.extraHelpLinks) {
             menu.add(menuData, "googleMapsHere").name("Google Maps Here");
+            menu.add(menuData, "googleEarthHere").name("Google Earth Here");
         }
     }
 
