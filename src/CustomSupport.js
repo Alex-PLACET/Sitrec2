@@ -62,6 +62,7 @@ import {getCursorPositionFromTopView} from "./mouseMoveView";
 import {addMenuToLeftSidebar, addMenuToRightSidebar, isInLeftSidebar, isInRightSidebar} from "./PageStructure";
 import {CNodeControllerCelestial} from "./nodes/CNodeControllerVarious";
 import {CNodeVideoInfoUI} from "./nodes/CNodeVideoInfoUI";
+import {CNodeOSDTrackController} from "./nodes/CNodeOSDTrackController";
 
 export class CCustomManager {
     constructor() {
@@ -708,6 +709,8 @@ export class CCustomManager {
         }
 
         this.setupVideoInfoMenu();
+        
+        this.setupOSDTrackController();
 
         this.setupSubSitches();
 
@@ -727,6 +730,14 @@ export class CCustomManager {
         if (!videoInfo) return;
 
         videoInfo.setupMenu(guiMenus.view);
+    }
+    
+    setupOSDTrackController() {
+        if (!NodeMan.exists("osdTrackController")) {
+            new CNodeOSDTrackController({
+                id: "osdTrackController",
+            });
+        }
     }
 
     setupSubSitches() {

@@ -1,5 +1,5 @@
 import {CNodeViewUI} from "./CNodeViewUI";
-import {GlobalDateTimeNode, Sit} from "../Globals";
+import {GlobalDateTimeNode, NodeMan, Sit} from "../Globals";
 import {par} from "../par";
 
 const DEFAULT_X = 50;
@@ -86,6 +86,11 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
         document.addEventListener('mousemove', this.boundHandleMouseMove);
         document.addEventListener('mouseup', this.boundHandleMouseUp);
         this.canvas.addEventListener('mousedown', this.boundHandleMouseDown);
+        
+        this.boundHandleClick = (e) => this.handleClick(e);
+        this.canvas.addEventListener('click', this.boundHandleClick);
+        
+        this._osdTrackBboxes = {};
 
         this.updateVisibility();
     }
@@ -223,6 +228,10 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
         addBbox('dateUTC', this.showDateUTC, this._dateUTCBbox);
         addBbox('timeUTC', this.showTimeUTC, this._timeUTCBbox);
         addBbox('dateTimeUTC', this.showDateTimeUTC, this._dateTimeUTCBbox);
+        
+        for (const [id, bbox] of Object.entries(this._osdTrackBboxes)) {
+            addBbox(id, true, bbox);
+        }
 
         return bounds;
     }
@@ -249,7 +258,30 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
             timeUTC: ['timeUTCX', 'timeUTCY'],
             dateTimeUTC: ['dateTimeUTCX', 'dateTimeUTCY'],
         };
-        return map[id];
+        if (map[id]) return map[id];
+        
+        if (id && id.startsWith('osdTrack_')) {
+            const trackIndex = parseInt(id.split('_')[1], 10);
+            const controller = NodeMan.get("osdTrackController", false);
+            if (controller && controller.tracks[trackIndex]) {
+                return { track: controller.tracks[trackIndex] };
+            }
+        }
+        return null;
+    }
+    
+    isOSDTrackElement(id) {
+        return id && id.startsWith('osdTrack_');
+    }
+    
+    getOSDTrack(id) {
+        if (!this.isOSDTrackElement(id)) return null;
+        const trackIndex = parseInt(id.split('_')[1], 10);
+        const controller = NodeMan.get("osdTrackController", false);
+        if (controller && controller.tracks[trackIndex]) {
+            return controller.tracks[trackIndex];
+        }
+        return null;
     }
 
     handleMouseDown(e) {
@@ -264,12 +296,38 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
             this.dragging = element;
             const pos = this.getElementPos(element);
             if (pos) {
-                this.dragOffsetX = x - this.videoPx(this[pos[0]]);
-                this.dragOffsetY = y - this.videoPy(this[pos[1]]);
+                if (pos.track) {
+                    this.dragOffsetX = x - this.videoPx(pos.track.x);
+                    this.dragOffsetY = y - this.videoPy(pos.track.y);
+                } else {
+                    this.dragOffsetX = x - this.videoPx(this[pos[0]]);
+                    this.dragOffsetY = y - this.videoPy(this[pos[1]]);
+                }
             }
             this.canvas.style.pointerEvents = 'auto';
             e.stopPropagation();
             e.preventDefault();
+        }
+    }
+    
+    handleClick(e) {
+        if (!this.isVideoReady()) return;
+        
+        const canvasRect = this.canvas.getBoundingClientRect();
+        const x = e.clientX - canvasRect.left;
+        const y = e.clientY - canvasRect.top;
+        
+        const element = this.getElementAtPosition(x, y);
+        if (element && this.isOSDTrackElement(element)) {
+            const track = this.getOSDTrack(element);
+            if (track) {
+                const controller = NodeMan.get("osdTrackController", false);
+                if (controller) {
+                    controller.startEditing(track);
+                    e.stopPropagation();
+                    e.preventDefault();
+                }
+            }
         }
     }
 
@@ -281,14 +339,18 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
         const y = e.clientY - canvasRect.top;
 
         if (this.dragging) {
-            const canvasRect = this.canvas.getBoundingClientRect();
             const newPctX = ((x - this.dragOffsetX) / canvasRect.width) * 100;
             const newPctY = ((y - this.dragOffsetY) / canvasRect.height) * 100;
 
             const pos = this.getElementPos(this.dragging);
             if (pos) {
-                this[pos[0]] = newPctX;
-                this[pos[1]] = newPctY;
+                if (pos.track) {
+                    pos.track.x = newPctX;
+                    pos.track.y = newPctY;
+                } else {
+                    this[pos[0]] = newPctX;
+                    this[pos[1]] = newPctY;
+                }
             }
             return;
         }
@@ -512,6 +574,64 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
                 this._dateTimeUTCBbox = this.renderInfoElement(c, text, this.dateTimeUTCX, this.dateTimeUTCY, scaledFontSize, padding);
             }
         }
+        
+        this.renderOSDTracks(c, scaledFontSize, padding);
+    }
+    
+    renderOSDTracks(c, scaledFontSize, padding) {
+        const controller = NodeMan.get("osdTrackController", false);
+        if (!controller) return;
+        
+        this._osdTrackBboxes = {};
+        
+        const frame = Math.floor(par.frame);
+        
+        for (let i = 0; i < controller.tracks.length; i++) {
+            const track = controller.tracks[i];
+            if (!track.show) continue;
+            
+            let text;
+            let isEditing = controller.isEditing() && controller.getEditingTrack() === track;
+            let isKeyframe = false;
+            
+            if (isEditing) {
+                text = controller.getEditingText() + "▏";
+            } else {
+                const displayInfo = track.getDisplayInfo(frame);
+                text = displayInfo.value;
+                isKeyframe = displayInfo.isKeyframe;
+            }
+            
+            const x = this.videoPx(track.x);
+            const y = this.videoPy(track.y);
+            const metrics = c.measureText(text);
+            const textHeight = metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent;
+            const vPad = textHeight * 0.05;
+            const bgX = x - metrics.width / 2 - padding;
+            const bgY = y - metrics.actualBoundingBoxAscent - padding - vPad;
+            const bgW = metrics.width + padding * 2;
+            const bgH = textHeight + padding * 2 + vPad * 2;
+            
+            if (isEditing) {
+                c.fillStyle = 'rgba(0, 80, 120, 0.7)';
+            } else if (isKeyframe) {
+                c.fillStyle = 'rgba(0, 100, 0, 0.7)';
+            } else {
+                c.fillStyle = 'rgba(0, 60, 100, 0.6)';
+            }
+            c.fillRect(bgX, bgY, bgW, bgH);
+            
+            if (isEditing) {
+                c.strokeStyle = '#00AAFF';
+                c.lineWidth = 2;
+                c.strokeRect(bgX, bgY, bgW, bgH);
+            }
+            
+            c.fillStyle = '#FFFFFF';
+            c.fillText(text, x, y);
+            
+            this._osdTrackBboxes[`osdTrack_${i}`] = { x: bgX, y: bgY, w: bgW, h: bgH };
+        }
     }
 
     renderInfoElement(c, text, pctX, pctY, fontSize, padding) {
@@ -581,6 +701,9 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
         }
         if (this.canvas && this.boundHandleMouseDown) {
             this.canvas.removeEventListener('mousedown', this.boundHandleMouseDown);
+        }
+        if (this.canvas && this.boundHandleClick) {
+            this.canvas.removeEventListener('click', this.boundHandleClick);
         }
         super.dispose();
     }
