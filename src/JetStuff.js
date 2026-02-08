@@ -271,6 +271,7 @@ export function UpdateHUD(text="") {
             "Down - Faster Forwards<br>" +
             "V/B - Measure distance<br>" +
             "Right Click - Context Menu<br>" +
+            "/ - Crosshair. Click to fix<br>" +
 
             ""
 

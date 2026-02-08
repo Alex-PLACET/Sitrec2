@@ -4,6 +4,7 @@
 import {CNodeView} from "./CNodeView";
 import {guiMenus} from "../Globals";
 import {CNodeGUIValue} from "./CNodeGUIValue";
+import {isKeyHeld} from "../KeyBoardHandler";
 
 
 export class CNodeViewCanvas extends CNodeView {
@@ -212,6 +213,50 @@ class CNodeViewCanvas2D extends CNodeViewCanvas {
             }
         }
 
+    }
+
+    drawCrosshairIfKeyHeld() {
+        const slashHeld = isKeyHeld("/");
+
+        if (slashHeld && !this._slashWasHeld && this._crosshairFixed) {
+            this._crosshairFixed = false;
+        }
+        this._slashWasHeld = slashHeld;
+
+        if (!slashHeld && !this._crosshairFixed) {
+            return;
+        }
+
+        if (!this.mouse) return;
+
+        let mx, my;
+        if (this._crosshairFixed) {
+            mx = this._crosshairFixedX;
+            my = this._crosshairFixedY;
+        } else {
+            mx = this.mouse.x;
+            my = this.mouse.y;
+        }
+
+        const ctx = this.ctx;
+        ctx.save();
+        ctx.strokeStyle = "#FFFFFF";
+        ctx.lineWidth = 1 / this.devicePixelRatio;
+        ctx.beginPath();
+        ctx.moveTo(mx, 0);
+        ctx.lineTo(mx, this.heightPx);
+        ctx.moveTo(0, my);
+        ctx.lineTo(this.widthPx, my);
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    fixCrosshair() {
+        if (isKeyHeld("/") && this.mouse && !this._crosshairFixed) {
+            this._crosshairFixed = true;
+            this._crosshairFixedX = this.mouse.x;
+            this._crosshairFixedY = this.mouse.y;
+        }
     }
 }
 

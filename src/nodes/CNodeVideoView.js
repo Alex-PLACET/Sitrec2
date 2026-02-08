@@ -464,6 +464,12 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
     setupMouseHandler() {
         this.mouse = new CMouseHandler(this, {
 
+            down: (e) => {
+                if (e.button === 0) {
+                    this.fixCrosshair();
+                }
+            },
+
             wheel: (e) => {
 
                 //                console.log(e.deltaY)
@@ -967,6 +973,8 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
 
 
         }
+
+        this.drawCrosshairIfKeyHeld();
     }
 
 
