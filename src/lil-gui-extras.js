@@ -1414,6 +1414,7 @@ export class CGuiMenuBar {
         let hasUndockedFromSidebar = false;
         
         const divRect = newDiv.getBoundingClientRect();
+        const menuBarRect = this.menuBar.getBoundingClientRect();
         const dragOffsetX = event.clientX - divRect.left;
         const dragOffsetY = event.clientY - divRect.top;
 
@@ -1438,8 +1439,8 @@ export class CGuiMenuBar {
             if ((wasInLeftSidebar || wasInRightSidebar) && !hasUndockedFromSidebar && hasDragged) {
                 this.menuBar.appendChild(newDiv);
                 newDiv.style.position = 'absolute';
-                newDiv.style.left = (event.clientX - dragOffsetX) + 'px';
-                newDiv.style.top = (event.clientY - dragOffsetY) + 'px';
+                newDiv.style.left = (event.clientX - dragOffsetX - menuBarRect.left) + 'px';
+                newDiv.style.top = (event.clientY - dragOffsetY - menuBarRect.top) + 'px';
                 newDiv.style.width = '';
                 newDiv.style.height = '1px';
                 
@@ -1465,8 +1466,8 @@ export class CGuiMenuBar {
                 return;
             }
             
-            newDiv.style.left = (event.clientX - dragOffsetX) + 'px';
-            newDiv.style.top = (event.clientY - dragOffsetY) + 'px';
+            newDiv.style.left = (event.clientX - dragOffsetX - menuBarRect.left) + 'px';
+            newDiv.style.top = (event.clientY - dragOffsetY - menuBarRect.top) + 'px';
 
             if (parseInt(newDiv.style.top) < -5) {
                 this.restoreToBar(newGUI);
@@ -1809,6 +1810,7 @@ export class CGuiMenuBar {
             let hasUndockedFromSidebar = false;
 
             const divRect = containerDiv.getBoundingClientRect();
+            const menuBarRect = this.menuBar.getBoundingClientRect();
             const dragOffsetX = event.clientX - divRect.left;
             const dragOffsetY = event.clientY - divRect.top;
 
@@ -1833,8 +1835,8 @@ export class CGuiMenuBar {
                 if ((wasInLeftSidebar || wasInRightSidebar) && !hasUndockedFromSidebar && hasDragged) {
                     this.menuBar.appendChild(containerDiv);
                     containerDiv.style.position = 'absolute';
-                    containerDiv.style.left = (event.clientX - dragOffsetX) + 'px';
-                    containerDiv.style.top = (event.clientY - dragOffsetY) + 'px';
+                    containerDiv.style.left = (event.clientX - dragOffsetX - menuBarRect.left) + 'px';
+                    containerDiv.style.top = (event.clientY - dragOffsetY - menuBarRect.top) + 'px';
                     containerDiv.style.width = '240px';
                     containerDiv.style.height = 'auto';
 
