@@ -98,6 +98,7 @@ class CNodeSwitch extends CNode {
             this.exportable = v.exportable
             if (this.exportable) {
                 NodeMan.addExportButton(this, "exportTrackCSV")
+                NodeMan.addExportButton(this, "exportTrackKML")
             }
         } else if(!isConsole) {
             console.warn("No gui for CNodeSwitch - this is probably not what you want")
@@ -177,8 +178,6 @@ class CNodeSwitch extends CNode {
     }
 
     exportTrackCSV(inspect = false) {
-        // get the selected node
-        // if it has and export function then call it.
         const choiceNode = this.inputs[this.choice];
         if (choiceNode.exportTrackCSV !== undefined) {
             return choiceNode.exportTrackCSV(inspect)
@@ -187,8 +186,17 @@ class CNodeSwitch extends CNode {
                 console.error("CNodeSwitch:exportTrackCSV: selected node "+this.choice+" has no exportTrackCSV function")
             }
         }
+    }
 
-
+    exportTrackKML(inspect = false) {
+        const choiceNode = this.inputs[this.choice];
+        if (choiceNode.exportTrackKML !== undefined) {
+            return choiceNode.exportTrackKML(inspect)
+        } else {
+            if (inspect) {
+                console.error("CNodeSwitch:exportTrackKML: selected node "+this.choice+" has no exportTrackKML function")
+            }
+        }
     }
 
 

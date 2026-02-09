@@ -1,5 +1,5 @@
 import {CNodeEmptyArray} from "./CNodeArray";
-import {GlobalDateTimeNode, NodeMan} from "../Globals";
+import {GlobalDateTimeNode, NodeMan, Sit} from "../Globals";
 import {EUSToLLA, LLAToEUS} from "../LLA-ECEF-ENU";
 import {EventManager} from "../CEventManager";
 import {getAzElFromPositionAndForward, getLocalUpVector, pointOnSphereBelow} from "../SphericalMath";
@@ -22,6 +22,64 @@ export class CNodeTrack extends CNodeEmptyArray {
 
     exportTrackCSV(inspect=false) {
         return this.exportArray(inspect);
+    }
+
+    exportTrackKML(inspect=false) {
+        const trackName = Sit.name + "-" + this.id;
+        let kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2">
+<Folder>
+<name>${trackName}</name>
+<Placemark>
+<name>${trackName}</name>
+<Style>
+<LineStyle><color>ff0000ff</color><width>4</width></LineStyle>
+<IconStyle><Icon><href>http://maps.google.com/mapfiles/kml/shapes/airports.png</href></Icon></IconStyle>
+</Style>
+<gx:Track>
+<altitudeMode>absolute</altitudeMode>
+<extrude>1</extrude>
+`;
+        const whenLines = [];
+        const coordLines = [];
+
+        for (let f = 0; f < this.frames; f++) {
+            const timeMS = GlobalDateTimeNode.frameToMS(f);
+            const dateStr = new Date(timeMS).toISOString();
+            whenLines.push(`<when>${dateStr}</when>`);
+
+            const frameData = this.v(f);
+            let lat, lon, alt;
+            if (frameData.lla) {
+                [lat, lon, alt] = frameData.lla;
+            } else if (frameData.position) {
+                const llaVec = EUSToLLA(frameData.position);
+                lat = llaVec.x;
+                lon = llaVec.y;
+                alt = llaVec.z;
+            } else {
+                lat = 0;
+                lon = 0;
+                alt = 0;
+            }
+            coordLines.push(`<gx:coord>${lon} ${lat} ${alt}</gx:coord>`);
+        }
+
+        kml += whenLines.join("\n") + "\n";
+        kml += coordLines.join("\n") + "\n";
+        kml += `</gx:Track>
+</Placemark>
+</Folder>
+</kml>`;
+
+        if (inspect) {
+            return {
+                desc: "KML Track Export",
+                kml: kml,
+            };
+        } else {
+            saveAs(new Blob([kml], {type: "application/vnd.google-earth.kml+xml"}), trackName + ".kml");
+        }
     }
 
     exportMISBCompliantCSV(inspect=false) {

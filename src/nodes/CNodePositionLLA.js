@@ -229,6 +229,7 @@ export class CNodePositionLLA extends CNodeTrack {
         this.exportable = v.exportable ?? false;
         if (this.exportable) {
             NodeMan.addExportButton(this, "exportTrackCSV")
+            NodeMan.addExportButton(this, "exportTrackKML")
             NodeMan.addExportButton(this, "exportMISBCompliantCSV")
         }
     }

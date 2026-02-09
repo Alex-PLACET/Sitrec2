@@ -1,5 +1,5 @@
 import {LLAToEUS} from "../LLA-ECEF-ENU";
-import {FileManager, NodeMan} from "../Globals";
+import {FileManager, NodeMan, Sit} from "../Globals";
 import {MISB, MISBFields} from "../MISBUtils";
 import {CNodeEmptyArray} from "./CNodeArray";
 import {saveAs} from "file-saver";
@@ -48,6 +48,7 @@ export class CNodeMISBDataTrack extends CNodeEmptyArray {
         this.exportable = v.exportable ?? false;
         if (this.exportable) {
             NodeMan.addExportButton(this, "exportMISBCSV")
+            NodeMan.addExportButton(this, "exportTrackKML")
         }
 
 
@@ -151,6 +152,54 @@ export class CNodeMISBDataTrack extends CNodeEmptyArray {
         }
         else {
             saveAs(new Blob([csv]), "MISB-DATA" + this.id + ".csv")
+        }
+    }
+
+    exportTrackKML(inspect = false) {
+        const trackName = Sit.name + "-" + this.id;
+        let kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2">
+<Folder>
+<name>${trackName}</name>
+<Placemark>
+<name>${trackName}</name>
+<Style>
+<LineStyle><color>ff0000ff</color><width>4</width></LineStyle>
+<IconStyle><Icon><href>http://maps.google.com/mapfiles/kml/shapes/airports.png</href></Icon></IconStyle>
+</Style>
+<gx:Track>
+<altitudeMode>absolute</altitudeMode>
+<extrude>1</extrude>
+`;
+        const whenLines = [];
+        const coordLines = [];
+
+        for (let f = 0; f < this.misb.length; f++) {
+            if (!this.isValid(f)) continue;
+            const timeMS = this.getTime(f);
+            const dateStr = new Date(timeMS).toISOString();
+            whenLines.push(`<when>${dateStr}</when>`);
+
+            const lat = this.getLat(f);
+            const lon = this.getLon(f);
+            const alt = this.getAlt(f);
+            coordLines.push(`<gx:coord>${lon} ${lat} ${alt}</gx:coord>`);
+        }
+
+        kml += whenLines.join("\n") + "\n";
+        kml += coordLines.join("\n") + "\n";
+        kml += `</gx:Track>
+</Placemark>
+</Folder>
+</kml>`;
+
+        if (inspect) {
+            return {
+                desc: "KML Track Export",
+                kml: kml,
+            };
+        } else {
+            saveAs(new Blob([kml], {type: "application/vnd.google-earth.kml+xml"}), trackName + ".kml");
         }
     }
 
