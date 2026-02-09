@@ -1237,17 +1237,22 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         const corners = this.getCornerPositions();
         if (corners.length !== 4) return null;
         
+        const terrainCorners = corners.map(c => {
+            const groundPos = getPointBelow(c);
+            return pointAbove(groundPos, 5);
+        });
+        
         const mouseRay = screenToNDC(view, mouseX, mouseY);
         this.raycaster.setFromCamera(mouseRay, view.camera);
         const ray = this.raycaster.ray;
         
         const target = new Vector3();
-        const hit1 = ray.intersectTriangle(corners[0], corners[1], corners[2], false, target);
+        const hit1 = ray.intersectTriangle(terrainCorners[0], terrainCorners[1], terrainCorners[2], false, target);
         if (hit1) {
             return {point: target.clone()};
         }
         
-        const hit2 = ray.intersectTriangle(corners[0], corners[2], corners[3], false, target);
+        const hit2 = ray.intersectTriangle(terrainCorners[0], terrainCorners[2], terrainCorners[3], false, target);
         if (hit2) {
             return {point: target.clone()};
         }
@@ -2450,7 +2455,11 @@ export class CNodeGroundOverlay extends CNode3DGroup {
     showHighlightBorder() {
         const corners = this.getCornerPositions();
         const groupPos = this.group.position;
-        const points = corners.map(c => c.clone().sub(groupPos));
+        const points = corners.map(c => {
+            const groundPos = getPointBelow(c);
+            const adjustedPos = pointAbove(groundPos, 5);
+            return adjustedPos.clone().sub(groupPos);
+        });
         points.push(points[0].clone());
         
         const positions = [];
