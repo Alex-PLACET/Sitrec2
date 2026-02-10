@@ -2738,23 +2738,34 @@ export class CCustomManager {
     }
 
     updateViewFromPreset() {
-        // update the views from the current view preset
         const preset = this.viewPresets[this.currentViewPreset];
         if (preset) {
-            // set the views
-            // ViewMan.updateViewFromPreset("video", preset.video);
-            // ViewMan.updateViewFromPreset("mainView", preset.mainView);
-            // ViewMan.updateViewFromPreset("lookView", preset.lookView);
-            // ViewMan.updateViewFromPreset("chatView", preset.lookView);
-            // Iterate over the views and set them
+            ViewMan.iterate((id, v) => {
+                if (v.doubled) {
+                    v.doubled = false;
+                    v.left = v.preDoubledLeft;
+                    v.top = v.preDoubledTop;
+                    if (v.width > 0) v.width = v.preDoubledWidth;
+                    if (v.height > 0) v.height = v.preDoubledHeight;
+                    v.updateWH();
+                }
+            });
+            ViewMan.iterate((id, v) => {
+                if (v.preFullScreenVisible !== undefined) {
+                    if (!(id in preset)) {
+                        v.setVisible(v.preFullScreenVisible);
+                    }
+                    v.preFullScreenVisible = undefined;
+                }
+            });
+
             for (const viewName in preset) {
                 if (NodeMan.exists(viewName)) {
                     ViewMan.updateViewFromPreset(viewName, preset[viewName]);
                 }
             }
 
-
-            forceUpdateUIText(); // force update the text in the views, as they might have changed
+            forceUpdateUIText();
         } else {
             console.warn("No view preset found for " + this.currentViewPreset);
         }

@@ -19,6 +19,8 @@ const OSD_TRACK_TYPES = {
     "MGRS North": "MGRS North",
     "Latitude": "Latitude",
     "Longitude": "Longitude",
+    "Altitude (m)": "Altitude (m)",
+    "Altitude (ft)": "Altitude (ft)",
     "Slant Range": "Slant Range",
 };
 
@@ -226,7 +228,12 @@ export class CNodeOSDTrackController extends CNode {
         this.graphSettings = { show: false, xAxis: "None", y1Axis: "None", y2Axis: "None" };
         this.graphFolder = this.guiFolder.addFolder("Graph").close();
         this.graphFolder.add(this.graphSettings, "show").name("Show").listen()
-            .onChange(() => this.updateGraph());
+            .onChange(() => {
+                if (this.graphSettings.show && this.graphView) {
+                    this.graphView.show(true);
+                }
+                this.updateGraph();
+            });
         this.xAxisCtrl = null;
         this.y1AxisCtrl = null;
         this.y2AxisCtrl = null;
@@ -318,7 +325,6 @@ export class CNodeOSDTrackController extends CNode {
                 draggable: true, resizable: true, freeAspect: true, shiftDrag: false,
             });
         }
-        this.graphView.show(true);
 
         const useFullRange = xStored === "None" || xStored === "Frame";
         const frameMin = useFullRange ? 0 : (Sit.aFrame ?? 0);
@@ -433,9 +439,14 @@ export class CNodeOSDTrackController extends CNode {
     }
 
     updateDataTrack() {
-        if (this.dataTrack) {
-            this.dataTrack.recalculateCascade();
-        }
+        if (!this.dataTrack) return;
+        if (this._dataTrackTimer) clearTimeout(this._dataTrackTimer);
+        this._dataTrackTimer = setTimeout(() => {
+            this._dataTrackTimer = null;
+            if (this.dataTrack) {
+                this.dataTrack.recalculateCascade();
+            }
+        }, 250);
     }
 
     cycleEditingTrack() {

@@ -1,8 +1,10 @@
 import {CNodeTrack} from "./CNodeTrack";
-import {Sit} from "../Globals";
+import {NodeMan, Sit} from "../Globals";
 import {LLAToEUS} from "../LLA-ECEF-ENU";
 import {toPoint as mgrsToPoint} from "mgrs";
 import {parseSingleCoordinate} from "../CoordinateParser";
+import {EventManager} from "../CEventManager";
+import {f2m} from "../utils";
 
 export class CNodeOSDDataTrack extends CNodeTrack {
     constructor(v) {
@@ -10,7 +12,7 @@ export class CNodeOSDDataTrack extends CNodeTrack {
         this.input("controller");
         this.frames = Sit.frames;
         this.useSitFrames = true;
-        this.positionCache = null;
+        EventManager.addEventListener("elevationChanged", () => this.recalculateCascade());
         this.recalculate();
     }
 
@@ -84,13 +86,17 @@ export class CNodeOSDDataTrack extends CNodeTrack {
                 }
             }
 
-            if (byType["Slant Range"] && lat !== null) {
-                const sr = byType["Slant Range"];
-                const srVal = sr.getValue(f);
-                if (srVal && srVal !== "?????") {
-                    const parsed = parseFloat(srVal);
-                    if (!isNaN(parsed)) {
-                        alt = parsed;
+            if (lat !== null) {
+                const altTrackM = byType["Altitude (m)"];
+                const altTrackFt = byType["Altitude (ft)"];
+                const altTrack = altTrackM || altTrackFt;
+                if (altTrack) {
+                    const altVal = altTrack.getValue(f);
+                    if (altVal && altVal !== "?????") {
+                        const parsed = parseFloat(altVal);
+                        if (!isNaN(parsed)) {
+                            alt = altTrackFt ? f2m(parsed) : parsed;
+                        }
                     }
                 }
             }
@@ -102,12 +108,15 @@ export class CNodeOSDDataTrack extends CNodeTrack {
 
         if (keyframes.length === 0) return;
 
+        const hasAltitude = !!(byType["Altitude (m)"] || byType["Altitude (ft)"]);
+        const keyframeSet = new Set(keyframes.map(kf => kf.frame));
+
         for (const kf of keyframes) {
             this.array[kf.frame] = {position: LLAToEUS(kf.lat, kf.lon, kf.alt)};
         }
 
         for (let f = 0; f < this.frames; f++) {
-            if (keyframes.some(kf => kf.frame === f)) continue;
+            if (keyframeSet.has(f)) continue;
 
             let prev = null, next = null;
             for (let i = keyframes.length - 1; i >= 0; i--) {
@@ -127,6 +136,15 @@ export class CNodeOSDDataTrack extends CNodeTrack {
                 this.array[f] = {position: LLAToEUS(prev.lat, prev.lon, prev.alt)};
             } else if (next) {
                 this.array[f] = {position: LLAToEUS(next.lat, next.lon, next.alt)};
+            }
+        }
+
+        if (!hasAltitude) {
+            const terrainNode = NodeMan.get("TerrainModel", false);
+            if (terrainNode) {
+                for (let f = 0; f < this.frames; f++) {
+                    this.array[f].position = terrainNode.getPointBelow(this.array[f].position, 1, false);
+                }
             }
         }
     }
