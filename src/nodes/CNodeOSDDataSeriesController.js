@@ -663,6 +663,7 @@ export class CNodeOSDDataSeriesController extends CNode {
         return {
             ...super.modSerialize(),
             showAll: this.showAll,
+            hasTrack: !!this.dataTrack,
             tracks: this.tracks.map(t => t.serialize()),
             graph: {
                 show: this.graphSettings.show,
@@ -704,6 +705,10 @@ export class CNodeOSDDataSeriesController extends CNode {
             this._storedY2 = v.graph.y2Axis ?? "None";
             this.rebuildGraphDropdowns();
             this.updateGraph();
+        }
+
+        if (v.hasTrack) {
+            this.makeTrack();
         }
 
         this.updateDataTrack();
