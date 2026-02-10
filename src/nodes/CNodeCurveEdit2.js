@@ -889,6 +889,7 @@ export class CNodeOSDGraphView extends CNodeCurveEditorView2 {
         this.hasY2 = false;
         this.minY2 = 0;
         this.maxY2 = 1;
+        this.isFrameX = true;
     }
 
     setupMouseHandlers() {
@@ -927,10 +928,6 @@ export class CNodeOSDGraphView extends CNodeCurveEditorView2 {
         if (!isFinite(allMinX)) { allMinX = 0; allMaxX = Sit.frames - 1; }
         if (allMinX === allMaxX) { allMinX -= 1; allMaxX += 1; }
 
-        const xPadding = (allMaxX - allMinX) * 0.02;
-        this.minX = allMinX - xPadding;
-        this.maxX = allMaxX + xPadding;
-
         const padAxis = (b) => {
             if (!isFinite(b.min)) { b.min = 0; b.max = 1; }
             if (b.min === b.max) { b.min -= 1; b.max += 1; }
@@ -944,8 +941,38 @@ export class CNodeOSDGraphView extends CNodeCurveEditorView2 {
         const y1 = hasY1 ? padAxis(yBounds[1]) : { min: 0, max: 1 };
         const y2 = hasY2 ? padAxis(yBounds[2]) : { min: 0, max: 1 };
 
-        this.minY = y1.min;
-        this.maxY = y1.max;
+        if (!this.isFrameX) {
+            const margin = 60;
+            const rightMargin = hasY2 ? 60 : 60;
+            const graphWidth = this.widthPx - margin - rightMargin;
+            const graphHeight = this.heightPx - margin * 2;
+
+            const xPad = (allMaxX - allMinX) * 0.02;
+            const yPad = (y1.max - y1.min) * 0.02;
+            let xRange = (allMaxX - allMinX) + xPad * 2;
+            let yRange = (y1.max - y1.min) + yPad * 2;
+
+            const unitsPerPxX = xRange / graphWidth;
+            const unitsPerPxY = yRange / graphHeight;
+            const unitsPerPx = Math.max(unitsPerPxX, unitsPerPxY);
+
+            xRange = unitsPerPx * graphWidth;
+            yRange = unitsPerPx * graphHeight;
+
+            const xMid = (allMinX + allMaxX) / 2;
+            const yMid = (y1.min + y1.max) / 2;
+            this.minX = xMid - xRange / 2;
+            this.maxX = xMid + xRange / 2;
+            this.minY = yMid - yRange / 2;
+            this.maxY = yMid + yRange / 2;
+        } else {
+            const xPadding = (allMaxX - allMinX) * 0.02;
+            this.minX = allMinX - xPadding;
+            this.maxX = allMaxX + xPadding;
+            this.minY = y1.min;
+            this.maxY = y1.max;
+        }
+
         this.minY2 = y2.min;
         this.maxY2 = y2.max;
         this.hasY2 = hasY2;
@@ -1080,26 +1107,92 @@ export class CNodeOSDGraphView extends CNodeCurveEditorView2 {
             const sMinY = isY2 ? this.minY2 : this.minY;
             const sMaxY = isY2 ? this.maxY2 : this.maxY;
             const color = SERIES_COLORS[si % SERIES_COLORS.length];
-            ctx.strokeStyle = color;
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            let started = false;
-            for (const pt of s.data) {
-                const screen = this.graphToScreenAxis(pt.x, pt.y, sMinY, sMaxY);
-                if (!started) { ctx.moveTo(screen.x, screen.y); started = true; }
-                else ctx.lineTo(screen.x, screen.y);
+
+            if (this.isFrameX) {
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                let started = false;
+                for (const pt of s.data) {
+                    const screen = this.graphToScreenAxis(pt.x, pt.y, sMinY, sMaxY);
+                    if (!started) { ctx.moveTo(screen.x, screen.y); started = true; }
+                    else ctx.lineTo(screen.x, screen.y);
+                }
+                ctx.stroke();
+            } else {
+                ctx.fillStyle = color;
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                let prev = null;
+                for (const pt of s.data) {
+                    const screen = this.graphToScreenAxis(pt.x, pt.y, sMinY, sMaxY);
+                    if (prev) {
+                        ctx.moveTo(prev.x, prev.y);
+                        ctx.lineTo(screen.x, screen.y);
+                    }
+                    prev = screen;
+                }
+                ctx.stroke();
+                for (const pt of s.data) {
+                    const screen = this.graphToScreenAxis(pt.x, pt.y, sMinY, sMaxY);
+                    ctx.beginPath();
+                    ctx.arc(screen.x, screen.y, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                }
             }
-            ctx.stroke();
         }
 
-        if (par.frame >= this.minX && par.frame <= this.maxX) {
-            const frameScreen = this.graphToScreenAxis(par.frame, this.minY, this.minY, this.maxY);
-            ctx.strokeStyle = '#ff0';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(frameScreen.x, margin);
-            ctx.lineTo(frameScreen.x, height - margin);
-            ctx.stroke();
+        const currentFrame = Math.floor(par.frame);
+        if (this.isFrameX) {
+            if (currentFrame >= this.minX && currentFrame <= this.maxX) {
+                const frameScreen = this.graphToScreenAxis(currentFrame, this.minY, this.minY, this.maxY);
+                ctx.strokeStyle = '#ff0';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(frameScreen.x, margin);
+                ctx.lineTo(frameScreen.x, height - margin);
+                ctx.stroke();
+            }
+        } else {
+            for (const s of this.series) {
+                let interpX, interpY;
+                const exact = s.data.find(p => p.frame === currentFrame);
+                if (exact) {
+                    interpX = exact.x;
+                    interpY = exact.y;
+                } else {
+                    const sorted = [...s.data].sort((a, b) => a.frame - b.frame);
+                    let before = null, after = null;
+                    for (const p of sorted) {
+                        if (p.frame <= currentFrame) before = p;
+                        if (p.frame >= currentFrame && !after) after = p;
+                    }
+                    if (!before && !after) continue;
+                    if (!before) { interpX = after.x; interpY = after.y; }
+                    else if (!after || before.frame === after.frame) { interpX = before.x; interpY = before.y; }
+                    else {
+                        const t = (currentFrame - before.frame) / (after.frame - before.frame);
+                        interpX = before.x + t * (after.x - before.x);
+                        interpY = before.y + t * (after.y - before.y);
+                    }
+                }
+                const isY2 = s.yAxis === 2;
+                const sMinY = isY2 ? this.minY2 : this.minY;
+                const sMaxY = isY2 ? this.maxY2 : this.maxY;
+                const screen = this.graphToScreenAxis(interpX, interpY, sMinY, sMaxY);
+                ctx.strokeStyle = '#ff0';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(screen.x, margin);
+                ctx.lineTo(screen.x, margin + graphHeight);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(margin, screen.y);
+                ctx.lineTo(margin + graphWidth, screen.y);
+                ctx.stroke();
+                break;
+            }
         }
     }
 }

@@ -284,9 +284,9 @@ export class CNodeOSDTrackController extends CNode {
         }
         this.graphView.show(true);
 
-        const isFrameAB = xStored === "FrameAB";
-        const frameMin = isFrameAB ? (Sit.aFrame ?? 0) : 0;
-        const frameMax = isFrameAB ? (Sit.bFrame ?? Sit.frames - 1) : Sit.frames - 1;
+        const useFullRange = xStored === "None" || xStored === "Frame";
+        const frameMin = useFullRange ? 0 : (Sit.aFrame ?? 0);
+        const frameMax = useFullRange ? Sit.frames - 1 : (Sit.bFrame ?? Sit.frames - 1);
 
         const xData = this.resolveAxisData(xStored, frameMin, frameMax);
         const series = [];
@@ -301,13 +301,15 @@ export class CNodeOSDTrackController extends CNode {
                 for (const d of xData) xByFrame[d.frame] = d.value;
                 for (const d of yData) {
                     if (xByFrame[d.frame] !== undefined) {
-                        points.push({ x: xByFrame[d.frame], y: d.value });
+                        points.push({ x: xByFrame[d.frame], y: d.value, frame: d.frame });
                     }
                 }
-                points.sort((a, b) => a.x - b.x);
+                if (xStored === "Frame" || xStored === "FrameAB") {
+                    points.sort((a, b) => a.x - b.x);
+                }
             } else {
                 for (const d of yData) {
-                    points.push({ x: d.frame, y: d.value });
+                    points.push({ x: d.frame, y: d.value, frame: d.frame });
                 }
             }
             series.push({ data: points, label: label, yAxis: yAxis });
@@ -326,6 +328,7 @@ export class CNodeOSDTrackController extends CNode {
         if (y2Stored !== "None") buildSeries(y2Stored, getLabel(y2Stored), 2);
 
         this.graphView.xLabel = xData ? getLabel(xStored) : "Frame";
+        this.graphView.isFrameX = (xStored === "None" || xStored === "Frame" || xStored === "FrameAB");
         this.graphView.setSeries(series);
     }
 
