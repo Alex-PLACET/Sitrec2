@@ -282,8 +282,8 @@ export class CNodeOSDTrackController extends CNode {
         if (!track) return [];
         const data = [];
         for (let f = frameMin; f <= frameMax; f++) {
-            if (!track.isKeyframe(f)) continue;
-            const val = track.frameData[f];
+            const val = track.getValue(f);
+            if (!val || val === PLACEHOLDER_TEXT) continue;
             const num = parseFloat(val);
             if (!isNaN(num)) data.push({ frame: f, value: num });
         }
