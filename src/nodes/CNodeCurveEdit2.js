@@ -1137,7 +1137,7 @@ export class CNodeOSDGraphView extends CNodeCurveEditorView2 {
         if (this._lastAFrame !== currentA || this._lastBFrame !== currentB) {
             this._lastAFrame = currentA;
             this._lastBFrame = currentB;
-            const controller = NodeMan.get("osdTrackController", false);
+            const controller = NodeMan.get("osdDataSeriesController", false);
             if (controller) controller.updateGraph();
         }
 

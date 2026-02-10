@@ -62,7 +62,7 @@ import {getCursorPositionFromTopView} from "./mouseMoveView";
 import {addMenuToLeftSidebar, addMenuToRightSidebar, isInLeftSidebar, isInRightSidebar} from "./PageStructure";
 import {CNodeControllerCelestial} from "./nodes/CNodeControllerVarious";
 import {CNodeVideoInfoUI} from "./nodes/CNodeVideoInfoUI";
-import {CNodeOSDTrackController} from "./nodes/CNodeOSDTrackController";
+import {CNodeOSDDataSeriesController} from "./nodes/CNodeOSDDataSeriesController";
 
 export class CCustomManager {
     constructor() {
@@ -710,7 +710,7 @@ export class CCustomManager {
 
         this.setupVideoInfoMenu();
         
-        this.setupOSDTrackController();
+        this.setupOSDDataSeriesController();
 
         this.setupSubSitches();
 
@@ -732,10 +732,10 @@ export class CCustomManager {
         videoInfo.setupMenu(guiMenus.view);
     }
     
-    setupOSDTrackController() {
-        if (!NodeMan.exists("osdTrackController")) {
-            new CNodeOSDTrackController({
-                id: "osdTrackController",
+    setupOSDDataSeriesController() {
+        if (!NodeMan.exists("osdDataSeriesController")) {
+            new CNodeOSDDataSeriesController({
+                id: "osdDataSeriesController",
             });
         }
     }
@@ -3770,6 +3770,17 @@ export class CCustomManager {
      * @returns {Promise} - Promise that resolves when all mods are applied and pending actions are complete
      */
     async deserializeMods(mods) {
+        const deprecatedIds = {
+            "osdTrackController": "osdDataSeriesController",
+            "osdGraphView": "osdGraphView",
+        };
+        for (const [oldId, newId] of Object.entries(deprecatedIds)) {
+            if (mods[oldId] && !mods[newId]) {
+                mods[newId] = mods[oldId];
+                delete mods[oldId];
+            }
+        }
+
         const modIds = Object.keys(mods);
 
         for (let i = 0; i < modIds.length; i++) {

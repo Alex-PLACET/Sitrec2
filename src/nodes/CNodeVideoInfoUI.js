@@ -96,7 +96,7 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
         this.boundHandleContextMenu = (e) => this.handleContextMenu(e);
         this.canvas.addEventListener('contextmenu', this.boundHandleContextMenu);
         
-        this._osdTrackBboxes = {};
+        this._osdDataSeriesBboxes = {};
 
         this.updateVisibility();
     }
@@ -235,7 +235,7 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
         addBbox('timeUTC', this.showTimeUTC, this._timeUTCBbox);
         addBbox('dateTimeUTC', this.showDateTimeUTC, this._dateTimeUTCBbox);
         
-        for (const [id, bbox] of Object.entries(this._osdTrackBboxes)) {
+        for (const [id, bbox] of Object.entries(this._osdDataSeriesBboxes)) {
             addBbox(id, true, bbox);
         }
 
@@ -266,9 +266,9 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
         };
         if (map[id]) return map[id];
         
-        if (id && id.startsWith('osdTrack_')) {
+        if (id && id.startsWith('osdDataSeries_')) {
             const trackIndex = parseInt(id.split('_')[1], 10);
-            const controller = NodeMan.get("osdTrackController", false);
+            const controller = NodeMan.get("osdDataSeriesController", false);
             if (controller && controller.tracks[trackIndex]) {
                 return { track: controller.tracks[trackIndex] };
             }
@@ -276,14 +276,14 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
         return null;
     }
     
-    isOSDTrackElement(id) {
-        return id && id.startsWith('osdTrack_');
+    isOSDDataSeriesElement(id) {
+        return id && id.startsWith('osdDataSeries_');
     }
     
-    getOSDTrack(id) {
-        if (!this.isOSDTrackElement(id)) return null;
+    getOSDDataSeries(id) {
+        if (!this.isOSDDataSeriesElement(id)) return null;
         const trackIndex = parseInt(id.split('_')[1], 10);
-        const controller = NodeMan.get("osdTrackController", false);
+        const controller = NodeMan.get("osdDataSeriesController", false);
         if (controller && controller.tracks[trackIndex]) {
             return controller.tracks[trackIndex];
         }
@@ -300,10 +300,10 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
         const element = this.getElementAtPosition(x, y);
         if (!element) return;
 
-        if (e.button === 2 && this.isOSDTrackElement(element)) {
+        if (e.button === 2 && this.isOSDDataSeriesElement(element)) {
             e.stopPropagation();
             e.preventDefault();
-            this.showOSDTrackContextMenu(element, e.clientX, e.clientY);
+            this.showOSDDataSeriesContextMenu(element, e.clientX, e.clientY);
             return;
         }
 
@@ -333,9 +333,9 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
         const y = e.clientY - canvasRect.top;
         
         const element = this.getElementAtPosition(x, y);
-        const controller = NodeMan.get("osdTrackController", false);
-        if (element && this.isOSDTrackElement(element)) {
-            const track = this.getOSDTrack(element);
+        const controller = NodeMan.get("osdDataSeriesController", false);
+        if (element && this.isOSDDataSeriesElement(element)) {
+            const track = this.getOSDDataSeries(element);
             if (track && !track.lock) {
                 if (controller) {
                     controller.startEditing(track);
@@ -356,7 +356,7 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
         const y = e.clientY - canvasRect.top;
 
         const element = this.getElementAtPosition(x, y);
-        if (element && this.isOSDTrackElement(element)) {
+        if (element && this.isOSDDataSeriesElement(element)) {
             e.stopPropagation();
             e.preventDefault();
         }
@@ -370,14 +370,14 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
         const y = e.clientY - canvasRect.top;
 
         const element = this.getElementAtPosition(x, y);
-        if (element && this.isOSDTrackElement(element)) {
+        if (element && this.isOSDDataSeriesElement(element)) {
             e.preventDefault();
             e.stopPropagation();
         }
     }
 
-    showOSDTrackContextMenu(element, clientX, clientY) {
-        const track = this.getOSDTrack(element);
+    showOSDDataSeriesContextMenu(element, clientX, clientY) {
+        const track = this.getOSDDataSeries(element);
         if (track && track.guiFolder) {
             const standaloneMenu = Globals.menuBar.createStandaloneMenu(
                 track.name, clientX, clientY, true
@@ -655,14 +655,14 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
             }
         }
         
-        this.renderOSDTracks(c, scaledFontSize, padding);
+        this.renderOSDDataSeries(c, scaledFontSize, padding);
     }
     
-    renderOSDTracks(c, scaledFontSize, padding) {
-        const controller = NodeMan.get("osdTrackController", false);
+    renderOSDDataSeries(c, scaledFontSize, padding) {
+        const controller = NodeMan.get("osdDataSeriesController", false);
         if (!controller) return;
         
-        this._osdTrackBboxes = {};
+        this._osdDataSeriesBboxes = {};
         
         const frame = Math.floor(par.frame);
         
@@ -715,7 +715,7 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
             c.fillStyle = track.lock ? '#BFBFBF' : '#FFFFFF';
             c.fillText(text, x, y);
             
-            this._osdTrackBboxes[`osdTrack_${i}`] = { x: bgX, y: bgY, w: bgW, h: bgH };
+            this._osdDataSeriesBboxes[`osdDataSeries_${i}`] = { x: bgX, y: bgY, w: bgW, h: bgH };
         }
     }
 

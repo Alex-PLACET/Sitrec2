@@ -6,7 +6,7 @@ import {parseSingleCoordinate} from "../CoordinateParser";
 import {EventManager} from "../CEventManager";
 import {f2m} from "../utils";
 
-export class CNodeOSDDataTrack extends CNodeTrack {
+export class CNodeOSDDataSeriesTrack extends CNodeTrack {
     constructor(v) {
         super(v);
         this.input("controller");

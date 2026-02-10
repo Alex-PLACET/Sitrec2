@@ -3,7 +3,7 @@ import {guiMenus, NodeMan, registerFrameBlocker, setRenderOne, Sit, unregisterFr
 import {par} from "../par";
 import {EventManager} from "../CEventManager";
 import {CNodeOSDGraphView} from "./CNodeCurveEdit2";
-import {CNodeOSDDataTrack} from "./CNodeOSDDataTrack";
+import {CNodeOSDDataSeriesTrack} from "./CNodeOSDDataSeriesTrack";
 import {CNodeDisplayTrack} from "./CNodeDisplayTrack";
 import {CNode3DObject} from "./CNode3DObject";
 import {Color} from "three";
@@ -13,7 +13,7 @@ const DEFAULT_X = 50;
 const DEFAULT_Y = 20;
 const PLACEHOLDER_TEXT = "?????";
 
-const OSD_TRACK_TYPES = {
+const OSD_DATA_SERIES_TYPES = {
     "MGRS Zone": "MGRS Zone",
     "MGRS East": "MGRS East",
     "MGRS North": "MGRS North",
@@ -30,15 +30,15 @@ const OSD_TRACK_TYPES = {
 - If the frame numberis changed externally, update the editing text to match the new frame's value for the active track, if any.
  the same as if the user had navigated to that frame using the [ and ] keys while editing.
 
- - Add "Type" field to each track,.
- This will allow for future expansion of different types of OSD tracks,
+ - Add "Type" field to each data series.
+ This will allow for future expansion of different types of OSD data series,
  like MGRS grid squares, lat/lon coordinates, altitude, etc.
- - Us that to add a dynamic track type that can use user-selected OSDtracks as data sources
+ - Use that to add a dynamic data series type that can use user-selected OSD data series as data sources
   this will allow real-time visualization of the track
 
-- Add export of CSV position tracks, keyframe based, just interpolating where there's a keyframe in one OSD track but not another
+- Add export of CSV position tracks, keyframe based, just interpolating where there's a keyframe in one OSD data series but not another
 
-- Add impport of CSV frame based data into OSD tracks.
+- Add import of CSV frame based data into OSD data series.
 
 (Mick: make the merged higher qualiting 30 fps version before editing)
 
@@ -48,11 +48,11 @@ const OSD_TRACK_TYPES = {
 
  */
 
-class COSDTrack {
+class COSDDataSeries {
     constructor(controller, index) {
         this.controller = controller;
         this.index = index;
-        this.name = `OSD Track ${index + 1}`;
+        this.name = `OSD Data Series ${index + 1}`;
         this.type = "MGRS Zone";
         this.show = true;
         this.lock = false;
@@ -152,7 +152,7 @@ class COSDTrack {
                 this.controller.rebuildGraphDropdowns();
             });
         
-        this.guiFolder.add(this, "type", OSD_TRACK_TYPES).name("Type").listen();
+        this.guiFolder.add(this, "type", OSD_DATA_SERIES_TYPES).name("Type").listen();
         
         this.guiFolder.add(this, "show").name("Show").listen()
             .onChange(() => setRenderOne());
@@ -180,7 +180,7 @@ class COSDTrack {
     }
 }
 
-export class CNodeOSDTrackController extends CNode {
+export class CNodeOSDDataSeriesController extends CNode {
     constructor(v) {
         super(v);
         
@@ -203,11 +203,11 @@ export class CNodeOSDTrackController extends CNode {
         this.guiFolder = guiMenus.view.addFolder("OSD Tracker").close()
             .tooltip("On-Screen Display text tracker for user-defined per-frame text");
         
-        this.guiFolder.add(this, "addNewTrack").name("Add New OSD Track")
-            .tooltip("Create a new OSD track for per-frame text overlay");
+        this.guiFolder.add(this, "addNewTrack").name("Add New OSD Data Series")
+            .tooltip("Create a new OSD data series for per-frame text overlay");
         
         this.guiFolder.add(this, "makeTrack").name("Make Track")
-            .tooltip("Create a position track from visible/unlocked OSD tracks (MGRS or Lat/Lon)");
+            .tooltip("Create a position track from visible/unlocked OSD data series (MGRS or Lat/Lon)");
         
         this.guiFolder.add(this, "showAll").name("Show All").listen()
             .onChange(() => {
@@ -216,7 +216,7 @@ export class CNodeOSDTrackController extends CNode {
                 }
                 setRenderOne();
             })
-            .tooltip("Toggle visibility of all OSD tracks");
+            .tooltip("Toggle visibility of all OSD data series");
         
         EventManager.addEventListener("keydown", (data) => {
             if (data.key === '\\') {
@@ -384,7 +384,7 @@ export class CNodeOSDTrackController extends CNode {
         const shortName = "OSD";
         const trackColor = new Color(1, 0.5, 0);
 
-        this.dataTrack = new CNodeOSDDataTrack({
+        this.dataTrack = new CNodeOSDDataSeriesTrack({
             id: trackID,
             controller: this,
         });
@@ -465,7 +465,7 @@ export class CNodeOSDTrackController extends CNode {
     }
 
     addNewTrack() {
-        const track = new COSDTrack(this, this.tracks.length);
+        const track = new COSDDataSeries(this, this.tracks.length);
         this.tracks.push(track);
         track.setupGUI(this.guiFolder);
         this.updateSliderStatus();
@@ -540,7 +540,7 @@ export class CNodeOSDTrackController extends CNode {
         
         document.addEventListener('keydown', this.boundHandleKeyDown, true);
         
-        registerFrameBlocker('osdTrackEdit', {
+        registerFrameBlocker('osdDataSeriesEdit', {
             check: () => false,
             requiresSingleFrame: () => true
         });
@@ -560,7 +560,7 @@ export class CNodeOSDTrackController extends CNode {
         this.editingModified = false;
         
         document.removeEventListener('keydown', this.boundHandleKeyDown, true);
-        unregisterFrameBlocker('osdTrackEdit');
+        unregisterFrameBlocker('osdDataSeriesEdit');
         
         setRenderOne();
     }
@@ -687,7 +687,7 @@ export class CNodeOSDTrackController extends CNode {
             this.tracks = [];
             
             for (const trackData of v.tracks) {
-                const track = new COSDTrack(this, this.tracks.length);
+                const track = new COSDDataSeries(this, this.tracks.length);
                 track.deserialize(trackData);
                 this.tracks.push(track);
                 track.setupGUI(this.guiFolder);
