@@ -903,6 +903,147 @@ export class CNodeOSDGraphView extends CNodeCurveEditorView2 {
     addMenuItems() {
     }
 
+    screenToGraphAxis(screenX, screenY, minY, maxY) {
+        const rect = this.canvas.getBoundingClientRect();
+        const x = screenX - rect.left;
+        const y = screenY - rect.top;
+        const margin = 60;
+        const rightMargin = this.hasY2 ? 60 : 60;
+        const graphWidth = this.widthPx - margin - rightMargin;
+        const graphHeight = this.heightPx - margin * 2;
+        const graphX = this.minX + (x - margin) / graphWidth * (this.maxX - this.minX);
+        const graphY = maxY - (y - margin) / graphHeight * (maxY - minY);
+        return { x: graphX, y: graphY };
+    }
+
+    getCrosshairScreenPos() {
+        if (this.isFrameX || this.series.length === 0) return null;
+        const currentFrame = Math.floor(par.frame);
+        const s = this.series[0];
+        if (!s || s.data.length === 0) return null;
+
+        let interpX, interpY;
+        const exact = s.data.find(p => p.frame === currentFrame);
+        if (exact) {
+            interpX = exact.x;
+            interpY = exact.y;
+        } else {
+            const sorted = [...s.data].sort((a, b) => a.frame - b.frame);
+            let before = null, after = null;
+            for (const p of sorted) {
+                if (p.frame <= currentFrame) before = p;
+                if (p.frame >= currentFrame && !after) after = p;
+            }
+            if (!before && !after) return null;
+            if (!before) { interpX = after.x; interpY = after.y; }
+            else if (!after || before.frame === after.frame) { interpX = before.x; interpY = before.y; }
+            else {
+                const t = (currentFrame - before.frame) / (after.frame - before.frame);
+                interpX = before.x + t * (after.x - before.x);
+                interpY = before.y + t * (after.y - before.y);
+            }
+        }
+        const isY2 = s.yAxis === 2;
+        const sMinY = isY2 ? this.minY2 : this.minY;
+        const sMaxY = isY2 ? this.maxY2 : this.maxY;
+        return this.graphToScreenAxis(interpX, interpY, sMinY, sMaxY);
+    }
+
+    getAllDataSorted() {
+        const all = [];
+        for (const s of this.series) {
+            for (const pt of s.data) {
+                all.push(pt);
+            }
+        }
+        return all;
+    }
+
+    interpolateAtFrame(sorted, frame) {
+        const exact = sorted.find(p => p.frame === frame);
+        if (exact) return { x: exact.x, y: exact.y };
+        let before = null, after = null;
+        for (const p of sorted) {
+            if (p.frame <= frame) before = p;
+            if (p.frame >= frame && !after) after = p;
+        }
+        if (!before && !after) return null;
+        if (!before) return { x: after.x, y: after.y };
+        if (!after || before.frame === after.frame) return { x: before.x, y: before.y };
+        const t = (frame - before.frame) / (after.frame - before.frame);
+        return { x: before.x + t * (after.x - before.x), y: before.y + t * (after.y - before.y) };
+    }
+
+    snapToNearestByAxis(screenX, screenY, axis) {
+        const s = this.series[0];
+        if (!s || s.data.length === 0) return;
+        const isY2 = s.yAxis === 2;
+        const sMinY = isY2 ? this.minY2 : this.minY;
+        const sMaxY = isY2 ? this.maxY2 : this.maxY;
+        const sorted = [...s.data].sort((a, b) => a.frame - b.frame);
+        const minFrame = sorted[0].frame;
+        const maxFrame = sorted[sorted.length - 1].frame;
+
+        let bestDist = Infinity;
+        let bestFrame = null;
+        for (let f = minFrame; f <= maxFrame; f++) {
+            const pt = this.interpolateAtFrame(sorted, f);
+            if (!pt) continue;
+            const screen = this.graphToScreenAxis(pt.x, pt.y, sMinY, sMaxY);
+            const dist = axis === 'h' ? Math.abs(screen.y - screenY) : Math.abs(screen.x - screenX);
+            if (dist < bestDist) {
+                bestDist = dist;
+                bestFrame = f;
+            }
+        }
+        if (bestFrame !== null) {
+            const frameSlider = NodeMan.get("frameSlider", false);
+            if (frameSlider) {
+                frameSlider.setFrame(bestFrame);
+            } else {
+                par.frame = bestFrame;
+            }
+            setRenderOne();
+        }
+    }
+
+    onMouseDown(e) {
+        if (this.isFrameX) return;
+        const crosshair = this.getCrosshairScreenPos();
+        if (!crosshair) return;
+        const rect = this.canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        const threshold = 8;
+        const nearV = Math.abs(mx - crosshair.x) < threshold;
+        const nearH = Math.abs(my - crosshair.y) < threshold;
+        if (nearH || nearV) {
+            this._draggingAxis = nearH ? 'h' : 'v';
+            this.canvas.setPointerCapture(e.pointerId);
+            e.stopPropagation();
+            e.preventDefault();
+        }
+    }
+
+    onMouseMove(e) {
+        if (!this._draggingAxis) return;
+        const rect = this.canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        this.snapToNearestByAxis(mx, my, this._draggingAxis);
+        e.stopPropagation();
+        e.preventDefault();
+    }
+
+    onMouseUp(e) {
+        if (this._draggingAxis) {
+            this._draggingAxis = null;
+            this.canvas.releasePointerCapture(e.pointerId);
+            e.stopPropagation();
+            e.preventDefault();
+        }
+    }
+
     setSeries(series) {
         this.series = series;
         this.autoScale();

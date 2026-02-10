@@ -1,12 +1,26 @@
-import {CNode} from "./CNode";
+import {CNode, CNodeConstant} from "./CNode";
 import {guiMenus, NodeMan, registerFrameBlocker, setRenderOne, Sit, unregisterFrameBlocker} from "../Globals";
 import {par} from "../par";
 import {EventManager} from "../CEventManager";
 import {CNodeOSDGraphView} from "./CNodeCurveEdit2";
+import {CNodeOSDDataTrack} from "./CNodeOSDDataTrack";
+import {CNodeDisplayTrack} from "./CNodeDisplayTrack";
+import {CNode3DObject} from "./CNode3DObject";
+import {Color} from "three";
+import * as LAYER from "../LayerMasks";
 
 const DEFAULT_X = 50;
 const DEFAULT_Y = 20;
 const PLACEHOLDER_TEXT = "?????";
+
+const OSD_TRACK_TYPES = {
+    "MGRS Zone": "MGRS Zone",
+    "MGRS East": "MGRS East",
+    "MGRS North": "MGRS North",
+    "Latitude": "Latitude",
+    "Longitude": "Longitude",
+    "Slant Range": "Slant Range",
+};
 
 /*
  TODO:
@@ -37,7 +51,9 @@ class COSDTrack {
         this.controller = controller;
         this.index = index;
         this.name = `OSD Track ${index + 1}`;
+        this.type = "MGRS Zone";
         this.show = true;
+        this.lock = false;
         this.x = DEFAULT_X;
         this.y = DEFAULT_Y + index * 8;
         this.frameData = {};
@@ -86,6 +102,7 @@ class COSDTrack {
         this.frameData[frame] = value;
         this.controller.updateSliderStatus();
         this.controller.updateGraph();
+        this.controller.updateDataTrack();
     }
 
     hasValue(frame) {
@@ -105,7 +122,9 @@ class COSDTrack {
     serialize() {
         return {
             name: this.name,
+            type: this.type,
             show: this.show,
+            lock: this.lock,
             x: this.x,
             y: this.y,
             frameData: {...this.frameData}
@@ -114,7 +133,9 @@ class COSDTrack {
 
     deserialize(data) {
         this.name = data.name ?? this.name;
+        this.type = data.type ?? "MGRS Zone";
         this.show = data.show ?? true;
+        this.lock = data.lock ?? false;
         this.x = data.x ?? DEFAULT_X;
         this.y = data.y ?? DEFAULT_Y;
         this.frameData = data.frameData ?? {};
@@ -129,8 +150,18 @@ class COSDTrack {
                 this.controller.rebuildGraphDropdowns();
             });
         
+        this.guiFolder.add(this, "type", OSD_TRACK_TYPES).name("Type").listen();
+        
         this.guiFolder.add(this, "show").name("Show").listen()
             .onChange(() => setRenderOne());
+        
+        this.guiFolder.add(this, "lock").name("Lock").listen()
+            .onChange(() => {
+                if (this.lock && this.controller.getEditingTrack() === this) {
+                    this.controller.stopEditing();
+                }
+                setRenderOne();
+            });
         
         this.guiFolder.add(this, "remove").name("Remove Track");
     }
@@ -156,6 +187,9 @@ export class CNodeOSDTrackController extends CNode {
         this.editingText = "";
         this.editingModified = false;
         this.showAll = true;
+        this.dataTrack = null;
+        this.dataTrackDisplay = null;
+        this.dataTrackSphere = null;
         
         this.boundHandleKeyDown = (e) => this.handleKeyDown(e);
         this.boundHandleDoubleClick = (e) => this.handleDoubleClick(e);
@@ -169,6 +203,9 @@ export class CNodeOSDTrackController extends CNode {
         
         this.guiFolder.add(this, "addNewTrack").name("Add New OSD Track")
             .tooltip("Create a new OSD track for per-frame text overlay");
+        
+        this.guiFolder.add(this, "makeTrack").name("Make Track")
+            .tooltip("Create a position track from visible/unlocked OSD tracks (MGRS or Lat/Lon)");
         
         this.guiFolder.add(this, "showAll").name("Show All").listen()
             .onChange(() => {
@@ -331,18 +368,88 @@ export class CNodeOSDTrackController extends CNode {
         this.graphView.setSeries(series);
     }
 
+    makeTrack() {
+        if (this.dataTrack) {
+            this.dataTrack.recalculateCascade();
+            return;
+        }
+
+        const trackID = "OSD_Track";
+        const shortName = "OSD";
+        const trackColor = new Color(1, 0.5, 0);
+
+        this.dataTrack = new CNodeOSDDataTrack({
+            id: trackID,
+            controller: this,
+        });
+
+        this.dataTrackDisplay = new CNodeDisplayTrack({
+            id: "OSD_TrackDisplay",
+            track: trackID,
+            color: new CNodeConstant({
+                id: "OSD_TrackColor",
+                value: trackColor,
+                pruneIfUnused: true,
+            }),
+            width: 2,
+            ignoreAB: true,
+            layers: LAYER.MASK_HELPERS,
+        });
+
+        this.dataTrackSphere = new CNode3DObject({
+            id: "OSD_TrackSphere",
+            object: "sphere",
+            radius: 40,
+            color: trackColor,
+            label: shortName,
+        });
+
+        this.dataTrackSphere.addController("TrackPosition", {
+            sourceTrack: trackID,
+        });
+
+        this.dataTrackSphere.addController("ObjectTilt", {
+            track: trackID,
+            tiltType: "banking",
+        });
+
+        if (Sit.dropTargets !== undefined && Sit.dropTargets["track"] !== undefined) {
+            const dropTargets = Sit.dropTargets["track"];
+            for (let dropTargetSwitch of dropTargets) {
+                const match = dropTargetSwitch.match(/-(\d+)$/);
+                if (match !== null) {
+                    dropTargetSwitch = dropTargetSwitch.substring(0, dropTargetSwitch.length - match[0].length);
+                }
+                if (NodeMan.exists(dropTargetSwitch)) {
+                    const switchNode = NodeMan.get(dropTargetSwitch);
+                    switchNode.removeOption(shortName);
+                    switchNode.addOption(shortName, this.dataTrack);
+                }
+            }
+        }
+
+        NodeMan.recalculateAllRootFirst();
+        setRenderOne(true);
+    }
+
+    updateDataTrack() {
+        if (this.dataTrack) {
+            this.dataTrack.recalculateCascade();
+        }
+    }
+
     cycleEditingTrack() {
         if (this.tracks.length === 0) return;
         
-        const visibleTracks = this.getVisibleTracks();
-        if (visibleTracks.length === 0) return;
+        const editableTracks = this.getEditableTracks();
+        if (editableTracks.length === 0) return;
         
         if (!this.activeTrack) {
-            this.startEditing(visibleTracks[0]);
+            this.startEditing(editableTracks[0]);
         } else {
-            const currentIndex = visibleTracks.indexOf(this.activeTrack);
-            const nextIndex = (currentIndex + 1) % visibleTracks.length;
-            this.startEditing(visibleTracks[nextIndex]);
+            const currentIndex = editableTracks.indexOf(this.activeTrack);
+            const nextIndex = (currentIndex + 1) % editableTracks.length;
+            this.startEditing(editableTracks[nextIndex]);
         }
     }
 
@@ -367,12 +474,17 @@ export class CNodeOSDTrackController extends CNode {
             this.updateSliderStatus();
             this.rebuildGraphDropdowns();
             this.updateGraph();
+            this.updateDataTrack();
             setRenderOne();
         }
     }
 
     getVisibleTracks() {
         return this.tracks.filter(t => t.show);
+    }
+
+    getEditableTracks() {
+        return this.tracks.filter(t => t.show && !t.lock);
     }
     
     updateSliderStatus() {
@@ -582,11 +694,40 @@ export class CNodeOSDTrackController extends CNode {
             this.rebuildGraphDropdowns();
             this.updateGraph();
         }
+
+        this.updateDataTrack();
+    }
+
+    disposeDataTrack() {
+        if (!this.dataTrack) return;
+
+        const shortName = "OSD";
+        if (Sit.dropTargets !== undefined && Sit.dropTargets["track"] !== undefined) {
+            const dropTargets = Sit.dropTargets["track"];
+            for (let dropTargetSwitch of dropTargets) {
+                const match = dropTargetSwitch.match(/-(\d+)$/);
+                if (match !== null) {
+                    dropTargetSwitch = dropTargetSwitch.substring(0, dropTargetSwitch.length - match[0].length);
+                }
+                if (NodeMan.exists(dropTargetSwitch)) {
+                    NodeMan.get(dropTargetSwitch).removeOption(shortName);
+                }
+            }
+        }
+
+        NodeMan.unlinkDisposeRemove("OSD_TrackSphere");
+        NodeMan.unlinkDisposeRemove("OSD_TrackDisplay");
+        NodeMan.unlinkDisposeRemove("OSD_TrackColor");
+        NodeMan.unlinkDisposeRemove("OSD_Track");
+        this.dataTrack = null;
+        this.dataTrackDisplay = null;
+        this.dataTrackSphere = null;
     }
 
     dispose() {
         this.stopEditing();
         this.clearSliderStatus();
+        this.disposeDataTrack();
         if (this.graphView) {
             NodeMan.unlinkDisposeRemove(this.graphView.id);
             this.graphView = null;

@@ -636,17 +636,21 @@ export class CNodeFrameSlider extends CNode {
                 const newFrame = Math.max(0, Math.min(Sit.frames - 1, pixelToFrame(mousePos.x)));
                 
                 if (this.draggingALimit) {
-                    Sit.aFrame = newFrame;
+                    const clampedFrame = Math.min(newFrame, Sit.bFrame - 1);
+                    Sit.aFrame = clampedFrame;
+                    par.frame = clampedFrame;
+                    GlobalDateTimeNode.liveMode = false;
                     this.needsCanvasRedraw = true;
                     setRenderOne(true);
-                    // Update frame display for A limit
-                    this.updateFrameDisplay(newFrame, event.clientX);
+                    this.updateFrameDisplay(clampedFrame, event.clientX);
                 } else if (this.draggingBLimit) {
-                    Sit.bFrame = newFrame;
+                    const clampedFrame = Math.max(newFrame, Sit.aFrame + 1);
+                    Sit.bFrame = clampedFrame;
+                    par.frame = clampedFrame;
+                    GlobalDateTimeNode.liveMode = false;
                     this.needsCanvasRedraw = true;
                     setRenderOne(true);
-                    // Update frame display for B limit
-                    this.updateFrameDisplay(newFrame, event.clientX);
+                    this.updateFrameDisplay(clampedFrame, event.clientX);
                 }
             }
         };
@@ -737,15 +741,21 @@ export class CNodeFrameSlider extends CNode {
                 const newFrame = Math.max(0, Math.min(Sit.frames - 1, pixelToFrame(mousePos.x)));
                 
                 if (this.draggingALimit) {
-                    Sit.aFrame = newFrame;
+                    const clampedFrame = Math.min(newFrame, Sit.bFrame - 1);
+                    Sit.aFrame = clampedFrame;
+                    par.frame = clampedFrame;
+                    GlobalDateTimeNode.liveMode = false;
                     this.needsCanvasRedraw = true;
                     setRenderOne(true);
-                    this.updateFrameDisplay(newFrame, touch.clientX);
+                    this.updateFrameDisplay(clampedFrame, touch.clientX);
                 } else if (this.draggingBLimit) {
-                    Sit.bFrame = newFrame;
+                    const clampedFrame = Math.max(newFrame, Sit.aFrame + 1);
+                    Sit.bFrame = clampedFrame;
+                    par.frame = clampedFrame;
+                    GlobalDateTimeNode.liveMode = false;
                     this.needsCanvasRedraw = true;
                     setRenderOne(true);
-                    this.updateFrameDisplay(newFrame, touch.clientX);
+                    this.updateFrameDisplay(clampedFrame, touch.clientX);
                 }
                 
                 event.preventDefault();

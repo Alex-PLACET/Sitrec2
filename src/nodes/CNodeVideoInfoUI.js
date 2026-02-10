@@ -333,16 +333,18 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
         const y = e.clientY - canvasRect.top;
         
         const element = this.getElementAtPosition(x, y);
+        const controller = NodeMan.get("osdTrackController", false);
         if (element && this.isOSDTrackElement(element)) {
             const track = this.getOSDTrack(element);
-            if (track) {
-                const controller = NodeMan.get("osdTrackController", false);
+            if (track && !track.lock) {
                 if (controller) {
                     controller.startEditing(track);
                     e.stopPropagation();
                     e.preventDefault();
                 }
             }
+        } else if (controller && controller.isEditing()) {
+            controller.stopEditing();
         }
     }
 
@@ -691,7 +693,9 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
             const bgW = metrics.width + padding * 2;
             const bgH = textHeight + padding * 2 + vPad * 2;
             
-            if (isEditing && isKeyframe) {
+            if (track.lock) {
+                c.fillStyle = 'rgba(80, 80, 80, 0.7)';
+            } else if (isEditing && isKeyframe) {
                 c.fillStyle = 'rgba(0, 80, 50, 0.7)';
             } else if (isEditing) {
                 c.fillStyle = 'rgba(0, 80, 120, 0.7)';
@@ -708,7 +712,7 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
                 c.strokeRect(bgX, bgY, bgW, bgH);
             }
             
-            c.fillStyle = '#FFFFFF';
+            c.fillStyle = track.lock ? '#BFBFBF' : '#FFFFFF';
             c.fillText(text, x, y);
             
             this._osdTrackBboxes[`osdTrack_${i}`] = { x: bgX, y: bgY, w: bgW, h: bgH };
