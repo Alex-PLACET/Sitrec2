@@ -1,12 +1,13 @@
 import {CNodeEmptyArray} from "./CNodeArray";
 import {GlobalDateTimeNode, NodeMan, Sit} from "../Globals";
-import {EUSToLLA, LLAToEUS} from "../LLA-ECEF-ENU";
+import {EUSToLLA, LLAToEUS, wgs84} from "../LLA-ECEF-ENU";
 import {EventManager} from "../CEventManager";
 import {getAzElFromPositionAndForward, getLocalUpVector, pointOnSphereBelow} from "../SphericalMath";
 import {showError} from "../showError";
 import {MISB} from "../MISBUtils";
 import {saveAs} from "file-saver";
 import {degrees} from "../utils";
+import {V3} from "../threeUtils";
 
 export class CNodeTrack extends CNodeEmptyArray {
     constructor(v) {
@@ -18,6 +19,101 @@ export class CNodeTrack extends CNodeEmptyArray {
         // a node with checkDisplayOutputs set to true
         // and skip the recalculation if there are no display outputs
         this.checkDisplayOutputs = true;
+        this.elevationCache = null;
+    }
+
+    getPointBelowCached(terrainNode, pos, agl, frame) {
+        if (!this.elevationCache) {
+            this.elevationCache = new Array(this.frames).fill(null);
+        }
+
+        const cached = this.elevationCache[frame];
+        if (cached) {
+            if (cached.tileZ >= 0 && !terrainNode.elevationTileHasHigherZoom(cached.tileZ, cached.tileX, cached.tileY)) {
+                return this._pointFromElevation(cached.lat, cached.lon, cached.elevation, agl);
+            }
+        }
+
+        const LLA = EUSToLLA(pos);
+        const info = terrainNode.getPointBelowWithTileInfo(pos, agl);
+        this.elevationCache[frame] = {
+            lat: LLA.x,
+            lon: LLA.y,
+            elevation: info.elevation,
+            tileZ: info.tileZ,
+            tileX: info.tileX,
+            tileY: info.tileY,
+        };
+        return info.point;
+    }
+
+    refreshElevationCache(terrainNode, agl) {
+        if (!this.elevationCache) return false;
+        let changed = false;
+        for (let f = 0; f < this.elevationCache.length; f++) {
+            const entry = this.elevationCache[f];
+            if (!entry) continue;
+            let needsRefresh = false;
+            if (entry.tileZ < 0) {
+                needsRefresh = true;
+            } else if (terrainNode.elevationTileHasHigherZoom(entry.tileZ, entry.tileX, entry.tileY)) {
+                needsRefresh = true;
+            }
+            if (needsRefresh) {
+                const pos = LLAToEUS(entry.lat, entry.lon, 0);
+                const info = terrainNode.getPointBelowWithTileInfo(pos, agl);
+                if (info.tileZ !== entry.tileZ || info.tileX !== entry.tileX || info.tileY !== entry.tileY) {
+                    entry.elevation = info.elevation;
+                    entry.tileZ = info.tileZ;
+                    entry.tileX = info.tileX;
+                    entry.tileY = info.tileY;
+                    if (this.array && this.array[f]) {
+                        this.array[f].position = info.point;
+                    }
+                    changed = true;
+                }
+            }
+        }
+        return changed;
+    }
+
+    _pointFromElevation(lat, lon, elevation, agl) {
+        const pos = LLAToEUS(lat, lon, 0);
+        const earthCenterENU = V3(0, -wgs84.RADIUS, 0);
+        const centerToA = pos.clone().sub(earthCenterENU);
+        const elev = Math.max(0, elevation);
+        const scale = (wgs84.RADIUS + elev + agl) / centerToA.length();
+        return earthCenterENU.add(centerToA.multiplyScalar(scale));
+    }
+
+    serializeElevationCache() {
+        if (!this.elevationCache) return null;
+        const out = [];
+        for (let f = 0; f < this.elevationCache.length; f++) {
+            const e = this.elevationCache[f];
+            if (e) {
+                out.push([f, e.lat, e.lon, e.elevation, e.tileZ, e.tileX, e.tileY]);
+            }
+        }
+        return out.length > 0 ? out : null;
+    }
+
+    deserializeElevationCache(data) {
+        if (!data) return;
+        this.elevationCache = new Array(this.frames).fill(null);
+        for (const entry of data) {
+            if (entry.length === 7) {
+                const [f, lat, lon, elevation, tileZ, tileX, tileY] = entry;
+                if (f < this.frames) {
+                    this.elevationCache[f] = {lat, lon, elevation, tileZ, tileX, tileY};
+                }
+            } else if (entry.length === 6) {
+                const [f, lat, lon, tileZ, tileX, tileY] = entry;
+                if (f < this.frames) {
+                    this.elevationCache[f] = {lat, lon, elevation: 0, tileZ, tileX, tileY};
+                }
+            }
+        }
     }
 
     exportTrackCSV(inspect=false) {

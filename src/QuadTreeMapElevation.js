@@ -482,7 +482,7 @@ export class QuadTreeMapElevation extends QuadTreeMap {
             const xInt = Math.floor(x);
             const yInt = Math.floor(y);
             const tile = this.getTile(xInt, yInt, zoom);
-            if (tile && !tile.elevationLoadFailed) {
+            if (tile && tile.elevation && !tile.elevationLoadFailed) {
                 this.lastGeoTile = tile;
                 return {x, y, zoom};
             }
@@ -540,6 +540,55 @@ export class QuadTreeMapElevation extends QuadTreeMap {
         return 0  // default to sea level if elevation data not loaded
     }
 
+    getElevationWithTileInfo(lat, lon, desiredZoom = null) {
+        const {x, y, zoom} = this.geo2TileFractionAndZoom([lat, lon], desiredZoom);
+
+        if (x === null)
+            return {elevation: 0, tileZ: -1, tileX: -1, tileY: -1};
+
+        const intX = Math.floor(x)
+        const intY = Math.floor(y)
+        const tile = this.getTile(intX, intY, zoom)
+        if (tile && tile.elevation) {
+            const nElevation = Math.sqrt(tile.elevation.length)
+            const xIndex = (x - tile.x) * nElevation
+            const yIndex = (y - tile.y) * nElevation
+            let x0 = Math.floor(xIndex)
+            let x1 = Math.ceil(xIndex)
+            let y0 = Math.floor(yIndex)
+            let y1 = Math.ceil(yIndex)
+
+            x0 = Math.max(0, Math.min(nElevation - 1, x0))
+            x1 = Math.max(0, Math.min(nElevation - 1, x1))
+            y0 = Math.max(0, Math.min(nElevation - 1, y0))
+            y1 = Math.max(0, Math.min(nElevation - 1, y1))
+
+            const f00 = tile.elevation[y0 * nElevation + x0]
+            const f01 = tile.elevation[y0 * nElevation + x1]
+            const f10 = tile.elevation[y1 * nElevation + x0]
+            const f11 = tile.elevation[y1 * nElevation + x1]
+            const f0 = f00 + (f01 - f00) * (xIndex - x0)
+            const f1 = f10 + (f11 - f10) * (xIndex - x0)
+            const elevation = f0 + (f1 - f0) * (yIndex - y0)
+            return {elevation: elevation * this.options.zScale, tileZ: zoom, tileX: intX, tileY: intY};
+        }
+        return {elevation: 0, tileZ: -1, tileX: -1, tileY: -1};
+    }
+
+    tileHasHigherZoom(z, x, y) {
+        const childZ = z + 1;
+        const childX0 = x * 2;
+        const childY0 = y * 2;
+        for (let dx = 0; dx < 2; dx++) {
+            for (let dy = 0; dy < 2; dy++) {
+                const tile = this.getTile(childX0 + dx, childY0 + dy, childZ);
+                if (tile && tile.elevation && !tile.elevationLoadFailed) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
 
     clean() {
 //    console.log("elevationMap clean()");

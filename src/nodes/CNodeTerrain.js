@@ -771,10 +771,9 @@ export class CNodeTerrain extends CNode {
 
 
         const LLA = EUSToLLA(A)
-        // elevation is the height above the wgs84 sphere
-        let elevation = 0; // 0 if map not loaded
-        if (this.maps[this.UI.mapType].map !== undefined)
-            elevation = this.maps[this.UI.mapType].map.getElevationInterpolated(LLA.x, LLA.y)
+        let elevation = 0;
+        if (this.elevationMap)
+            elevation = this.elevationMap.getElevationInterpolated(LLA.x, LLA.y)
 
         if (elevation < 0) {
             // if the elevation is negative, then we assume it's below sea level
@@ -790,6 +789,35 @@ export class CNodeTerrain extends CNode {
         const centerToA = A.clone().sub(earthCenterENU)
         const scale = (wgs84.RADIUS + elevation + agl) / centerToA.length()
         return earthCenterENU.add(centerToA.multiplyScalar(scale))
+    }
+
+    getPointBelowWithTileInfo(A, agl = 0) {
+        const LLA = EUSToLLA(A)
+        let elevation = 0;
+        let tileZ = -1, tileX = -1, tileY = -1;
+        if (this.elevationMap) {
+            const info = this.elevationMap.getElevationWithTileInfo(LLA.x, LLA.y);
+            elevation = info.elevation;
+            tileZ = info.tileZ;
+            tileX = info.tileX;
+            tileY = info.tileY;
+        }
+
+        const rawElevation = elevation;
+        if (elevation < 0) {
+            elevation = 0;
+        }
+
+        const earthCenterENU = V3(0, -wgs84.RADIUS, 0)
+        const centerToA = A.clone().sub(earthCenterENU)
+        const scale = (wgs84.RADIUS + elevation + agl) / centerToA.length()
+        const point = earthCenterENU.add(centerToA.multiplyScalar(scale))
+        return {point, elevation: rawElevation, tileZ, tileX, tileY};
+    }
+
+    elevationTileHasHigherZoom(z, x, y) {
+        if (!this.elevationMap) return false;
+        return this.elevationMap.tileHasHigherZoom(z, x, y);
     }
 }
 

@@ -4,6 +4,7 @@ import {getLocalNorthVector, getLocalUpVector} from "../SphericalMath";
 import {radians} from "../utils";
 import {V3} from "../threeUtils";
 import {wgs84} from "../LLA-ECEF-ENU";
+import {EventManager} from "../CEventManager";
 
 export class CNodeTrackFromVelocity extends CNodeTrack {
     constructor(v) {
@@ -21,7 +22,15 @@ export class CNodeTrackFromVelocity extends CNodeTrack {
 
         this.agl = v.agl ?? 1;
 
+        EventManager.addEventListener("elevationChanged", () => this.onElevationChanged());
         this.recalculate();
+    }
+
+    onElevationChanged() {
+        const terrainNode = this.in.terrain ?? NodeMan.get("TerrainModel", false);
+        if (terrainNode && this.refreshElevationCache(terrainNode, this.agl)) {
+            this.recalculateCascade();
+        }
     }
 
     recalculate() {
@@ -31,7 +40,7 @@ export class CNodeTrackFromVelocity extends CNodeTrack {
         const pos = this.in.origin.p(0).clone();
 
         for (let f = 0; f < this.frames; f++) {
-            const groundPos = this.getGroundPoint(pos);
+            const groundPos = this.getGroundPoint(pos, f);
 
             this.array.push({
                 position: groundPos.clone(),
@@ -67,10 +76,10 @@ export class CNodeTrackFromVelocity extends CNodeTrack {
         }
     }
 
-    getGroundPoint(pos) {
+    getGroundPoint(pos, frame) {
         const terrainNode = this.in.terrain ?? NodeMan.get("TerrainModel", false);
         if (terrainNode) {
-            return terrainNode.getPointBelow(pos, this.agl, false);
+            return this.getPointBelowCached(terrainNode, pos, this.agl, frame);
         }
         const up = getLocalUpVector(pos);
         const groundLevel = wgs84.RADIUS;

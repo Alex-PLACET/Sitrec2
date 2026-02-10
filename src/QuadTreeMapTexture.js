@@ -178,6 +178,18 @@ class QuadTreeMapTexture extends QuadTreeMap {
         return this.elevationMap.getElevationInterpolated(lat, lon, desiredZoom);
     }
 
+    getElevationWithTileInfo(lat, lon, desiredZoom = null) {
+        if (!this.elevationMap) {
+            return {elevation: 0, tileZ: -1, tileX: -1, tileY: -1};
+        }
+        return this.elevationMap.getElevationWithTileInfo(lat, lon, desiredZoom);
+    }
+
+    tileHasHigherZoom(z, x, y) {
+        if (!this.elevationMap) return false;
+        return this.elevationMap.tileHasHigherZoom(z, x, y);
+    }
+
 
     // check if the area of a tile is fully covered by its descendants
     // which might be the direct children, or further descendants

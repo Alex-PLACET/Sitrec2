@@ -13,8 +13,17 @@ export class CNodeOSDDataSeriesTrack extends CNodeTrack {
         this.seriesMap = v.seriesMap;
         this.frames = Sit.frames;
         this.useSitFrames = true;
-        EventManager.addEventListener("elevationChanged", () => this.recalculateCascade());
+        this.isGroundRelative = false;
+        EventManager.addEventListener("elevationChanged", () => this.onElevationChanged());
         this.recalculate();
+    }
+
+    onElevationChanged() {
+        if (!this.isGroundRelative) return;
+        const terrainNode = NodeMan.get("TerrainModel", false);
+        if (terrainNode && this.refreshElevationCache(terrainNode, 1)) {
+            this.recalculateCascade();
+        }
     }
 
     getKeyframeDigitLength(track) {
@@ -160,13 +169,16 @@ export class CNodeOSDDataSeriesTrack extends CNodeTrack {
             this.array[f] = {position: LLAToEUS(latArr[f], lonArr[f], alt)};
         }
 
+        this.isGroundRelative = !hasAltitude;
         if (!hasAltitude) {
             const terrainNode = NodeMan.get("TerrainModel", false);
             if (terrainNode) {
                 for (let f = 0; f < this.frames; f++) {
-                    this.array[f].position = terrainNode.getPointBelow(this.array[f].position, 1, false);
+                    this.array[f].position = this.getPointBelowCached(terrainNode, this.array[f].position, 1, f);
                 }
             }
+        } else {
+            this.elevationCache = null;
         }
     }
 

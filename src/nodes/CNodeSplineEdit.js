@@ -5,7 +5,7 @@ import {getCameraNode} from "./CNodeCamera";
 import {assert} from "../assert.js";
 import {CNodeTrack} from "./CNodeTrack";
 import {EUSToLLA, LLAVToEUS} from "../LLA-ECEF-ENU";
-import {adjustHeightAboveGround} from "../threeExt";
+import {adjustHeightAboveGround, pointAbove} from "../threeExt";
 import {EventManager} from "../CEventManager";
 
 // a node wrapper for varioius spline editors
@@ -62,6 +62,10 @@ export class CNodeSplineEditor extends CNodeTrack {
 
         EventManager.addEventListener("elevationChanged", () => {
             if (this.altitudeLock !== undefined && this.altitudeLock >= 0) {
+                const terrainNode = NodeMan.get("TerrainModel", false);
+                if (terrainNode) {
+                    this.refreshElevationCache(terrainNode, this.altitudeLock);
+                }
                 this.recalculateCascade();
             }
         });
@@ -98,14 +102,17 @@ export class CNodeSplineEditor extends CNodeTrack {
             const lla = EUSToLLA(p);
             positions.push([this.splineEditor.frameNumbers[i], lla.x, lla.y, lla.z])
         }
-        return {
+        const result = {
             ...super.modSerialize(),
             positions: positions,
             constantSpeed: this.constantSpeed,
             extrapolateTrack: this.extrapolateTrack,
             altitudeLock: this.altitudeLock,
             curveType: this.curveType,
-        }
+        };
+        const elevCache = this.serializeElevationCache();
+        if (elevCache) result.elevationCache = elevCache;
+        return result;
     }
 
     modDeserialize(v) {
@@ -135,10 +142,14 @@ export class CNodeSplineEditor extends CNodeTrack {
         if (v.curveType !== undefined) {
             this.setCurveType(v.curveType)
         }
+        if (v.elevationCache !== undefined) {
+            this.deserializeElevationCache(v.elevationCache);
+        }
     }
     
     setAltitudeLock(value) {
         this.altitudeLock = value;
+        if (value < 0) this.elevationCache = null;
         this.updateAltitudeLock();
         this.recalculateCascade();
     }
@@ -149,8 +160,15 @@ export class CNodeSplineEditor extends CNodeTrack {
         }
     }
     
-    applyAltitudeLock(position) {
+    applyAltitudeLock(position, frame) {
         if (this.altitudeLock !== undefined && this.altitudeLock >= 0) {
+            if (frame !== undefined) {
+                const terrainNode = NodeMan.get("TerrainModel", false);
+                if (terrainNode) {
+                    const ground = this.getPointBelowCached(terrainNode, position, 0, frame);
+                    return pointAbove(ground, this.altitudeLock);
+                }
+            }
             return adjustHeightAboveGround(position, this.altitudeLock);
         }
         return position;
@@ -312,7 +330,7 @@ export class CNodeSplineEditor extends CNodeTrack {
                 // Get position at this t value
                 var framePos = new Vector3();
                 this.splineEditor.getPoint(t, framePos);
-                this.array.push({position: this.applyAltitudeLock(framePos)});
+                this.array.push({position: this.applyAltitudeLock(framePos, frame)});
             }
         } else {
             // TIME-BASED MODE: Use frame numbers to determine position (original behavior)
@@ -320,7 +338,7 @@ export class CNodeSplineEditor extends CNodeTrack {
             // and will work out the t value for you
           for (var i=0;i<this.frames;i++) {
               var pos = this.splineEditor.getPointFrame(i)
-              this.array.push({position: this.applyAltitudeLock(pos)})
+              this.array.push({position: this.applyAltitudeLock(pos, i)})
           }
         }
     }

@@ -1402,7 +1402,11 @@ class CTrackManager extends CManager {
                     }
                 }
                 
-                // Serialize the essential data needed to recreate the track
+                let elevationCacheData = null;
+                if (splineEditorNode && splineEditorNode.serializeElevationCache) {
+                    elevationCacheData = splineEditorNode.serializeElevationCache();
+                }
+
                 const trackData = {
                     trackID: trackOb.trackID,
                     displayTrackID: trackOb.displayTrackID,
@@ -1413,16 +1417,14 @@ class CTrackManager extends CManager {
                     constantSpeed: trackOb.constantSpeed,
                     extrapolateTrack: trackOb.extrapolateTrack,
                     altitudeLock: trackOb.altitudeLock,
-                    // Store color as hex number
                     color: trackOb.trackColor ? 
                         (Math.round(trackOb.trackColor.r * 255) << 16) |
                         (Math.round(trackOb.trackColor.g * 255) << 8) |
                         Math.round(trackOb.trackColor.b * 255) : 0xffff00,
                     lineWidth: trackOb.displayTrack?.width || 2,
-                    // Store control points from the spline editor
                     positions: positions,
-                    // Store associated object data if any
                     objectData: objectData,
+                    elevationCache: elevationCacheData,
                 };
                 
                 syntheticTracks.push(trackData);
@@ -1557,7 +1559,10 @@ class CTrackManager extends CManager {
                         }
                     }
                     
-                    // Force recalculate the spline editor with altitude lock, then display track
+                    if (splineEditorNode && trackData.elevationCache) {
+                        splineEditorNode.deserializeElevationCache(trackData.elevationCache);
+                    }
+
                     if (splineEditorNode) {
                         splineEditorNode.recalculate();
                     }
