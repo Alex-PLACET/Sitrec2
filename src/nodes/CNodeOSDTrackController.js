@@ -85,6 +85,7 @@ class COSDTrack {
     setValue(frame, value) {
         this.frameData[frame] = value;
         this.controller.updateSliderStatus();
+        this.controller.updateGraph();
     }
 
     hasValue(frame) {

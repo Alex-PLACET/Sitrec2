@@ -674,6 +674,7 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
             
             if (isEditing) {
                 text = controller.getEditingText() + "▏";
+                isKeyframe = track.isKeyframe(frame);
             } else {
                 const displayInfo = track.getDisplayInfo(frame);
                 text = displayInfo.value;
@@ -690,7 +691,9 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
             const bgW = metrics.width + padding * 2;
             const bgH = textHeight + padding * 2 + vPad * 2;
             
-            if (isEditing) {
+            if (isEditing && isKeyframe) {
+                c.fillStyle = 'rgba(0, 80, 50, 0.7)';
+            } else if (isEditing) {
                 c.fillStyle = 'rgba(0, 80, 120, 0.7)';
             } else if (isKeyframe) {
                 c.fillStyle = 'rgba(0, 100, 0, 0.7)';
@@ -700,7 +703,7 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
             c.fillRect(bgX, bgY, bgW, bgH);
             
             if (isEditing) {
-                c.strokeStyle = '#00AAFF';
+                c.strokeStyle = isKeyframe ? '#00FF00' : '#00AAFF';
                 c.lineWidth = 2;
                 c.strokeRect(bgX, bgY, bgW, bgH);
             }
