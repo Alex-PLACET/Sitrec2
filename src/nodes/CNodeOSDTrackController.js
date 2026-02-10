@@ -185,20 +185,22 @@ export class CNodeOSDTrackController extends CNode {
         });
 
         this.graphView = null;
-        this.graphSettings = { xAxis: "None", y1Axis: "None", y2Axis: "None" };
+        this.graphSettings = { show: false, xAxis: "None", y1Axis: "None", y2Axis: "None" };
         this.graphFolder = this.guiFolder.addFolder("Graph").close();
+        this.graphFolder.add(this.graphSettings, "show").name("Show").listen()
+            .onChange(() => this.updateGraph());
         this.xAxisCtrl = null;
         this.y1AxisCtrl = null;
         this.y2AxisCtrl = null;
         this.rebuildGraphDropdowns();
     }
     
-    getGraphAxisOptions() {
-        const options = { "None": "None", "Frame": "Frame" };
+    getGraphTrackOptions() {
+        const opts = { "None": "None" };
         for (let i = 0; i < this.tracks.length; i++) {
-            options[this.tracks[i].name] = "OSD" + (i + 1);
+            opts[this.tracks[i].name] = "OSD" + (i + 1);
         }
-        return options;
+        return opts;
     }
 
     rebuildGraphDropdowns() {
@@ -206,16 +208,17 @@ export class CNodeOSDTrackController extends CNode {
         if (this.y1AxisCtrl) this.y1AxisCtrl.destroy();
         if (this.y2AxisCtrl) this.y2AxisCtrl.destroy();
 
-        const options = this.getGraphAxisOptions();
+        const trackOpts = this.getGraphTrackOptions();
+        const osdOnly = { ...trackOpts };
+        delete osdOnly["None"];
+        const xOptions = { "None": "None", "Frame": "Frame", "Frame A→B": "FrameAB", ...osdOnly };
+        const yOptions = trackOpts;
 
-        const storedX = this._storedX ?? "None";
-        const storedY1 = this._storedY1 ?? "None";
-        const storedY2 = this._storedY2 ?? "None";
-
-        const isValidStored = (v) => Object.values(options).includes(v);
-        this.graphSettings.xAxis = isValidStored(storedX) ? storedX : "None";
-        this.graphSettings.y1Axis = isValidStored(storedY1) ? storedY1 : "None";
-        this.graphSettings.y2Axis = isValidStored(storedY2) ? storedY2 : "None";
+        const isValidX = (v) => Object.values(xOptions).includes(v);
+        const isValidY = (v) => Object.values(yOptions).includes(v);
+        this.graphSettings.xAxis = isValidX(this._storedX ?? "None") ? (this._storedX ?? "None") : "None";
+        this.graphSettings.y1Axis = isValidY(this._storedY1 ?? "None") ? (this._storedY1 ?? "None") : "None";
+        this.graphSettings.y2Axis = isValidY(this._storedY2 ?? "None") ? (this._storedY2 ?? "None") : "None";
 
         const onChange = () => {
             this._storedX = this.graphSettings.xAxis;
@@ -224,16 +227,16 @@ export class CNodeOSDTrackController extends CNode {
             this.updateGraph();
         };
 
-        this.xAxisCtrl = this.graphFolder.add(this.graphSettings, "xAxis", options).name("X Axis").onChange(onChange);
-        this.y1AxisCtrl = this.graphFolder.add(this.graphSettings, "y1Axis", options).name("Y1 Axis").onChange(onChange);
-        this.y2AxisCtrl = this.graphFolder.add(this.graphSettings, "y2Axis", options).name("Y2 Axis").onChange(onChange);
+        this.xAxisCtrl = this.graphFolder.add(this.graphSettings, "xAxis", xOptions).name("X Axis").onChange(onChange);
+        this.y1AxisCtrl = this.graphFolder.add(this.graphSettings, "y1Axis", yOptions).name("Y1 Axis").onChange(onChange);
+        this.y2AxisCtrl = this.graphFolder.add(this.graphSettings, "y2Axis", yOptions).name("Y2 Axis").onChange(onChange);
     }
 
-    getTrackNumericData(trackIndex) {
+    getTrackNumericData(trackIndex, frameMin = 0, frameMax = Sit.frames - 1) {
         const track = this.tracks[trackIndex];
         if (!track) return [];
         const data = [];
-        for (let f = 0; f < Sit.frames; f++) {
+        for (let f = frameMin; f <= frameMax; f++) {
             const val = track.getValue(f);
             if (val !== PLACEHOLDER_TEXT && val !== "") {
                 const num = parseFloat(val);
@@ -243,16 +246,16 @@ export class CNodeOSDTrackController extends CNode {
         return data;
     }
 
-    resolveAxisData(storedValue) {
+    resolveAxisData(storedValue, frameMin, frameMax) {
         if (storedValue === "None") return null;
-        if (storedValue === "Frame") {
+        if (storedValue === "Frame" || storedValue === "FrameAB") {
             const data = [];
-            for (let f = 0; f < Sit.frames; f++) data.push({ frame: f, value: f });
+            for (let f = frameMin; f <= frameMax; f++) data.push({ frame: f, value: f });
             return data;
         }
         if (storedValue.startsWith("OSD")) {
             const idx = parseInt(storedValue.substring(3), 10) - 1;
-            return this.getTrackNumericData(idx);
+            return this.getTrackNumericData(idx, frameMin, frameMax);
         }
         return null;
     }
@@ -262,7 +265,7 @@ export class CNodeOSDTrackController extends CNode {
         const y1Stored = this._storedY1 ?? "None";
         const y2Stored = this._storedY2 ?? "None";
 
-        if (y1Stored === "None" && y2Stored === "None") {
+        if (!this.graphSettings.show || (y1Stored === "None" && y2Stored === "None")) {
             if (this.graphView) {
                 this.graphView.show(false);
             }
@@ -280,11 +283,15 @@ export class CNodeOSDTrackController extends CNode {
         }
         this.graphView.show(true);
 
-        const xData = this.resolveAxisData(xStored);
+        const isFrameAB = xStored === "FrameAB";
+        const frameMin = isFrameAB ? (Sit.aFrame ?? 0) : 0;
+        const frameMax = isFrameAB ? (Sit.bFrame ?? Sit.frames - 1) : Sit.frames - 1;
+
+        const xData = this.resolveAxisData(xStored, frameMin, frameMax);
         const series = [];
 
         const buildSeries = (yStored, label) => {
-            const yData = this.resolveAxisData(yStored);
+            const yData = this.resolveAxisData(yStored, frameMin, frameMax);
             if (!yData || yData.length === 0) return;
 
             const points = [];
@@ -306,7 +313,7 @@ export class CNodeOSDTrackController extends CNode {
         };
 
         const getLabel = (stored) => {
-            if (stored === "Frame") return "Frame";
+            if (stored === "Frame" || stored === "FrameAB") return "Frame";
             if (stored.startsWith("OSD")) {
                 const idx = parseInt(stored.substring(3), 10) - 1;
                 return this.tracks[idx] ? this.tracks[idx].name : stored;
@@ -317,12 +324,7 @@ export class CNodeOSDTrackController extends CNode {
         if (y1Stored !== "None") buildSeries(y1Stored, getLabel(y1Stored));
         if (y2Stored !== "None") buildSeries(y2Stored, getLabel(y2Stored));
 
-        if (xData) {
-            this.graphView.xLabel = getLabel(xStored);
-        } else {
-            this.graphView.xLabel = "Frame";
-        }
-
+        this.graphView.xLabel = xData ? getLabel(xStored) : "Frame";
         this.graphView.setSeries(series);
     }
 
@@ -535,7 +537,13 @@ export class CNodeOSDTrackController extends CNode {
         return {
             ...super.modSerialize(),
             showAll: this.showAll,
-            tracks: this.tracks.map(t => t.serialize())
+            tracks: this.tracks.map(t => t.serialize()),
+            graph: {
+                show: this.graphSettings.show,
+                xAxis: this._storedX ?? "None",
+                y1Axis: this._storedY1 ?? "None",
+                y2Axis: this._storedY2 ?? "None",
+            }
         };
     }
 
@@ -561,6 +569,15 @@ export class CNodeOSDTrackController extends CNode {
             
             this.updateSliderStatus();
             this.rebuildGraphDropdowns();
+        }
+
+        if (v.graph) {
+            this.graphSettings.show = v.graph.show ?? false;
+            this._storedX = v.graph.xAxis ?? "None";
+            this._storedY1 = v.graph.y1Axis ?? "None";
+            this._storedY2 = v.graph.y2Axis ?? "None";
+            this.rebuildGraphDropdowns();
+            this.updateGraph();
         }
     }
 

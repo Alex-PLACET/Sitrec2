@@ -1,5 +1,5 @@
 import {CNodeTrack} from "./CNodeTrack";
-import {setRenderOne, Sit, UndoManager} from "../Globals";
+import {NodeMan, setRenderOne, Sit, UndoManager} from "../Globals";
 import {par} from "../par";
 import {CNodeTabbedCanvasView} from "./CNodeTabbedCanvasView";
 
@@ -908,26 +908,41 @@ export class CNodeOSDGraphView extends CNodeCurveEditorView2 {
     autoScale() {
         if (this.series.length === 0) return;
 
+        let allMinX = Infinity, allMaxX = -Infinity;
         let allMinY = Infinity, allMaxY = -Infinity;
         for (const s of this.series) {
             for (const pt of s.data) {
+                if (pt.x < allMinX) allMinX = pt.x;
+                if (pt.x > allMaxX) allMaxX = pt.x;
                 if (pt.y < allMinY) allMinY = pt.y;
                 if (pt.y > allMaxY) allMaxY = pt.y;
             }
         }
 
+        if (!isFinite(allMinX)) { allMinX = 0; allMaxX = Sit.frames - 1; }
+        if (allMinX === allMaxX) { allMinX -= 1; allMaxX += 1; }
         if (!isFinite(allMinY)) { allMinY = 0; allMaxY = 1; }
         if (allMinY === allMaxY) { allMinY -= 1; allMaxY += 1; }
 
-        const padding = (allMaxY - allMinY) * 0.05;
-        this.minY = allMinY - padding;
-        this.maxY = allMaxY + padding;
-        this.minX = 0;
-        this.maxX = Sit.frames - 1;
+        const xPadding = (allMaxX - allMinX) * 0.02;
+        this.minX = allMinX - xPadding;
+        this.maxX = allMaxX + xPadding;
+        const yPadding = (allMaxY - allMinY) * 0.05;
+        this.minY = allMinY - yPadding;
+        this.maxY = allMaxY + yPadding;
     }
 
     renderCanvas(frame) {
         if (!this.visible) return;
+
+        const currentA = Sit.aFrame ?? 0;
+        const currentB = Sit.bFrame ?? (Sit.frames - 1);
+        if (this._lastAFrame !== currentA || this._lastBFrame !== currentB) {
+            this._lastAFrame = currentA;
+            this._lastBFrame = currentB;
+            const controller = NodeMan.get("osdTrackController", false);
+            if (controller) controller.updateGraph();
+        }
 
         const ctx = this.ctx;
         const margin = 60;
