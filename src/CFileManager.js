@@ -376,7 +376,7 @@ export class CFileManager extends CManager {
             }
             return response.text();
         }).then(data => {
-            console.log("versions: " + data)
+//            console.log("versions: " + data)
             this.versions = JSON.parse(data) // will give an array of local files
             console.log("Parsed Versions url \n" + this.versions[0].url)
 
