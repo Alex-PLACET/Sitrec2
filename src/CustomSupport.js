@@ -3781,7 +3781,14 @@ export class CCustomManager {
             }
         }
 
-        const modIds = Object.keys(mods);
+        // some things are required to be deserialized before others, so we force them to the top.
+        // Here the osdDataSeriesController is used by tracks, and track selector swithches, which normally come early in the order,
+        // So we push osdDataSeriesController to the top of the list
+        const priorityIds = ["osdDataSeriesController"];
+        const modIds = [
+            ...priorityIds.filter(id => mods[id] !== undefined),
+            ...Object.keys(mods).filter(id => !priorityIds.includes(id)),
+        ];
 
         for (let i = 0; i < modIds.length; i++) {
             const id = modIds[i];

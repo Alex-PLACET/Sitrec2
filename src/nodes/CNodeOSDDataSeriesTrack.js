@@ -10,6 +10,7 @@ export class CNodeOSDDataSeriesTrack extends CNodeTrack {
     constructor(v) {
         super(v);
         this.input("controller");
+        this.seriesMap = v.seriesMap;
         this.frames = Sit.frames;
         this.useSitFrames = true;
         EventManager.addEventListener("elevationChanged", () => this.recalculateCascade());
@@ -91,17 +92,7 @@ export class CNodeOSDDataSeriesTrack extends CNodeTrack {
             this.array[f] = {position: defaultPos.clone()};
         }
 
-        const controller = this.in.controller;
-
-        const byType = {};
-        const typeCounts = {};
-        for (const track of controller.tracks) {
-            typeCounts[track.type] = (typeCounts[track.type] || 0) + 1;
-        }
-        for (const track of controller.tracks) {
-            if (typeCounts[track.type] > 1 && (!track.show || track.lock)) continue;
-            byType[track.type] = track;
-        }
+        const byType = this.seriesMap;
 
         const hasMGRS = byType["MGRS Zone"] && byType["MGRS East"] && byType["MGRS North"];
         const hasLatLon = byType["Latitude"] && byType["Longitude"];

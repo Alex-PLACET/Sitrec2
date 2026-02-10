@@ -189,9 +189,7 @@ export class CNodeOSDDataSeriesController extends CNode {
         this.editingText = "";
         this.editingModified = false;
         this.showAll = true;
-        this.dataTrack = null;
-        this.dataTrackDisplay = null;
-        this.dataTrackSphere = null;
+        this.dataTracks = {};
         
         this.boundHandleKeyDown = (e) => this.handleKeyDown(e);
         this.boundHandleDoubleClick = (e) => this.handleDoubleClick(e);
@@ -374,26 +372,89 @@ export class CNodeOSDDataSeriesController extends CNode {
         this.graphView.setSeries(series);
     }
 
+    getVisibleSeriesMap() {
+        const byType = {};
+        const typeCounts = {};
+        for (const track of this.tracks) {
+            typeCounts[track.type] = (typeCounts[track.type] || 0) + 1;
+        }
+        for (const track of this.tracks) {
+            if (typeCounts[track.type] > 1 && (!track.show || track.lock)) continue;
+            byType[track.type] = track;
+        }
+        return byType;
+    }
+
+    getSeriesSignature(seriesMap) {
+        const names = [];
+        for (const [type, series] of Object.entries(seriesMap)) {
+            names.push(type + ":" + series.name);
+        }
+        names.sort();
+        return names.join("|");
+    }
+
+    makeTrackFromSignature(sig) {
+        if (this.dataTracks[sig]) return;
+        const seriesMap = {};
+        for (const part of sig.split("|")) {
+            const sep = part.indexOf(":");
+            if (sep < 0) continue;
+            const type = part.substring(0, sep);
+            const name = part.substring(sep + 1);
+            const series = this.tracks.find(t => t.type === type && t.name === name);
+            if (series) seriesMap[type] = series;
+        }
+        const hasMGRS = seriesMap["MGRS Zone"] && seriesMap["MGRS East"] && seriesMap["MGRS North"];
+        const hasLatLon = seriesMap["Latitude"] && seriesMap["Longitude"];
+        if (!hasMGRS && !hasLatLon) return;
+        this.makeTrackWithSeriesMap(seriesMap);
+    }
+
     makeTrack() {
-        if (this.dataTrack) {
-            this.dataTrack.recalculateCascade();
+        const seriesMap = this.getVisibleSeriesMap();
+
+        const hasMGRS = seriesMap["MGRS Zone"] && seriesMap["MGRS East"] && seriesMap["MGRS North"];
+        const hasLatLon = seriesMap["Latitude"] && seriesMap["Longitude"];
+        if (!hasMGRS && !hasLatLon) return;
+
+        const sig = this.getSeriesSignature(seriesMap);
+
+        if (this.dataTracks[sig]) {
+            this.dataTracks[sig].track.recalculateCascade();
             return;
         }
 
-        const trackID = "OSD_Track";
-        const shortName = "OSD";
-        const trackColor = new Color(1, 0.5, 0);
+        this.makeTrackWithSeriesMap(seriesMap);
+    }
 
-        this.dataTrack = new CNodeOSDDataSeriesTrack({
+    makeTrackWithSeriesMap(seriesMap) {
+        const sig = this.getSeriesSignature(seriesMap);
+        if (this.dataTracks[sig]) return;
+
+        const trackIndex = Object.keys(this.dataTracks).length;
+        const trackID = "OSD_Track_" + trackIndex;
+        const shortName = "OSD_" + trackIndex;
+        const TRACK_COLORS = [
+            new Color(1, 0.5, 0),
+            new Color(0, 0.8, 1),
+            new Color(0.2, 1, 0.2),
+            new Color(1, 0.2, 0.8),
+            new Color(1, 1, 0),
+        ];
+        const trackColor = TRACK_COLORS[trackIndex % TRACK_COLORS.length];
+
+        const track = new CNodeOSDDataSeriesTrack({
             id: trackID,
             controller: this,
+            seriesMap: seriesMap,
         });
 
-        this.dataTrackDisplay = new CNodeDisplayTrack({
-            id: "OSD_TrackDisplay",
+        const display = new CNodeDisplayTrack({
+            id: trackID + "_Display",
             track: trackID,
             color: new CNodeConstant({
-                id: "OSD_TrackColor",
+                id: trackID + "_Color",
                 value: trackColor,
                 pruneIfUnused: true,
             }),
@@ -402,19 +463,19 @@ export class CNodeOSDDataSeriesController extends CNode {
             layers: LAYER.MASK_HELPERS,
         });
 
-        this.dataTrackSphere = new CNode3DObject({
-            id: "OSD_TrackSphere",
+        const sphere = new CNode3DObject({
+            id: trackID + "_Sphere",
             object: "sphere",
             radius: 40,
             color: trackColor,
             label: shortName,
         });
 
-        this.dataTrackSphere.addController("TrackPosition", {
+        sphere.addController("TrackPosition", {
             sourceTrack: trackID,
         });
 
-        this.dataTrackSphere.addController("ObjectTilt", {
+        sphere.addController("ObjectTilt", {
             track: trackID,
             tiltType: "banking",
         });
@@ -429,22 +490,24 @@ export class CNodeOSDDataSeriesController extends CNode {
                 if (NodeMan.exists(dropTargetSwitch)) {
                     const switchNode = NodeMan.get(dropTargetSwitch);
                     switchNode.removeOption(shortName);
-                    switchNode.addOption(shortName, this.dataTrack);
+                    switchNode.addOption(shortName, track);
                 }
             }
         }
+
+        this.dataTracks[sig] = { track, display, sphere, trackID, shortName, sig };
 
         NodeMan.recalculateAllRootFirst();
         setRenderOne(true);
     }
 
     updateDataTrack() {
-        if (!this.dataTrack) return;
+        if (Object.keys(this.dataTracks).length === 0) return;
         if (this._dataTrackTimer) clearTimeout(this._dataTrackTimer);
         this._dataTrackTimer = setTimeout(() => {
             this._dataTrackTimer = null;
-            if (this.dataTrack) {
-                this.dataTrack.recalculateCascade();
+            for (const entry of Object.values(this.dataTracks)) {
+                entry.track.recalculateCascade();
             }
         }, 250);
     }
@@ -663,7 +726,7 @@ export class CNodeOSDDataSeriesController extends CNode {
         return {
             ...super.modSerialize(),
             showAll: this.showAll,
-            hasTrack: !!this.dataTrack,
+            trackSignatures: Object.keys(this.dataTracks),
             tracks: this.tracks.map(t => t.serialize()),
             graph: {
                 show: this.graphSettings.show,
@@ -709,15 +772,30 @@ export class CNodeOSDDataSeriesController extends CNode {
 
         if (v.hasTrack) {
             this.makeTrack();
+        } else if (v.trackSignatures && v.trackSignatures.length > 0) {
+            for (const sig of v.trackSignatures) {
+                this.makeTrackFromSignature(sig);
+            }
         }
 
         this.updateDataTrack();
     }
 
-    disposeDataTrack() {
-        if (!this.dataTrack) return;
+    disposeDataTrack(sig) {
+        if (sig) {
+            const entry = this.dataTracks[sig];
+            if (!entry) return;
+            this.disposeDataTrackEntry(entry);
+            delete this.dataTracks[sig];
+            return;
+        }
+        for (const entry of Object.values(this.dataTracks)) {
+            this.disposeDataTrackEntry(entry);
+        }
+        this.dataTracks = {};
+    }
 
-        const shortName = "OSD";
+    disposeDataTrackEntry(entry) {
         if (Sit.dropTargets !== undefined && Sit.dropTargets["track"] !== undefined) {
             const dropTargets = Sit.dropTargets["track"];
             for (let dropTargetSwitch of dropTargets) {
@@ -726,18 +804,14 @@ export class CNodeOSDDataSeriesController extends CNode {
                     dropTargetSwitch = dropTargetSwitch.substring(0, dropTargetSwitch.length - match[0].length);
                 }
                 if (NodeMan.exists(dropTargetSwitch)) {
-                    NodeMan.get(dropTargetSwitch).removeOption(shortName);
+                    NodeMan.get(dropTargetSwitch).removeOption(entry.shortName);
                 }
             }
         }
-
-        NodeMan.unlinkDisposeRemove("OSD_TrackSphere");
-        NodeMan.unlinkDisposeRemove("OSD_TrackDisplay");
-        NodeMan.unlinkDisposeRemove("OSD_TrackColor");
-        NodeMan.unlinkDisposeRemove("OSD_Track");
-        this.dataTrack = null;
-        this.dataTrackDisplay = null;
-        this.dataTrackSphere = null;
+        NodeMan.unlinkDisposeRemove(entry.trackID + "_Sphere");
+        NodeMan.unlinkDisposeRemove(entry.trackID + "_Display");
+        NodeMan.unlinkDisposeRemove(entry.trackID + "_Color");
+        NodeMan.unlinkDisposeRemove(entry.trackID);
     }
 
     dispose() {
