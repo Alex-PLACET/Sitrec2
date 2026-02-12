@@ -625,6 +625,15 @@ export class CNode3DObject extends CNode3DGroup {
             .tooltip("Display the bounding box of the object with dimensions")
             .isCommon = true;
 
+        this.forceAboveSurface = v.forceAboveSurface ?? true;
+        this.addSimpleSerial("forceAboveSurface");
+
+        this.gui.add(this, "forceAboveSurface").name("Force Above Surface").listen().onChange((v) => {
+            setRenderOne(true)
+        })
+            .tooltip("Force the object to be fully above the ground surface")
+            .isCommon = true;
+
         // Add export to KML button
        this.gui.add(this, "exportToKML").name("Export to KML")
             .tooltip("Export this 3D object as a KML file for Google Earth")

@@ -141,11 +141,10 @@ export class CNodeControllerTrackPosition extends CNodeController {
         var pos = this.in.sourceTrack.p(f)
         assert(!Number.isNaN(pos.x), "CNodeControllerTrackPosition: track's position.x NaN")
 
-        // note the adjustment for this in CNodeControllerObjectTilt
-        // for when there's no tilt type
-        // Use the cached center-to-lowest-point height if available, otherwise default to 2
-        const clampHeight = objectNode.cachedCenterToLowestPoint ?? 2;
-        pos = clampAboveGround(pos, clampHeight);
+        if (objectNode.forceAboveSurface !== false) {
+            const clampHeight = objectNode.cachedCenterToLowestPoint ?? 2;
+            pos = clampAboveGround(pos, clampHeight);
+        }
 
         if (object.isCamera) {
             updateCameraAndUI(pos, object, objectNode);
