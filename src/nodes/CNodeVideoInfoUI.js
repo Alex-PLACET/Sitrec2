@@ -1,5 +1,5 @@
 import {CNodeViewUI} from "./CNodeViewUI";
-import {CustomManager, GlobalDateTimeNode, Globals, NodeMan, Sit} from "../Globals";
+import {CustomManager, GlobalDateTimeNode, Globals, NodeMan, setRenderOne, Sit} from "../Globals";
 import {par} from "../par";
 
 const DEFAULT_X = 50;
@@ -674,23 +674,34 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
             let isEditing = controller.isEditing() && controller.getEditingTrack() === track;
             let isKeyframe = false;
             
+            let direction = 0;
+            let cursorPos = -1;
             if (isEditing) {
-                text = controller.getEditingText() + "▏";
+                text = controller.getEditingText();
+                cursorPos = controller.cursorPos;
                 isKeyframe = track.isKeyframe(frame);
             } else {
                 const displayInfo = track.getDisplayInfo(frame);
                 text = displayInfo.value;
                 isKeyframe = displayInfo.isKeyframe;
+                direction = displayInfo.direction;
             }
+            
+            const indicator = (isKeyframe && !isEditing)
+                ? (direction > 0 ? "▲" : direction < 0 ? "▼" : "=")
+                : null;
             
             const x = this.videoPx(track.x);
             const y = this.videoPy(track.y);
             const metrics = c.measureText(text);
             const textHeight = metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent;
             const vPad = textHeight * 0.05;
+            const indicatorGap = padding;
+            const indicatorMetrics = indicator ? c.measureText(indicator) : null;
+            const indicatorWidth = indicatorMetrics ? indicatorGap + indicatorMetrics.width : 0;
             const bgX = x - metrics.width / 2 - padding;
             const bgY = y - metrics.actualBoundingBoxAscent - padding - vPad;
-            const bgW = metrics.width + padding * 2;
+            const bgW = metrics.width + padding * 2 + indicatorWidth;
             const bgH = textHeight + padding * 2 + vPad * 2;
             
             if (track.lock) {
@@ -715,8 +726,47 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
             c.fillStyle = track.lock ? '#BFBFBF' : '#FFFFFF';
             c.fillText(text, x, y);
             
+            if (cursorPos >= 0) {
+                const cursorVisible = Math.floor((Date.now() - controller.cursorBlinkEpoch) / 530) % 2 === 0;
+                if (cursorVisible) {
+                    const beforeCursor = text.slice(0, cursorPos);
+                    const beforeWidth = c.measureText(beforeCursor).width;
+                    const cursorX = x - metrics.width / 2 + beforeWidth;
+                    const cursorTop = y - textHeight;
+                    const cursorBottom = y + textHeight * 0.2;
+                    c.strokeStyle = '#FFFFFF';
+                    c.lineWidth = 1.5;
+                    c.beginPath();
+                    c.moveTo(cursorX, cursorTop);
+                    c.lineTo(cursorX, cursorBottom);
+                    c.stroke();
+                }
+                this.ensureCursorBlink(controller);
+            }
+            
+            if (indicator) {
+                const indicatorColor = direction > 0 ? '#00FF00' : direction < 0 ? '#FF4444' : '#FFFF00';
+                c.fillStyle = indicatorColor;
+                const indicatorX = x + metrics.width / 2 + indicatorGap;
+                c.textAlign = 'left';
+                c.fillText(indicator, indicatorX, y);
+                c.textAlign = 'center';
+            }
+            
             this._osdDataSeriesBboxes[`osdDataSeries_${i}`] = { x: bgX, y: bgY, w: bgW, h: bgH };
         }
+    }
+
+    ensureCursorBlink(controller) {
+        if (this._cursorBlinkTimer) return;
+        this._cursorBlinkTimer = setInterval(() => {
+            if (!controller.isEditing()) {
+                clearInterval(this._cursorBlinkTimer);
+                this._cursorBlinkTimer = null;
+                return;
+            }
+            setRenderOne();
+        }, 530);
     }
 
     renderInfoElement(c, text, pctX, pctY, fontSize, padding) {
@@ -778,6 +828,10 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
     }
 
     dispose() {
+        if (this._cursorBlinkTimer) {
+            clearInterval(this._cursorBlinkTimer);
+            this._cursorBlinkTimer = null;
+        }
         if (this.boundHandleMouseMove) {
             document.removeEventListener('mousemove', this.boundHandleMouseMove);
         }

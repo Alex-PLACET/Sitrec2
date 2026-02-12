@@ -184,6 +184,11 @@ export class CNodeDisplayTrack extends CNode3DGroup {
                 this.recalculate()
             })
 
+            this.guiFolder.add(this, "trackDisplayStep", 1, 100, 1).name("Display Step").listen().onChange(() => {
+                this.recalculate()
+                setRenderOne(true)
+            })
+
             // color picker for the line color, with optional linked data track
             this.guiLineColor = this.guiFolder.addColor(this, "lineColor").name("Line Color").onChange(() => {
 
@@ -284,6 +289,7 @@ export class CNodeDisplayTrack extends CNode3DGroup {
         }
 
         this.simpleSerials.push("extendToGround")
+        this.simpleSerials.push("trackDisplayStep")
 
         this.recalculate()
     }

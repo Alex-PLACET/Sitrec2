@@ -86,18 +86,36 @@ class COSDDataSeries {
     
     getDisplayInfo(frame) {
         if (this.isKeyframe(frame)) {
-            return { value: this.frameData[frame], isKeyframe: true };
+            return { value: this.frameData[frame], isKeyframe: true, direction: this.getKeyframeDirection(frame) };
         }
         
         let prevFrame = frame - 1;
         while (prevFrame >= 0) {
             if (this.isKeyframe(prevFrame)) {
-                return { value: this.frameData[prevFrame], isKeyframe: false };
+                return { value: this.frameData[prevFrame], isKeyframe: false, direction: 0 };
             }
             prevFrame--;
         }
         
-        return { value: PLACEHOLDER_TEXT, isKeyframe: false };
+        return { value: PLACEHOLDER_TEXT, isKeyframe: false, direction: 0 };
+    }
+
+    getKeyframeDirection(frame) {
+        const curVal = parseFloat(this.frameData[frame]);
+        if (isNaN(curVal)) return 0;
+
+        let prevFrame = frame - 1;
+        while (prevFrame >= 0) {
+            if (this.isKeyframe(prevFrame)) {
+                const prevVal = parseFloat(this.frameData[prevFrame]);
+                if (isNaN(prevVal)) return 0;
+                if (curVal > prevVal) return 1;
+                if (curVal < prevVal) return -1;
+                return 0;
+            }
+            prevFrame--;
+        }
+        return 0;
     }
 
     setValue(frame, value) {
@@ -188,6 +206,8 @@ export class CNodeOSDDataSeriesController extends CNode {
         this.activeTrack = null;
         this.editingText = "";
         this.editingModified = false;
+        this.cursorPos = 0;
+        this.cursorBlinkEpoch = Date.now();
         this.showAll = true;
         this.dataTracks = {};
         
@@ -461,6 +481,7 @@ export class CNodeOSDDataSeriesController extends CNode {
             }),
             width: 2,
             ignoreAB: true,
+            trackDisplayStep: 1,
             layers: LAYER.MASK_HELPERS,
         });
 
@@ -602,6 +623,7 @@ export class CNodeOSDDataSeriesController extends CNode {
         const value = track.getValue(frame);
         this.editingText = (value === PLACEHOLDER_TEXT) ? "" : value;
         this.editingModified = track.isKeyframe(frame);
+        this.cursorPos = this.editingText.length;
         
         document.addEventListener('keydown', this.boundHandleKeyDown, true);
         
@@ -623,6 +645,7 @@ export class CNodeOSDDataSeriesController extends CNode {
         this.activeTrack = null;
         this.editingText = "";
         this.editingModified = false;
+        this.cursorPos = 0;
         
         document.removeEventListener('keydown', this.boundHandleKeyDown, true);
         unregisterFrameBlocker('osdDataSeriesEdit');
@@ -635,6 +658,7 @@ export class CNodeOSDDataSeriesController extends CNode {
         
         e.preventDefault();
         e.stopPropagation();
+        this.cursorBlinkEpoch = Date.now();
         
         const frame = Math.floor(par.frame);
         
@@ -669,15 +693,52 @@ export class CNodeOSDDataSeriesController extends CNode {
             return;
         }
         
-        if (e.key === 'Backspace') {
-            this.editingText = this.editingText.slice(0, -1);
-            this.editingModified = true;
+        if (e.key === 'ArrowLeft') {
+            if (this.cursorPos > 0) this.cursorPos--;
             setRenderOne();
             return;
         }
         
+        if (e.key === 'ArrowRight') {
+            if (this.cursorPos < this.editingText.length) this.cursorPos++;
+            setRenderOne();
+            return;
+        }
+        
+        if (e.key === 'Home') {
+            this.cursorPos = 0;
+            setRenderOne();
+            return;
+        }
+        
+        if (e.key === 'End') {
+            this.cursorPos = this.editingText.length;
+            setRenderOne();
+            return;
+        }
+        
+        if (e.key === 'Backspace') {
+            if (this.cursorPos > 0) {
+                this.editingText = this.editingText.slice(0, this.cursorPos - 1) + this.editingText.slice(this.cursorPos);
+                this.cursorPos--;
+                this.editingModified = true;
+                setRenderOne();
+            }
+            return;
+        }
+        
+        if (e.key === 'Delete') {
+            if (this.cursorPos < this.editingText.length) {
+                this.editingText = this.editingText.slice(0, this.cursorPos) + this.editingText.slice(this.cursorPos + 1);
+                this.editingModified = true;
+                setRenderOne();
+            }
+            return;
+        }
+        
         if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
-            this.editingText += e.key;
+            this.editingText = this.editingText.slice(0, this.cursorPos) + e.key + this.editingText.slice(this.cursorPos);
+            this.cursorPos++;
             this.editingModified = true;
             setRenderOne();
         }
@@ -705,6 +766,7 @@ export class CNodeOSDDataSeriesController extends CNode {
             this.editingText = (value === PLACEHOLDER_TEXT) ? "" : value;
             this.editingModified = false;
         }
+        this.cursorPos = this.editingText.length;
         
         setRenderOne();
     }
