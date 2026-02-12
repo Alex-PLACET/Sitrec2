@@ -277,8 +277,11 @@ export class CNodeMISBDataTrack extends CNodeEmptyArray {
 
     }
 
-    adjustAlt(a) {
+    adjustAlt(a, lat, lon) {
         if (this.altitudeLock !== undefined && this.altitudeLock !== -1) {
+            if (this.altitudeLockAGL && lat !== undefined && lon !== undefined) {
+                return elevationAtLL(lat, lon) + this.altitudeLock;
+            }
             return this.altitudeLock;
         } else if (this.altitudeOffset !== undefined) {
             return a + this.altitudeOffset
@@ -289,7 +292,7 @@ export class CNodeMISBDataTrack extends CNodeEmptyArray {
 
     getAlt(i) {
         let a = this.getRawAlt(i);
-        return this.adjustAlt(a);
+        return this.adjustAlt(a, this.getLat(i), this.getLon(i));
     }
 
     // get time at frame i in milliseconds since epoch

@@ -1141,6 +1141,12 @@ export class CNodeOSDGraphView extends CNodeCurveEditorView2 {
             if (controller) controller.updateGraph();
         }
 
+        if (this._lastWidth !== this.widthPx || this._lastHeight !== this.heightPx) {
+            this._lastWidth = this.widthPx;
+            this._lastHeight = this.heightPx;
+            this.autoScale();
+        }
+
         const ctx = this.ctx;
         const margin = 60;
         const rightMargin = this.hasY2 ? 60 : 60;

@@ -253,6 +253,12 @@ export class CNodeDisplayTrack extends CNode3DGroup {
                     pruneIfUnused: true
                 }, this.guiFolder)
 
+                track.altitudeLockAGL = true;
+                this.guiFolder.add(track, "altitudeLockAGL").name("Alt Lock AGL").listen()
+                    .onChange(() => {
+                        track.recalculateCascade()
+                    })
+
                 track.timeOffset = 0;
 
                 new CNodeGUIValue({

@@ -1198,7 +1198,6 @@ class CTrackManager extends CManager {
             console.log(`Curve type changed to ${value} for track: ${shortName}`);
         });
         
-        // Add altitude lock slider (-1 = off, >= 0 = lock to that AGL altitude in meters)
         trackOb.altitudeLock = -1;
         new CNodeGUIValue({
             id: trackID + "_altitudeLock",
@@ -1217,6 +1216,12 @@ class CTrackManager extends CManager {
             elasticMax: 100000,
             pruneIfUnused: true
         }, guiFolder);
+
+        trackOb.altitudeLockAGL = true;
+        guiFolder.add(trackOb, 'altitudeLockAGL').name('Alt Lock AGL').listen().onChange((value) => {
+            splineEditorNode.altitudeLockAGL = value;
+            splineEditorNode.recalculateCascade();
+        });
         
         // Set initial edit mode state
         if (editMode) {
@@ -1417,6 +1422,7 @@ class CTrackManager extends CManager {
                     constantSpeed: trackOb.constantSpeed,
                     extrapolateTrack: trackOb.extrapolateTrack,
                     altitudeLock: trackOb.altitudeLock,
+                    altitudeLockAGL: trackOb.altitudeLockAGL,
                     color: trackOb.trackColor ? 
                         (Math.round(trackOb.trackColor.r * 255) << 16) |
                         (Math.round(trackOb.trackColor.g * 255) << 8) |
@@ -1527,6 +1533,7 @@ class CTrackManager extends CManager {
                     trackOb.constantSpeed = trackData.constantSpeed ?? false;
                     trackOb.extrapolateTrack = trackData.extrapolateTrack ?? true;
                     trackOb.altitudeLock = trackData.altitudeLock ?? -1;
+                    trackOb.altitudeLockAGL = trackData.altitudeLockAGL ?? true;
                     trackOb.curveType = trackData.curveType ?? 'chordal';
                     
                     // Update the spline editor node with these properties
@@ -1539,6 +1546,7 @@ class CTrackManager extends CManager {
                         // Set altitude lock directly without triggering recalculate
                         // The final recalculateAllRootFirst() will handle it
                         splineEditorNode.altitudeLock = trackOb.altitudeLock;
+                        splineEditorNode.altitudeLockAGL = trackOb.altitudeLockAGL;
                         splineEditorNode.updateAltitudeLock();
                         // Update curve type
                         if (trackOb.curveType && typeof splineEditorNode.setCurveType === 'function') {

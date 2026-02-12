@@ -772,7 +772,12 @@ export function adjustHeightAboveGround (point, height, raycast = false) {
     return pointAbove(ground, height);
 }
 
-// given a point in EUS, calculate the altitude above the WGS84 sphere (i.e. the MSL altitude)
+export function adjustHeightMSL(point, height) {
+    const center = V3(0, -wgs84.RADIUS, 0);
+    const dir = point.clone().sub(center).normalize();
+    return center.clone().add(dir.multiplyScalar(wgs84.RADIUS + height));
+}
+
 export function calculateAltitude(point) {
     const center = V3(0,-wgs84.RADIUS,0);
     return point.clone().sub(center).length() - wgs84.RADIUS;

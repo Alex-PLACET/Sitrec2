@@ -453,6 +453,7 @@ export class CNodeOSDDataSeriesController extends CNode {
         const display = new CNodeDisplayTrack({
             id: trackID + "_Display",
             track: trackID,
+            dataTrack: trackID,
             color: new CNodeConstant({
                 id: trackID + "_Color",
                 value: trackColor,
@@ -509,6 +510,7 @@ export class CNodeOSDDataSeriesController extends CNode {
             for (const entry of Object.values(this.dataTracks)) {
                 entry.track.recalculateCascade();
             }
+            setRenderOne(true);
         }, 250);
     }
 
