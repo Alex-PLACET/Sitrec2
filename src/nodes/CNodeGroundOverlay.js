@@ -623,6 +623,10 @@ export class CNodeGroundOverlay extends CNode3DGroup {
                 return;
             }
 
+            if (this.tileHasLoadedChildren(tile)) {
+                return;
+            }
+
             const tileNorth = mapProjection.getNorthLatitude(tile.y, tile.z);
             const tileSouth = mapProjection.getNorthLatitude(tile.y + 1, tile.z);
             const tileWest = mapProjection.getLeftLongitude(tile.x, tile.z);
@@ -1064,6 +1068,13 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         const tileEast = mapProjection.getLeftLongitude(tile.x + 1, tile.z);
         return this.tilesOverlap(tileNorth, tileSouth, tileEast, tileWest);
     }
+
+    tileHasLoadedChildren(tile) {
+        if (!tile.children) return false;
+        return tile.children.every(child =>
+            child && child.loaded && child.mesh && child.mesh.geometry
+        );
+    }
     
     onTileVisibilityChanged({tile, oldMask, newMask}) {
         if (this.altitude > 0) return;
@@ -1079,6 +1090,14 @@ export class CNodeGroundOverlay extends CNode3DGroup {
             this.disposeTileMesh(tileKey);
             setRenderOne(true);
         } else if (newMask !== 0) {
+            if (tile.parent && this.tileHasLoadedChildren(tile.parent)) {
+                this.disposeTileMesh(tile.parent.key());
+            }
+
+            if (this.tileHasLoadedChildren(tile)) {
+                return;
+            }
+
             const entry = this.overlayTileMeshes.get(tileKey);
             if (entry) {
                 if (entry.mesh) entry.mesh.layers.mask = newMask;
@@ -1102,6 +1121,10 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         const terrainMap = this.getTerrainMap();
         if (!terrainMap || tile.map !== terrainMap) return;
         
+        if (tile.parent && this.tileHasLoadedChildren(tile.parent)) {
+            this.disposeTileMesh(tile.parent.key());
+        }
+
         const mapProjection = terrainMap.options?.mapProjection;
         if (!mapProjection) return;
         if (!tile.mesh || !tile.mesh.geometry || !tile.loaded) return;
@@ -1109,6 +1132,8 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         
         const layerMask = tile.mesh.layers.mask;
         if (layerMask === 0) return;
+
+        if (this.tileHasLoadedChildren(tile)) return;
         
         this.createOverlayTileFromTerrainTile(tile, mapProjection, layerMask);
         setRenderOne(true);
@@ -2425,7 +2450,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         if (terrainMap && mapProjection) {
             terrainMap.forEachTile((tile) => {
                 if (tile.mesh && tile.mesh.layers.mask !== 0 && tile.loaded) {
-                    if (this.tileOverlapsOverlay(tile, mapProjection)) {
+                    if (!this.tileHasLoadedChildren(tile) && this.tileOverlapsOverlay(tile, mapProjection)) {
                         terrainTileKeys.add(tile.key());
                         zoomCounts[tile.z] = (zoomCounts[tile.z] || 0) + 1;
                     }
