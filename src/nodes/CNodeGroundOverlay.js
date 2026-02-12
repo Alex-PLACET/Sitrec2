@@ -623,7 +623,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
                 return;
             }
 
-            if (this.tileHasLoadedChildren(tile)) {
+            if (this.tileHasActiveChildren(tile)) {
                 return;
             }
 
@@ -1069,11 +1069,30 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         return this.tilesOverlap(tileNorth, tileSouth, tileEast, tileWest);
     }
 
-    tileHasLoadedChildren(tile) {
+    tileHasActiveChildren(tile) {
         if (!tile.children) return false;
-        return tile.children.every(child =>
-            child && child.loaded && child.mesh && child.mesh.geometry
-        );
+        let hasAnyActive = false;
+        for (const child of tile.children) {
+            if (child === null) continue;
+            if (child.tileLayers === 0 || !child.loaded || !child.mesh || !child.mesh.geometry) return false;
+            hasAnyActive = true;
+        }
+        return hasAnyActive;
+    }
+
+    ensureOverlayForTile(tile, terrainMap) {
+        if (!tile || !tile.mesh || !tile.mesh.geometry || !tile.loaded) return;
+        const layerMask = tile.mesh.layers.mask;
+        if (layerMask === 0) return;
+        if (this.tileHasActiveChildren(tile)) return;
+        if (this.overlayTileMeshes.has(tile.key())) return;
+
+        const mapProjection = terrainMap.options?.mapProjection;
+        if (!mapProjection) return;
+        if (!this.tileOverlapsOverlay(tile, mapProjection)) return;
+
+        this.createOverlayTileFromTerrainTile(tile, mapProjection, layerMask);
+        setRenderOne(true);
     }
     
     onTileVisibilityChanged({tile, oldMask, newMask}) {
@@ -1088,13 +1107,14 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         
         if (newMask === 0) {
             this.disposeTileMesh(tileKey);
+            this.ensureOverlayForTile(tile.parent, terrainMap);
             setRenderOne(true);
-        } else if (newMask !== 0) {
-            if (tile.parent && this.tileHasLoadedChildren(tile.parent)) {
+        } else {
+            if (tile.parent && this.tileHasActiveChildren(tile.parent)) {
                 this.disposeTileMesh(tile.parent.key());
             }
 
-            if (this.tileHasLoadedChildren(tile)) {
+            if (this.tileHasActiveChildren(tile)) {
                 return;
             }
 
@@ -1104,13 +1124,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
                 if (entry.skirtMesh) entry.skirtMesh.layers.mask = newMask;
                 setRenderOne(true);
             } else {
-                const mapProjection = terrainMap.options?.mapProjection;
-                if (!mapProjection) return;
-                if (!tile.mesh || !tile.mesh.geometry || !tile.loaded) return;
-                if (!this.tileOverlapsOverlay(tile, mapProjection)) return;
-                
-                this.createOverlayTileFromTerrainTile(tile, mapProjection, newMask);
-                setRenderOne(true);
+                this.ensureOverlayForTile(tile, terrainMap);
             }
         }
     }
@@ -1121,7 +1135,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         const terrainMap = this.getTerrainMap();
         if (!terrainMap || tile.map !== terrainMap) return;
         
-        if (tile.parent && this.tileHasLoadedChildren(tile.parent)) {
+        if (tile.parent && this.tileHasActiveChildren(tile.parent)) {
             this.disposeTileMesh(tile.parent.key());
         }
 
@@ -1133,7 +1147,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         const layerMask = tile.mesh.layers.mask;
         if (layerMask === 0) return;
 
-        if (this.tileHasLoadedChildren(tile)) return;
+        if (this.tileHasActiveChildren(tile)) return;
         
         this.createOverlayTileFromTerrainTile(tile, mapProjection, layerMask);
         setRenderOne(true);
@@ -2450,7 +2464,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         if (terrainMap && mapProjection) {
             terrainMap.forEachTile((tile) => {
                 if (tile.mesh && tile.mesh.layers.mask !== 0 && tile.loaded) {
-                    if (!this.tileHasLoadedChildren(tile) && this.tileOverlapsOverlay(tile, mapProjection)) {
+                    if (!this.tileHasActiveChildren(tile) && this.tileOverlapsOverlay(tile, mapProjection)) {
                         terrainTileKeys.add(tile.key());
                         zoomCounts[tile.z] = (zoomCounts[tile.z] || 0) + 1;
                     }
