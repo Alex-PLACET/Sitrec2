@@ -5,7 +5,7 @@
 // take their size from the div.
 //
 import {CNode} from './CNode.js'
-import {Globals, guiShowHideViews, NodeMan} from "../Globals";
+import {Globals, guiShowHideGraphs, guiShowHideViews, NodeMan} from "../Globals";
 import {assert} from "../assert.js";
 import {ViewMan} from "../CViewManager";
 import {makeDraggable, makeResizable, removeDraggable, removeResizable} from "../DragResizeUtils";
@@ -192,8 +192,15 @@ class CNodeView extends CNode {
         if (!this.overlayView && !this.excludeFromViewsMenu) {
             const name = v.menuName ?? this.id;
             this.showHideName = name;
+
+            let menu = guiShowHideViews;
+            // if it's derived from a graph view, then put it in the graph submenu
+            if (v.isGraphView) {
+                menu = guiShowHideGraphs;
+            }
+
             // menu entry to show/hide this view
-            guiShowHideViews.add(this, 'visible').listen().name(name).onChange(value => {
+            menu.add(this, 'visible').listen().name(name).onChange(value => {
                 this.visible = undefined; // force update
                 this.setVisible(value);
                 if (value) {

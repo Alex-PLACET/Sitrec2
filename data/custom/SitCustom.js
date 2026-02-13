@@ -908,6 +908,7 @@ sitch = {
         min:0, max:1000,
         left: 0.25, top:0, width: .15, height:-1,
         dynamicY: true,
+        invariants: ["label"],  // override older value of label from old saves.
     },
 
     azFromLOS: {kind: "AzFromLOS", LOS: "JetLOSCameraCenter", useRecorded: false, checkDisplayOutputs: true},

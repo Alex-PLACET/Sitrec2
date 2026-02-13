@@ -77,6 +77,7 @@ export let guiTweaks;
 export let guiShowHide;
 export let guiJetTweaks;
 export let guiShowHideViews
+export let guiShowHideGraphs
 export let guiPhysics;
 
 export let infoDiv;
@@ -97,11 +98,12 @@ export function setNewSitchObject(object){
 
 export const guiMenus = {}
 
-export function setupGUIGlobals(_gui, _show, _tweaks, _showViews, _physics) {
+export function setupGUIGlobals(_gui, _show, _tweaks, _showViews, _showGraphs, _physics) {
     gui = _gui
     guiShowHide = _show;
     guiTweaks = _tweaks;
     guiShowHideViews = _showViews;
+    guiShowHideGraphs = _showGraphs;
     guiPhysics = _physics;
 }
 

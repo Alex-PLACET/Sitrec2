@@ -125,7 +125,7 @@ export function AddTargetDistanceGraph(mungeInputs, windowParams={}, editorParam
         return NMFromMeters(d0)
     }
 
-    return addGenericJetGraph("targetDistanceGraph", "Target Distance NM", mungeInputs, windowParams, editorParams, mungeFunction);
+    return addGenericJetGraph("targetDistanceGraph", "Traverse Distance NM", mungeInputs, windowParams, editorParams, mungeFunction);
 
 }
 
@@ -394,7 +394,7 @@ export function AddAltitudeGraph(min, max, source = "LOSTraverseSelect", left  =
             //     dynamicRange: 1000,
             xLabelDelta: true,
             minX: 0, maxX: Sit.frames - 1, minY: min, maxY: max,
-            xLabel: "Frame", xStep: xStep, yLabel: "Target Altitude", yStep: yStep,
+            xLabel: "Frame", xStep: xStep, yLabel: "Traverse Altitude", yStep: yStep,
             xLabel2: "Alititude",
             dynamicX: true,
             dynamicY: dynamicY,

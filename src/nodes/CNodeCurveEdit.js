@@ -13,13 +13,16 @@ import {isConsole} from "../configUtils";
 
 export class CNodeCurveEditorView extends CNodeViewCanvas2D {
     constructor(v) {
+        v.isGraphView = true; // so it ends up in the right menu
         v.menuName = v.menuName ?? v.editorConfig.yLabel
         super(v);
+        this.isGraphView = true;
         v.editorConfig.canvas = this.canvas
         v.editorConfig.devicePixelRatio = this.devicePixelRatio
         this.addInputs(v.displayInputs)
         this.editor = new MetaBezierCurveEditor(v.editorConfig)
         this.recalculate()
+
 
         // We need to call recalculate when its canvas has been resized
         // to force a redraw

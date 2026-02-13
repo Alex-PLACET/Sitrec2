@@ -443,7 +443,7 @@ export const SitFlir1 = {
     },
 
     speedGraphForTarget: { kind: "speedGraph",
-        label: "Target Speed",
+        label: "Traverse Speed",
         track: "LOSTraverseSelect",
         min:0, max:500,
         left: 0.25, top:0, width: .15, height:-1},

@@ -1135,6 +1135,19 @@ export function updateNewCustomFields(sitchObject) {
                 }
             }
 
+            // invariants are things that the user cannot edit
+            // however, we might want to change them, like renaming graph entries
+            // so we can add and array of invariant keys, and if they exist in the SitchObject[key
+            // then we update them to match the customObj, even if the rest of the node def is not updated
+            // Essentially a backwards compatible way of renaming text fields.
+            if (value.invariants) {
+                for (const invariantKey of value.invariants) {
+                    if (sitchObject[key] !== undefined) {
+                        sitchObject[key][invariantKey] = customObj[key][invariantKey];
+                    }
+                }
+            }
+
             // if the key is now a valid entry in the sitchObject, then update lastKey
             // (either it was an existing entry, or we just added it above)
             // we are only updating lastKey to something that we can find later.

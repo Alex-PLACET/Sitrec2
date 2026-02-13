@@ -1361,7 +1361,8 @@ async function initializeOnce() {
     addGUIMenu("traverse", "Traverse").tooltip( "Traverse controls\nThe traverse object is the object that traverses the lines of sight - i.e. the UAP we are interested in\nThis menu defined how the traverse object moves and behaves");
 
     const _guiShowHide = addGUIMenu("showhide", "Show/Hide").tooltip("Showing or hiding views, object and other elements");
-    const _guiShowHideViews = addGUIFolder("showhideviews", "Views", "showhide").tooltip("Show or hide views (windows) like the look view, the video, the main view, and various graphs");
+    const _guiShowHideViews = addGUIFolder("showhideviews", "Views", "showhide").tooltip("Show or hide views (windows) like the look view, the video, the main view, as well as overlays like the MQ9UI");
+    const _guiShowHideGraphs = addGUIFolder("showhidegraphs", "Graphs", "showhide").tooltip("Show or hide various graphs");
     const _guiTweaks = addGUIMenu("effects", "Effects" ).tooltip("S pecial effects like blur, pixelation, and color adjustments that are applied to the final image in the look view");
     addGUIMenu("lighting", "Lighting").tooltip("The lighting of the scene, like the sun and the ambient light");
     addGUIMenu("contents", "Contents").tooltip("The contents of the scene, mostly used for tracks");
@@ -1420,7 +1421,7 @@ async function initializeOnce() {
     setupHelpSearch(guiMenus.help);
 
     // legacy accessor variables. can also use guiMenus.physics, etc
-    setupGUIGlobals(_gui,_guiShowHide,_guiTweaks, _guiShowHideViews, _guiPhysics)
+    setupGUIGlobals(_gui,_guiShowHide,_guiTweaks, _guiShowHideViews, _guiShowHideGraphs, _guiPhysics)
     addMotionAnalysisMenu();
     addObjectTrackingMenu();
     addTextExtractionMenu();
