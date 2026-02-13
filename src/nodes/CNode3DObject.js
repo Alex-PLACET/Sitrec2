@@ -2060,8 +2060,15 @@ export class CNode3DObject extends CNode3DGroup {
 
     updateEnvMap(view) {
         if (!this.cubeCamera || !view.renderer) return;
-        if (this._envMapLastFrame === mainLoopCount) return;
-        this._envMapLastFrame = mainLoopCount;
+
+        if (!this._envMapRenderedRenderers) this._envMapRenderedRenderers = new Set();
+        const rendererId = view.renderer.domElement;
+        if (this._envMapLastFrame === mainLoopCount && this._envMapRenderedRenderers.has(rendererId)) return;
+        if (this._envMapLastFrame !== mainLoopCount) {
+            this._envMapLastFrame = mainLoopCount;
+            this._envMapRenderedRenderers.clear();
+        }
+        this._envMapRenderedRenderers.add(rendererId);
 
         this.group.visible = false;
 
