@@ -1947,6 +1947,7 @@ export class CNode3DObject extends CNode3DGroup {
             for (const entry of this._perViewEnvMaps.values()) {
                 entry.renderTarget.dispose();
             }
+            this._perViewEnvMaps.clear();
             this._perViewEnvMaps = null;
         }
         this._envMapResolution = null;

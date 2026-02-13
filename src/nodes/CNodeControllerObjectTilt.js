@@ -127,6 +127,8 @@ export class CNodeControllerObjectTilt extends CNodeController {
         if (object !== undefined) {
             if (f >= 0) {
 
+                if (this.tiltType === "none") return;
+
                 var next = this.in.track.p(f + 1)
 
                 // if (this.id === "orientCameraObjectTarget") {
@@ -141,12 +143,14 @@ export class CNodeControllerObjectTilt extends CNodeController {
                     next.sub(windVector)
                 }
 
+                const currentPos = this.in.track.p(f)
+                if (currentPos.distanceTo(next) < 1e-6) return;
 
                 // we want to use track positions not the object.position as the clampAboveGroung might have moved it
                 // so temporarily set the object position back to where it was before any clampAboveGround call
 
                 const oldPos = object.position.clone();
-                 object.position.copy(this.in.track.p(f))
+                 object.position.copy(currentPos)
 
                 object.up = objectNode.getUpVector(object.position)
                 object.lookAt(next)

@@ -100,8 +100,9 @@ export class CNodeSmoothedPositionTrack extends CNodeTrack {
                 window = this.sourceArray.length - 3;
             }
 
-            if (window <= 0) {
-                // zero sized window, just copy the data
+            const isConstant = x.every(v => v === x[0]) && y.every(v => v === y[0]) && z.every(v => v === z[0]);
+
+            if (window <= 0 || isConstant) {
                 xs = x
                 ys = y
                 zs = z

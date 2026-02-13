@@ -219,18 +219,28 @@ export class CNodeManager extends CManager{
 
     disposeAll() {
         console.log("Disposing all nodes")
-//        super.disposeAll();
 
-        // delete all entries in this.list
-        // for the node manager we also need to unlink them from all outputs
-        // to avoid the assertion in disposeRemove
-        // safe as we are disposing all nodes
-        Object.keys(this.list).forEach(key => {
-            // Some nodes might dispose of other nodes, so we need to check if the node still exists
+        const keys = Object.keys(this.list);
+        const viewKeys = [];
+        const nonViewKeys = [];
+        for (const key of keys) {
+            if (this.list[key].data.renderer) {
+                viewKeys.push(key);
+            } else {
+                nonViewKeys.push(key);
+            }
+        }
+
+        for (const key of nonViewKeys) {
             if (this.exists(key)) {
                 this.unlinkDisposeRemove(key);
             }
-        });
+        }
+        for (const key of viewKeys) {
+            if (this.exists(key)) {
+                this.unlinkDisposeRemove(key);
+            }
+        }
 
         // a clean slate so we reset the UniqueNodeNumber
         // this is needed for modding, as the node names must be consistent.

@@ -423,7 +423,7 @@ export class VideoExportManager {
                         visible = view.overlayView.visible;
                     }
                     if (view.in.relativeTo) {
-                        visible = view.in.relativeTo.visible;
+                        visible = view.visible && view.in.relativeTo.visible;
                     }
 
                     if (visible) {
@@ -447,6 +447,12 @@ export class VideoExportManager {
                         }
                     }
                     view.renderCanvas(frame);
+                    for (const entry of Object.values(NodeMan.list)) {
+                        const node = entry.data;
+                        if (node.postRender !== undefined) {
+                            node.postRender(view);
+                        }
+                    }
                     if (view.renderer) {
                         view.renderer.getContext().finish();
                     }
@@ -476,6 +482,12 @@ export class VideoExportManager {
                         }
                     }
                     view.renderCanvas(frame);
+                    for (const entry of Object.values(NodeMan.list)) {
+                        const node = entry.data;
+                        if (node.postRender !== undefined) {
+                            node.postRender(view);
+                        }
+                    }
                     if (view.canvas) {
                         const parentView = view.overlayView;
                         const x = parentView.leftPx * scale;
