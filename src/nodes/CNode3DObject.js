@@ -15,10 +15,12 @@ import {
     CircleGeometry,
     Color,
     ConeGeometry,
+    CubeCamera,
     CurvePath,
     CylinderGeometry,
     DodecahedronGeometry,
     EdgesGeometry,
+    HalfFloatType,
     IcosahedronGeometry,
     LatheGeometry,
     LineCurve3,
@@ -39,9 +41,10 @@ import {
     TubeGeometry,
     Vector2,
     Vector3,
+    WebGLCubeRenderTarget,
     WireframeGeometry
 } from "three";
-import {FileManager, Globals, guiMenus, NodeMan, setRenderOne, Sit} from "../Globals";
+import {FileManager, Globals, guiMenus, mainLoopCount, NodeMan, setRenderOne, Sit} from "../Globals";
 import {assert} from "../assert";
 import {disposeScene, propagateLayerMaskObject} from "../threeExt";
 import {loadGLTFModel} from "./CNode3DModel";
@@ -51,6 +54,7 @@ import {CNodeLabel3D, CNodeMeasureAB} from "./CNodeLabels3D";
 import {EUSToLLA} from "../LLA-ECEF-ENU";
 
 import {findRootTrack} from "../FindRootTrack";
+import {GlobalScene} from "../LocalFrame";
 
 // Note these files are CASE SENSIVE. Mac OS is case insensitive, so be careful. (e.g. F-15.glb will not work on my deployed server)
 export const ModelFiles = {
@@ -508,12 +512,24 @@ const materialTypes = {
             roughness: [[0.5, 0, 1, 0.01], "Roughness"],
             metalness: [[0.5, 0, 1, 0.01], "Metalness"],
         }
+    },
+
+    envmap: {
+        m: MeshPhysicalMaterial,
+        params: {
+            color: ["white", "Base Color"],
+            roughness: [[0, 0, 1, 0.01], "Roughness - 0 is a perfect mirror"],
+            metalness: [[1, 0, 1, 0.01], "Metalness - 1 is fully metallic/reflective"],
+            envMapResolution: [[256, 64, 1024, 64], "Cube map resolution per face (higher = sharper reflections, slower)"],
+            flatShading: [false, "Enable flat shading - i.e. no smooth shading"],
+            fog: [true, "Enable Fog"],
+        }
     }
 
 }
 
 const commonMaterialParams = {
-    material: [["basic", "lambert", "phong", "physical"],"Type of Material lighting"],
+    material: [["basic", "lambert", "phong", "physical", "envMap"],"Type of Material lighting"],
     wireframe: [false, "Display geometry object as a wireframe"],
     edges: [false, "Display geometry object as edges"],
     depthTest: [true, "Enable depth testing"],
@@ -1877,15 +1893,9 @@ export class CNode3DObject extends CNode3DGroup {
         const materialDef = materialTypes[materialType];
         assert(materialDef !== undefined, "Unknown material type: " + materialType)
 
-        // if the material type has changed, then delete all the material-specific parameters
-        // and re-create them for the new material type
         if (this.lastMaterial !== materialType) {
 
-            // remove all the non-common children of the material folder
             this.destroyNonCommonUI(this.materialFolder)
-
-
-
 
             this.lastMaterial = materialType
             const materialParams = materialDef.params;
@@ -1897,11 +1907,43 @@ export class CNode3DObject extends CNode3DGroup {
             this.material.dispose();
         }
 
-        //this.lastMaterial = this.common.material;
-        this.material = new materialDef.m({
-            //  color: this.common.color,
-            ...this.materialParams
+        const params = {...this.materialParams};
+        const isEnvMap = materialType === "envmap";
+
+        if (isEnvMap) {
+            delete params.envMapResolution;
+            this.setupCubeCamera();
+            params.envMap = this.cubeRenderTarget.texture;
+        } else {
+            this.disposeCubeCamera();
+        }
+
+        this.material = new materialDef.m(params);
+    }
+
+    setupCubeCamera() {
+        const resolution = this.materialParams.envMapResolution ?? 256;
+        if (this.cubeRenderTarget && this.cubeRenderTargetResolution === resolution) {
+            this.material && (this.material.envMap = this.cubeRenderTarget.texture);
+            return;
+        }
+        this.disposeCubeCamera();
+        this.cubeRenderTarget = new WebGLCubeRenderTarget(resolution, {
+            type: HalfFloatType,
         });
+        this.cubeCamera = new CubeCamera(0.1, 100000, this.cubeRenderTarget);
+        this.cubeRenderTargetResolution = resolution;
+        this.envMapNeedsUpdate = true;
+    }
+
+    disposeCubeCamera() {
+        if (this.cubeRenderTarget) {
+            this.cubeRenderTarget.dispose();
+            this.cubeRenderTarget = null;
+        }
+        this.cubeCamera = null;
+        this.cubeRenderTargetResolution = null;
+        this.envMapNeedsUpdate = false;
     }
 
     applyMaterialToModel() {
@@ -1986,41 +2028,65 @@ export class CNode3DObject extends CNode3DGroup {
     }
 
     preRender(view) {
-        // Apply user-defined rotations as transforms to the group
-        // This works for both geometries and models, providing consistent behavior
         const common = this.common;
-        if (!common) return; // Safety check
+        if (!common) return;
         
         const target = this.group;
         if (target && (common.rotateX || common.rotateY || common.rotateZ)) {
             this.needsUndo = true;
             
-            // Store the original position and quaternion
             this.origPosition = target.position.clone();
             this.origQuaternion = target.quaternion.clone();
             this.origScale = target.scale.clone();
             
-            // Apply user-defined rotations by multiplying rotation matrices
-
-            // Y first, it's the heading/yaw
             if (common.rotateY) {
                 target.rotateY(common.rotateY * Math.PI / 180);
             }
 
-            // X next, it's the pitch
             if (common.rotateX) {
                 target.rotateX(common.rotateX * Math.PI / 180);
             }
 
-            // Z last, it's the roll/bank
             if (common.rotateZ) {
                 target.rotateZ(common.rotateZ * Math.PI / 180);
             }
             
-            // Update matrices after rotation changes
             target.updateMatrix();
             target.updateMatrixWorld();
         }
+
+        this.updateEnvMap(view);
+    }
+
+    updateEnvMap(view) {
+        if (!this.cubeCamera || !view.renderer) return;
+        if (this._envMapLastFrame === mainLoopCount) return;
+        this._envMapLastFrame = mainLoopCount;
+
+        this.group.visible = false;
+
+        this.cubeCamera.position.setFromMatrixPosition(this.group.matrixWorld);
+
+        for (const child of this.cubeCamera.children) {
+            if (child.isCamera) {
+                child.layers.mask = LAYER.MASK_LOOKRENDER;
+            }
+        }
+
+        const savedBackground = GlobalScene.background;
+        const sunNode = NodeMan.get("theSun", true);
+        if (sunNode) {
+            GlobalScene.background = sunNode.calculateSkyColor(this.cubeCamera.position);
+        }
+
+        const savedRenderTarget = view.renderer.getRenderTarget();
+
+        this.cubeCamera.update(view.renderer, GlobalScene);
+
+        view.renderer.setRenderTarget(savedRenderTarget);
+        GlobalScene.background = savedBackground;
+
+        this.group.visible = true;
     }
     
     postRender(view) {
@@ -2042,6 +2108,7 @@ export class CNode3DObject extends CNode3DGroup {
         if (this.label) {
             NodeMan.disposeRemove(this.label, true);
         }
+        this.disposeCubeCamera();
         this.gui.destroy();
         this.destroyObject();
         super.dispose();
