@@ -592,52 +592,56 @@ export class CNodeGroundOverlay extends CNode3DGroup {
             return;
         }
 
-        if (!NodeMan.exists("TerrainModel")) {
-            return;
-        }
+        this.updateGroupPosition();
+        this.syncOverlayTiles();
+        setRenderOne(true);
+    }
 
-        const terrainNode = NodeMan.get("TerrainModel");
-        if (!terrainNode.maps || !terrainNode.UI) {
-            return;
-        }
-
-        const terrainMap = terrainNode.maps[terrainNode.UI.mapType]?.map;
-        if (!terrainMap) {
-            return;
-        }
+    getDesiredOverlayTiles() {
+        const terrainMap = this.getTerrainMap();
+        if (!terrainMap) return new Map();
 
         const mapProjection = terrainMap.options?.mapProjection;
-        if (!mapProjection) {
-            return;
+        if (!mapProjection) return new Map();
+
+        const desired = new Map();
+        terrainMap.forEachTile((tile) => {
+            if (!tile.mesh || !tile.mesh.geometry || !tile.loaded) return;
+            const layerMask = tile.mesh.layers.mask;
+            if (layerMask === 0) return;
+            if (!this.tileOverlapsOverlay(tile, mapProjection)) return;
+            desired.set(tile.key(), { tile, layerMask });
+        });
+
+        return desired;
+    }
+
+    syncOverlayTiles() {
+        if (this.altitude > 0) return;
+
+        const terrainMap = this.getTerrainMap();
+        if (!terrainMap) return;
+
+        const mapProjection = terrainMap.options?.mapProjection;
+        if (!mapProjection) return;
+
+        const desired = this.getDesiredOverlayTiles();
+
+        for (const key of [...this.overlayTileMeshes.keys()]) {
+            if (!desired.has(key)) {
+                this.disposeTileMesh(key);
+            }
         }
 
-        this.updateGroupPosition();
-
-        terrainMap.forEachTile((tile) => {
-            if (!tile.mesh || !tile.mesh.geometry || !tile.loaded) {
-                return;
+        for (const [key, { tile, layerMask }] of desired) {
+            const existing = this.overlayTileMeshes.get(key);
+            if (existing) {
+                if (existing.mesh) existing.mesh.layers.mask = layerMask;
+                if (existing.skirtMesh) existing.skirtMesh.layers.mask = layerMask;
+            } else {
+                this.createOverlayTileFromTerrainTile(tile, mapProjection, layerMask);
             }
-
-            const layerMask = tile.mesh.layers.mask;
-            if (layerMask === 0) {
-                return;
-            }
-
-            if (this.tileHasActiveChildren(tile)) {
-                return;
-            }
-
-            const tileNorth = mapProjection.getNorthLatitude(tile.y, tile.z);
-            const tileSouth = mapProjection.getNorthLatitude(tile.y + 1, tile.z);
-            const tileWest = mapProjection.getLeftLongitude(tile.x, tile.z);
-            const tileEast = mapProjection.getLeftLongitude(tile.x + 1, tile.z);
-
-            if (!this.tilesOverlap(tileNorth, tileSouth, tileEast, tileWest)) {
-                return;
-            }
-
-            this.createOverlayTileFromTerrainTile(tile, mapProjection, layerMask);
-        });
+        }
 
         setRenderOne(true);
     }
@@ -1069,88 +1073,22 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         return this.tilesOverlap(tileNorth, tileSouth, tileEast, tileWest);
     }
 
-    tileHasActiveChildren(tile) {
-        if (!tile.children) return false;
-        let hasAnyActive = false;
-        for (const child of tile.children) {
-            if (child === null) continue;
-            if (child.tileLayers === 0 || !child.loaded || !child.mesh || !child.mesh.geometry) return false;
-            hasAnyActive = true;
-        }
-        return hasAnyActive;
-    }
-
-    ensureOverlayForTile(tile, terrainMap) {
-        if (!tile || !tile.mesh || !tile.mesh.geometry || !tile.loaded) return;
-        const layerMask = tile.mesh.layers.mask;
-        if (layerMask === 0) return;
-        if (this.tileHasActiveChildren(tile)) return;
-        if (this.overlayTileMeshes.has(tile.key())) return;
-
-        const mapProjection = terrainMap.options?.mapProjection;
-        if (!mapProjection) return;
-        if (!this.tileOverlapsOverlay(tile, mapProjection)) return;
-
-        this.createOverlayTileFromTerrainTile(tile, mapProjection, layerMask);
-        setRenderOne(true);
-    }
-    
     onTileVisibilityChanged({tile, oldMask, newMask}) {
         if (this.altitude > 0) return;
-        
         const terrainMap = this.getTerrainMap();
-        if (!terrainMap || tile.map !== terrainMap) {
-            return;
-        }
-        
-        const tileKey = tile.key();
-        
-        if (newMask === 0) {
-            this.disposeTileMesh(tileKey);
-            this.ensureOverlayForTile(tile.parent, terrainMap);
-            setRenderOne(true);
-        } else {
-            if (tile.parent && this.tileHasActiveChildren(tile.parent)) {
-                this.disposeTileMesh(tile.parent.key());
-            }
-
-            if (this.tileHasActiveChildren(tile)) {
-                return;
-            }
-
-            const entry = this.overlayTileMeshes.get(tileKey);
-            if (entry) {
-                if (entry.mesh) entry.mesh.layers.mask = newMask;
-                if (entry.skirtMesh) entry.skirtMesh.layers.mask = newMask;
-                setRenderOne(true);
-            } else {
-                this.ensureOverlayForTile(tile, terrainMap);
-            }
-        }
+        if (!terrainMap || tile.map !== terrainMap) return;
+        this.syncOverlayTiles();
     }
     
     onTileChanged(tile) {
         if (this.altitude > 0) return;
-        
         const terrainMap = this.getTerrainMap();
         if (!terrainMap || tile.map !== terrainMap) return;
-        
-        if (tile.parent && this.tileHasActiveChildren(tile.parent)) {
-            this.disposeTileMesh(tile.parent.key());
-        }
-
         const mapProjection = terrainMap.options?.mapProjection;
         if (!mapProjection) return;
-        if (!tile.mesh || !tile.mesh.geometry || !tile.loaded) return;
         if (!this.tileOverlapsOverlay(tile, mapProjection)) return;
-        
-        const layerMask = tile.mesh.layers.mask;
-        if (layerMask === 0) return;
-
-        if (this.tileHasActiveChildren(tile)) return;
-        
-        this.createOverlayTileFromTerrainTile(tile, mapProjection, layerMask);
-        setRenderOne(true);
+        this.disposeTileMesh(tile.key());
+        this.syncOverlayTiles();
     }
     
     onPointerDown(event) {
@@ -2462,14 +2400,11 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         const zoomCounts = {};
         
         if (terrainMap && mapProjection) {
-            terrainMap.forEachTile((tile) => {
-                if (tile.mesh && tile.mesh.layers.mask !== 0 && tile.loaded) {
-                    if (!this.tileHasActiveChildren(tile) && this.tileOverlapsOverlay(tile, mapProjection)) {
-                        terrainTileKeys.add(tile.key());
-                        zoomCounts[tile.z] = (zoomCounts[tile.z] || 0) + 1;
-                    }
-                }
-            });
+            const desired = this.getDesiredOverlayTiles();
+            for (const [key, { tile }] of desired) {
+                terrainTileKeys.add(key);
+                zoomCounts[tile.z] = (zoomCounts[tile.z] || 0) + 1;
+            }
         }
         
         const missingOverlays = [...terrainTileKeys].filter(k => !overlayTileKeys.has(k));
