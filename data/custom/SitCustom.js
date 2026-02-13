@@ -903,7 +903,7 @@ sitch = {
 
     speedGraphForTarget: { kind: "speedGraph",
         visible: false,
-        label: "Target Speed",
+        label: "Traverse Speed",
         track: "traverseSmoothedTrack",
         min:0, max:1000,
         left: 0.25, top:0, width: .15, height:-1,

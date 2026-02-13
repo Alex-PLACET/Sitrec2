@@ -120,6 +120,7 @@ export class CNodeControllerPTZUI extends CNodeControllerAzElZoom {
         this.roll = v.roll
         this.xOffset = v.xOffset ?? 0;
         this.yOffset = v.yOffset ?? 0;
+        this.nearPlane = v.nearPlane ?? 0.1;
         this.relative = false;
 
         assert(v.fov !== undefined, "CNodeControllerPTZUI: initial fov is undefined")
@@ -141,6 +142,7 @@ export class CNodeControllerPTZUI extends CNodeControllerAzElZoom {
             }
             guiPTZ.add(this, "xOffset", -10, 10, 0.001).listen().name("xOffset").onChange(v => this.refresh()).setLabelColor(pszUIColor)
             guiPTZ.add(this, "yOffset", -10, 10, 0.001).listen().name("yOffset").onChange(v => this.refresh()).setLabelColor(pszUIColor)
+            guiPTZ.add(this, "nearPlane", 0.001, 1, 0.001).listen().name("Near Plane (m)").onChange(v => this.refresh()).setLabelColor(pszUIColor)
             guiPTZ.add(this, "relative").listen().name("Relative").onChange(v => this.refresh())
         }
        // this.refresh()
@@ -155,6 +157,7 @@ export class CNodeControllerPTZUI extends CNodeControllerAzElZoom {
             roll: this.roll,
             xOffset: this.xOffset,
             yOffset: this.yOffset,
+            nearPlane: this.nearPlane,
             relative: this.relative
         }
     }
@@ -169,6 +172,7 @@ export class CNodeControllerPTZUI extends CNodeControllerAzElZoom {
         this.roll = v.roll;
         this.xOffset = v.xOffset ?? 0;
         this.yOffset = v.yOffset ?? 0;
+        this.nearPlane = v.nearPlane ?? 0.1;
         this.relative = v.relative ?? false;
     }
 
@@ -185,6 +189,10 @@ export class CNodeControllerPTZUI extends CNodeControllerAzElZoom {
         }
 
         super.apply(f, objectNode);
+
+        const camera = objectNode.camera;
+        camera.near = this.nearPlane;
+        camera.updateProjectionMatrix();
     }
 
     refresh(v) {
