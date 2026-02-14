@@ -638,7 +638,7 @@ export class CNodeFrameSlider extends CNode {
                 if (this.draggingALimit) {
                     const clampedFrame = Math.min(newFrame, Sit.bFrame - 1);
                     Sit.aFrame = clampedFrame;
-                    par.frame = clampedFrame;
+                    par._frameOverride = clampedFrame;
                     GlobalDateTimeNode.liveMode = false;
                     this.needsCanvasRedraw = true;
                     setRenderOne(true);
@@ -646,7 +646,7 @@ export class CNodeFrameSlider extends CNode {
                 } else if (this.draggingBLimit) {
                     const clampedFrame = Math.max(newFrame, Sit.aFrame + 1);
                     Sit.bFrame = clampedFrame;
-                    par.frame = clampedFrame;
+                    par._frameOverride = clampedFrame;
                     GlobalDateTimeNode.liveMode = false;
                     this.needsCanvasRedraw = true;
                     setRenderOne(true);
@@ -664,10 +664,14 @@ export class CNodeFrameSlider extends CNode {
                 this.canvas.style.cursor = 'default';
                 // Reset pointer events to allow normal slider interaction
                 this.canvas.style.pointerEvents = 'none';
-                
+
+                // Clear the frame override so rendering resumes at par._frame
+                par._frameOverride = undefined;
+                setRenderOne(true);
+
                 // Hide frame display when dragging ends
                 this.hideFrameDisplay();
-                
+
                 // Remove global event listeners
                 document.removeEventListener('mousemove', globalMouseMove);
                 document.removeEventListener('mouseup', globalMouseUp);
@@ -743,7 +747,7 @@ export class CNodeFrameSlider extends CNode {
                 if (this.draggingALimit) {
                     const clampedFrame = Math.min(newFrame, Sit.bFrame - 1);
                     Sit.aFrame = clampedFrame;
-                    par.frame = clampedFrame;
+                    par._frameOverride = clampedFrame;
                     GlobalDateTimeNode.liveMode = false;
                     this.needsCanvasRedraw = true;
                     setRenderOne(true);
@@ -751,7 +755,7 @@ export class CNodeFrameSlider extends CNode {
                 } else if (this.draggingBLimit) {
                     const clampedFrame = Math.max(newFrame, Sit.aFrame + 1);
                     Sit.bFrame = clampedFrame;
-                    par.frame = clampedFrame;
+                    par._frameOverride = clampedFrame;
                     GlobalDateTimeNode.liveMode = false;
                     this.needsCanvasRedraw = true;
                     setRenderOne(true);
@@ -770,9 +774,13 @@ export class CNodeFrameSlider extends CNode {
                 isDragging = false;
                 this.canvas.style.cursor = 'default';
                 this.canvas.style.pointerEvents = 'none';
-                
+
+                // Clear the frame override so rendering resumes at par._frame
+                par._frameOverride = undefined;
+                setRenderOne(true);
+
                 this.hideFrameDisplay();
-                
+
                 // Remove global touch event listeners
                 document.removeEventListener('touchmove', globalTouchMove);
                 document.removeEventListener('touchend', globalTouchUp);
@@ -1057,9 +1065,11 @@ export class CNodeFrameSlider extends CNode {
 
     updateFrameSlider() {
         if (this.sliderInput.style.opacity === "1") {
+            // Use par._frame directly so the slider thumb stays at the real frame
+            // position even when _frameOverride is active (during A/B limit dragging)
             const currentValue = parseInt(this.sliderInput.value, 10);
-            if (currentValue !== par.frame) {
-                this.sliderInput.value = par.frame;
+            if (currentValue !== par._frame) {
+                this.sliderInput.value = par._frame;
             }
 
             const max = parseInt(this.sliderInput.max, 10);

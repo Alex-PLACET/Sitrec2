@@ -15,10 +15,10 @@ const parDefaults = {
     time: 0,
 
     _frame: 0,
+    _frameOverride: undefined,
 
-    // settor and gettor for frame
     get frame() {
-        return this._frame;
+        return this._frameOverride !== undefined ? this._frameOverride : this._frame;
     },
     set frame(value) {
         this._frame = value;
@@ -82,9 +82,10 @@ export function resetPar() {
     for (const prop in par) {
         delete par[prop];
     }
-    // copy all properties from parDefaults to par
-    for (const prop in parDefaults) {
-        par[prop] = parDefaults[prop];
+    // copy all properties from parDefaults to par, preserving getters/setters
+    for (const prop of Object.getOwnPropertyNames(parDefaults)) {
+        const descriptor = Object.getOwnPropertyDescriptor(parDefaults, prop);
+        Object.defineProperty(par, prop, descriptor);
     }
 
 }
