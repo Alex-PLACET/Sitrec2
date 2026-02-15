@@ -2216,7 +2216,7 @@ function openSliderSettingsMenu(controller, event) {
     };
 
     const LOG_ZERO_THRESHOLD = 1e-4;
-    const sliderRangeMax = Math.max(originalMax, currentMax);
+    const sliderRangeMax = controller._maxMax ?? Math.max(originalMax, currentMax);
     
     const minController = menu.add(settings, 'min', LOG_ZERO_THRESHOLD, sliderRangeMax, 0.0001)
         .name('Min')
