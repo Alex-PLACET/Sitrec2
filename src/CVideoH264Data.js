@@ -532,6 +532,10 @@ export class CVideoH264Data extends CVideoWebCodecBase {
             chunk.frameNumber = this.frames++;
             this.chunks.push(chunk);
 
+            const rawBuf = new ArrayBuffer(chunk.byteLength);
+            chunk.copyTo(rawBuf);
+            this.rawChunkData.push(rawBuf);
+
             if (chunk.type === "key") {
                 // Log first keyframe for diagnostic purposes
                 if (this.groups.length === 0 && i > 0) {
