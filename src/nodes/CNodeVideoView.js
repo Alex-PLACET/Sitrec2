@@ -675,7 +675,7 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
 
         this.currentVideoSelection = this.currentVideoIndex;
         console.log(`[VideoSelector] Creating selector with ${Object.keys(options).length} options`);
-        this.videoSelectorController = guiMenus.view.add(this, "currentVideoSelection", options)
+        this.videoSelectorController = guiMenus.video.add(this, "currentVideoSelection", options)
             .name("Current Video")
             .onChange((value) => {
                 this.selectVideo(value);
