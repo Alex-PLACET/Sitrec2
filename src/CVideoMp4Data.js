@@ -105,15 +105,19 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
                 this.format = videoFrame.format;
                 this.lastDecodeInfo = "last frame.timestamp = " + videoFrame.timestamp + "<br>";
 
-                var groupNumber = 0;
-                // find the group this frame is in
-                while (groupNumber + 1 < this.groups.length && videoFrame.timestamp >= this.groups[groupNumber + 1].timestamp)
-                    groupNumber++;
-                var group = this.groups[groupNumber];
+                const frameNumber = this.timestampToChunkIndex?.get(videoFrame.timestamp);
+                if (frameNumber === undefined) {
+                    videoFrame.close();
+                    return;
+                }
 
-                // calculate the frame number we are decoding from how many are left
-                const frameNumber = group.frame + group.length - group.pending;
-                
+                const group = this.getGroup(frameNumber);
+                if (!group) {
+                    videoFrame.close();
+                    return;
+                }
+
+                group.decodePending++;
                 this.processDecodedFrame(frameNumber, videoFrame, group);
             },
             error: e => showError(e),
@@ -124,16 +128,13 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
      * Override group completion handling for MP4-specific nextRequest logic
      */
     handleGroupComplete() {
-        if (this.groupsPending === 0 && this.nextRequest >= 0) {
-            console.log("FULFILLING deferred request as no groups pending, frame = " + this.nextRequest);
-            this.requestGroup(this.nextRequest);
-            this.nextRequest = -1;
+        if (this.groupsPending === 0 && this.nextRequest != null) {
+            const group = this.nextRequest;
+            this.nextRequest = null;
+            this.requestGroup(group);
         }
     }
 
-    /**
-     * Override busy decoder handling for MP4-specific nextRequest logic
-     */
     handleBusyDecoder(group) {
         this.nextRequest = group;
     }
@@ -146,7 +147,7 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
     startWithDemuxer(demuxer) {
         // Reset common variables (base class handles initialization)
         this.initializeCommonVariables();
-        this.nextRequest = -1; // MP4 specific: uses -1 instead of null
+        this.nextRequest = null;
 
         this.decoder = this.createDecoder();
 
@@ -196,6 +197,8 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
             }
             
             const completeExtraction = () => {
+                this.buildTimestampMap();
+
                 const audioWaitStartTime = Date.now();
                 const audioWaitTimeout = 15000;
                 

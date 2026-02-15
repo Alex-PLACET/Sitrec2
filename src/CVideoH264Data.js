@@ -87,24 +87,19 @@ export class CVideoH264Data extends CVideoWebCodecBase {
                     this.format = videoFrame.format;
                     this.lastDecodeInfo = "last frame.timestamp = " + videoFrame.timestamp + "<br>";
 
-                    // Use timestamp-based frame mapping similar to MP4 approach
-                    // Find the group this frame belongs to based on timestamp
-                    var groupNumber = 0;
-                    while (groupNumber + 1 < this.groups.length && videoFrame.timestamp >= this.groups[groupNumber + 1].timestamp) {
-                        groupNumber++;
-                    }
-                    var group = this.groups[groupNumber];
-                    
-                    if (!group) {
-                        console.warn("Group not found for timestamp", videoFrame.timestamp);
+                    const frameNumber = this.timestampToChunkIndex?.get(videoFrame.timestamp);
+                    if (frameNumber === undefined) {
                         videoFrame.close();
                         return;
                     }
 
-                    // Calculate the frame number within the group based on pending count
-                    // This ensures frames are mapped to correct positions even when scrubbing
-                    const frameNumber = group.frame + group.length - group.pending;
-                    
+                    const group = this.getGroup(frameNumber);
+                    if (!group) {
+                        videoFrame.close();
+                        return;
+                    }
+
+                    group.decodePending++;
                     this.processDecodedFrame(frameNumber, videoFrame, group);
                     
                 } catch (error) {
@@ -169,10 +164,10 @@ export class CVideoH264Data extends CVideoWebCodecBase {
      * Override group completion handling for H.264-specific nextRequest logic
      */
     handleGroupComplete() {
-        if (this.groupsPending === 0 && this.nextRequest >= 0) {
-            console.log("FULFILLING deferred request as no groups pending, frame = " + this.nextRequest);
-            this.requestGroup(this.nextRequest);
-            this.nextRequest = -1;
+        if (this.groupsPending === 0 && this.nextRequest != null) {
+            const group = this.nextRequest;
+            this.nextRequest = null;
+            this.requestGroup(group);
         }
     }
 
@@ -227,7 +222,7 @@ export class CVideoH264Data extends CVideoWebCodecBase {
             this.chunks = [];
             this.groups = [];
             this.groupsPending = 0;
-            this.nextRequest = -1; // Use MP4-style nextRequest approach
+            this.nextRequest = null;
             this.decoderError = false; // Reset decoder error flag
             this.recreationAttempts = 0; // Reset recreation attempts
 
@@ -583,6 +578,8 @@ export class CVideoH264Data extends CVideoWebCodecBase {
         if (orphanedDeltaFrames > 0) {
             console.error(`   ⚠️ WARNING: ${orphanedDeltaFrames} frames were orphaned and not added to any group`);
         }
+
+        this.buildTimestampMap();
     }
 
 

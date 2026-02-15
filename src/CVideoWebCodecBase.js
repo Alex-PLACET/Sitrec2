@@ -92,6 +92,7 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
         this.lastGoodFrame = null; // Last successfully decoded frame to avoid black frames
         this.lastGoodFrameIndex = -1; // Cache index of lastGoodFrame for O(1) orphan detection
         this.decodeFrameIndex = 0; // Simple counter for decode order
+        this.flushing = false;
         this.c_tmp = null; // Temporary canvas (if used)
         this.ctx_tmp = null; // Temporary canvas context (if used)
     }
@@ -115,14 +116,24 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
                 this.format = videoFrame.format;
                 this.lastDecodeInfo = "last frame.timestamp = " + videoFrame.timestamp + "<br>";
 
-                // Find the group this frame belongs to
-                let groupNumber = 0;
-                while (groupNumber + 1 < this.groups.length && videoFrame.timestamp >= this.groups[groupNumber + 1].timestamp)
-                    groupNumber++;
-                const group = this.groups[groupNumber];
+                const frameNumber = this.timestampToChunkIndex?.get(videoFrame.timestamp);
+                if (frameNumber === undefined) {
+                    console.warn(`[DECODE] No chunk found for timestamp ${videoFrame.timestamp}, skipping frame`);
+                    videoFrame.close();
+                    return;
+                }
 
-                // Calculate the frame number from group position and pending count
-                const frameNumber = group.frame + group.length - group.pending;
+                const group = this.getGroup(frameNumber);
+                if (!group) {
+                    console.warn(`[DECODE] No group found for frame ${frameNumber}, skipping`);
+                    videoFrame.close();
+                    return;
+                }
+
+                group.decodePending++;
+                if (this._debugDecode) {
+                    console.log(`[DECODE] frame=${frameNumber} decodePending=${group.decodePending}/${group.length} pending=${group.pending} ts=${videoFrame.timestamp}`);
+                }
                 
                 this.processDecodedFrame(frameNumber, videoFrame, group);
             },
@@ -376,7 +387,6 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
             group.decodeOrder.push(frameNumber);
 
             if (group.pending <= 0) {
-                console.warn("Decoding more frames than were listed as pending at frame " + frameNumber);
                 return;
             }
 
@@ -388,7 +398,6 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
             }
         }).catch(error => {
             showError("Error during frame processing/rotation/resizing:", error);
-            // Ensure proper cleanup on error
             if (this.imageCache && this.imageCache[frameNumber] instanceof ImageBitmap) {
                 try {
                     this.imageCache[frameNumber].close();
@@ -426,23 +435,13 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
         videoFrame.close();
     }
 
-    /**
-     * Handle completion of a group - process any queued requests
-     */
     handleGroupComplete() {
         if (this.groupsPending === 0) {
-            // Handle deferred requests differently for each subclass
-            if (this.nextRequest !== null && this.nextRequest >= 0) {
-                // CVideoMp4Data style
-                this.requestGroup(this.nextRequest);
-                this.nextRequest = -1;
-            } else if (this.nextRequest && typeof this.nextRequest === 'object') {
-                // nextRequest is a group object
+            if (this.nextRequest != null) {
                 const group = this.nextRequest;
                 this.nextRequest = null;
                 this.requestGroup(group);
             } else if (this.requestQueue && this.requestQueue.length > 0) {
-                // CVideoH264Data style
                 const nextGroup = this.requestQueue.shift();
                 this.requestGroup(nextGroup);
             }
@@ -454,12 +453,36 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
      */
     handleDecoderError(error) {
         showError("Decoder error:", error);
-        // Default implementation - subclasses can override for specific error handling
     }
 
-    /**
-     * Process chunks into groups (common logic)
-     */
+    buildTimestampMap() {
+        this.timestampToChunkIndex = new Map();
+
+        for (let g = 0; g < this.groups.length; g++) {
+            const group = this.groups[g];
+            const nextGroup = g + 1 < this.groups.length ? this.groups[g + 1] : null;
+            group.openGopExtra = 0;
+            if (nextGroup) {
+                for (let i = nextGroup.frame + 1; i < nextGroup.frame + nextGroup.length; i++) {
+                    if (i < this.chunks.length && this.chunks[i].timestamp < nextGroup.timestamp) {
+                        group.openGopExtra++;
+                    } else {
+                        break;
+                    }
+                }
+            }
+
+            const timestamps = [];
+            for (let i = group.frame; i < group.frame + group.length; i++) {
+                timestamps.push(this.chunks[i].timestamp);
+            }
+            timestamps.sort((a, b) => a - b);
+            for (let i = 0; i < timestamps.length; i++) {
+                this.timestampToChunkIndex.set(timestamps[i], group.frame + i);
+            }
+        }
+    }
+
     processChunksIntoGroups(encodedChunks) {
         for (let i = 0; i < encodedChunks.length; i++) {
             const chunk = encodedChunks[i];
@@ -468,10 +491,10 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
 
             if (chunk.type === "key") {
                 this.groups.push({
-                    frame: this.chunks.length - 1,  // first frame of this group
-                    length: 1,                      // for now, increase with each delta
-                    pending: 0,                     // how many frames requested and pending
-                    loaded: false,                  // set when all the frames in the group are loaded
+                    frame: this.chunks.length - 1,
+                    length: 1,
+                    pending: 0,
+                    loaded: false,
                     timestamp: chunk.timestamp,
                 });
             } else {
@@ -482,6 +505,8 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
                 }
             }
         }
+
+        this.buildTimestampMap();
     }
 
     // find the group object for a given frame
@@ -561,28 +586,41 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
             }
         }
 
-        // Check if decoder is busy
-        if (this.decoder.decodeQueueSize > 0) {
+        if (this.flushing || this.decoder.decodeQueueSize > 0) {
             this.handleBusyDecoder(group);
             return;
         }
+        const extraChunks = group.openGopExtra || 0;
         group.pending = group.length;
+        group.decodePending = 0;
         group.loaded = false;
         group.decodeOrder = [];
         this.groupsPending++;
 
         try {
-            for (let i = group.frame; i < group.frame + group.length; i++) {
+            const decodeEnd = group.frame + group.length + (extraChunks > 0 ? extraChunks + 1 : 0);
+            for (let i = group.frame; i < decodeEnd; i++) {
                 if (i < this.chunks.length) {
                     this.decoder.decode(this.chunks[i]);
-                } else {
-                    console.warn("Trying to decode frame beyond chunks length:", i, ">=", this.chunks.length);
-                    group.pending--;
                 }
             }
 
-            // Kick the reorder buffer so the tail frames are delivered.
-            this.decoder.flush().catch(() => { /* ignore mid-seek aborts */ });
+            this.flushing = true;
+            this.decoder.flush().then(() => {
+                this.flushing = false;
+                const droppedFrames = group.length - group.decodePending;
+                if (droppedFrames > 0) {
+                    group.pending -= droppedFrames;
+                    if (group.pending <= 0) {
+                        group.pending = 0;
+                        group.loaded = true;
+                        this.groupsPending--;
+                    }
+                }
+                this.handleGroupComplete();
+            }).catch(() => {
+                this.flushing = false;
+            });
         } catch (error) {
             // Some videos give a lot of these errors,
             // and have jerky playback. e.g. '/Users/mick/Dropbox/Investigating/Rainmaking (1968).mp4'
@@ -1076,6 +1114,32 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
     /**
      * Get group information for debug display - can be overridden by subclasses
      */
+    debugCacheIntegrity() {
+        const cache = this.imageCache;
+        const totalFrames = this.chunks.length;
+        let totalGaps = 0;
+        for (let gi = 0; gi < this.groups.length; gi++) {
+            const g = this.groups[gi];
+            let cached = 0;
+            const gapFrames = [];
+            for (let i = g.frame; i < g.frame + g.length; i++) {
+                if (cache[i] && cache[i].width > 0) {
+                    cached++;
+                } else {
+                    gapFrames.push(i - g.frame);
+                }
+            }
+            if (gapFrames.length > 0) {
+                console.log(`[CACHE] Group ${gi}: frame ${g.frame}, len ${g.length}, loaded=${g.loaded}, pending=${g.pending}, decodePending=${g.decodePending}, cached=${cached}/${g.length}, gap offsets: ${gapFrames.join(',')}`);
+                totalGaps += gapFrames.length;
+            } else {
+                console.log(`[CACHE] Group ${gi}: frame ${g.frame}, len ${g.length}, loaded=${g.loaded} - OK (${cached}/${g.length})`);
+            }
+        }
+        console.log(`[CACHE] Total: ${totalFrames} frames, ${totalGaps} gaps`);
+        return totalGaps;
+    }
+
     getDebugGroupInfo(groupIndex, group, images, imageDatas, framesCaches, currentGroup) {
         return "Group " + groupIndex + ": frame " + group.frame + " length " + group.length + " images " + images + " imageDatas " + imageDatas + " framesCaches "
             + framesCaches
