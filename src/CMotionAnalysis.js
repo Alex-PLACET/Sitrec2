@@ -2957,7 +2957,7 @@ function toggleStabilization() {
 export function addMotionAnalysisMenu() {
     if (!guiMenus.view) return;
     
-    motionFolder = guiMenus.view.addFolder("Motion Analysis").close().perm();
+    motionFolder = guiMenus.video.addFolder("Motion Analysis").close().perm();
     
     const menuActions = {
         analyzeMotion: toggleMotionAnalysis,

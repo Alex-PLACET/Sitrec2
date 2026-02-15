@@ -33,7 +33,7 @@ import {par} from "../par";
 import {quickToggle} from "../KeyBoardHandler";
 import {CNodeGUIFlag, CNodeGUIValue} from "./CNodeGUIValue";
 import {CNodeConstant} from "./CNode";
-import {Globals, guiMenus, guiTweaks, NodeMan, setRenderOne, Sit} from "../Globals";
+import {Globals, guiMenus, NodeMan, setRenderOne, Sit} from "../Globals";
 import {CMouseHandler} from "../CMouseHandler";
 import {CNodeViewUI} from "./CNodeViewUI";
 import {CVideoMp4Data} from "../CVideoMp4Data";
@@ -719,7 +719,7 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         // Get current rotation from video data
         this.currentRotation = this.videoData.userRotation || 0;
 
-        this.rotationController = guiMenus.view.add(this, "currentRotation", rotationOptions)
+        this.rotationController = guiMenus.video.add(this, "currentRotation", rotationOptions)
             .name("Video Rotation")
             .onChange((value) => {
                 if (this.videoData) {
@@ -1445,7 +1445,7 @@ let guiVideoEffectsFolder = null;
 export function addFiltersToVideoNode(videoNode) {
 
     if (guiVideoEffectsFolder === null) {
-        guiVideoEffectsFolder = guiTweaks.addFolder("Video Adjustments").close().perm();
+        guiVideoEffectsFolder = guiMenus.video.addFolder("Video Adjustments").close().perm();
     }
 
     let brightness, contrast, blur, greyscale, hue, invert, saturate, enableVideoEffects, convolutionFilter;

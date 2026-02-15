@@ -80,6 +80,7 @@ export let guiShowHideViews
 export let guiShowHideGraphs
 export let guiPhysics;
 
+
 export let infoDiv;
 export function setInfoDiv(i) {infoDiv=i;}
 

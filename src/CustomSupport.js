@@ -729,7 +729,7 @@ export class CCustomManager {
         const videoInfo = NodeMan.get("videoInfo", false);
         if (!videoInfo) return;
 
-        videoInfo.setupMenu(guiMenus.view);
+        videoInfo.setupMenu(guiMenus.video);
     }
     
     setupOSDDataSeriesController() {
@@ -1099,7 +1099,7 @@ export class CCustomManager {
     async setupVideoExport() {
         const { VideoExportManager } = await import("./VideoExporter");
         this.videoExportManager = new VideoExportManager();
-        await this.videoExportManager.setupMenu(guiMenus.view);
+        await this.videoExportManager.setupMenu(guiMenus.video);
     }
 
     setupStandaloneMenuExample() {

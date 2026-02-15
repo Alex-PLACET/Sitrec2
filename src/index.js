@@ -1316,6 +1316,12 @@ async function initializeOnce() {
     const _gui = addGUIMenu("main", "Sitrec").tooltip("Selecting legacy sitches and tools\nSome legacy sitches have controls here by default");
     addGUIMenu("file", "File").tooltip("File operations like saving,loading, and exporting");
     addGUIMenu("view", "View").tooltip("Miscellaneous view controls\nLike all menus, this menu can be dragged off the menu bar to make it a floating menu");
+
+
+
+    addGUIMenu("video", "Video").tooltip("Video adjustment, effects, and analysis");
+
+
     addGUIMenu("time", "Time").tooltip("Time and frame controls\nDragging one time slider past the end will affect the above slider\nNote that the time sliders are UTC");
     addGUIMenu("objects", "Objects").tooltip("3D Objects and their properties\nEach folder is one object. The traverseObject is the object that traverses the lines of sight - i.e. the UAP we are interested in");
     
@@ -1344,6 +1350,7 @@ async function initializeOnce() {
             }
         }
     };
+
     
     guiMenus.objects.add(objectMenuActions, 'addObject')
         .name("Add Object")

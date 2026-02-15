@@ -213,12 +213,12 @@ export class CNodeOSDDataSeriesController extends CNode {
         
         this.boundHandleKeyDown = (e) => this.handleKeyDown(e);
         this.boundHandleDoubleClick = (e) => this.handleDoubleClick(e);
-        
+        this.guiMenu = guiMenus.video;
         this.setupMenu();
     }
 
     setupMenu() {
-        this.guiFolder = guiMenus.view.addFolder("OSD Tracker").close()
+        this.guiFolder = guiMenus.video.addFolder("OSD Tracker").close()
             .tooltip("On-Screen Display text tracker for user-defined per-frame text");
         
         this.guiFolder.add(this, "addNewTrack").name("Add New OSD Data Series")
