@@ -9,6 +9,7 @@ import {calculateGST} from "../CelestialMath";
 import {updateGUIFrames} from "../JetGUI";
 import {updateFrameSlider} from "./CNodeFrameSlider";
 import {getOffsetFromDateTimeString} from "../DateTimeUtils";
+import {EventManager} from "../CEventManager";
 
 const timeZoneOffsets = {
     "IDLW UTC-12": -12,     // International Date Line West
@@ -283,6 +284,8 @@ export class CNodeDateTime extends CNode {
             updateFrameSlider();
             NodeMan.recalculateAllRootFirst(); // really just need to redraw things..
 
+        }).onFinishChange(() => {
+            EventManager.dispatchEvent("abFrameChanged");
         })
             .tooltip("limited the playback to between A and B, displayed as green and red on the frame slider")
 
@@ -296,6 +299,8 @@ export class CNodeDateTime extends CNode {
             NodeMan.recalculateAllRootFirst();
 
 
+        }).onFinishChange(() => {
+            EventManager.dispatchEvent("abFrameChanged");
         })
             .tooltip("limited the playback to between A and B, displayed as green and red on the frame slider")
 

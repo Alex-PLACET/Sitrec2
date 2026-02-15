@@ -2,6 +2,7 @@ import {par} from "../par";
 import {GlobalDateTimeNode, NodeMan, setRenderOne, Sit} from "../Globals";
 import {CNode} from "./CNode";
 import {getControlsContainer} from "../PageStructure";
+import {EventManager} from "../CEventManager";
 
 export class CNodeFrameSlider extends CNode {
     constructor(v) {
@@ -658,6 +659,7 @@ export class CNodeFrameSlider extends CNode {
         // Global mouse up event for dragging
         const globalMouseUp = (event) => {
             if (isDragging) {
+                const wasAOrB = this.draggingALimit || this.draggingBLimit;
                 this.draggingALimit = false;
                 this.draggingBLimit = false;
                 isDragging = false;
@@ -671,6 +673,10 @@ export class CNodeFrameSlider extends CNode {
 
                 // Hide frame display when dragging ends
                 this.hideFrameDisplay();
+
+                if (wasAOrB) {
+                    EventManager.dispatchEvent("abFrameChanged");
+                }
 
                 // Remove global event listeners
                 document.removeEventListener('mousemove', globalMouseMove);
@@ -769,6 +775,7 @@ export class CNodeFrameSlider extends CNode {
         // Global touch up event for dragging
         const globalTouchUp = (event) => {
             if (isDragging) {
+                const wasAOrB = this.draggingALimit || this.draggingBLimit;
                 this.draggingALimit = false;
                 this.draggingBLimit = false;
                 isDragging = false;
@@ -780,6 +787,10 @@ export class CNodeFrameSlider extends CNode {
                 setRenderOne(true);
 
                 this.hideFrameDisplay();
+
+                if (wasAOrB) {
+                    EventManager.dispatchEvent("abFrameChanged");
+                }
 
                 // Remove global touch event listeners
                 document.removeEventListener('touchmove', globalTouchMove);

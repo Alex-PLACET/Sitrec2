@@ -1014,15 +1014,32 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
     }
 
 
+    restartFullABEchoIfActive() {
+        if (!this.in.fullABEcho?.value) return;
+        if (this._fullABEchoRunning) {
+            this._fullABEchoRunning = false;
+            Globals.justVideoAnalysis = false;
+            par.paused = this._fullABEchoSavedPaused ?? false;
+        }
+        this._fullABEchoResult = null;
+
+        const wantMin = this.in.echoMin?.value ?? false;
+        const wantMax = this.in.echoMax?.value ?? false;
+        if (!wantMin && !wantMax) {
+            setRenderOne(true);
+            return;
+        }
+
+        this.startFullABEcho();
+    }
+
     startFullABEcho() {
         if (this._fullABEchoRunning) return;
         if (!this.videoData) return;
 
         const wantMin = this.in.echoMin?.value ?? false;
         const wantMax = this.in.echoMax?.value ?? false;
-        if (!wantMin && !wantMax) {
-            this.in.echoMax.value = true;
-        }
+        if (!wantMin && !wantMax) return;
 
         this._fullABEchoRunning = true;
         this._fullABEchoSavedPaused = par.paused;
@@ -1487,11 +1504,18 @@ export function addFiltersToVideoNode(videoNode) {
             sharpenAmount = new CNodeGUIValue({ id: "videoSharpenAmount", value: 1, start: 0, end: 5, step: 0.1, desc: "Sharpen Amount" }, guiVideoEffectsFolder),
             edgeDetectThreshold = new CNodeGUIValue({ id: "videoEdgeDetectThreshold", value: 0, start: 0, end: 255, step: 1, desc: "Edge Threshold" }, guiVideoEffectsFolder),
             embossDepth = new CNodeGUIValue({ id: "videoEmbossDepth", value: 1, start: 0, end: 3, step: 0.1, desc: "Emboss Depth" }, guiVideoEffectsFolder),
-            echoMin = new CNodeGUIFlag({ id: "videoEchoMin", value: false, desc: "Echo Dark" }, guiVideoEffectsFolder),
-            echoMax = new CNodeGUIFlag({ id: "videoEchoMax", value: false, desc: "Echo Light" }, guiVideoEffectsFolder),
+            echoMin = new CNodeGUIFlag({ id: "videoEchoMin", value: false, desc: "Echo Dark", onChange: () => {
+                videoNode.restartFullABEchoIfActive();
+            }}, guiVideoEffectsFolder),
+            echoMax = new CNodeGUIFlag({ id: "videoEchoMax", value: false, desc: "Echo Light", onChange: () => {
+                videoNode.restartFullABEchoIfActive();
+            }}, guiVideoEffectsFolder),
             echoFrames = new CNodeGUIValue({ id: "videoEchoFrames", value: 10, start: 2, end: 100, step: 1, desc: "Echo Frames" }, guiVideoEffectsFolder),
             fullABEcho = new CNodeGUIFlag({ id: "videoFullABEcho", value: false, desc: "Full A-B Echo", onChange: () => {
                 if (fullABEcho.value) {
+                    if (!echoMin.value && !echoMax.value) {
+                        echoMax.value = true;
+                    }
                     videoNode.startFullABEcho();
                 } else {
                     videoNode.stopFullABEcho();
@@ -1560,7 +1584,9 @@ export function addFiltersToVideoNode(videoNode) {
         showCache: showCache
     });
 
-
+    EventManager.addEventListener("abFrameChanged", () => {
+        videoNode.restartFullABEchoIfActive();
+    });
 
 }
 
