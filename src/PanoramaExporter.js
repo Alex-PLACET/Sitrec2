@@ -187,7 +187,7 @@ export async function exportPanorama() {
 
             for (const entry of Object.values(NodeMan.list)) {
                 const node = entry.data;
-                if (node.isController) {
+                if (node.isController && !node.allowUpdate) {
                     assert(node.update === CNode.prototype.update,
                         `Controller ${node.id} has overridden update() - move logic to apply()`);
                     continue;
