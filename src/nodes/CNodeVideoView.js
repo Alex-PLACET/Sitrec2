@@ -915,6 +915,8 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
             const wantEchoMax = this.in.echoMax?.value ?? false;
             if (effectsEnabled && (wantEchoMin || wantEchoMax)) {
                 sourceImage = applyEchoEffect(this, sourceImage, frame, wantEchoMin, wantEchoMax);
+            } else if (this._echoPixelCache) {
+                clearEchoCache(this);
             }
 
             if (effectsEnabled) {
@@ -1464,6 +1466,43 @@ export function applyConvolution(ctx, width, height, kernelName, params = {}) {
     ctx.putImageData(imageData, 0, 0);
 }
 
+function getOrCachePixelData(videoView, frameImage, frame, width, height) {
+    if (!videoView._echoPixelCache) {
+        videoView._echoPixelCache = new Map();
+    }
+
+    const cached = videoView._echoPixelCache.get(frame);
+    if (cached && cached.length === width * height * 4) {
+        return cached;
+    }
+
+    const tmpCtx = videoView._echoTmpCtx;
+    tmpCtx.drawImage(frameImage, 0, 0, width, height);
+    const data = tmpCtx.getImageData(0, 0, width, height).data;
+    videoView._echoPixelCache.set(frame, data);
+    return data;
+}
+
+function pruneEchoPixelCache(videoView, startFrame, endFrame) {
+    if (!videoView._echoPixelCache) return;
+    for (const key of videoView._echoPixelCache.keys()) {
+        if (key < startFrame || key > endFrame) {
+            videoView._echoPixelCache.delete(key);
+        }
+    }
+}
+
+function clearEchoCache(videoView) {
+    if (videoView._echoPixelCache) {
+        videoView._echoPixelCache.clear();
+    }
+    videoView._lastEchoFrame = undefined;
+    videoView._lastEchoResult = undefined;
+    videoView._lastEchoWantMin = undefined;
+    videoView._lastEchoWantMax = undefined;
+    videoView._lastEchoNumFrames = undefined;
+}
+
 function applyEchoEffect(videoView, currentImage, currentFrame, wantMin, wantMax) {
     const numEchoFrames = Math.round(videoView.in.echoFrames?.v0 ?? 10);
     const startFrame = Math.max(0, currentFrame - numEchoFrames + 1);
@@ -1479,10 +1518,18 @@ function applyEchoEffect(videoView, currentImage, currentFrame, wantMin, wantMax
         videoView._echoTmpCanvas.width = width;
         videoView._echoTmpCanvas.height = height;
         videoView._echoTmpCtx = videoView._echoTmpCanvas.getContext('2d', { willReadFrequently: true });
+        clearEchoCache(videoView);
+    }
+
+    if (videoView._lastEchoFrame === currentFrame &&
+        videoView._lastEchoWantMin === wantMin &&
+        videoView._lastEchoWantMax === wantMax &&
+        videoView._lastEchoNumFrames === numEchoFrames &&
+        videoView._lastEchoResult) {
+        return videoView._lastEchoResult;
     }
 
     const echoCtx = videoView._echoCtx;
-    const tmpCtx = videoView._echoTmpCtx;
 
     const pixelCount = width * height * 4;
     const minPixels = wantMin ? new Uint8ClampedArray(pixelCount) : null;
@@ -1500,8 +1547,7 @@ function applyEchoEffect(videoView, currentImage, currentFrame, wantMin, wantMax
         }
         if (!frameImage || frameImage.width === 0) continue;
 
-        tmpCtx.drawImage(frameImage, 0, 0, width, height);
-        const frameData = tmpCtx.getImageData(0, 0, width, height).data;
+        const frameData = getOrCachePixelData(videoView, frameImage, f, width, height);
 
         if (!initialized) {
             if (minPixels) minPixels.set(frameData);
@@ -1523,6 +1569,8 @@ function applyEchoEffect(videoView, currentImage, currentFrame, wantMin, wantMax
         }
         frameCount++;
     }
+
+    pruneEchoPixelCache(videoView, startFrame, currentFrame);
 
     if (!initialized) return currentImage;
 
@@ -1547,6 +1595,13 @@ function applyEchoEffect(videoView, currentImage, currentFrame, wantMin, wantMax
 
     const outputData = new ImageData(resultPixels, width, height);
     echoCtx.putImageData(outputData, 0, 0);
+
+    videoView._lastEchoFrame = currentFrame;
+    videoView._lastEchoWantMin = wantMin;
+    videoView._lastEchoWantMax = wantMax;
+    videoView._lastEchoNumFrames = numEchoFrames;
+    videoView._lastEchoResult = videoView._echoCanvas;
+
     return videoView._echoCanvas;
 }
 
