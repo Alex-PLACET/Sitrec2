@@ -44,6 +44,7 @@ import {assert} from "../assert";
 import {EventManager} from "../CEventManager";
 import {getFlowAlignRotation} from "../FlowAlignment";
 import {VideoLoadingManager} from "../CVideoLoadingManager";
+import {CNodeGridOverlay} from "./CNodeGridOverlay";
 
 
 export class CNodeVideoView extends CNodeViewCanvas2D {
@@ -1587,6 +1588,39 @@ export function addFiltersToVideoNode(videoNode) {
     EventManager.addEventListener("abFrameChanged", () => {
         videoNode.restartFullABEchoIfActive();
     });
+
+    if (!NodeMan.exists("videoGridOverlay")) {
+        const gridFolder = guiMenus.video.addFolder("Grid").close();
+
+        const gridOverlay = new CNodeGridOverlay({
+            id: "videoGridOverlay",
+            overlayView: videoNode,
+        });
+
+        gridFolder.add(gridOverlay, "gridShow").name("Show").onChange((value) => {
+            gridOverlay.setShow(value);
+        });
+
+        gridFolder.add(gridOverlay, "gridSize", 1, 128, 0.1).name("Size").onChange(() => {
+            setRenderOne(true);
+        });
+
+        gridFolder.add(gridOverlay, "gridSubdivisions", 1, 16, 1).name("Subdivisions").onChange(() => {
+            setRenderOne(true);
+        });
+
+        gridFolder.add(gridOverlay, "gridXOffset", 0,127,0.1).name("X Offset").onChange(() => {
+            setRenderOne(true);
+        });
+
+        gridFolder.add(gridOverlay, "gridYOffset",0,127,0.1).name("Y Offset").onChange(() => {
+            setRenderOne(true);
+        });
+
+        gridFolder.addColor(gridOverlay, "gridColor").name("Color").onChange(() => {
+            setRenderOne(true);
+        });
+    }
 
 }
 
