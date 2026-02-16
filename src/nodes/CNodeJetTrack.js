@@ -7,6 +7,7 @@ import {assert} from "../assert.js";
 import {V3} from "../threeUtils";
 import {wgs84} from "../LLA-ECEF-ENU";
 import {showError} from "../showError";
+import {EventManager} from "../CEventManager";
 
 export class CNodeJetTrack extends CNodeTrack {
     constructor(v) {
@@ -28,7 +29,14 @@ export class CNodeJetTrack extends CNodeTrack {
         }
 
         this.requireInputs(["speed", "turnRate", "wind", "heading", "origin"])
+        this.optionalInputs(["terrain"]);
         this.isNumber = false;
+
+        this.agl = v.agl ?? 0;
+        if (this.agl) {
+            EventManager.addEventListener("elevationChanged", () => this.onElevationChanged());
+        }
+
         this.recalculate()
 
         this.exportable = v.exportable ?? false;
@@ -40,6 +48,7 @@ export class CNodeJetTrack extends CNodeTrack {
 
     recalculate() {
         this.array = []
+        this.elevationCache = null; // flush cache for fresh terrain queries
 
 
         const headingNode = this.in.heading.getRoot()
@@ -59,6 +68,9 @@ export class CNodeJetTrack extends CNodeTrack {
 
         const jetPos = this.in.origin.p(0)
 
+        // Get terrain node for AGL mode
+        const terrainNode = this.agl ? (this.in.terrain ?? NodeMan.get("TerrainModel", false) ?? null) : null;
+
         //  new code, jet is at jetOrigin, an arbitrary point in EUS
         const jetFwd = getLocalNorthVector(jetPos)
         const jetUp = getLocalUpVector(jetPos)
@@ -66,6 +78,12 @@ export class CNodeJetTrack extends CNodeTrack {
         jetFwd.applyAxisAngle(jetUp, radians(-jetHeading))
 
         for (let f = 0; f < this.frames; f++) {
+            // Clamp to terrain for AGL mode (terrain-following)
+            if (terrainNode) {
+                const clamped = this.getPointBelowCached(terrainNode, jetPos, this.agl, f);
+                jetPos.copy(clamped);
+            }
+
             // first store the current position
             const trackPoint = {
                 position: jetPos.clone(),
@@ -116,6 +134,13 @@ export class CNodeJetTrack extends CNodeTrack {
 
         }
         assert(this.frames == this.array.length, "frames length mismatch");
+    }
+
+    onElevationChanged() {
+        const terrainNode = this.in.terrain ?? NodeMan.get("TerrainModel", false);
+        if (terrainNode && this.refreshElevationCache(terrainNode, this.agl)) {
+            this.recalculateCascade();
+        }
     }
 }
 

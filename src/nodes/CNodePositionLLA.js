@@ -220,7 +220,7 @@ export class CNodePositionLLA extends CNodeTrack {
 
         EventManager.addEventListener("elevationChanged", () => {
             if (this.agl) {
-                this.recalculateCascade();
+                this.onElevationChanged();
             }
         })
 
@@ -315,6 +315,18 @@ export class CNodePositionLLA extends CNodeTrack {
         }
     }
 
+    onElevationChanged() {
+        const terrainNode = NodeMan.get("TerrainModel", false);
+        if (terrainNode) {
+            const aglHeight = this.guiAlt ? this.guiAlt.getValue() : this._LLA[2];
+            if (this.refreshElevationCache(terrainNode, aglHeight)) {
+                this.recalculateCascade();
+            }
+        } else {
+            this.recalculateCascade();
+        }
+    }
+
     update() {
         if (this.key) {
             const posHeld = isKeyHeld(this.key.toLowerCase()) || isKeyHeld('l');
@@ -392,17 +404,23 @@ export class CNodePositionLLA extends CNodeTrack {
 
     recalculate() {
         this.array = [];
+        this.elevationCache = null; // flush cache for fresh terrain queries
+
         if (this._LLA !== undefined) {
+            const aglHeight = this.guiAlt.getValue();
+            const terrainNode = this.agl ? (NodeMan.get("TerrainModel", false) ?? null) : null;
 
-            this.updateGroundLevel();
-
-            let alt = this.guiAlt.getValue();
-
-            if (this.agl) {
-                alt += this.groundLevel;
+            if (this.agl && terrainNode) {
+                // Use cached terrain query for ground level
+                const queryPos = LLAToEUS(this._LLA[0], this._LLA[1], 100000);
+                this.EUS = this.getPointBelowCached(terrainNode, queryPos, aglHeight, 0);
+            } else if (this.agl) {
+                // No terrain node, use sphere-based ground level
+                this.updateGroundLevel();
+                this.EUS = LLAToEUS(this._LLA[0], this._LLA[1], aglHeight + this.groundLevel);
+            } else {
+                this.EUS = LLAToEUS(this._LLA[0], this._LLA[1], aglHeight);
             }
-
-            this.EUS = LLAToEUS(this._LLA[0], this._LLA[1], alt)
 
             for (let f = 0; f < this.frames; f++) {
                 const time = f * Sit.simSpeed;
@@ -411,7 +429,11 @@ export class CNodePositionLLA extends CNodeTrack {
                     const wind = this.in.wind.v0.multiplyScalar(time);
                     pos.add(wind);
                     if (this.agl) {
-                        pos = adjustHeightAboveGround(pos, this._LLA[2]);
+                        if (terrainNode) {
+                            pos = this.getPointBelowCached(terrainNode, pos, aglHeight, f);
+                        } else {
+                            pos = adjustHeightAboveGround(pos, this._LLA[2]);
+                        }
                     }
                 }
                 const lla = EUSToLLA(pos);
@@ -437,12 +459,15 @@ export class CNodePositionLLA extends CNodeTrack {
              let pos = this.EUS.clone();
             if (this.in.wind) {
                 const wind = this.in.wind.v0.multiplyScalar(time);
-                // add the wind to the position
                 pos.add(wind);
 
-                // if above ground level, then clamp the position to the ground level plus the altitude
                 if (this.agl) {
-                    pos = adjustHeightAboveGround(pos, this._LLA[2]);
+                    const terrainNode = NodeMan.get("TerrainModel", false);
+                    if (terrainNode) {
+                        pos = this.getPointBelowCached(terrainNode, pos, this._LLA[2], Math.floor(f));
+                    } else {
+                        pos = adjustHeightAboveGround(pos, this._LLA[2]);
+                    }
                 }
             }
 

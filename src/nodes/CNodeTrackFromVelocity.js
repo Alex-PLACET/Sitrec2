@@ -35,6 +35,7 @@ export class CNodeTrackFromVelocity extends CNodeTrack {
 
     recalculate() {
         this.array = [];
+        this.elevationCache = null; // flush cache for fresh terrain queries
 
         const radius = wgs84.RADIUS;
         const pos = this.in.origin.p(0).clone();
