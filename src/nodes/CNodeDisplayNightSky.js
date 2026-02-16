@@ -276,7 +276,6 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
         GlobalScene.add(this.flareBandGroup)
 
 
-        //   why no work???
         setLayerMaskRecursive(this.flareBandGroup, LAYER.MASK_HELPERS);
 
 
