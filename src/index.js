@@ -117,6 +117,7 @@ import {undoManager} from "./UndoManager";
 import {arModeManager} from "./ARMode";
 import {TileUsageTracker} from "./TileUsageTracker";
 import {debugLog} from "./DebugLog";
+import {FeatureManager} from "./CFeatureManager";
 
 // Initialize debug log capture BEFORE any console output
 debugLog.init();
@@ -2580,6 +2581,9 @@ function disposeEverything() {
 
     // delete all the nodes (which should remove their GUI elements, but might not have implement that all. CNodeSwitch destroys)
     NodeMan.disposeAll();
+
+    // dispose of any feature manager managed nodes
+    FeatureManager.disposeAll();
 
     // reset motion analysis state (must be after NodeMan.disposeAll since it references the video node)
     resetMotionAnalysis();

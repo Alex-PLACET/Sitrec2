@@ -200,6 +200,11 @@ class CNode {
         }
     }
 
+    addSimpleSerials(serials) {
+        serials.forEach(serial => this.addSimpleSerial(serial))
+    }
+
+
     simpleSerialize(list) {
         let result = {}
         if (list === undefined) return result;

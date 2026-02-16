@@ -1597,27 +1597,27 @@ export function addFiltersToVideoNode(videoNode) {
             overlayView: videoNode,
         });
 
-        gridFolder.add(gridOverlay, "gridShow").name("Show").onChange((value) => {
+        gridFolder.add(gridOverlay, "gridShow").name("Show").listen().onChange((value) => {
             gridOverlay.setShow(value);
         });
 
-        gridFolder.add(gridOverlay, "gridSize", 1, 128, 0.1).name("Size").onChange(() => {
+        gridFolder.add(gridOverlay, "gridSize", 1, 128, 0.1).name("Size").listen().onChange(() => {
             setRenderOne(true);
         });
 
-        gridFolder.add(gridOverlay, "gridSubdivisions", 1, 16, 1).name("Subdivisions").onChange(() => {
+        gridFolder.add(gridOverlay, "gridSubdivisions", 1, 16, 1).name("Subdivisions").listen().onChange(() => {
             setRenderOne(true);
         });
 
-        gridFolder.add(gridOverlay, "gridXOffset", 0,127,0.1).name("X Offset").onChange(() => {
+        gridFolder.add(gridOverlay, "gridXOffset", 0,127,0.1).name("X Offset").listen().onChange(() => {
             setRenderOne(true);
         });
 
-        gridFolder.add(gridOverlay, "gridYOffset",0,127,0.1).name("Y Offset").onChange(() => {
+        gridFolder.add(gridOverlay, "gridYOffset",0,127,0.1).name("Y Offset").listen().onChange(() => {
             setRenderOne(true);
         });
 
-        gridFolder.addColor(gridOverlay, "gridColor").name("Color").onChange(() => {
+        gridFolder.addColor(gridOverlay, "gridColor").name("Color").listen().onChange(() => {
             setRenderOne(true);
         });
     }

@@ -13,21 +13,24 @@ export class CNodeGridOverlay extends CNodeViewCanvas2D {
         this.gridSubdivisions = 4;
         this.gridXOffset = 0;
         this.gridYOffset = 0;
-        this.gridColor = "#00ff00";
+        this.gridColor = "#00D000";
         this.gridShow = false;
+
+        this.addSimpleSerials(["gridSize", "gridSubdivisions", "gridXOffset", "gridYOffset", "gridColor", "gridShow"]);
+    }
+
+    modDeserialize(v) {
+        super.modDeserialize(v);
+        this.visible = this.gridShow;
     }
 
     setShow(show) {
-        this.gridShow = show;
-        this.visible = show;
-        if (!show && this.ctx) {
-            this.ctx.clearRect(0, 0, this.widthPx, this.heightPx);
-        }
+        this.show(show);
         setRenderOne(true);
     }
 
     renderCanvas(frame) {
-        if (!this.gridShow) return;
+        if (!this.visible) return;
 
         super.renderCanvas(frame);
 
