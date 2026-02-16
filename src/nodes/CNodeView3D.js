@@ -358,8 +358,34 @@ export class CNodeView3D extends CNodeViewCanvas {
                 }
                 
                 this.renderCanvas(frame);
-                
+
                 compositeCtx.drawImage(this.canvas, 0, 0);
+
+                // Also render visible child views (overlays and relativeTo children like compass, MQ9UI)
+                // Scale from CSS pixels to composite canvas backing pixels
+                const scaleX = width / this.widthPx;
+                const scaleY = height / this.heightPx;
+                ViewMan.computeEffectiveVisibility();
+                ViewMan.iterate((id, childView) => {
+                    if (childView === this) return;
+                    if (!childView._effectivelyVisible) return;
+                    const isChild = (childView.overlayView === this) ||
+                                    (childView.in.relativeTo === this);
+                    if (!isChild) return;
+
+                    childView.renderCanvas(frame);
+                    if (childView.canvas) {
+                        const dx = (childView.leftPx - this.leftPx) * scaleX;
+                        const dy = (childView.topPx - this.topPx) * scaleY;
+                        const dw = childView.widthPx * scaleX;
+                        const dh = childView.heightPx * scaleY;
+                        const alpha = childView.transparency !== undefined ? childView.transparency : 1;
+                        if (alpha < 1) compositeCtx.globalAlpha = alpha;
+                        compositeCtx.drawImage(childView.canvas, dx, dy, dw, dh);
+                        if (alpha < 1) compositeCtx.globalAlpha = 1;
+                    }
+                });
+
                 drawVideoWatermark(compositeCtx, width);
                 
                 await exporter.addFrame(compositeCanvas, frame);
