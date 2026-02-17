@@ -714,8 +714,13 @@ export class CNodeTerrain extends CNode {
 
         }
         Sit.originECEF = RLLAToECEFV_Sphere(radians(Sit.lat), radians(Sit.lon), 0, radius)
-        assert(this.maps[this.UI.mapType].map !== undefined, "CNodeTerrain: map is undefined")
-        this.maps[this.UI.mapType].map.recalculateCurveMap(this.radius, true)
+        const map = this.maps[this.UI.mapType].map;
+        assert(map !== undefined, "CNodeTerrain: map is undefined")
+        if (!map.loaded) {
+            console.warn("CNodeTerrain: texture map not loaded yet, deferring recalculateCurveMap")
+            return;
+        }
+        map.recalculateCurveMap(this.radius, true)
 
        //  propagateLayerMaskObject(this.group)
 
