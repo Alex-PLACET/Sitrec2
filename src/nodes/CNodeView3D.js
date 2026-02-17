@@ -1708,7 +1708,7 @@ export class CNodeView3D extends CNodeViewCanvas {
             this.controls.update(1);
 
             // if we have a focus track, then focus on it after camera controls have updated
-            if (this.focusTrackName !== "default") {
+            if (this.focusTrackName !== "default" && NodeMan.exists(this.focusTrackName)) {
                 this.controls.justRotate = true;
                 var focusTrackNode = NodeMan.get(this.focusTrackName)
                 const target = focusTrackNode.p(par.frame);
@@ -1974,7 +1974,7 @@ export class CNodeView3D extends CNodeViewCanvas {
             }
 
             // regardless of what we find above, if there's a focusTrackName, then snap to the closest point on that track
-            if (this.focusTrackName !== "default") {
+            if (this.focusTrackName !== "default" && NodeMan.exists(this.focusTrackName)) {
                 var focusTrackNode = NodeMan.get(this.focusTrackName)
 
                 var closestFrame = focusTrackNode.closestFrameToRay(this.raycaster.ray)

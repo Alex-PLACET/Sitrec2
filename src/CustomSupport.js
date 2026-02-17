@@ -3883,6 +3883,8 @@ export class CCustomManager {
         // in case there's some missing dependency
         // like the CSwitches turning off if they are not used
         // which they don't know immediately
+        // Note: terrain is excluded (withTerrain=false) because maps may not be loaded yet.
+        // Terrain updates resume naturally via CNodeTerrainUI.update() on the next frame.
         NodeMan.recalculateAllRootFirst();
 
         // and we do it twice as sometimes there's initialization ordering issues

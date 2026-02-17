@@ -10,7 +10,7 @@ import {V3} from "./threeUtils";
 // the camera is rotated based on the difference between the current
 // heading and the last heading
 export function updateLockTrack(view, f) {
-    if (view.lockTrackName !== "default" && view.lockTrackName !== undefined) {
+    if (view.lockTrackName !== "default" && view.lockTrackName !== undefined && NodeMan.exists(view.lockTrackName)) {
         const lockTrack = NodeMan.get(view.lockTrackName);
         // get the current position and heading from the track
         const lockPos = lockTrack.p(f);
