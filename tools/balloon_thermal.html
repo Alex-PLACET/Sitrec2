@@ -1,0 +1,1476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Balloon MWIR Thermal Simulation</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    overflow-x: hidden;
+}
+.header {
+    background: #16213e;
+    padding: 12px 24px;
+    border-bottom: 1px solid #0f3460;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.header h1 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #e94560;
+}
+.header .subtitle {
+    font-size: 12px;
+    color: #888;
+}
+.controls-panel {
+    background: #16213e;
+    padding: 12px 20px;
+    border-bottom: 1px solid #0f3460;
+}
+.controls-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    margin-bottom: 8px;
+    align-items: center;
+}
+.controls-row:last-child { margin-bottom: 0; }
+.row-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #e94560;
+    min-width: 70px;
+    letter-spacing: 0.5px;
+}
+.control-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+}
+.control-group label {
+    color: #aaa;
+    white-space: nowrap;
+    min-width: 60px;
+    text-align: right;
+}
+.control-group input[type="range"] {
+    width: 100px;
+    height: 4px;
+    accent-color: #e94560;
+    cursor: pointer;
+}
+.control-group input[type="number"] {
+    width: 58px;
+    background: #0f3460;
+    border: 1px solid #1a1a4e;
+    color: #e0e0e0;
+    padding: 2px 4px;
+    font-size: 11px;
+    border-radius: 3px;
+    text-align: right;
+}
+.control-group input[type="number"]:focus {
+    outline: 1px solid #e94560;
+}
+.control-group .unit {
+    color: #666;
+    font-size: 10px;
+    min-width: 24px;
+}
+.buttons-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin-left: auto;
+}
+button {
+    background: #0f3460;
+    border: 1px solid #1a1a4e;
+    color: #e0e0e0;
+    padding: 4px 10px;
+    font-size: 11px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+button:hover { background: #1a1a4e; }
+button.active {
+    background: #e94560;
+    border-color: #e94560;
+    color: #fff;
+}
+button.preset {
+    background: #1a3a5e;
+    border-color: #2a4a7e;
+}
+button.preset:hover { background: #2a4a7e; }
+.viz-panel {
+    display: flex;
+    gap: 16px;
+    padding: 16px 20px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+.viz-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.viz-section h3 {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: #ccc;
+}
+.viz-controls {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 6px;
+}
+.viz-controls button { font-size: 10px; padding: 3px 8px; }
+canvas.thermal-canvas {
+    border: 1px solid #0f3460;
+    border-radius: 4px;
+    image-rendering: pixelated;
+}
+.chart-container {
+    background: #16213e;
+    border: 1px solid #0f3460;
+    border-radius: 4px;
+    padding: 8px;
+    width: 440px;
+    height: 420px;
+}
+.diag-panel {
+    display: flex;
+    gap: 16px;
+    padding: 8px 20px 16px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+.diag-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.diag-section h3 {
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: #aaa;
+}
+.diag-section canvas {
+    border: 1px solid #0f3460;
+    border-radius: 4px;
+}
+.diag-chart-container {
+    background: #16213e;
+    border: 1px solid #0f3460;
+    border-radius: 4px;
+    padding: 8px;
+    width: 360px;
+    height: 320px;
+}
+details.math-panel {
+    margin: 0 20px 20px;
+    background: #16213e;
+    border: 1px solid #0f3460;
+    border-radius: 4px;
+    padding: 12px 16px;
+}
+details.math-panel summary {
+    cursor: pointer;
+    font-weight: 700;
+    color: #e94560;
+    font-size: 14px;
+    margin-bottom: 8px;
+}
+details.math-panel p, details.math-panel li {
+    font-size: 13px;
+    line-height: 1.6;
+    color: #bbb;
+    margin-bottom: 8px;
+}
+details.math-panel h4 {
+    color: #ddd;
+    font-size: 13px;
+    margin: 12px 0 4px;
+}
+details.math-panel code {
+    background: #0f3460;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 12px;
+    color: #e0e0e0;
+}
+details.math-panel ul { margin-left: 20px; margin-bottom: 8px; }
+.colorbar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 4px;
+    font-size: 10px;
+    color: #888;
+}
+.colorbar canvas {
+    border: 1px solid #333;
+    border-radius: 2px;
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+    <div>
+        <h1>Balloon MWIR Thermal Simulation</h1>
+        <div class="subtitle">Spherical mylar balloon appearance in 3-5 &mu;m mid-wave infrared</div>
+    </div>
+</div>
+
+<div class="controls-panel">
+    <div class="controls-row">
+        <span class="row-label">Geometry</span>
+        <div class="control-group">
+            <label>Look-down</label>
+            <input type="range" id="lookDown_r" min="1" max="45" step="0.5" value="8">
+            <input type="number" id="lookDown_n" min="1" max="45" step="0.5" value="8">
+            <span class="unit">&deg;</span>
+        </div>
+        <div class="control-group">
+            <label>Distance</label>
+            <input type="range" id="camDist_r" min="1" max="30" step="0.1" value="5">
+            <input type="number" id="camDist_n" min="1" max="30" step="0.1" value="5">
+            <span class="unit">NM</span>
+        </div>
+        <div class="control-group">
+            <label>Balloon alt</label>
+            <input type="range" id="ballAlt_r" min="0.5" max="10" step="0.1" value="2">
+            <input type="number" id="ballAlt_n" min="0.5" max="10" step="0.1" value="2">
+            <span class="unit">NM</span>
+        </div>
+        <div class="control-group">
+            <label>BG ground dist</label>
+            <input type="range" id="bgDist_r" min="5" max="100" step="0.1" value="20.17">
+            <input type="number" id="bgDist_n" min="5" max="100" step="0.1" value="20.17">
+            <span class="unit">NM</span>
+        </div>
+        <div class="buttons-row">
+            <button id="btnReset">Reset defaults</button>
+            <button class="preset" id="preHotDesert">Hot Desert Day</button>
+            <button class="preset" id="preSyria">Syria MQ-9</button>
+            <button class="preset" id="preMaritime">Maritime</button>
+            <button class="preset" id="preNight">Night</button>
+        </div>
+    </div>
+    <div class="controls-row">
+        <span class="row-label">Physics</span>
+        <div class="control-group">
+            <label>Ground T</label>
+            <input type="range" id="groundTemp_r" min="-20" max="65" step="0.5" value="10">
+            <input type="number" id="groundTemp_n" min="-20" max="65" step="0.5" value="10">
+            <span class="unit">&deg;C</span>
+        </div>
+        <div class="control-group">
+            <label>Sky T</label>
+            <input type="range" id="skyTemp_r" min="-60" max="-10" step="0.5" value="-40">
+            <input type="number" id="skyTemp_n" min="-60" max="-10" step="0.5" value="-40">
+            <span class="unit">&deg;C</span>
+        </div>
+        <div class="control-group">
+            <label>&beta; extinction</label>
+            <input type="range" id="beta_r" min="0.02" max="0.20" step="0.001" value="0.07">
+            <input type="number" id="beta_n" min="0.02" max="0.20" step="0.001" value="0.07">
+            <span class="unit">/km</span>
+        </div>
+        <div class="control-group">
+            <label>Mylar R</label>
+            <input type="range" id="mylarR_r" min="0.50" max="0.99" step="0.01" value="0.97">
+            <input type="number" id="mylarR_n" min="0.50" max="0.99" step="0.01" value="0.97">
+            <span class="unit"></span>
+        </div>
+        <div class="control-group">
+            <label>Ground &Delta;T</label>
+            <input type="range" id="groundVar_r" min="0" max="15" step="0.5" value="5">
+            <input type="number" id="groundVar_n" min="0" max="15" step="0.5" value="5">
+            <span class="unit">K</span>
+        </div>
+    </div>
+</div>
+
+<div class="viz-panel">
+    <div class="viz-section">
+        <h3>Simulated Thermal Image</h3>
+        <div class="viz-controls">
+            <button id="cmWhiteHot" class="active">White-Hot</button>
+            <button id="cmBlackHot">Black-Hot</button>
+            <button id="cmIronbow">Ironbow</button>
+            <span style="width:12px"></span>
+            <button id="expGround" class="active">Exposed for ground</button>
+            <button id="expFull">Full dynamic range</button>
+        </div>
+        <canvas id="thermalCanvas" class="thermal-canvas" width="400" height="400"></canvas>
+    </div>
+    <div class="viz-section">
+        <h3>Vertical Temperature Profile</h3>
+        <div class="chart-container">
+            <canvas id="profileChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="diag-panel">
+    <div class="diag-section">
+        <h3>Reflected Source Elevation Map</h3>
+        <canvas id="elevMap" width="300" height="300"></canvas>
+        <div class="colorbar">
+            <span>-90&deg;</span>
+            <canvas id="elevColorbar" width="200" height="12"></canvas>
+            <span>+90&deg;</span>
+        </div>
+    </div>
+    <div class="diag-section">
+        <h3>Ground Path Distance Map</h3>
+        <canvas id="pathMap" width="300" height="300"></canvas>
+        <div class="colorbar">
+            <span>0 NM</span>
+            <canvas id="pathColorbar" width="200" height="12"></canvas>
+            <span id="pathMaxLabel">50 NM</span>
+        </div>
+    </div>
+    <div class="diag-section">
+        <h3>Contrast vs Extinction</h3>
+        <div class="diag-chart-container">
+            <canvas id="contrastChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<details class="math-panel">
+    <summary>Physics &amp; Math</summary>
+
+    <h4>1. Coordinate System &amp; Geometry</h4>
+    <p>The balloon is placed at the origin. The camera views it from distance <code>d_cam</code> at a look-down angle <code>&theta;</code> below horizontal. The camera-to-balloon direction vector is <code>d_view = [cos(&theta;), 0, -sin(&theta;)]</code>. Camera altitude above ground: <code>cam_alt = balloon_alt + d_cam &middot; sin(&theta;)</code>.</p>
+
+    <h4>2. Surface Normal &amp; Reflection</h4>
+    <p>For each pixel (u, v) on the balloon disk (u&sup2; + v&sup2; &lt; 1), the depth component is <code>w = &radic;(1 - u&sup2; - v&sup2;)</code>. The outward surface normal is <code>N = -d_view&middot;w + cam_right&middot;u + cam_up&middot;v</code> (normalized). The reflected ray <code>R = I - 2(I&middot;N)N</code> determines whether the pixel reflects sky (<code>R_z &gt; 0</code>) or ground (<code>R_z &lt; 0</code>).</p>
+
+    <h4>3. Key Physical Insights</h4>
+    <ul>
+        <li><strong>Center = retroreflector:</strong> The center of the sphere reflects the viewing ray back toward its source. At 8&deg; look-down, the center reflects sky at 8&deg; elevation &mdash; cold, not hot.</li>
+        <li><strong>Sky/ground boundary near equator:</strong> At shallow look-down angles, the boundary between sky-reflecting and ground-reflecting regions sits near the visual equator, giving the characteristic half-dark / half-bright appearance.</li>
+        <li><strong>Hottest point is NOT at the bottom:</strong> The hottest ground reflection is where the reflected ray points most steeply downward (shortest slant path). This is below center but well above the bottom limb. At the very bottom, the reflected ray approaches horizontal, giving enormous ground paths and high atmospheric attenuation.</li>
+        <li><strong>Atmospheric shortcut effect:</strong> The balloon's ground-reflecting region can appear <em>warmer</em> than the background ground because the total reflected path (camera&rarr;balloon&rarr;ground) can be shorter than the direct camera&rarr;background path, resulting in less attenuation of the hot ground signal.</li>
+        <li><strong>Atmosphere as equalizer:</strong> At long ranges or high extinction, everything converges to atmospheric temperature. Ground, sky reflections, and background all merge toward T<sub>atm</sub>, destroying contrast.</li>
+        <li><strong>White-hot ground exposure:</strong> When the camera AGC is set for ground contrast, the sky-reflecting upper half saturates black (much colder), while the ground-reflecting lower half appears as a bright crescent.</li>
+    </ul>
+
+    <h4>4. Sky Temperature Model</h4>
+    <p><code>T_sky(elev) = T_zenith + (T_horizon - T_zenith) &middot; (1 - sin(elev))^0.6</code>, where <code>T_horizon = T_zenith + 35K</code>. The horizon is warmest; the zenith is coldest.</p>
+
+    <h4>5. Atmospheric Transmission</h4>
+    <p>Beer-Lambert: <code>&tau;(d) = exp(-&beta; &middot; d)</code>. Path radiance: <code>L_received = L_source &middot; &tau;(d) + L_atm &middot; (1 - &tau;(d))</code>. The atmosphere both attenuates the source and adds its own emission.</p>
+
+    <h4>6. Planck Radiance &amp; Band Integration</h4>
+    <p>Spectral radiance <code>B(T, &lambda;) = (2hc&sup2;/&lambda;&sup5;) / (exp(hc/&lambda;kT) - 1)</code>. Band-integrated over MWIR (3.5&ndash;4.15 &mu;m and 4.4&ndash;4.9 &mu;m), avoiding the CO&sub2; absorption at 4.2&ndash;4.4 &mu;m.</p>
+
+    <h4>7. Mylar Reflection</h4>
+    <p><code>L_reflected = R_mylar &middot; L_source + &epsilon;_mylar &middot; L(T_balloon)</code>, where <code>&epsilon; = 1 - R</code> and <code>T_balloon &asymp; T_atm - 10K</code>. High reflectivity mylar (R &asymp; 0.97) means the balloon is almost a perfect mirror in MWIR.</p>
+</details>
+
+<script>
+// ========== CONSTANTS ==========
+const NM_TO_KM = 1.852;
+const DEG_TO_RAD = Math.PI / 180;
+const RAD_TO_DEG = 180 / Math.PI;
+const h_planck = 6.626e-34;
+const c_light = 3.0e8;
+const k_boltz = 1.381e-23;
+
+// ========== PLANCK LUT ==========
+const LUT_T_MIN = 100.0;
+const LUT_T_MAX = 500.0;
+const LUT_STEP = 0.1;
+const LUT_SIZE = Math.round((LUT_T_MAX - LUT_T_MIN) / LUT_STEP) + 1;
+let radianceLUT = new Float64Array(LUT_SIZE);
+
+function planckSpectral(T, lambda_m) {
+    // B(T, lambda) in W/(m^2 sr m)
+    const l5 = lambda_m * lambda_m * lambda_m * lambda_m * lambda_m;
+    const exponent = h_planck * c_light / (lambda_m * k_boltz * T);
+    if (exponent > 500) return 0;
+    return (2 * h_planck * c_light * c_light / l5) / (Math.exp(exponent) - 1);
+}
+
+function bandIntegratedRadiance(T) {
+    // Integrate over 3.5-4.15 um and 4.4-4.9 um, trapezoidal
+    // Returns radiance in W/(m^2 sr)
+    let total = 0;
+    const bands = [[3.5e-6, 4.15e-6], [4.4e-6, 4.9e-6]];
+    const N = 50;
+    for (const [l0, l1] of bands) {
+        const dl = (l1 - l0) / N;
+        let prev = planckSpectral(T, l0);
+        for (let i = 1; i <= N; i++) {
+            const lam = l0 + i * dl;
+            const curr = planckSpectral(T, lam);
+            total += (prev + curr) * 0.5 * dl;
+            prev = curr;
+        }
+    }
+    return total;
+}
+
+function buildRadianceLUT() {
+    for (let i = 0; i < LUT_SIZE; i++) {
+        const T = LUT_T_MIN + i * LUT_STEP;
+        radianceLUT[i] = bandIntegratedRadiance(T);
+    }
+}
+
+function radianceLookup(T) {
+    if (T <= LUT_T_MIN) return radianceLUT[0];
+    if (T >= LUT_T_MAX) return radianceLUT[LUT_SIZE - 1];
+    const idx = (T - LUT_T_MIN) / LUT_STEP;
+    const i0 = Math.floor(idx);
+    const frac = idx - i0;
+    if (i0 >= LUT_SIZE - 1) return radianceLUT[LUT_SIZE - 1];
+    return radianceLUT[i0] * (1 - frac) + radianceLUT[i0 + 1] * frac;
+}
+
+function apparentTempLookup(L) {
+    // Binary search in LUT (monotonically increasing)
+    if (L <= radianceLUT[0]) return LUT_T_MIN;
+    if (L >= radianceLUT[LUT_SIZE - 1]) return LUT_T_MAX;
+    let lo = 0, hi = LUT_SIZE - 1;
+    while (hi - lo > 1) {
+        const mid = (lo + hi) >> 1;
+        if (radianceLUT[mid] <= L) lo = mid;
+        else hi = mid;
+    }
+    const frac = (L - radianceLUT[lo]) / (radianceLUT[hi] - radianceLUT[lo]);
+    return LUT_T_MIN + (lo + frac) * LUT_STEP;
+}
+
+// ========== PHYSICS FUNCTIONS ==========
+function skyTemperatureK(elevDeg, T_zenith_K) {
+    const T_horizon_K = T_zenith_K + 35;
+    const elevRad = Math.max(elevDeg, 0) * DEG_TO_RAD;
+    const sinElev = Math.sin(elevRad);
+    return T_zenith_K + (T_horizon_K - T_zenith_K) * Math.pow(1 - sinElev, 0.6);
+}
+
+function atmosphericTransmission(d_km, beta) {
+    return Math.exp(-beta * d_km);
+}
+
+function groundNoise(x, y) {
+    let n = 0;
+    n += Math.sin(x * 0.02 + 1.7) * Math.sin(y * 0.03 + 0.5) * 0.5;
+    n += Math.sin(x * 0.05 - 0.3) * Math.sin(y * 0.04 + 2.1) * 0.3;
+    n += Math.sin(x * 0.11 + 0.8) * Math.sin(y * 0.09 - 1.2) * 0.2;
+    return n;
+}
+
+// ========== IRONBOW COLORMAP ==========
+let ironbowLUT = new Uint8Array(256 * 3);
+function buildIronbowLUT() {
+    const stops = [
+        [0.00, 0, 0, 0],
+        [0.25, 0, 0, 180],
+        [0.50, 180, 0, 0],
+        [0.75, 255, 165, 0],
+        [1.00, 255, 255, 255]
+    ];
+    for (let i = 0; i < 256; i++) {
+        const t = i / 255;
+        let s0 = stops[0], s1 = stops[stops.length - 1];
+        for (let j = 0; j < stops.length - 1; j++) {
+            if (t >= stops[j][0] && t <= stops[j + 1][0]) {
+                s0 = stops[j];
+                s1 = stops[j + 1];
+                break;
+            }
+        }
+        const f = (s1[0] === s0[0]) ? 0 : (t - s0[0]) / (s1[0] - s0[0]);
+        ironbowLUT[i * 3] = Math.round(s0[1] + f * (s1[1] - s0[1]));
+        ironbowLUT[i * 3 + 1] = Math.round(s0[2] + f * (s1[2] - s0[2]));
+        ironbowLUT[i * 3 + 2] = Math.round(s0[3] + f * (s1[3] - s0[3]));
+    }
+}
+
+// ========== GLOBAL STATE ==========
+let params = {};
+let colormap = 'whiteHot'; // 'whiteHot', 'blackHot', 'ironbow'
+let exposureMode = 'ground'; // 'ground', 'full'
+let profileChart = null;
+let contrastChart = null;
+let updatePending = false;
+let lastUpdateTime = 0;
+
+// Precomputed data from last render
+let balloonData = null; // { tempMap, elevMap, pathMap, size }
+
+// ========== PARAMETER GATHERING ==========
+const DEFAULTS = {
+    lookDown: 8, camDist: 5, ballAlt: 2, bgDist: 20.17,
+    groundTemp: 10, skyTemp: -40, beta: 0.07, mylarR: 0.97, groundVar: 5
+};
+
+const paramDefs = [
+    { key: 'lookDown', id: 'lookDown' },
+    { key: 'camDist', id: 'camDist' },
+    { key: 'ballAlt', id: 'ballAlt' },
+    { key: 'bgDist', id: 'bgDist' },
+    { key: 'groundTemp', id: 'groundTemp' },
+    { key: 'skyTemp', id: 'skyTemp' },
+    { key: 'beta', id: 'beta' },
+    { key: 'mylarR', id: 'mylarR' },
+    { key: 'groundVar', id: 'groundVar' }
+];
+
+function gatherParams() {
+    const p = {};
+    for (const def of paramDefs) {
+        p[def.key] = parseFloat(document.getElementById(def.id + '_n').value);
+    }
+    // Derived
+    p.lookDownRad = p.lookDown * DEG_TO_RAD;
+    p.T_ground_K = p.groundTemp + 273.15;
+    p.T_zenith_K = p.skyTemp + 273.15;
+    p.T_horizon_K = p.T_zenith_K + 35;
+    p.T_atm_K = (p.T_ground_K + p.T_zenith_K) / 2 + 5;
+    p.T_balloon_K = p.T_atm_K - 10;
+    p.camAlt_km = (p.ballAlt + p.camDist * Math.sin(p.lookDownRad)) * NM_TO_KM;
+    p.camDist_km = p.camDist * NM_TO_KM;
+    p.ballAlt_km = p.ballAlt * NM_TO_KM;
+    p.bgDist_km = p.bgDist * NM_TO_KM;
+
+    // Camera basis vectors
+    // d_view points FROM camera TOWARD balloon: [cos(theta), 0, -sin(theta)]
+    p.dView = [Math.cos(p.lookDownRad), 0, -Math.sin(p.lookDownRad)];
+    p.camRight = [0, 1, 0];
+    // cam_up = cross(d_view, cam_right) = [sin(theta), 0, cos(theta)]
+    p.camUp = [Math.sin(p.lookDownRad), 0, Math.cos(p.lookDownRad)];
+
+    // Radiance LUT references for quick access
+    p.L_atm = radianceLookup(p.T_atm_K);
+    p.L_ground = radianceLookup(p.T_ground_K);
+    p.L_balloon = radianceLookup(p.T_balloon_K);
+    p.eps_mylar = 1.0 - p.mylarR;
+
+    return p;
+}
+
+// ========== CORE TRACE FUNCTIONS ==========
+function tracePixel(u, v, p) {
+    // Returns { T_app, elev, groundPath_km, isGround, L_at_camera }
+    const w = Math.sqrt(1 - u * u - v * v);
+
+    // Outward normal: N = -d_view*w + cam_right*u + cam_up*v
+    let Nx = -p.dView[0] * w + p.camRight[0] * u + p.camUp[0] * v;
+    let Ny = -p.dView[1] * w + p.camRight[1] * u + p.camUp[1] * v;
+    let Nz = -p.dView[2] * w + p.camRight[2] * u + p.camUp[2] * v;
+    const nLen = Math.sqrt(Nx * Nx + Ny * Ny + Nz * Nz);
+    Nx /= nLen; Ny /= nLen; Nz /= nLen;
+
+    // Reflected ray: R = I - 2(I.N)N, where I = d_view
+    const IdotN = p.dView[0] * Nx + p.dView[1] * Ny + p.dView[2] * Nz;
+    const Rx = p.dView[0] - 2 * IdotN * Nx;
+    const Ry = p.dView[1] - 2 * IdotN * Ny;
+    const Rz = p.dView[2] - 2 * IdotN * Nz;
+
+    const elev = Math.asin(Rz) * RAD_TO_DEG;
+    const isGround = Rz < 0;
+    let L_source;
+    let groundPath_km = NaN;
+
+    if (!isGround) {
+        // Sky reflection
+        L_source = radianceLookup(skyTemperatureK(elev, p.T_zenith_K));
+    } else {
+        // Ground reflection
+        let depress = Math.abs(elev);
+        if (depress < 0.05) depress = 0.05;
+        const depressRad = depress * DEG_TO_RAD;
+        groundPath_km = p.ballAlt_km / Math.sin(depressRad);
+        if (groundPath_km > 500) groundPath_km = 500;
+
+        const tau_bg = atmosphericTransmission(groundPath_km, p.beta);
+        L_source = p.L_ground * tau_bg + p.L_atm * (1 - tau_bg);
+    }
+
+    // Mylar reflection
+    const L_after_reflect = p.mylarR * L_source + p.eps_mylar * p.L_balloon;
+
+    // Propagate to camera
+    const tau_cam = atmosphericTransmission(p.camDist_km, p.beta);
+    const L_at_camera = L_after_reflect * tau_cam + p.L_atm * (1 - tau_cam);
+
+    const T_app = apparentTempLookup(L_at_camera);
+
+    return { T_app, elev, groundPath_km, isGround, L_at_camera };
+}
+
+function backgroundPixelTemp(pixelElevDeg, p, noiseVal) {
+    if (pixelElevDeg > 0) {
+        // Sky
+        const T_sky = skyTemperatureK(pixelElevDeg, p.T_zenith_K);
+        // Sky is far away, apply large distance atmospheric transmission
+        // For simplicity, model sky path as very long
+        const d_sky_km = 100; // effectively infinite for atmospheric purposes
+        const tau = atmosphericTransmission(d_sky_km, p.beta);
+        const L_recv = radianceLookup(T_sky) * tau + p.L_atm * (1 - tau);
+        return apparentTempLookup(L_recv);
+    } else {
+        // Ground
+        let depress = Math.abs(pixelElevDeg);
+        if (depress < 0.01) depress = 0.01;
+        const depressRad = depress * DEG_TO_RAD;
+        const d_ground_km = p.camAlt_km / Math.sin(depressRad);
+        const d_clamped = Math.min(d_ground_km, 500);
+        const T_ground_local = p.T_ground_K + noiseVal * p.groundVar;
+        const tau = atmosphericTransmission(d_clamped, p.beta);
+        const L_recv = radianceLookup(T_ground_local) * tau + p.L_atm * (1 - tau);
+        return apparentTempLookup(L_recv);
+    }
+}
+
+// ========== RENDERING ==========
+const CANVAS_SIZE = 400;
+const DIAG_SIZE = 300;
+const BALLOON_RADIUS_FRAC = 0.2; // Balloon occupies 40% of canvas width (radius = 20%)
+
+function applyColormap(val, dMin, dMax) {
+    // val is temperature, map to [0,1]
+    let t = (val - dMin) / (dMax - dMin);
+    t = Math.max(0, Math.min(1, t));
+
+    if (colormap === 'whiteHot') {
+        const g = Math.round(t * 255);
+        return [g, g, g];
+    } else if (colormap === 'blackHot') {
+        const g = Math.round((1 - t) * 255);
+        return [g, g, g];
+    } else {
+        // Ironbow
+        const idx = Math.round(t * 255);
+        return [ironbowLUT[idx * 3], ironbowLUT[idx * 3 + 1], ironbowLUT[idx * 3 + 2]];
+    }
+}
+
+function renderAll() {
+    const p = gatherParams();
+    params = p;
+
+    // === Compute balloon data ===
+    const size = CANVAS_SIZE;
+    const ballR = BALLOON_RADIUS_FRAC * size; // radius in pixels
+    const cx = size / 2;
+    const cy = size / 2;
+
+    // FOV: compute the angular FOV so the balloon appears at the right size
+    // The balloon occupies ballR*2 pixels out of size pixels
+    // We need the FOV in degrees for the background
+    // Let's define the FOV such that the full canvas spans some angular range
+    // If balloon angular size = 2*arctan(r_balloon/d_cam) and it occupies 2*ballR pixels:
+    // pixel_scale = angular_fov / size degrees per pixel
+    // For a 1m balloon at 5NM = 9.26km, angular size ~ 0.012 deg, way too small
+    // This is a schematic view, not to scale. The balloon is rendered large for visibility.
+    // We define a virtual FOV for background rendering:
+    const fov_deg = 20; // virtual FOV for the whole canvas
+    const degPerPixel = fov_deg / size;
+
+    // Horizon position: the camera looks down at angle theta_look.
+    // The center of the image is at -theta_look elevation.
+    // Horizon (0 deg elevation) is at pixel offset = theta_look / degPerPixel above center
+    const horizonPixelOffset = p.lookDown / degPerPixel;
+    const horizonY = cy - horizonPixelOffset; // pixel row of horizon (0 = top)
+
+    // Allocate data arrays
+    const tempMap = new Float32Array(size * size);
+    const elevMap = new Float32Array(size * size);
+    const pathMap = new Float32Array(size * size);
+    const isBallon = new Uint8Array(size * size);
+
+    // Ground noise texture
+    const noiseMap = new Float32Array(size * size);
+    for (let py = 0; py < size; py++) {
+        for (let px = 0; px < size; px++) {
+            noiseMap[py * size + px] = groundNoise(px, py);
+        }
+    }
+
+    // Balloon pixel stats
+    let balloonTemps = [];
+    let groundPixelTemps = [];
+    let bgGroundTemps = [];
+
+    // Profile data: vertical slice through balloon center
+    const profileData = [];
+
+    for (let py = 0; py < size; py++) {
+        for (let px = 0; px < size; px++) {
+            const idx = py * size + px;
+
+            // Check if pixel is on balloon
+            const dx = px - cx;
+            const dy = cy - py; // y up
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            if (dist <= ballR) {
+                // Balloon pixel
+                isBallon[idx] = 1;
+                const u = dx / ballR;
+                const v = dy / ballR;
+                const r2 = u * u + v * v;
+                if (r2 < 1.0) {
+                    const result = tracePixel(u, v, p);
+                    tempMap[idx] = result.T_app;
+                    elevMap[idx] = result.elev;
+                    pathMap[idx] = result.isGround ? result.groundPath_km / NM_TO_KM : NaN;
+                    balloonTemps.push(result.T_app);
+                    if (result.isGround) {
+                        groundPixelTemps.push(result.T_app);
+                    }
+                } else {
+                    // Edge pixel (rounding)
+                    isBallon[idx] = 0;
+                    const pixelElev = -p.lookDown + dy * degPerPixel;
+                    tempMap[idx] = backgroundPixelTemp(pixelElev, p, noiseMap[idx]);
+                    elevMap[idx] = NaN;
+                    pathMap[idx] = NaN;
+                    if (pixelElev <= 0) bgGroundTemps.push(tempMap[idx]);
+                }
+            } else {
+                // Background pixel
+                isBallon[idx] = 0;
+                const pixelElev = -p.lookDown + dy * degPerPixel;
+                tempMap[idx] = backgroundPixelTemp(pixelElev, p, noiseMap[idx]);
+                elevMap[idx] = NaN;
+                pathMap[idx] = NaN;
+                if (pixelElev <= 0) bgGroundTemps.push(tempMap[idx]);
+            }
+        }
+    }
+
+    // Collect profile data (vertical slice at center column)
+    for (let py = 0; py < size; py++) {
+        const dx = 0;
+        const dy = cy - py;
+        const dist = Math.abs(dy);
+        if (dist <= ballR) {
+            const u = 0;
+            const v = dy / ballR;
+            if (u * u + v * v < 1.0) {
+                const result = tracePixel(u, v, p);
+                profileData.push({ v: v, T: result.T_app, isGround: result.isGround, elev: result.elev });
+            }
+        }
+    }
+
+    // Store for other renderers
+    balloonData = { tempMap, elevMap, pathMap, isBallon, size, ballR, cx, cy,
+        horizonY, degPerPixel, balloonTemps, groundPixelTemps, bgGroundTemps, profileData };
+
+    // === Determine display range ===
+    let dMin, dMax;
+    if (exposureMode === 'ground') {
+        // Use background ground pixel stats
+        if (bgGroundTemps.length > 0) {
+            const mean = bgGroundTemps.reduce((a, b) => a + b, 0) / bgGroundTemps.length;
+            const variance = bgGroundTemps.reduce((a, b) => a + (b - mean) * (b - mean), 0) / bgGroundTemps.length;
+            const std = Math.sqrt(variance);
+            dMin = mean - 4 * Math.max(std, 0.5);
+            dMax = mean + 4 * Math.max(std, 0.5);
+        } else {
+            dMin = p.T_atm_K - 10;
+            dMax = p.T_atm_K + 10;
+        }
+    } else {
+        if (balloonTemps.length > 0) {
+            dMin = Math.min(...balloonTemps) - 3;
+            dMax = Math.max(...balloonTemps) + 3;
+        } else {
+            dMin = 250;
+            dMax = 300;
+        }
+    }
+
+    // === Render thermal image ===
+    const canvas = document.getElementById('thermalCanvas');
+    const ctx = canvas.getContext('2d');
+    const imgData = ctx.createImageData(size, size);
+
+    for (let py = 0; py < size; py++) {
+        for (let px = 0; px < size; px++) {
+            const idx = py * size + px;
+            const T = tempMap[idx];
+            const [r, g, b] = applyColormap(T, dMin, dMax);
+            const off = idx * 4;
+            imgData.data[off] = r;
+            imgData.data[off + 1] = g;
+            imgData.data[off + 2] = b;
+            imgData.data[off + 3] = 255;
+        }
+    }
+    ctx.putImageData(imgData, 0, 0);
+
+    // Draw horizon line (thin dashed)
+    if (horizonY >= 0 && horizonY < size) {
+        ctx.strokeStyle = 'rgba(255,255,0,0.3)';
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(0, horizonY);
+        ctx.lineTo(size, horizonY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = 'rgba(255,255,0,0.5)';
+        ctx.font = '10px sans-serif';
+        ctx.fillText('horizon', 4, horizonY - 2);
+    }
+
+    // === Render elevation map ===
+    renderElevationMap(p);
+
+    // === Render path map ===
+    renderPathMap(p);
+
+    // === Update charts ===
+    updateProfileChart(p, dMin, dMax);
+    updateContrastChart(p);
+}
+
+function renderElevationMap(p) {
+    const canvas = document.getElementById('elevMap');
+    const ctx = canvas.getContext('2d');
+    const sz = DIAG_SIZE;
+    const imgData = ctx.createImageData(sz, sz);
+    const cxd = sz / 2, cyd = sz / 2;
+    const rPx = 0.42 * sz; // slightly larger relative to diag canvas
+
+    for (let py = 0; py < sz; py++) {
+        for (let px = 0; px < sz; px++) {
+            const dx = px - cxd;
+            const dy = cyd - py;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const off = (py * sz + px) * 4;
+
+            if (dist <= rPx) {
+                const u = dx / rPx;
+                const v = dy / rPx;
+                if (u * u + v * v < 1.0) {
+                    const result = tracePixel(u, v, p);
+                    const elev = result.elev;
+                    // Map -90 to +90 -> color
+                    // Blue for sky (positive), Red for ground (negative)
+                    const t = (elev + 90) / 180; // 0=ground(-90), 1=sky(+90)
+                    let r, g, b;
+                    if (elev >= 0) {
+                        // Sky: black to blue
+                        const s = elev / 90;
+                        r = 0;
+                        g = 0;
+                        b = Math.round(80 + 175 * s);
+                    } else {
+                        // Ground: black to red
+                        const s = -elev / 90;
+                        r = Math.round(80 + 175 * s);
+                        g = 0;
+                        b = 0;
+                    }
+                    // Contour at 0 degrees
+                    if (Math.abs(elev) < 1.5) {
+                        r = g = b = 0;
+                    }
+                    imgData.data[off] = r;
+                    imgData.data[off + 1] = g;
+                    imgData.data[off + 2] = b;
+                    imgData.data[off + 3] = 255;
+                } else {
+                    imgData.data[off] = 30;
+                    imgData.data[off + 1] = 30;
+                    imgData.data[off + 2] = 30;
+                    imgData.data[off + 3] = 255;
+                }
+            } else {
+                imgData.data[off] = 26;
+                imgData.data[off + 1] = 26;
+                imgData.data[off + 2] = 46;
+                imgData.data[off + 3] = 255;
+            }
+        }
+    }
+    ctx.putImageData(imgData, 0, 0);
+
+    // Draw colorbar
+    const cbCanvas = document.getElementById('elevColorbar');
+    const cbCtx = cbCanvas.getContext('2d');
+    const cbW = cbCanvas.width, cbH = cbCanvas.height;
+    const cbImg = cbCtx.createImageData(cbW, cbH);
+    for (let x = 0; x < cbW; x++) {
+        const elev = -90 + (x / (cbW - 1)) * 180;
+        let r, g, b;
+        if (elev >= 0) {
+            const s = elev / 90;
+            r = 0; g = 0; b = Math.round(80 + 175 * s);
+        } else {
+            const s = -elev / 90;
+            r = Math.round(80 + 175 * s); g = 0; b = 0;
+        }
+        for (let y = 0; y < cbH; y++) {
+            const off = (y * cbW + x) * 4;
+            cbImg.data[off] = r; cbImg.data[off + 1] = g; cbImg.data[off + 2] = b; cbImg.data[off + 3] = 255;
+        }
+    }
+    cbCtx.putImageData(cbImg, 0, 0);
+}
+
+function renderPathMap(p) {
+    const canvas = document.getElementById('pathMap');
+    const ctx = canvas.getContext('2d');
+    const sz = DIAG_SIZE;
+    const imgData = ctx.createImageData(sz, sz);
+    const cxd = sz / 2, cyd = sz / 2;
+    const rPx = 0.42 * sz;
+
+    // Find max ground path for colormap scaling
+    let maxPath = 0;
+    const pathVals = [];
+    for (let py = 0; py < sz; py++) {
+        for (let px = 0; px < sz; px++) {
+            const dx = px - cxd, dy = cyd - py;
+            if (dx * dx + dy * dy < rPx * rPx) {
+                const u = dx / rPx, v = dy / rPx;
+                if (u * u + v * v < 1.0) {
+                    const result = tracePixel(u, v, p);
+                    if (result.isGround) {
+                        const pathNM = result.groundPath_km / NM_TO_KM;
+                        pathVals.push(pathNM);
+                        if (pathNM > maxPath) maxPath = pathNM;
+                    }
+                }
+            }
+        }
+    }
+    // Cap display at 95th percentile for better contrast
+    pathVals.sort((a, b) => a - b);
+    const displayMax = pathVals.length > 0 ? pathVals[Math.floor(pathVals.length * 0.95)] : 50;
+    document.getElementById('pathMaxLabel').textContent = displayMax.toFixed(0) + ' NM';
+
+    // Re-render
+    for (let py = 0; py < sz; py++) {
+        for (let px = 0; px < sz; px++) {
+            const dx = px - cxd, dy = cyd - py;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const off = (py * sz + px) * 4;
+
+            if (dist <= rPx) {
+                const u = dx / rPx, v = dy / rPx;
+                if (u * u + v * v < 1.0) {
+                    const result = tracePixel(u, v, p);
+                    if (result.isGround) {
+                        const pathNM = result.groundPath_km / NM_TO_KM;
+                        const t = Math.min(pathNM / displayMax, 1.0);
+                        // Hot colormap: black -> red -> yellow -> white
+                        let r, g, b;
+                        if (t < 0.33) {
+                            const s = t / 0.33;
+                            r = Math.round(255 * s); g = 0; b = 0;
+                        } else if (t < 0.66) {
+                            const s = (t - 0.33) / 0.33;
+                            r = 255; g = Math.round(255 * s); b = 0;
+                        } else {
+                            const s = (t - 0.66) / 0.34;
+                            r = 255; g = 255; b = Math.round(255 * s);
+                        }
+                        imgData.data[off] = r; imgData.data[off + 1] = g; imgData.data[off + 2] = b; imgData.data[off + 3] = 255;
+                    } else {
+                        // Sky-reflecting: black
+                        imgData.data[off] = 0; imgData.data[off + 1] = 0; imgData.data[off + 2] = 0; imgData.data[off + 3] = 255;
+                    }
+                } else {
+                    imgData.data[off] = 30; imgData.data[off + 1] = 30; imgData.data[off + 2] = 30; imgData.data[off + 3] = 255;
+                }
+            } else {
+                imgData.data[off] = 26; imgData.data[off + 1] = 26; imgData.data[off + 2] = 46; imgData.data[off + 3] = 255;
+            }
+        }
+    }
+    ctx.putImageData(imgData, 0, 0);
+
+    // Path colorbar
+    const cbCanvas = document.getElementById('pathColorbar');
+    const cbCtx = cbCanvas.getContext('2d');
+    const cbW = cbCanvas.width, cbH = cbCanvas.height;
+    const cbImg = cbCtx.createImageData(cbW, cbH);
+    for (let x = 0; x < cbW; x++) {
+        const t = x / (cbW - 1);
+        let r, g, b;
+        if (t < 0.33) {
+            const s = t / 0.33;
+            r = Math.round(255 * s); g = 0; b = 0;
+        } else if (t < 0.66) {
+            const s = (t - 0.33) / 0.33;
+            r = 255; g = Math.round(255 * s); b = 0;
+        } else {
+            const s = (t - 0.66) / 0.34;
+            r = 255; g = 255; b = Math.round(255 * s);
+        }
+        for (let y = 0; y < cbH; y++) {
+            const off = (y * cbW + x) * 4;
+            cbImg.data[off] = r; cbImg.data[off + 1] = g; cbImg.data[off + 2] = b; cbImg.data[off + 3] = 255;
+        }
+    }
+    cbCtx.putImageData(cbImg, 0, 0);
+}
+
+// ========== CHART.JS CHARTS ==========
+function updateProfileChart(p, dMin, dMax) {
+    const bd = balloonData;
+    if (!bd || bd.profileData.length === 0) return;
+
+    const labels = bd.profileData.map(d => d.v.toFixed(2));
+    const temps = bd.profileData.map(d => d.T);
+
+    // Background ground temperature at direct distance
+    const tau_bg = atmosphericTransmission(p.bgDist_km, p.beta);
+    const L_bg = p.L_ground * tau_bg + p.L_atm * (1 - tau_bg);
+    const T_bg = apparentTempLookup(L_bg);
+
+    // Sky temperature at look-down angle (center of balloon)
+    const T_sky_at_center = skyTemperatureK(p.lookDown, p.T_zenith_K);
+
+    // Find hottest point
+    let maxT = -Infinity, maxIdx = 0;
+    for (let i = 0; i < temps.length; i++) {
+        if (temps[i] > maxT) { maxT = temps[i]; maxIdx = i; }
+    }
+
+    // Find sky/ground boundary
+    let boundaryIdx = -1;
+    for (let i = 0; i < bd.profileData.length - 1; i++) {
+        if ((bd.profileData[i].isGround && !bd.profileData[i + 1].isGround) ||
+            (!bd.profileData[i].isGround && bd.profileData[i + 1].isGround)) {
+            boundaryIdx = i;
+            break;
+        }
+    }
+
+    const datasets = [
+        {
+            label: 'Balloon profile',
+            data: temps,
+            borderColor: '#e94560',
+            backgroundColor: 'rgba(233,69,96,0.1)',
+            borderWidth: 2,
+            pointRadius: 0,
+            fill: false,
+            tension: 0.1
+        },
+        {
+            label: 'BG ground apparent T',
+            data: new Array(temps.length).fill(T_bg),
+            borderColor: '#4ecdc4',
+            borderWidth: 1.5,
+            borderDash: [6, 3],
+            pointRadius: 0,
+            fill: false
+        },
+        {
+            label: 'Atmospheric T',
+            data: new Array(temps.length).fill(p.T_atm_K),
+            borderColor: '#95a5a6',
+            borderWidth: 1,
+            borderDash: [2, 4],
+            pointRadius: 0,
+            fill: false
+        },
+        {
+            label: 'Sky T (at center elev)',
+            data: new Array(temps.length).fill(T_sky_at_center),
+            borderColor: '#3498db',
+            borderWidth: 1,
+            borderDash: [2, 4],
+            pointRadius: 0,
+            fill: false
+        }
+    ];
+
+    // Annotations
+    const annotations = {};
+    if (boundaryIdx >= 0) {
+        annotations.skyGroundBoundary = {
+            type: 'line',
+            xMin: boundaryIdx,
+            xMax: boundaryIdx,
+            borderColor: 'rgba(255,255,0,0.5)',
+            borderWidth: 1,
+            borderDash: [3, 3],
+            label: {
+                display: true,
+                content: 'sky/ground',
+                position: 'start',
+                color: '#ff0',
+                font: { size: 9 },
+                backgroundColor: 'rgba(0,0,0,0.5)'
+            }
+        };
+    }
+    annotations.hottestPoint = {
+        type: 'point',
+        xValue: maxIdx,
+        yValue: maxT,
+        radius: 5,
+        backgroundColor: 'rgba(255,165,0,0.8)',
+        borderColor: '#ff0'
+    };
+
+    if (exposureMode === 'ground') {
+        annotations.displayRangeLow = {
+            type: 'box',
+            yMin: 0,
+            yMax: dMin,
+            backgroundColor: 'rgba(100,100,100,0.15)',
+            borderWidth: 0
+        };
+        annotations.displayRangeHigh = {
+            type: 'box',
+            yMin: dMax,
+            yMax: 1000,
+            backgroundColor: 'rgba(100,100,100,0.15)',
+            borderWidth: 0
+        };
+        annotations.dMinLine = {
+            type: 'line',
+            yMin: dMin,
+            yMax: dMin,
+            borderColor: 'rgba(255,255,255,0.3)',
+            borderWidth: 1,
+            borderDash: [2, 2]
+        };
+        annotations.dMaxLine = {
+            type: 'line',
+            yMin: dMax,
+            yMax: dMax,
+            borderColor: 'rgba(255,255,255,0.3)',
+            borderWidth: 1,
+            borderDash: [2, 2]
+        };
+    }
+
+    const config = {
+        type: 'line',
+        data: { labels, datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            scales: {
+                x: {
+                    title: { display: true, text: 'Vertical position (bottom -1 to top +1)', color: '#aaa', font: { size: 11 } },
+                    ticks: { color: '#888', maxTicksLimit: 11, font: { size: 9 } },
+                    grid: { color: 'rgba(255,255,255,0.05)' },
+                    reverse: true
+                },
+                y: {
+                    title: { display: true, text: 'Apparent Temperature (K)', color: '#aaa', font: { size: 11 } },
+                    ticks: { color: '#888', font: { size: 9 } },
+                    grid: { color: 'rgba(255,255,255,0.05)' }
+                }
+            },
+            plugins: {
+                legend: { labels: { color: '#ccc', font: { size: 10 }, boxWidth: 20 } },
+                annotation: { annotations }
+            }
+        }
+    };
+
+    if (profileChart) {
+        profileChart.data = config.data;
+        profileChart.options = config.options;
+        profileChart.update('none');
+    } else {
+        profileChart = new Chart(document.getElementById('profileChart'), config);
+    }
+}
+
+function updateContrastChart(p) {
+    const betaValues = [];
+    const nSteps = 40;
+    for (let i = 0; i <= nSteps; i++) {
+        betaValues.push(0.02 + i * (0.18 / nSteps));
+    }
+
+    const hottestDT = [];
+    const avgGroundDT = [];
+    const coldestSkyDT = [];
+
+    // For each beta, we compute a simplified version:
+    // Sample a few key points on the balloon
+    for (const beta of betaValues) {
+        const pp = Object.assign({}, p, { beta });
+        pp.L_atm = radianceLookup(pp.T_atm_K);
+
+        // Background ground temp at bg distance
+        const tau_bg = atmosphericTransmission(pp.bgDist_km, beta);
+        const L_bg = pp.L_ground * tau_bg + pp.L_atm * (1 - tau_bg);
+        const T_bg = apparentTempLookup(L_bg);
+
+        // Sample balloon: find hottest ground-reflecting, average ground-reflecting, coldest sky-reflecting
+        let maxGT = -Infinity, sumGT = 0, countGT = 0, minST = Infinity;
+        const sampleN = 21;
+        for (let si = 0; si < sampleN; si++) {
+            for (let sj = 0; sj < sampleN; sj++) {
+                const u = -1 + 2 * si / (sampleN - 1);
+                const v = -1 + 2 * sj / (sampleN - 1);
+                if (u * u + v * v >= 0.98) continue;
+                const result = tracePixel(u, v, pp);
+                if (result.isGround) {
+                    if (result.T_app > maxGT) maxGT = result.T_app;
+                    sumGT += result.T_app;
+                    countGT++;
+                } else {
+                    if (result.T_app < minST) minST = result.T_app;
+                }
+            }
+        }
+
+        hottestDT.push(maxGT !== -Infinity ? maxGT - T_bg : 0);
+        avgGroundDT.push(countGT > 0 ? (sumGT / countGT) - T_bg : 0);
+        coldestSkyDT.push(minST !== Infinity ? minST - T_bg : 0);
+    }
+
+    const labels = betaValues.map(b => b.toFixed(3));
+
+    // Find index closest to current beta
+    let currentBetaIdx = 0;
+    let minDiff = Infinity;
+    for (let i = 0; i < betaValues.length; i++) {
+        const diff = Math.abs(betaValues[i] - p.beta);
+        if (diff < minDiff) { minDiff = diff; currentBetaIdx = i; }
+    }
+
+    const config = {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [
+                {
+                    label: 'Hottest ground-reflect',
+                    data: hottestDT,
+                    borderColor: '#e74c3c',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    fill: false,
+                    tension: 0.2
+                },
+                {
+                    label: 'Avg ground-reflect',
+                    data: avgGroundDT,
+                    borderColor: '#f39c12',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    fill: false,
+                    tension: 0.2
+                },
+                {
+                    label: 'Coldest sky-reflect',
+                    data: coldestSkyDT,
+                    borderColor: '#3498db',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    fill: false,
+                    tension: 0.2
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            scales: {
+                x: {
+                    title: { display: true, text: 'Extinction coeff. \u03B2 (/km)', color: '#aaa', font: { size: 10 } },
+                    ticks: { color: '#888', maxTicksLimit: 8, font: { size: 9 } },
+                    grid: { color: 'rgba(255,255,255,0.05)' }
+                },
+                y: {
+                    title: { display: true, text: '\u0394T balloon vs ground (K)', color: '#aaa', font: { size: 10 } },
+                    ticks: { color: '#888', font: { size: 9 } },
+                    grid: { color: 'rgba(255,255,255,0.05)' }
+                }
+            },
+            plugins: {
+                legend: { labels: { color: '#ccc', font: { size: 9 }, boxWidth: 16 } },
+                annotation: {
+                    annotations: {
+                        currentBeta: {
+                            type: 'line',
+                            xMin: currentBetaIdx,
+                            xMax: currentBetaIdx,
+                            borderColor: 'rgba(255,255,255,0.6)',
+                            borderWidth: 1.5,
+                            borderDash: [4, 4],
+                            label: {
+                                display: true,
+                                content: '\u03B2=' + p.beta.toFixed(3),
+                                position: 'start',
+                                color: '#fff',
+                                font: { size: 9 },
+                                backgroundColor: 'rgba(0,0,0,0.6)'
+                            }
+                        },
+                        zeroLine: {
+                            type: 'line',
+                            yMin: 0,
+                            yMax: 0,
+                            borderColor: 'rgba(255,255,255,0.2)',
+                            borderWidth: 1
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    if (contrastChart) {
+        contrastChart.data = config.data;
+        contrastChart.options = config.options;
+        contrastChart.update('none');
+    } else {
+        contrastChart = new Chart(document.getElementById('contrastChart'), config);
+    }
+}
+
+// ========== UI SETUP ==========
+function setupControls() {
+    // Link sliders and number inputs
+    for (const def of paramDefs) {
+        const slider = document.getElementById(def.id + '_r');
+        const num = document.getElementById(def.id + '_n');
+
+        slider.addEventListener('input', () => {
+            num.value = slider.value;
+            scheduleUpdate();
+        });
+        num.addEventListener('input', () => {
+            slider.value = num.value;
+            scheduleUpdate();
+        });
+        num.addEventListener('change', () => {
+            slider.value = num.value;
+            scheduleUpdate();
+        });
+    }
+
+    // Colormap buttons
+    document.getElementById('cmWhiteHot').addEventListener('click', () => {
+        colormap = 'whiteHot';
+        updateColormapButtons();
+        scheduleUpdate();
+    });
+    document.getElementById('cmBlackHot').addEventListener('click', () => {
+        colormap = 'blackHot';
+        updateColormapButtons();
+        scheduleUpdate();
+    });
+    document.getElementById('cmIronbow').addEventListener('click', () => {
+        colormap = 'ironbow';
+        updateColormapButtons();
+        scheduleUpdate();
+    });
+
+    // Exposure buttons
+    document.getElementById('expGround').addEventListener('click', () => {
+        exposureMode = 'ground';
+        updateExposureButtons();
+        scheduleUpdate();
+    });
+    document.getElementById('expFull').addEventListener('click', () => {
+        exposureMode = 'full';
+        updateExposureButtons();
+        scheduleUpdate();
+    });
+
+    // Reset
+    document.getElementById('btnReset').addEventListener('click', () => {
+        applyPreset(DEFAULTS);
+    });
+
+    // Presets
+    document.getElementById('preHotDesert').addEventListener('click', () => {
+        applyPreset({ groundTemp: 62, skyTemp: -40, beta: 0.05 });
+    });
+    document.getElementById('preSyria').addEventListener('click', () => {
+        applyPreset({ groundTemp: 10, skyTemp: -40, beta: 0.07 });
+    });
+    document.getElementById('preMaritime').addEventListener('click', () => {
+        applyPreset({ groundTemp: 15, skyTemp: -30, beta: 0.12 });
+    });
+    document.getElementById('preNight').addEventListener('click', () => {
+        applyPreset({ groundTemp: 5, skyTemp: -50, beta: 0.06 });
+    });
+}
+
+function applyPreset(vals) {
+    // Apply only the keys provided in vals
+    for (const key of Object.keys(vals)) {
+        const def = paramDefs.find(d => d.key === key);
+        if (def) {
+            document.getElementById(def.id + '_r').value = vals[key];
+            document.getElementById(def.id + '_n').value = vals[key];
+        }
+    }
+    // For full reset, also reset other params
+    if (vals === DEFAULTS) {
+        for (const def of paramDefs) {
+            document.getElementById(def.id + '_r').value = DEFAULTS[def.key];
+            document.getElementById(def.id + '_n').value = DEFAULTS[def.key];
+        }
+    }
+    scheduleUpdate();
+}
+
+function updateColormapButtons() {
+    document.getElementById('cmWhiteHot').classList.toggle('active', colormap === 'whiteHot');
+    document.getElementById('cmBlackHot').classList.toggle('active', colormap === 'blackHot');
+    document.getElementById('cmIronbow').classList.toggle('active', colormap === 'ironbow');
+}
+
+function updateExposureButtons() {
+    document.getElementById('expGround').classList.toggle('active', exposureMode === 'ground');
+    document.getElementById('expFull').classList.toggle('active', exposureMode === 'full');
+}
+
+let rafId = null;
+function scheduleUpdate() {
+    if (rafId !== null) return;
+    rafId = requestAnimationFrame(() => {
+        rafId = null;
+        renderAll();
+    });
+}
+
+// ========== INIT ==========
+function init() {
+    buildRadianceLUT();
+    buildIronbowLUT();
+    setupControls();
+    renderAll();
+}
+
+window.addEventListener('load', init);
+</script>
+</body>
+</html>
