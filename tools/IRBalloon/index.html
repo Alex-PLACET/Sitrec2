@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Balloon MWIR Thermal Simulation</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+<script src="chart.umd.min.js"></script>
+<script src="chartjs-plugin-annotation.min.js"></script>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
@@ -83,7 +83,6 @@ body {
     display: flex;
     gap: 4px;
     align-items: center;
-    margin-left: auto;
 }
 button {
     background: #0f3460;
@@ -174,6 +173,7 @@ canvas.thermal-canvas {
     gap: 12px;
     padding: 4px 12px;
     justify-content: center;
+    align-items: flex-start;
 }
 .chart-container {
     background: #16213e;
@@ -215,6 +215,21 @@ details.math-panel ul { margin-left: 14px; margin-bottom: 4px; }
     text-align: center;
     margin-top: 2px;
 }
+/* Views-only mode: hide maps, charts, side view, math panel — keep controls */
+body.views-only .row1 .diag-section { display: none; }
+body.views-only .row2 { display: none; }
+body.views-only .math-panel { display: none; }
+body.views-only .row1 {
+    flex-wrap: nowrap;
+}
+body.views-only .row1 .viz-section {
+    flex: 1;
+    min-width: 0;
+}
+body.views-only .row1 .viz-section canvas.thermal-canvas {
+    width: 100%;
+    height: auto;
+}
 </style>
 </head>
 <body>
@@ -224,113 +239,137 @@ details.math-panel ul { margin-left: 14px; margin-bottom: 4px; }
         <h1>Balloon MWIR Thermal Simulation</h1>
         <div class="subtitle">Spherical mylar balloon in 3&ndash;5 &mu;m mid-wave infrared</div>
     </div>
+    <label style="display:flex; align-items:center; gap:4px; font-size:11px; cursor:pointer;">
+        <input type="checkbox" id="viewsOnly" title="Show only Sensor View and Rerecord, hide all other panels"> Views only
+    </label>
 </div>
 
 <div class="controls-panel">
     <div class="controls-row">
         <span class="row-label">Geometry</span>
-        <div class="control-group">
+        <div class="control-group" title="Camera look-down angle below horizontal">
             <label>Look-down</label>
-            <input type="range" id="lookDown_r" min="1" max="45" step="0.5" value="8">
-            <input type="number" id="lookDown_n" min="1" max="45" step="0.5" value="8">
+            <input type="range" id="lookDown_r" min="1" max="45" step="0.05" value="8">
+            <input type="number" id="lookDown_n" min="1" max="45" step="0.05" value="8">
             <span class="unit">&deg;</span>
         </div>
-        <div class="control-group">
+        <div class="control-group" title="Slant distance from camera to balloon">
             <label>Distance</label>
-            <input type="range" id="camDist_r" min="0.5" max="30" step="0.1" value="5">
-            <input type="number" id="camDist_n" min="0.5" max="30" step="0.1" value="5">
+            <input type="range" id="camDist_r" min="0.5" max="30" step="0.01" value="5">
+            <input type="number" id="camDist_n" min="0.5" max="30" step="0.01" value="5">
             <span class="unit">NM</span>
         </div>
-        <div class="control-group locked">
+        <div class="control-group locked" title="Balloon altitude above ground level (computed from look-down, distance, and BG ground)">
             <label>Balloon alt</label>
-            <input type="range" id="ballAlt_r" min="0.1" max="10" step="0.01" value="2">
-            <input type="number" id="ballAlt_n" min="0.1" max="10" step="0.01" value="2">
+            <input type="range" id="ballAlt_r" min="0.1" max="10" step="0.001" value="2">
+            <input type="number" id="ballAlt_n" min="0.1" max="10" step="0.001" value="2">
             <span class="unit">NM</span>
         </div>
-        <div class="control-group">
+        <div class="control-group" title="Distance from camera to background ground point (where the line of sight hits the ground behind the balloon)">
             <label>BG ground</label>
-            <input type="range" id="bgDist_r" min="5" max="100" step="0.1" value="19.37">
-            <input type="number" id="bgDist_n" min="5" max="100" step="0.1" value="19.37">
+            <input type="range" id="bgDist_r" min="5" max="100" step="0.01" value="19.4">
+            <input type="number" id="bgDist_n" min="5" max="100" step="0.01" value="19.4">
             <span class="unit">NM</span>
         </div>
-        <div class="control-group">
+        <div class="control-group" title="Physical diameter of the balloon">
             <label>Object &empty;</label>
-            <input type="range" id="objDiam_r" min="0.05" max="2.0" step="0.01" value="0.2">
-            <input type="number" id="objDiam_n" min="0.05" max="2.0" step="0.01" value="0.2">
+            <input type="range" id="objDiam_r" min="0.05" max="2.0" step="0.001" value="0.2">
+            <input type="number" id="objDiam_n" min="0.05" max="2.0" step="0.001" value="0.2">
             <span class="unit">m</span>
         </div>
-        <div class="buttons-row">
-            <button id="btnReset">Reset</button>
-            <button class="preset" id="preHotDesert">Hot Desert</button>
-            <button class="preset" id="preSyria">Syria MQ-9</button>
-            <button class="preset" id="preMaritime">Maritime</button>
-            <button class="preset" id="preNight">Night</button>
+        <div class="control-group" title="Ground elevation above sea level. Higher ground = thinner atmosphere = less extinction on all paths">
+            <label>Ground ASL</label>
+            <input type="range" id="groundASL_r" min="0" max="10000" step="10" value="3000">
+            <input type="number" id="groundASL_n" min="0" max="10000" step="10" value="3000">
+            <span class="unit">ft</span>
         </div>
     </div>
     <div class="controls-row">
         <span class="row-label">Physics</span>
-        <div class="control-group">
+        <div class="control-group" title="Ground surface temperature">
             <label>Ground T</label>
-            <input type="range" id="groundTemp_r" min="-20" max="65" step="0.5" value="10">
-            <input type="number" id="groundTemp_n" min="-20" max="65" step="0.5" value="10">
+            <input type="range" id="groundTemp_r" min="-20" max="65" step="0.05" value="10">
+            <input type="number" id="groundTemp_n" min="-20" max="65" step="0.05" value="10">
             <span class="unit">&deg;C</span>
         </div>
-        <div class="control-group">
+        <div class="control-group" title="Sky zenith temperature (effective radiative temperature of clear sky overhead)">
             <label>Sky T</label>
-            <input type="range" id="skyTemp_r" min="-60" max="-10" step="0.5" value="-40">
-            <input type="number" id="skyTemp_n" min="-60" max="-10" step="0.5" value="-40">
+            <input type="range" id="skyTemp_r" min="-60" max="-10" step="0.05" value="-40">
+            <input type="number" id="skyTemp_n" min="-60" max="-10" step="0.05" value="-40">
             <span class="unit">&deg;C</span>
         </div>
-        <div class="control-group">
+        <div class="control-group" title="Sea-level MWIR extinction coefficient. Decreases exponentially with altitude (scale height H). Dominated by water vapor absorption">
             <label>&beta; extinct.</label>
-            <input type="range" id="beta_r" min="0.02" max="0.20" step="0.001" value="0.07">
-            <input type="number" id="beta_n" min="0.02" max="0.20" step="0.001" value="0.07">
+            <input type="range" id="beta_r" min="0.02" max="0.20" step="0.0001" value="0.07">
+            <input type="number" id="beta_n" min="0.02" max="0.20" step="0.0001" value="0.07">
             <span class="unit">/km</span>
         </div>
-        <div class="control-group">
+        <div class="control-group" title="Extinction scale height. Controls how fast extinction drops with altitude. ~2 km for water vapor. At 10 km the model approximates constant extinction">
+            <label>H (ext.)</label>
+            <input type="range" id="scaleH_r" min="1.0" max="10.0" step="0.01" value="2.0">
+            <input type="number" id="scaleH_n" min="1.0" max="10.0" step="0.01" value="2.0">
+            <span class="unit">km</span>
+        </div>
+        <div class="control-group" title="Mylar reflectivity in MWIR (3-5 &micro;m). Emissivity = 1 - R. Higher R = more mirror-like, less self-emission">
             <label>Mylar R</label>
-            <input type="range" id="mylarR_r" min="0.50" max="0.99" step="0.01" value="0.97">
-            <input type="number" id="mylarR_n" min="0.50" max="0.99" step="0.01" value="0.97">
+            <input type="range" id="mylarR_r" min="0.50" max="0.99" step="0.001" value="0.97">
+            <input type="number" id="mylarR_n" min="0.50" max="0.99" step="0.001" value="0.97">
             <span class="unit"></span>
         </div>
-        <div class="control-group">
+        <div class="control-group" title="Ground temperature variation (spatial noise). Higher values = more visible ground texture in the thermal image">
             <label>Ground &Delta;T</label>
-            <input type="range" id="groundVar_r" min="0" max="15" step="0.5" value="5">
-            <input type="number" id="groundVar_n" min="0" max="15" step="0.5" value="5">
+            <input type="range" id="groundVar_r" min="0" max="15" step="0.05" value="5">
+            <input type="number" id="groundVar_n" min="0" max="15" step="0.05" value="5">
             <span class="unit">K</span>
+        </div>
+        <div class="control-group" title="Temperature lapse rate. How fast air cools with altitude. ISA standard 6.5 K/km. Desert ~8, maritime ~5">
+            <label>Lapse &Gamma;</label>
+            <input type="range" id="lapseRate_r" min="4.0" max="9.0" step="0.05" value="6.5">
+            <input type="number" id="lapseRate_n" min="4.0" max="9.0" step="0.05" value="6.5">
+            <span class="unit">K/km</span>
         </div>
     </div>
     <div class="controls-row">
         <span class="row-label">Sensor</span>
-        <div class="control-group">
+        <div class="control-group" title="Horizontal field of view of the sensor optics">
             <label>HFOV</label>
-            <input type="range" id="hfov_r" min="0.01" max="1.0" step="0.01" value="0.1">
-            <input type="number" id="hfov_n" min="0.01" max="1.0" step="0.01" value="0.1">
+            <input type="range" id="hfov_r" min="0.01" max="1.0" step="0.001" value="0.17">
+            <input type="number" id="hfov_n" min="0.01" max="1.0" step="0.001" value="0.17">
             <span class="unit">&deg;</span>
         </div>
-        <div class="control-group">
+        <div class="control-group" title="Sensor horizontal resolution in pixels">
             <label>Sensor H res</label>
-            <input type="range" id="sensorRes_r" min="160" max="1280" step="16" value="640">
-            <input type="number" id="sensorRes_n" min="160" max="1280" step="16" value="640">
+            <input type="range" id="sensorRes_r" min="160" max="1280" step="1" value="640">
+            <input type="number" id="sensorRes_n" min="160" max="1280" step="1" value="640">
             <span class="unit">px</span>
         </div>
-        <div class="control-group">
+        <div class="control-group" title="Digital zoom factor. Crops and scales the center of the sensor image with nearest-neighbor interpolation">
             <label>Digi zoom</label>
-            <input type="range" id="digitalZoom_r" min="1" max="8" step="0.5" value="1">
-            <input type="number" id="digitalZoom_n" min="1" max="8" step="0.5" value="1">
+            <input type="range" id="digitalZoom_r" min="1" max="8" step="0.05" value="4">
+            <input type="number" id="digitalZoom_n" min="1" max="8" step="0.05" value="4">
             <span class="unit">x</span>
         </div>
-        <div class="control-group">
+        <div class="control-group" title="Point Spread Function sigma. Controls optical blur of the sensor. Also sets the bloom width in the rerecord view">
             <label>PSF &sigma;</label>
-            <input type="range" id="psfRadius_r" min="0.5" max="10" step="0.5" value="3">
-            <input type="number" id="psfRadius_n" min="0.5" max="10" step="0.5" value="3">
+            <input type="range" id="psfRadius_r" min="0" max="10" step="0.001" value="3">
+            <input type="number" id="psfRadius_n" min="0" max="10" step="0.001" value="3">
             <span class="unit">px</span>
         </div>
-        <div class="control-group">
+        <div class="control-group" title="Sensor noise magnitude. Models thermal noise from the MWIR detector with faint row banding">
             <label>Noise</label>
-            <input type="range" id="noiseAmt_r" min="0" max="100" step="1" value="25">
-            <input type="number" id="noiseAmt_n" min="0" max="100" step="1" value="25">
+            <input type="range" id="noiseAmt_r" min="0" max="100" step="0.1" value="25">
+            <input type="number" id="noiseAmt_n" min="0" max="100" step="0.1" value="25">
             <span class="unit">%</span>
+        </div>
+    </div>
+    <div class="controls-row">
+        <span class="row-label">Presets</span>
+        <div class="buttons-row">
+            <button id="btnReset" title="Reset all parameters to defaults (reloads page)">Reset</button>
+            <button class="preset" id="preHotDesert" title="Hot desert conditions: 62°C ground, high variation, moderate extinction">Hot Desert</button>
+            <button class="preset" id="preSyria" title="Syria MQ-9 scenario: 10°C ground, 3000 ft ASL, 20° look-down">Syria MQ-9</button>
+            <button class="preset" id="preMaritime" title="Maritime conditions: 15°C sea surface, high humidity/extinction, low look-down">Maritime</button>
+            <button class="preset" id="preNight" title="Night conditions: 5°C ground, very cold sky, low extinction">Night</button>
         </div>
     </div>
 </div>
@@ -340,29 +379,35 @@ details.math-panel ul { margin-left: 14px; margin-bottom: 4px; }
     <div class="viz-section">
         <h3>Sensor View</h3>
         <div class="viz-controls">
-            <button id="cmWhiteHot">White-Hot</button>
-            <button id="cmBlackHot" class="active">Black-Hot</button>
-            <button id="cmIronbow">Ironbow</button>
+            <button id="cmWhiteHot" title="White-hot colormap: hotter = brighter">White-Hot</button>
+            <button id="cmBlackHot" class="active" title="Black-hot colormap: hotter = darker (standard FLIR polarity)">Black-Hot</button>
+            <button id="cmIronbow" title="Ironbow false-color colormap: black → blue → red → orange → white">Ironbow</button>
             <span style="width:6px"></span>
-            <button id="expGround" class="active">Ground exp.</button>
-            <button id="expFull">Full range</button>
+            <button id="expGround" class="active" title="Expose for ground: tight range around ground temperature. Sky/balloon pixels clip to display limits">Ground exp.</button>
+            <button id="expFull" title="Full dynamic range: display range spans all temperatures in the scene">Full range</button>
+            <span style="width:6px"></span>
+            <button id="btnOSD" class="active" title="Toggle FLIR-style OSD text overlay (white text blooms in rerecord, gray text stays sharp)">OSD</button>
         </div>
-        <canvas id="thermalCanvas" class="thermal-canvas" width="380" height="214"></canvas>
-        <div class="sensor-info" id="sensorInfo">640px sensor | 0.10&deg; HFOV | 1x zoom</div>
+        <canvas id="thermalCanvas" class="thermal-canvas" width="570" height="321"></canvas>
+        <div class="sensor-info" id="sensorInfo">640px sensor | 0.17&deg; HFOV | 4x zoom</div>
     </div>
     <div class="viz-section">
         <h3>Rerecord (PSF bloom)</h3>
         <div class="viz-controls" style="gap:4px; font-size:11px;">
-            <label style="margin-right:2px;">Focus</label>
-            <input type="range" id="rerecFocus_r" min="0" max="8" step="0.1" value="1" style="width:60px;">
-            <input type="number" id="rerecFocus_n" min="0" max="8" step="0.1" value="1" style="width:40px;">
+            <label style="margin-right:2px;" title="Camera focus blur. Simulates defocus when recording the FLIR display">Focus</label>
+            <input type="range" id="rerecFocus_r" min="0" max="2" step="0.01" value="0.2" style="width:60px;" title="Camera focus blur">
+            <input type="number" id="rerecFocus_n" min="0" max="8" step="0.01" value="0.2" style="width:40px;">
             <span style="margin-right:6px;">px</span>
-            <label style="margin-right:2px;">Exp</label>
-            <input type="range" id="rerecExposure_r" min="-2" max="8" step="0.1" value="0" style="width:60px;">
-            <input type="number" id="rerecExposure_n" min="-2" max="8" step="0.1" value="0" style="width:40px;">
-            <span>EV</span>
+            <label style="margin-right:2px;" title="Exposure compensation. Controls how far above camera saturation monitor white is. Higher = more bloom energy">Exp</label>
+            <input type="range" id="rerecExposure_r" min="-2" max="5" step="0.01" value="0" style="width:60px;" title="Exposure compensation (EV stops)">
+            <input type="number" id="rerecExposure_n" min="-2" max="5" step="0.01" value="0" style="width:40px;">
+            <span style="margin-right:6px;">EV</span>
+            <label style="margin-right:2px;" title="Veiling glare fraction. Percentage of light energy scattered into wide PSF tails by internal lens reflections. 0% = sharp, higher = more bloom spread">Bloom</label>
+            <input type="range" id="bloomFrac_r" min="0" max="80" step="0.1" value="25" style="width:50px;" title="Veiling glare fraction (bloom %)">
+            <input type="number" id="bloomFrac_n" min="0" max="80" step="0.1" value="25" style="width:35px;">
+            <span>%</span>
         </div>
-        <canvas id="rerecordCanvas" class="thermal-canvas" width="380" height="214"></canvas>
+        <canvas id="rerecordCanvas" class="thermal-canvas" width="570" height="321"></canvas>
         <div class="sensor-info">Camera recording of screen with point spread function</div>
     </div>
     <div class="diag-section">
@@ -383,18 +428,19 @@ details.math-panel ul { margin-left: 14px; margin-bottom: 4px; }
             <span id="pathMaxLabel">50 NM</span>
         </div>
     </div>
-    <div class="side-view-section">
-        <h3>Geometry Side View</h3>
-        <canvas id="sideViewCanvas" width="460" height="253"></canvas>
-    </div>
+
 </div>
 
-<!-- ROW 2: Charts -->
+<!-- ROW 2: Side View + Charts -->
 <div class="row2">
-    <div class="chart-container" style="width:780px; height:240px;">
+    <div class="side-view-section">
+        <h3>Geometry Side View</h3>
+        <canvas id="sideViewCanvas" width="460" height="228"></canvas>
+    </div>
+    <div class="chart-container" style="width:390px; height:240px;">
         <canvas id="profileChart"></canvas>
     </div>
-    <div class="chart-container" style="width:780px; height:240px;">
+    <div class="chart-container" style="width:390px; height:240px;">
         <canvas id="contrastChart"></canvas>
     </div>
 </div>
@@ -416,15 +462,40 @@ details.math-panel ul { margin-left: 14px; margin-bottom: 4px; }
     <p>The sensor renders at native resolution with the specified HFOV. Digital zoom crops the center 1/Z fraction and scales with nearest-neighbor interpolation, preserving pixelation. Sub-pixel objects (radius &lt; 0.5 px) use area-weighted fill factor <code>f = &pi;r&sup2;</code> to blend balloon and background temperatures: <code>T_pixel = f&middot;T_ball + (1-f)&middot;T_bg</code>. Fixed-seed PRNG noise is added to the temperature map before colormap application.</p>
     <h4>5. Ground Exposure Mode</h4>
     <p>Sets display range tightly around the apparent ground temperature <code>T_bg &plusmn; 0.55&middot;&Delta;T_ground</code>. Ground pixels span the full black-to-white range. Temperatures outside this range (sky reflections, cold sky) saturate to the display limits. In black-hot mode, cold reflected-sky pixels clip to white, accurately simulating how real FLIR AGC (Automatic Gain Control) exposes for the dominant scene element.</p>
-    <h4>6. HDR Bloom (Rerecord)</h4>
-    <p>Simulates re-recording a FLIR display with a camera. Standard HDR bloom pipeline:</p>
+    <h4>6. Altitude-Corrected Atmospheric Extinction</h4>
+    <p>Atmospheric MWIR extinction is dominated by water vapor and aerosol scattering, both decreasing exponentially with altitude: <code>&beta;(z) = &beta;<sub>0</sub> &middot; exp(-z<sub>ASL</sub> / H)</code>, where <code>&beta;<sub>0</sub></code> is the sea-level reference extinction coefficient and <code>H</code> is the scale height (&asymp;2 km, water-vapor dominated). At the ground (ASL = Ground ASL), the actual extinction is <code>&beta;<sub>0</sub> &middot; exp(-groundASL / H)</code>&mdash;lower when the ground is higher. For a slant path from altitude <code>z<sub>A</sub></code> to <code>z<sub>B</sub></code> (ASL) with path length <code>L</code>, the optical depth has a closed-form solution:</p>
+    <p><code>optical_depth = &beta;<sub>0</sub> &middot; L &middot; H / |&Delta;z| &middot; |exp(-z<sub>A</sub>/H) - exp(-z<sub>B</sub>/H)|</code></p>
+    <p>For near-horizontal paths (|&Delta;z| &lt; 1 m): <code>optical_depth = &beta;<sub>local</sub> &middot; L</code> where <code>&beta;<sub>local</sub> = &beta;<sub>0</sub> &middot; exp(-z<sub>ASL</sub>/H)</code>.</p>
+    <p><strong>Why H is a separate parameter:</strong> &beta;<sub>0</sub> sets the <em>magnitude</em> of extinction; H sets its <em>vertical structure</em>. Two atmospheres with the same &beta;<sub>0</sub> but different H behave very differently: at H&nbsp;=&nbsp;1.5&nbsp;km (dry desert), extinction drops fast and air at 15,000&nbsp;ft is nearly transparent; at H&nbsp;=&nbsp;3&nbsp;km (humid/hazy), significant extinction persists to high altitude. H depends on the vertical distribution of water vapor and aerosols&mdash;driven by weather, humidity, and geography&mdash;so it cannot be derived from &beta;<sub>0</sub> alone.</p>
+    <ul>
+        <li>Raising Ground ASL shifts all paths to higher absolute altitudes with thinner air, reducing extinction.</li>
+        <li>At <code>H = 10+ km</code> the model converges to constant-&beta; (flat atmosphere approximation).</li>
+        <li>The camera&rarr;balloon path at altitude is nearly transparent; most extinction happens near the ground.</li>
+    </ul>
+    <h4>7. Path-Dependent Atmospheric Emission</h4>
+    <p>In the radiative transfer equation <code>L = L<sub>source</sub>&middot;&tau; + L<sub>atm</sub>&middot;(1&minus;&tau;)</code>, the atmospheric emission term <code>L<sub>atm</sub></code> depends on the air temperature along the path. Dense warm air near the ground emits more than thin cold air at altitude, so different paths have different effective emission temperatures.</p>
+    <p>Air temperature follows the lapse rate: <code>T(z) = T<sub>ground</sub> &minus; &Gamma;&middot;(z &minus; z<sub>ground</sub>)</code>, where &Gamma; &asymp; 6.5 K/km (ISA standard). The effective emission temperature for a path is the air temperature at an &ldquo;emission-weighted mean altitude&rdquo;&mdash;biased toward the lower, denser end:</p>
+    <p><code>z<sub>eff</sub> = z<sub>low</sub> + H&middot;[1 &minus; x&middot;e<sup>&minus;x</sup> / (1&minus;e<sup>&minus;x</sup>)]</code>, where <code>x = &Delta;z / H</code></p>
+    <p>The same scale height H from the extinction model (section 6) appears here because air density controls both absorption and emission: denser air absorbs more <em>and</em> emits more. H sets how fast density falls with altitude&mdash;at small H (dry desert), the emission weighting is strongly biased toward the low end of the path; at large H (humid), weighting spreads more evenly.</p>
+    <ul>
+        <li>Camera&rarr;balloon (high altitude): T<sub>eff</sub> &asymp; 255 K &mdash; cold, thin air dominates.</li>
+        <li>Balloon&rarr;ground: T<sub>eff</sub> &asymp; 275 K &mdash; weighted toward warmer ground-level air.</li>
+        <li>Horizontal at ground: T<sub>eff</sub> = T<sub>ground</sub> exactly.</li>
+        <li>This closed-form approximation has &lt;1 K error vs. the full path integral.</li>
+    </ul>
+
+    <h4>8. Rerecord (Overexposure + Dual-Gaussian PSF)</h4>
+    <p>Simulates re-recording a FLIR display with a camera. Physically motivated pipeline:</p>
     <ol>
-        <li><strong>HDR mapping:</strong> Display pixels are converted to linear light values in [0, 1]. Pixels above 90% brightness are smoothly ramped up to 300% (3.0), representing the thermal radiance that was clipped by the display&rsquo;s limited dynamic range. This is physically motivated: the sensor&rsquo;s thermal signal continues linearly beyond what the display can represent.</li>
-        <li><strong>Focus blur:</strong> Gaussian blur simulating camera defocus (adjustable &sigma;).</li>
-        <li><strong>EV exposure:</strong> Logarithmic exposure adjustment: <code>gain = 2<sup>EV</sup></code>. Positive EV brightens the image, pushing more pixels into the HDR saturation region.</li>
-        <li><strong>PSF convolution:</strong> Separable Gaussian convolution models the camera lens Point Spread Function. In HDR space, the 300% bright pixels spread energy outward via the weighted average. After convolution, any pixel still above 1.0 clips to white, creating an enlarged white core. The grey falloff halo appears where the Gaussian tail drops below 1.0. Dark regions are largely unaffected because the PSF is energy-conserving&mdash;it redistributes but does not create energy.</li>
-        <li><strong>Clipping:</strong> Final values are clamped to [0, 255]. The result: a bright object appears significantly larger than its true angular size, with a hard white center and thin grey border&mdash;matching the characteristic &ldquo;glowing orb&rdquo; appearance in re-recorded FLIR footage.</li>
+        <li><strong>Monitor gamma &rarr; physical light:</strong> Display pixel values are converted to linear physical light via monitor gamma: <code>L = (pixel/255)<sup>2.2</sup></code>.</li>
+        <li><strong>Overexposure (always applied):</strong> Monitor white is physically brighter than camera saturation&mdash;this is basic photometry, not a bloom effect. Pixels below the knee (0.7 linear, &asymp; pixel 212) are untouched; pixels above are ramped by <code>2<sup>(4 + EV)</sup></code>. At EV=0, white = 5.5&times; camera saturation. Without a wide PSF, this excess simply clips away at saturation.</li>
+        <li><strong>Focus blur:</strong> Gaussian blur in linear light space simulates camera defocus.</li>
+        <li><strong>Dual-Gaussian PSF:</strong> A real lens PSF has a sharp core + wide tails: <code>PSF = (1&minus;f)&middot;G(&sigma;<sub>core</sub>) + f&middot;G(&sigma;<sub>bloom</sub>)</code>. The Bloom% slider controls f (veiling glare fraction). At f=0, all light stays in the sharp core and overexposed pixels just clip to white&mdash;no visible bloom. As f increases, more energy spreads widely: the 5.5&times; excess from white pixels pushes neighbors above saturation, growing the white region. The transition from 0% to 1% is smooth because only 1% of energy shifts from core to tails.</li>
+        <li><strong>Camera noise:</strong> Small random noise in linear light space models the recording camera&rsquo;s sensor noise.</li>
+        <li><strong>Clipping + inverse gamma:</strong> Values are clamped at 1.0, then converted back via <code>pixel = clipped<sup>1/2.2</sup> &times; 255</code>.</li>
     </ol>
+    <h4>9. Sensor Noise Model</h4>
+    <p>Models a cooled MWIR sensor (MTS-B style) with two components: dominant <strong>per-pixel random noise</strong> (uniform fine grain) plus very faint <strong>row banding</strong> (8% weight, subtle horizontal lines from readout timing). This matches the noise profile of real MQ-9 Reaper FLIR footage, which uses a cooled InSb detector with good NUC (Non-Uniformity Correction) — resulting in mostly uniform noise without the column striping or spatial gradients seen in uncooled sensors. All noise uses a fixed-seed PRNG for deterministic output. Magnitude is absolute (Kelvin), not display-range-relative.</p>
 </details>
 
 <script>
@@ -435,8 +506,8 @@ const RAD_TO_DEG = 180 / Math.PI;
 const h_planck = 6.626e-34;
 const c_light = 3.0e8;
 const k_boltz = 1.381e-23;
-const DISPLAY_W = 380;
-const DISPLAY_H = 214; // 16:9 aspect
+const DISPLAY_W = 570;
+const DISPLAY_H = 321; // 16:9 aspect
 
 // ========== PLANCK LUT ==========
 const LUT_T_MIN = 100.0;
@@ -504,8 +575,38 @@ function skyTemperatureK(elevDeg, T_zenith_K) {
     return T_zenith_K + (T_horizon_K - T_zenith_K) * Math.pow(1 - Math.sin(elevRad), 0.6);
 }
 
-function atmosphericTransmission(d_km, beta) {
-    return Math.exp(-beta * d_km);
+function atmosphericTransmission(z_a_asl_km, z_b_asl_km, path_length_km, beta0, scaleH) {
+    // Optical depth along a slant path through exponentially-varying atmosphere
+    // β(z) = β₀ · exp(-z_ASL / H)  — β₀ is sea-level reference extinction
+    // Changing ground ASL shifts all points to higher absolute altitude → thinner air
+    const dz = Math.abs(z_b_asl_km - z_a_asl_km);
+
+    if (dz < 0.001) {
+        // Horizontal path: constant β at this altitude
+        const beta_local = beta0 * Math.exp(-z_a_asl_km / scaleH);
+        return Math.exp(-beta_local * path_length_km);
+    }
+
+    const exp_a = Math.exp(-z_a_asl_km / scaleH);
+    const exp_b = Math.exp(-z_b_asl_km / scaleH);
+    const opticalDepth = beta0 * path_length_km * scaleH / dz * Math.abs(exp_a - exp_b);
+
+    return Math.exp(-opticalDepth);
+}
+
+function airTemperature(z_asl_km, p) {
+    return p.T_ground_K - p.lapseRate * (z_asl_km - p.groundASL_km);
+}
+
+function emissionWeightedAltitude(z_low_asl, z_high_asl, scaleH) {
+    // Returns the ASL altitude where most atmospheric emission originates.
+    // Weighted toward z_low (denser air emits more).
+    const dz = z_high_asl - z_low_asl;
+    if (dz < 0.01) return z_low_asl;  // horizontal path
+    const x = dz / scaleH;
+    if (x < 0.01) return z_low_asl + dz / 2;  // thin layer: midpoint
+    const h_weighted = scaleH * (1 - x * Math.exp(-x) / (1 - Math.exp(-x)));
+    return z_low_asl + h_weighted;
 }
 
 function groundNoise(x, y) {
@@ -537,6 +638,7 @@ function buildIronbowLUT() {
 let params = {};
 let colormap = 'blackHot';
 let exposureMode = 'ground';
+let showOSD = true;
 let profileChart = null;
 let contrastChart = null;
 let balloonData = null;
@@ -555,6 +657,9 @@ function setSlider(id, val) {
     val = Math.max(parseFloat(r.min), Math.min(parseFloat(r.max), val));
     const step = parseFloat(r.step) || 0.01;
     val = Math.round(val / step) * step;
+    // Fix floating point: round to step's decimal precision
+    const decimals = (step.toString().split('.')[1] || '').length;
+    val = parseFloat(val.toFixed(decimals));
     r.value = val; n.value = val;
 }
 function getVal(id) { return parseFloat(document.getElementById(id + '_n').value); }
@@ -578,23 +683,24 @@ function recalcCamDist() {
 
 // ========== PARAMETER GATHERING ==========
 const DEFAULTS = {
-    lookDown: 8, camDist: 5, ballAlt: 2, bgDist: 19.37, objDiam: 0.2,
-    groundTemp: 10, skyTemp: -40, beta: 0.07, mylarR: 0.97, groundVar: 5,
-    hfov: 0.1, sensorRes: 640, digitalZoom: 1, psfRadius: 3, noiseAmt: 25,
-    rerecFocus: 1, rerecExposure: 0
+    lookDown: 8, camDist: 5, ballAlt: 2, bgDist: 19.4, objDiam: 0.2, groundASL: 3000,
+    groundTemp: 10, skyTemp: -40, beta: 0.07, mylarR: 0.97, groundVar: 5, scaleH: 2.0, lapseRate: 6.5,
+    hfov: 0.17, sensorRes: 640, digitalZoom: 4, psfRadius: 3, noiseAmt: 25,
+    rerecFocus: 0.2, rerecExposure: 0, bloomFrac: 25
 };
 
 const paramDefs = [
     { key: 'lookDown', id: 'lookDown' }, { key: 'camDist', id: 'camDist' },
     { key: 'ballAlt', id: 'ballAlt' }, { key: 'bgDist', id: 'bgDist' },
-    { key: 'objDiam', id: 'objDiam' },
+    { key: 'objDiam', id: 'objDiam' }, { key: 'groundASL', id: 'groundASL' },
     { key: 'groundTemp', id: 'groundTemp' }, { key: 'skyTemp', id: 'skyTemp' },
     { key: 'beta', id: 'beta' }, { key: 'mylarR', id: 'mylarR' },
-    { key: 'groundVar', id: 'groundVar' },
+    { key: 'groundVar', id: 'groundVar' }, { key: 'scaleH', id: 'scaleH' }, { key: 'lapseRate', id: 'lapseRate' },
     { key: 'hfov', id: 'hfov' }, { key: 'sensorRes', id: 'sensorRes' },
     { key: 'digitalZoom', id: 'digitalZoom' }, { key: 'psfRadius', id: 'psfRadius' },
     { key: 'noiseAmt', id: 'noiseAmt' },
-    { key: 'rerecFocus', id: 'rerecFocus' }, { key: 'rerecExposure', id: 'rerecExposure' }
+    { key: 'rerecFocus', id: 'rerecFocus' }, { key: 'rerecExposure', id: 'rerecExposure' },
+    { key: 'bloomFrac', id: 'bloomFrac' }
 ];
 
 function gatherParams() {
@@ -605,12 +711,14 @@ function gatherParams() {
     p.T_ground_K = p.groundTemp + 273.15;
     p.T_zenith_K = p.skyTemp + 273.15;
     p.T_horizon_K = p.T_zenith_K + 35;
-    p.T_atm_K = (p.T_ground_K + p.T_zenith_K) / 2 + 5;
-    p.T_balloon_K = p.T_atm_K - 10;
     p.camAlt_km = (p.ballAlt + p.camDist * Math.sin(p.lookDownRad)) * NM_TO_KM;
     p.camDist_km = p.camDist * NM_TO_KM;
     p.ballAlt_km = p.ballAlt * NM_TO_KM;
     p.bgDist_km = p.bgDist * NM_TO_KM;
+    // Altitude-corrected extinction: ASL altitudes (km)
+    p.groundASL_km = p.groundASL * 0.3048 / 1000;  // ft → km
+    p.ballAlt_asl_km = p.groundASL_km + p.ballAlt_km;
+    p.camAlt_asl_km = p.groundASL_km + p.camAlt_km;
     // Coordinate system: X = horizontal toward balloon, Y = right, Z = up.
     // Camera looks along dView (pitched down by lookDown angle from horizontal).
     p.dView = [Math.cos(p.lookDownRad), 0, -Math.sin(p.lookDownRad)];
@@ -624,10 +732,43 @@ function gatherParams() {
     p.ballAngRadius_deg = Math.atan((p.objDiam / 2) / camDist_m) * RAD_TO_DEG;
     p.ballPixelRadius = p.ballAngRadius_deg / p.degPerPixel;
 
-    p.L_atm = radianceLookup(p.T_atm_K);
+    // Balloon physical temperature from air temperature at its altitude
+    p.T_balloon_K = airTemperature(p.ballAlt_asl_km, p) - 10;  // radiative cooling offset
+
     p.L_ground = radianceLookup(p.T_ground_K);
     p.L_balloon = radianceLookup(p.T_balloon_K);
     p.eps_mylar = 1.0 - p.mylarR;
+
+    // Path-dependent atmospheric emission radiances
+    // Each path type gets its own effective emission temperature based on
+    // the emission-weighted mean altitude along that path.
+    const z_eff_cam = emissionWeightedAltitude(
+        Math.min(p.camAlt_asl_km, p.ballAlt_asl_km),
+        Math.max(p.camAlt_asl_km, p.ballAlt_asl_km), p.scaleH);
+    p.L_atm_cam = radianceLookup(airTemperature(z_eff_cam, p));
+
+    const z_eff_bg = emissionWeightedAltitude(p.groundASL_km, p.ballAlt_asl_km, p.scaleH);
+    p.L_atm_balloon_ground = radianceLookup(airTemperature(z_eff_bg, p));
+
+    const z_eff_direct = emissionWeightedAltitude(p.groundASL_km, p.camAlt_asl_km, p.scaleH);
+    p.T_atm_direct = airTemperature(z_eff_direct, p);
+    p.L_atm_direct = radianceLookup(p.T_atm_direct);
+
+    // Pre-compute camera→balloon transmission (same for every balloon pixel)
+    p.tau_cam_to_balloon = atmosphericTransmission(
+        p.camAlt_asl_km, p.ballAlt_asl_km, p.camDist_km,
+        p.beta, p.scaleH
+    );
+    // Pre-compute balloon→ground extinction helpers (only path length varies per pixel)
+    // With sea-level reference: β(z) = β₀·exp(-z_ASL/H)
+    p.ball_gnd_dz = p.ballAlt_asl_km - p.groundASL_km;  // AGL altitude difference (= ballAlt_km)
+    p.ball_exp_a = Math.exp(-p.ballAlt_asl_km / p.scaleH);  // exp at balloon ASL
+    p.ball_exp_b = Math.exp(-p.groundASL_km / p.scaleH);     // exp at ground ASL
+    // For balloon→ground path with length L:
+    // optical_depth = β₀ * L * H / dz * |exp_a - exp_b|
+    // τ = exp(-optical_depth)
+    p.ball_gnd_factor = p.beta * p.scaleH / p.ball_gnd_dz * Math.abs(p.ball_exp_a - p.ball_exp_b);
+
     return p;
 }
 
@@ -651,29 +792,33 @@ function tracePixel(u, v, p) {
         if (depress < 0.05) depress = 0.05;
         groundPath_km = p.ballAlt_km / Math.sin(depress * DEG_TO_RAD);
         if (groundPath_km > 500) groundPath_km = 500;
-        const tau = atmosphericTransmission(groundPath_km, p.beta);
-        L_source = p.L_ground * tau + p.L_atm * (1 - tau);
+        // Altitude-corrected: balloon→ground uses pre-computed factor
+        const tau = Math.exp(-p.ball_gnd_factor * groundPath_km);
+        L_source = p.L_ground * tau + p.L_atm_balloon_ground * (1 - tau);
     }
     const L_after = p.mylarR * L_source + p.eps_mylar * p.L_balloon;
-    const tau_cam = atmosphericTransmission(p.camDist_km, p.beta);
-    const L_cam = L_after * tau_cam + p.L_atm * (1 - tau_cam);
+    const tau_cam = p.tau_cam_to_balloon;  // pre-computed altitude-corrected
+    const L_cam = L_after * tau_cam + p.L_atm_cam * (1 - tau_cam);
     return { T_app: apparentTempLookup(L_cam), elev, groundPath_km, isGround };
 }
 
 function backgroundPixelTemp(pixelElevDeg, p, noiseVal) {
     if (pixelElevDeg > 0) {
-        // Sky path: atmospheric scale height ~8km, path length depends on elevation angle.
-        // Near-horizontal = very long path (mostly path radiance), near-zenith = shorter.
+        // Sky path: camera looking up. Path endpoint is high altitude where β→0.
         const elevRad = Math.max(pixelElevDeg, 0.5) * DEG_TO_RAD;
         const skyPath_km = Math.min(8.0 / Math.sin(elevRad), 200);
-        const tau = atmosphericTransmission(skyPath_km, p.beta);
-        return apparentTempLookup(radianceLookup(skyTemperatureK(pixelElevDeg, p.T_zenith_K)) * tau + p.L_atm * (1 - tau));
+        const z_end_asl = p.camAlt_asl_km + skyPath_km * Math.sin(elevRad);
+        const tau = atmosphericTransmission(p.camAlt_asl_km, z_end_asl, skyPath_km, p.beta, p.scaleH);
+        // Sky path emission: weighted toward the camera (lower, denser) end
+        const z_eff_sky = emissionWeightedAltitude(p.camAlt_asl_km, z_end_asl, p.scaleH);
+        const L_atm_sky = radianceLookup(airTemperature(z_eff_sky, p));
+        return apparentTempLookup(radianceLookup(skyTemperatureK(pixelElevDeg, p.T_zenith_K)) * tau + L_atm_sky * (1 - tau));
     }
     const centerDepress = p.lookDown * DEG_TO_RAD;
     const pixelDepress = Math.abs(pixelElevDeg) * DEG_TO_RAD;
     const d_km = Math.min(p.bgDist_km * Math.sin(centerDepress) / Math.sin(Math.max(pixelDepress, 0.001 * DEG_TO_RAD)), 500);
-    const tau = atmosphericTransmission(d_km, p.beta);
-    return apparentTempLookup(radianceLookup(p.T_ground_K + noiseVal * p.groundVar) * tau + p.L_atm * (1 - tau));
+    const tau = atmosphericTransmission(p.camAlt_asl_km, p.groundASL_km, d_km, p.beta, p.scaleH);
+    return apparentTempLookup(radianceLookup(p.T_ground_K + noiseVal * p.groundVar) * tau + p.L_atm_direct * (1 - tau));
 }
 
 // ========== COLORMAP ==========
@@ -722,9 +867,9 @@ function renderAll() {
         // groundNoise() returns ~±0.5, multiplied by groundVar gives actual ΔT.
         // Set range to just span the ground variation so reflected-sky pixels
         // (much colder) clip hard to white in black-hot mode.
-        const tau_bg = atmosphericTransmission(p.bgDist_km, p.beta);
-        const T_bg = apparentTempLookup(p.L_ground * tau_bg + p.L_atm * (1 - tau_bg));
-        const halfSpan = Math.max(p.groundVar * 0.55, 0.5); // slightly > noise amplitude
+        const tau_bg = atmosphericTransmission(p.camAlt_asl_km, p.groundASL_km, p.bgDist_km, p.beta, p.scaleH);
+        const T_bg = apparentTempLookup(p.L_ground * tau_bg + p.L_atm_direct * (1 - tau_bg));
+        const halfSpan = Math.max(p.groundVar * 1.0, 0.5);
         dMin = T_bg - halfSpan;
         dMax = T_bg + halfSpan;
     }
@@ -756,19 +901,29 @@ function renderAll() {
         }
     }
 
-    // === 3. Add sensor noise (fixed seed for deterministic output) ===
-    // Noise magnitude is absolute (Kelvin), not display-range-relative,
-    // so it stays consistent across exposure modes. 100% = ±5K NETD.
+    // === 3. Sensor noise (fixed seed, deterministic) ===
+    // Matches cooled MWIR sensor (MTS-B style): mostly uniform fine grain
+    // with very faint horizontal row banding. No column striping.
+    // Magnitude is absolute (Kelvin), consistent across exposure modes.
     if (p.noiseAmt > 0) {
         const noiseMag = 10.0 * p.noiseAmt / 100; // max ±5K at 100%
         let seed = 0x600DF00D;
-        for (let i = 0; i < sRes * sRes; i++) {
-            // mulberry32 PRNG
+        function prng() {
             seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
             let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
             t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-            const rnd = ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-            tempMap[i] += (rnd - 0.5) * noiseMag;
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296 - 0.5;
+        }
+
+        // Faint row banding (subtle horizontal lines)
+        const rowNoise = new Float32Array(sRes);
+        for (let y = 0; y < sRes; y++) rowNoise[y] = prng() * noiseMag * 0.08;
+
+        // Per-pixel random noise (dominant — uniform fine grain)
+        for (let y = 0; y < sRes; y++) {
+            for (let x = 0; x < sRes; x++) {
+                tempMap[y * sRes + x] += rowNoise[y] + prng() * noiseMag;
+            }
         }
     }
 
@@ -793,25 +948,28 @@ function renderAll() {
     const cropY = (sRes - cropH) / 2;
     dctx.drawImage(sc, cropX, cropY, cropW, cropH, 0, 0, DISPLAY_W, DISPLAY_H);
 
-    // === 6. Update sensor info ===
+    // === 6. OSD overlay (drawn before rerecord so text gets bloom processing) ===
+    drawOSD(dctx, DISPLAY_W, DISPLAY_H);
+
+    // === 7. Update sensor info ===
     const vfov = p.hfov * (DISPLAY_H / DISPLAY_W);
     document.getElementById('sensorInfo').textContent =
         sRes + 'px sensor | ' + p.hfov.toFixed(2) + '\u00B0\u00D7' + vfov.toFixed(2) + '\u00B0 FOV | ' +
         zoom.toFixed(1) + 'x zoom | object: ' + (ballR * 2).toFixed(1) + ' px';
 
-    // === 7. Rerecord with PSF ===
-    renderRerecord(dctx, DISPLAY_W, DISPLAY_H, p.psfRadius, p.rerecFocus, p.rerecExposure);
+    // === 8. Rerecord with PSF ===
+    renderRerecord(dctx, DISPLAY_W, DISPLAY_H, p.psfRadius, p.rerecFocus, p.rerecExposure, p.bloomFrac / 100);
 
-    // === 8. Diagnostics (physics-based, independent of sensor) ===
+    // === 9. Diagnostics (physics-based, independent of sensor) ===
     renderElevationMap(p);
     renderPathMap(p);
     renderSideView(p);
 
-    // === 9. Profile chart (fast) ===
+    // === 10. Profile chart (fast) ===
     computeProfileData(p);
     updateProfileChart(p, dMin, dMax);
 
-    // === 10. Contrast chart (expensive, debounced separately) ===
+    // === 11. Contrast chart (expensive, debounced separately) ===
     scheduleContrastUpdate(p);
 }
 
@@ -834,73 +992,147 @@ function computeProfileData(p) {
     balloonData = { profileData };
 }
 
-// ========== RERECORD WITH HDR BLOOM ==========
-// Standard HDR bloom pipeline: map display pixels to HDR linear light,
-// with saturated (clipped) pixels boosted to 300% of display max.
-// PSF convolution in HDR space spreads energy from bright regions outward.
-// Final clipping produces a white core with grey falloff halo.
-const HDR_WHITE = 3.0;       // saturated pixels = 300% of display max
-const HDR_KNEE  = 0.9;       // threshold (normalized) where HDR boost begins
-function toHDR(v) {
-    // v is pixel/255, in [0,1]. Returns linear HDR value.
-    // Below knee: linear 1:1. Above knee: smooth ramp to HDR_WHITE.
-    if (v <= HDR_KNEE) return v;
-    const t = (v - HDR_KNEE) / (1.0 - HDR_KNEE); // 0 at knee, 1 at white
-    return HDR_KNEE + t * (HDR_WHITE - HDR_KNEE);  // ramps to HDR_WHITE
+// ========== OSD OVERLAY ==========
+// Renders FLIR-style On-Screen Display text at 640×360 resolution
+// (matching MQ-9 FLIR video output) then composites onto display canvas.
+// White text will bloom in the rerecord; gray text stays sharp.
+let osdCanvas = null;
+const OSD_W = 640;
+const OSD_H = 360; // OSD rendered at 640 resolution, scaled to display
+
+function drawOSD(destCtx, w, h) {
+    if (!showOSD) return;
+    if (!osdCanvas) {
+        osdCanvas = document.createElement('canvas');
+        osdCanvas.width = OSD_W;
+        osdCanvas.height = OSD_H;
+    }
+    const ctx = osdCanvas.getContext('2d');
+    ctx.clearRect(0, 0, OSD_W, OSD_H);
+
+    // --- White text (bright — will bloom in rerecord) ---
+    ctx.font = 'bold 14px "Courier New", Courier, monospace';
+    ctx.fillStyle = '#ffffff';
+
+    // Bottom-right telemetry block
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'alphabetic';
+    const telemetry = ['ELV  1725FT-', 'BRG     13 T', 'SLR  22.48NM-', 'GDR  41.38KH+'];
+    for (let i = 0; i < telemetry.length; i++) {
+        ctx.fillText(telemetry[i], OSD_W - 16, OSD_H - 12 - i * 18);
+    }
+
+    // Bottom-left status
+    ctx.textAlign = 'left';
+    ctx.fillText('SAFE', 16, OSD_H - 30);
+    ctx.fillText('1111', 16, OSD_H - 12);
+
+    // --- Gray/dim text (below bloom threshold — stays sharp in rerecord) ---
+    ctx.fillStyle = '#606060';
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'left';
+    ctx.fillText('4X', 16, 10);
+    ctx.fillText('BLK', 16, 28);
+
+    ctx.textAlign = 'right';
+    ctx.fillText('17,044 HAT', OSD_W - 16, 10);
+
+    // --- Center tracking brackets (white — will bloom) ---
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.5;
+    const bSz = 22, gap = 6;
+    const cx = OSD_W / 2, cy = OSD_H / 2;
+    ctx.beginPath();
+    ctx.moveTo(cx - bSz, cy - gap); ctx.lineTo(cx - bSz, cy - bSz); ctx.lineTo(cx - gap, cy - bSz);
+    ctx.moveTo(cx + gap, cy - bSz); ctx.lineTo(cx + bSz, cy - bSz); ctx.lineTo(cx + bSz, cy - gap);
+    ctx.moveTo(cx - bSz, cy + gap); ctx.lineTo(cx - bSz, cy + bSz); ctx.lineTo(cx - gap, cy + bSz);
+    ctx.moveTo(cx + gap, cy + bSz); ctx.lineTo(cx + bSz, cy + bSz); ctx.lineTo(cx + bSz, cy + gap);
+    ctx.stroke();
+
+    // Composite OSD onto display canvas (scale from 640→380)
+    destCtx.drawImage(osdCanvas, 0, 0, OSD_W, OSD_H, 0, 0, w, h);
 }
 
-function renderRerecord(srcCtx, w, h, psfSigma, focusBlur, exposureEV) {
+// ========== RERECORD WITH PHYSICALLY CORRECT OVEREXPOSURE ==========
+// Models a camera filming a monitor displaying the thermal image.
+// Pipeline: gamma decode → HDR knee boost → focus blur → core blur →
+// extract excess → bloom blur of excess → add bloom → camera noise →
+// clip → inverse gamma.
+const MONITOR_GAMMA = 2.2;
+const BASE_OVEREXPOSURE_STOPS = 4.0;
+const HDR_KNEE = 0.7; // knee point in linear light (≈ pixel 212 in sRGB)
+
+function renderRerecord(srcCtx, w, h, psfSigma, focusBlur, exposureEV, bloomFraction) {
     const srcImgData = srcCtx.getImageData(0, 0, w, h);
     const src = srcImgData.data;
     const n = w * h;
 
-    // Step 1: Map display pixels to HDR linear light buffer.
-    // Grey background stays in [0,1] range (full display range).
-    // Saturated white pixels are boosted to HDR_WHITE (300%), representing
-    // the thermal radiance that was clipped by the display's limited dynamic range.
+    // Step 1: Gamma decode + HDR overexposure (ALWAYS applied).
+    // Monitor white is physically brighter than camera saturation — this is
+    // basic photometry, not a "bloom effect". The overexposure factor sets how
+    // far above saturation (1.0) the monitor white lands. Pixels below the
+    // knee (mid-grays, ground) are unaffected. Only near-whites get boosted.
+    // The excess clips away harmlessly unless spread by the lens PSF.
+    const overexposureFactor = Math.pow(2, BASE_OVEREXPOSURE_STOPS + exposureEV);
     let hdr = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) {
-        hdr[i * 3]     = toHDR(src[i * 4]     / 255);
-        hdr[i * 3 + 1] = toHDR(src[i * 4 + 1] / 255);
-        hdr[i * 3 + 2] = toHDR(src[i * 4 + 2] / 255);
+        for (let c = 0; c < 3; c++) {
+            const v = src[i * 4 + c] / 255;
+            let light = Math.pow(v, MONITOR_GAMMA);
+            if (light > HDR_KNEE) {
+                light = HDR_KNEE + (light - HDR_KNEE) * overexposureFactor;
+            }
+            hdr[i * 3 + c] = light;
+        }
     }
 
-    // Step 2: Apply focus blur (camera defocus, in HDR space)
+    // Step 2: Focus blur in linear light space (camera defocus)
     if (focusBlur > 0.1) {
         hdr = separableBlur(hdr, w, h, focusBlur);
     }
 
-    // Step 3: Apply EV exposure shift (before PSF, per user spec)
-    // EV is log2: +1 EV = 2x brightness. This adjusts the camera's
-    // sensitivity, pushing more of the scene into saturation.
-    if (Math.abs(exposureEV) > 0.01) {
-        const gain = Math.pow(2, exposureEV);
-        for (let i = 0; i < hdr.length; i++) {
-            hdr[i] *= gain;
+    // Step 3: Lens PSF — dual-Gaussian model.
+    // A real lens PSF = sharp optical core + wide veiling glare tails:
+    //   PSF(r) = (1 - f) · G(σ_core) + f · G(σ_bloom)
+    // where f = bloom fraction (veiling glare from internal reflections).
+    // At f=0: all energy in the sharp core → overexposed pixels just clip,
+    //   no visible bloom. Smooth transition to f>0.
+    // At f=0.01: 1% of light from 5.5× overexposed white spreads widely →
+    //   neighbors pushed above saturation → white region grows.
+    // This is physically correct: the PSF applies to ALL light, and bloom
+    // naturally only affects bright pixels because they have excess energy.
+    if (psfSigma > 0.1) {
+        const coreBlur = separableBlur(hdr, w, h, Math.max(0.5, psfSigma * 0.15));
+        if (bloomFraction > 0.001) {
+            const wideBlur = separableBlur(hdr, w, h, psfSigma);
+            for (let i = 0; i < hdr.length; i++) {
+                hdr[i] = (1 - bloomFraction) * coreBlur[i] + bloomFraction * wideBlur[i];
+            }
+        } else {
+            hdr = coreBlur;
         }
     }
 
-    // Step 4: PSF bloom convolution (in HDR space).
-    // Because bright pixels have values up to 3.0, the Gaussian PSF spreads
-    // this excess energy into surrounding pixels. After clipping at 1.0,
-    // any pixel receiving enough spillover stays white, creating a larger
-    // white core. The grey falloff border appears where spillover drops below 1.0.
-    // Dark pixels receive minimal spillover and are largely unchanged.
-    if (psfSigma > 0.1) {
-        hdr = separableBlur(hdr, w, h, psfSigma);
+    // Step 4: Camera sensor noise (small, in linear light space)
+    let cameraSeed = 0xCAFEBABE;
+    for (let i = 0; i < hdr.length; i++) {
+        cameraSeed |= 0; cameraSeed = (cameraSeed + 0x6D2B79F5) | 0;
+        let t = Math.imul(cameraSeed ^ (cameraSeed >>> 15), 1 | cameraSeed);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        const rnd = ((t ^ (t >>> 14)) >>> 0) / 4294967296 - 0.5;
+        hdr[i] += rnd * 0.015;
     }
 
-    // Step 5: Clip to [0,1] and map back to [0,255].
-    // Values above 1.0 (from HDR bloom spillover) clip to white.
+    // Step 5: Clip at camera saturation (1.0) + inverse gamma → pixel values
     const reCanvas = document.getElementById('rerecordCanvas');
     const reCtx = reCanvas.getContext('2d');
     const outImg = reCtx.createImageData(w, h);
     for (let i = 0; i < n; i++) {
-        const off = i * 4;
-        outImg.data[off]     = Math.min(255, Math.max(0, Math.round(hdr[i * 3]     * 255)));
-        outImg.data[off + 1] = Math.min(255, Math.max(0, Math.round(hdr[i * 3 + 1] * 255)));
-        outImg.data[off + 2] = Math.min(255, Math.max(0, Math.round(hdr[i * 3 + 2] * 255)));
-        outImg.data[off + 3] = 255;
+        for (let c = 0; c < 3; c++) {
+            const clipped = Math.min(1.0, Math.max(0, hdr[i * 3 + c]));
+            outImg.data[i * 4 + c] = Math.round(Math.pow(clipped, 1.0 / MONITOR_GAMMA) * 255);
+        }
+        outImg.data[i * 4 + 3] = 255;
     }
     reCtx.putImageData(outImg, 0, 0);
 }
@@ -1122,9 +1354,10 @@ function renderSideView(p) {
     ctx.strokeStyle = 'rgba(100,200,255,0.4)'; ctx.setLineDash([3, 3]);
     ctx.beginPath(); ctx.moveTo(bxC, byC); ctx.lineTo(bxC, bgy); ctx.stroke(); ctx.setLineDash([]);
     ctx.fillStyle = '#6bf'; ctx.font = '9px sans-serif'; ctx.textAlign = 'left';
-    ctx.fillText(p.ballAlt.toFixed(2) + ' NM', bxC + 4, (byC + bgy) / 2 + 3);
+    ctx.fillText(p.ballAlt.toFixed(2) + ' NM AGL', bxC + 4, (byC + bgy) / 2 + 3);
     ctx.font = '8px sans-serif';
-    ctx.fillText('(' + (p.ballAlt * NM_TO_KM * 1000 * 3.281).toFixed(0) + ' ft)', bxC + 4, (byC + bgy) / 2 + 13);
+    const ballAlt_ft_agl = p.ballAlt * NM_TO_KM * 1000 * 3.281;
+    ctx.fillText('(' + ballAlt_ft_agl.toFixed(0) + ' ft AGL / ' + (ballAlt_ft_agl + p.groundASL).toFixed(0) + ' ft ASL)', bxC + 4, (byC + bgy) / 2 + 13);
 
     // Balloon marker
     const visR = Math.max(5, Math.min(10, scale * 0.04));
@@ -1146,7 +1379,7 @@ function renderSideView(p) {
     ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('Ground pt', gpxC, gpyC - 6);
 
     ctx.fillStyle = '#5a3'; ctx.font = '9px sans-serif'; ctx.textAlign = 'left';
-    ctx.fillText('Ground (0 AGL)', pad, gy1 + 12);
+    ctx.fillText('Ground (0 AGL / ' + p.groundASL.toFixed(0) + ' ft ASL)', pad, gy1 + 12);
 }
 
 // ========== CHARTS ==========
@@ -1156,8 +1389,8 @@ function updateProfileChart(p, dMin, dMax) {
     const labels = bd.profileData.map(d => d.v.toFixed(2));
     const K2C = 273.15;
     const temps = bd.profileData.map(d => d.T - K2C);
-    const tau_bg = atmosphericTransmission(p.bgDist_km, p.beta);
-    const T_bg = apparentTempLookup(p.L_ground * tau_bg + p.L_atm * (1 - tau_bg)) - K2C;
+    const tau_bg = atmosphericTransmission(p.camAlt_asl_km, p.groundASL_km, p.bgDist_km, p.beta, p.scaleH);
+    const T_bg = apparentTempLookup(p.L_ground * tau_bg + p.L_atm_direct * (1 - tau_bg)) - K2C;
     const T_sky_c = skyTemperatureK(p.lookDown, p.T_zenith_K) - K2C;
 
     let maxT = -Infinity, maxIdx = 0;
@@ -1170,7 +1403,7 @@ function updateProfileChart(p, dMin, dMax) {
     const datasets = [
         { label: 'Balloon', data: temps, borderColor: '#e94560', borderWidth: 2, pointRadius: 0, fill: false, tension: 0.1 },
         { label: 'BG ground', data: Array(temps.length).fill(T_bg), borderColor: '#4ecdc4', borderWidth: 1.5, borderDash: [6, 3], pointRadius: 0, fill: false },
-        { label: 'Atmos T', data: Array(temps.length).fill(p.T_atm_K - K2C), borderColor: '#95a5a6', borderWidth: 1, borderDash: [2, 4], pointRadius: 0, fill: false },
+        { label: 'Atm Emit', data: Array(temps.length).fill(p.T_atm_direct - K2C), borderColor: '#95a5a6', borderWidth: 1, borderDash: [2, 4], pointRadius: 0, fill: false },
         { label: 'Sky T', data: Array(temps.length).fill(T_sky_c), borderColor: '#3498db', borderWidth: 1, borderDash: [2, 4], pointRadius: 0, fill: false }
     ];
     const annotations = {};
@@ -1199,9 +1432,13 @@ function updateContrastChart(p) {
     for (let i = 0; i <= nSteps; i++) {
         const beta = 0.02 + i * 0.18 / nSteps;
         betas.push(beta);
-        const pp = Object.assign({}, p, { beta }); pp.L_atm = radianceLookup(pp.T_atm_K);
-        const tau_bg = atmosphericTransmission(pp.bgDist_km, beta);
-        const T_bg = apparentTempLookup(pp.L_ground * tau_bg + pp.L_atm * (1 - tau_bg));
+        const pp = Object.assign({}, p, { beta });
+        // Re-compute per-beta extinction helpers for tracePixel
+        pp.tau_cam_to_balloon = atmosphericTransmission(pp.camAlt_asl_km, pp.ballAlt_asl_km, pp.camDist_km, beta, pp.scaleH);
+        pp.ball_gnd_factor = beta * pp.scaleH / pp.ball_gnd_dz * Math.abs(pp.ball_exp_a - pp.ball_exp_b);
+        // Path emission radiances don't depend on beta, so use p.L_atm_direct etc.
+        const tau_bg = atmosphericTransmission(pp.camAlt_asl_km, pp.groundASL_km, pp.bgDist_km, beta, pp.scaleH);
+        const T_bg = apparentTempLookup(pp.L_ground * tau_bg + p.L_atm_direct * (1 - tau_bg));
         let maxGT = -Infinity, sumGT = 0, cntGT = 0, minST = Infinity;
         for (let si = 0; si < 21; si++) for (let sj = 0; sj < 21; sj++) {
             const u = -1 + 2 * si / 20, v = -1 + 2 * sj / 20;
@@ -1252,7 +1489,7 @@ function setupControls() {
     baNum.addEventListener('change', () => { baSlider.value = baNum.value; recalcCamDist(); scheduleUpdate(); });
 
     // All other controls (physics + sensor + objDiam)
-    const otherIds = ['objDiam', 'groundTemp', 'skyTemp', 'beta', 'mylarR', 'groundVar', 'hfov', 'sensorRes', 'digitalZoom', 'psfRadius', 'noiseAmt', 'rerecFocus', 'rerecExposure'];
+    const otherIds = ['objDiam', 'groundASL', 'groundTemp', 'skyTemp', 'beta', 'mylarR', 'groundVar', 'scaleH', 'lapseRate', 'hfov', 'sensorRes', 'digitalZoom', 'psfRadius', 'noiseAmt', 'rerecFocus', 'rerecExposure', 'bloomFrac'];
     for (const id of otherIds) {
         const slider = document.getElementById(id + '_r'), num = document.getElementById(id + '_n');
         slider.addEventListener('input', () => { num.value = slider.value; scheduleUpdate(); });
@@ -1265,18 +1502,26 @@ function setupControls() {
     document.getElementById('cmIronbow').addEventListener('click', () => { colormap = 'ironbow'; updateCmBtns(); scheduleUpdate(); });
     document.getElementById('expGround').addEventListener('click', () => { exposureMode = 'ground'; updateExpBtns(); scheduleUpdate(); });
     document.getElementById('expFull').addEventListener('click', () => { exposureMode = 'full'; updateExpBtns(); scheduleUpdate(); });
-    document.getElementById('btnReset').addEventListener('click', () => applyPreset(DEFAULTS));
+    document.getElementById('btnOSD').addEventListener('click', () => {
+        showOSD = !showOSD;
+        document.getElementById('btnOSD').classList.toggle('active', showOSD);
+        scheduleUpdate();
+    });
+    document.getElementById('btnReset').addEventListener('click', () => { window.location.hash = ''; window.location.reload(); });
+    document.getElementById('viewsOnly').addEventListener('change', (e) => {
+        document.body.classList.toggle('views-only', e.target.checked);
+    });
     document.getElementById('preHotDesert').addEventListener('click', () => applyPreset({
-        groundTemp: 62, skyTemp: -40, beta: 0.05, lookDown: 15, camDist: 6, groundVar: 12
+        groundTemp: 62, skyTemp: -40, beta: 0.05, lookDown: 15, camDist: 6, groundVar: 12, groundASL: 2000, lapseRate: 8.0, scaleH: 1.5
     }));
     document.getElementById('preSyria').addEventListener('click', () => applyPreset({
-        groundTemp: 10, skyTemp: -40, beta: 0.07, lookDown: 20, camDist: 4, objDiam: 0.3, hfov: 0.3
+        groundTemp: 10, skyTemp: -40, beta: 0.07, lookDown: 20, camDist: 4, objDiam: 0.3, hfov: 0.3, groundASL: 3000
     }));
     document.getElementById('preMaritime').addEventListener('click', () => applyPreset({
-        groundTemp: 15, skyTemp: -30, beta: 0.12, lookDown: 5, camDist: 8, groundVar: 2
+        groundTemp: 15, skyTemp: -30, beta: 0.12, lookDown: 5, camDist: 8, groundVar: 2, groundASL: 0, lapseRate: 5.0
     }));
     document.getElementById('preNight').addEventListener('click', () => applyPreset({
-        groundTemp: 5, skyTemp: -50, beta: 0.06, lookDown: 10, camDist: 5, groundVar: 3
+        groundTemp: 5, skyTemp: -50, beta: 0.06, lookDown: 10, camDist: 5, groundVar: 3, groundASL: 1000
     }));
 }
 
@@ -1308,8 +1553,11 @@ function scheduleUpdate() {
 function updateUrlHash() {
     const parts = [];
     for (const d of paramDefs) {
-        const val = parseFloat(document.getElementById(d.id + '_n').value);
-        if (Math.abs(val - DEFAULTS[d.key]) > 0.001) {
+        const r = document.getElementById(d.id + '_r');
+        const step = parseFloat(r.step) || 0.01;
+        const decimals = (step.toString().split('.')[1] || '').length;
+        const val = parseFloat(parseFloat(document.getElementById(d.id + '_n').value).toFixed(decimals));
+        if (Math.abs(val - DEFAULTS[d.key]) > 0.0001) {
             parts.push(d.key + '=' + val);
         }
     }
