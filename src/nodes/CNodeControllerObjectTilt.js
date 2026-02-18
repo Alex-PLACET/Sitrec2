@@ -16,6 +16,7 @@ export class CNodeControllerObjectTilt extends CNodeController {
         this.input("track")
         this.optionalInputs(["wind", "airTrack"])
         this.tiltType = v.tiltType ?? "none"
+        this._savedQuaternion = null;
 
         // the input track is likely not smooth enought, so create a smoothed version
         this.smoothedTrack = new CNodeSmoothedPositionTrack({
@@ -127,36 +128,46 @@ export class CNodeControllerObjectTilt extends CNodeController {
         if (object !== undefined) {
             if (f >= 0) {
 
-                if (this.tiltType === "none") return;
+                var rawNext = this.in.track.p(f + 1)
+                const currentPos = this.in.track.p(f)
 
-                var next = this.in.track.p(f + 1)
+                // FIX B/C: distance check on RAW positions (before wind),
+                // store/restore quaternion for degenerate positions
+                if (currentPos.distanceTo(rawNext) < 1e-6) {
+                    if (this._savedQuaternion) {
+                        object.quaternion.copy(this._savedQuaternion);
+                        object.updateMatrix();
+                        object.updateMatrixWorld();
+                    } else {
+                        this._savedQuaternion = object.quaternion.clone();
+                    }
+                    return;
+                }
 
-                // if (this.id === "orientCameraObjectTarget") {
-                //     debugger;
-                // }
-
+                var next = rawNext;
                 // if we have a wind vector then subtract that to get the nose heading
                 // pass the track position to get wind in the correct local frame
                 if (this.in.wind !== undefined) {
                     const trackPos = this.in.track.p(f)
                     const windVector = this.in.wind.getValueFrame(f, trackPos)
+                    next = rawNext.clone();
                     next.sub(windVector)
                 }
-
-                const currentPos = this.in.track.p(f)
-                if (currentPos.distanceTo(next) < 1e-6) return;
 
                 // we want to use track positions not the object.position as the clampAboveGroung might have moved it
                 // so temporarily set the object position back to where it was before any clampAboveGround call
 
                 const oldPos = object.position.clone();
-                 object.position.copy(currentPos)
+                object.position.copy(currentPos)
 
                 object.up = objectNode.getUpVector(object.position)
                 object.lookAt(next)
 
                 // restore the object position
                 object.position.copy(oldPos);
+
+                // Save base orientation AFTER lookAt, BEFORE switch block modifies it
+                this._savedQuaternion = object.quaternion.clone();
 
                 // calculate the heading on the SMOOTHED track
                 var from = this.in.track.p(f)
