@@ -39,7 +39,9 @@
   "jest": {
     "testPathIgnorePatterns": [
       "<rootDir>/test/",
-      "<rootDir>/.claude/"
+      "<rootDir>/.claude/",
+      "<rootDir>/tests_regression/",
+      "<rootDir>/test_other/"
     ],
     "roots": [
       "<rootDir>"
