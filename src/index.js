@@ -1803,7 +1803,7 @@ async function setupFunctions() {
 
 
     console.log("GlobalDateTimeNode.populateStartTimeFromUTCString(Sit.startTime) " + Sit.startTime)
-    GlobalDateTimeNode.populateStartTimeFromUTCString(Sit.startTime)
+    GlobalDateTimeNode.populateStartTimeFromUTCString(Sit.startTime, true)
 
     if (Sit.jetStuff) {
         // only gimbal
