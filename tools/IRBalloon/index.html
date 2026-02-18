@@ -312,8 +312,8 @@ body.views-only .row1 .viz-section canvas.thermal-canvas {
         </div>
         <div class="control-group" title="Mylar reflectivity in MWIR (3-5 &micro;m). Emissivity = 1 - R. Higher R = more mirror-like, less self-emission">
             <label>Mylar R</label>
-            <input type="range" id="mylarR_r" min="0.50" max="0.99" step="0.001" value="0.97">
-            <input type="number" id="mylarR_n" min="0.50" max="0.99" step="0.001" value="0.97">
+            <input type="range" id="mylarR_r" min="0" max="0.99" step="0.001" value="0.97">
+            <input type="number" id="mylarR_n" min="0" max="0.99" step="0.001" value="0.97">
             <span class="unit"></span>
         </div>
         <div class="control-group" title="Ground temperature variation (spatial noise). Higher values = more visible ground texture in the thermal image">
@@ -732,8 +732,11 @@ function gatherParams() {
     p.ballAngRadius_deg = Math.atan((p.objDiam / 2) / camDist_m) * RAD_TO_DEG;
     p.ballPixelRadius = p.ballAngRadius_deg / p.degPerPixel;
 
-    // Balloon physical temperature from air temperature at its altitude
-    p.T_balloon_K = airTemperature(p.ballAlt_asl_km, p) - 10;  // radiative cooling offset
+    // Balloon physical temperature ≈ ambient air at its altitude.
+    // Radiative cooling is negligible: forced convection (h ≈ 17 W/m²·K) overwhelms
+    // net radiative loss (sky cooling nearly cancelled by warm ground below).
+    // Even for ε=1, ΔT < 0.3 K. For mylar (ε=0.03), ΔT < 0.01 K.
+    p.T_balloon_K = airTemperature(p.ballAlt_asl_km, p);
 
     p.L_ground = radianceLookup(p.T_ground_K);
     p.L_balloon = radianceLookup(p.T_balloon_K);
