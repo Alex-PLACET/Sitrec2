@@ -18,11 +18,13 @@ import {
     CubeCamera,
     CurvePath,
     CylinderGeometry,
+    DataTexture,
     DodecahedronGeometry,
     EdgesGeometry,
     HalfFloatType,
     IcosahedronGeometry,
     LatheGeometry,
+    LinearFilter,
     LineCurve3,
     LineSegments,
     Mesh,
@@ -33,13 +35,16 @@ import {
     OctahedronGeometry,
     QuadraticBezierCurve3,
     Raycaster,
+    RGBAFormat,
     RingGeometry,
+    ShaderMaterial,
     Sphere,
     SphereGeometry,
     TetrahedronGeometry,
     TorusGeometry,
     TorusKnotGeometry,
     TubeGeometry,
+    UnsignedByteType,
     Vector2,
     Vector3,
     WebGLCubeRenderTarget,
@@ -57,6 +62,8 @@ import {EUSToLLA} from "../LLA-ECEF-ENU";
 
 import {findRootTrack} from "../FindRootTrack";
 import {GlobalScene} from "../LocalFrame";
+import {sharedUniforms} from "../js/map33/material/SharedUniforms";
+import {par} from "../par";
 
 // Note these files are CASE SENSIVE. Mac OS is case insensitive, so be careful. (e.g. F-15.glb will not work on my deployed server)
 export const ModelFiles = {
@@ -457,6 +464,151 @@ const gTypes = {
 
 }
 
+// Gradient palette definitions for thermal imaging visualization
+// Each palette is an array of [position, r, g, b] color stops
+const gradientPalettes = {
+    "Ironbow": [
+        [0, 0, 0, 0],
+        [0.25, 42, 0, 102],
+        [0.5, 204, 51, 0],
+        [0.75, 255, 153, 0],
+        [1, 255, 255, 255],
+    ],
+    "Black Hot": [
+        [0, 255, 255, 255],
+        [1, 0, 0, 0],
+    ],
+    "White Hot": [
+        [0, 0, 0, 0],
+        [1, 255, 255, 255],
+    ],
+    "Rainbow": [
+        [0, 0, 0, 255],
+        [0.25, 0, 255, 255],
+        [0.5, 0, 255, 0],
+        [0.75, 255, 255, 0],
+        [1, 255, 0, 0],
+    ],
+    "Lava": [
+        [0, 0, 0, 0],
+        [0.33, 204, 0, 0],
+        [0.66, 255, 153, 0],
+        [1, 255, 255, 255],
+    ],
+    "Arctic": [
+        [0, 0, 0, 51],
+        [0.5, 0, 204, 204],
+        [1, 255, 255, 255],
+    ],
+    "Plasma": [
+        [0, 13, 8, 135],
+        [0.25, 126, 3, 168],
+        [0.5, 204, 71, 120],
+        [0.75, 248, 149, 64],
+        [1, 240, 249, 33],
+    ],
+};
+
+// Create a 256x1 DataTexture from a named gradient palette
+function createGradientTexture(paletteName) {
+    const stops = gradientPalettes[paletteName] || gradientPalettes["Ironbow"];
+    const width = 256;
+    const data = new Uint8Array(width * 4); // RGBA
+
+    for (let i = 0; i < width; i++) {
+        const t = i / (width - 1);
+
+        // Find surrounding stops
+        let lower = stops[0];
+        let upper = stops[stops.length - 1];
+        for (let s = 0; s < stops.length - 1; s++) {
+            if (t >= stops[s][0] && t <= stops[s + 1][0]) {
+                lower = stops[s];
+                upper = stops[s + 1];
+                break;
+            }
+        }
+
+        // Interpolate between stops
+        const range = upper[0] - lower[0];
+        const frac = range > 0 ? (t - lower[0]) / range : 0;
+
+        const idx = i * 4;
+        data[idx]     = Math.round(lower[1] + (upper[1] - lower[1]) * frac);
+        data[idx + 1] = Math.round(lower[2] + (upper[2] - lower[2]) * frac);
+        data[idx + 2] = Math.round(lower[3] + (upper[3] - lower[3]) * frac);
+        data[idx + 3] = 255;
+    }
+
+    const texture = new DataTexture(data, width, 1, RGBAFormat, UnsignedByteType);
+    texture.minFilter = LinearFilter;
+    texture.magFilter = LinearFilter;
+    texture.needsUpdate = true;
+    return texture;
+}
+
+const gradientVertexShader = `
+    varying vec3 vWorldPosition;
+    varying vec3 vLocalPosition;
+    varying vec4 vPosition;
+
+    void main() {
+        vLocalPosition = position;
+        vec4 worldPos = modelMatrix * vec4(position, 1.0);
+        vWorldPosition = worldPos.xyz;
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        vPosition = projectionMatrix * mvPosition;
+        gl_Position = vPosition;
+    }
+`;
+
+const gradientFragmentShader = `
+    uniform sampler2D gradientMap;
+    uniform vec3 gradientCenter;
+    uniform vec3 gradientDir;
+    uniform float boundingSphereRadius;
+    uniform float compress;
+    uniform float useWorldCoords;
+    uniform float reverseGradient;
+    uniform vec3 baseColor;
+    uniform float baseMix;
+    uniform float nearPlane;
+    uniform float farPlane;
+
+    varying vec3 vWorldPosition;
+    varying vec3 vLocalPosition;
+    varying vec4 vPosition;
+
+    void main() {
+        // Choose coordinate space based on direction mode
+        vec3 pos;
+        if (useWorldCoords > 0.5) {
+            pos = vWorldPosition;
+        } else {
+            pos = vLocalPosition;
+        }
+
+        // Project position onto gradient direction vector
+        float d = dot(pos - gradientCenter, gradientDir);
+
+        // Normalize to 0-1 based on bounding sphere, with compress factor
+        float effectiveRadius = boundingSphereRadius / compress;
+        float t = d / (2.0 * effectiveRadius) + 0.5;
+        if (reverseGradient > 0.5) {
+            t = 1.0 - t;
+        }
+        t = clamp(t, 0.0, 1.0);
+
+        vec4 gradientColor = texture2D(gradientMap, vec2(t, 0.5));
+        gl_FragColor = vec4(mix(gradientColor.rgb, baseColor, baseMix), 1.0);
+
+        // Logarithmic depth (matching other shaders in the codebase)
+        float w = vPosition.w;
+        float z = (log2(max(nearPlane, 1.0 + w)) / log2(1.0 + farPlane)) * 2.0 - 1.0;
+        gl_FragDepthEXT = z * 0.5 + 0.5;
+    }
+`;
+
 // material types for meshes
 const materialTypes = {
     basic: {
@@ -526,12 +678,25 @@ const materialTypes = {
             flatShading: [false, "Enable flat shading - i.e. no smooth shading"],
             fog: [true, "Enable Fog"],
         }
+    },
+
+    gradient: {
+        m: null, // custom ShaderMaterial, not a standard Three.js material
+        params: {
+            gradientPalette: [["Ironbow", "Black Hot", "White Hot", "Rainbow", "Lava", "Arctic", "Plasma"], "Color palette for the gradient (thermal imaging presets)"],
+            gradientDirection: [["Model Down", "World Down", "Motion Forward"], "Axis along which the gradient is mapped: Model Down uses local Y, World Down uses world Y, Motion Forward uses the object's velocity direction"],
+            reverse: [false, "Flip the gradient so the start color appears at the opposite end"],
+            color: ["black", "Base color to blend with the gradient"],
+            baseMix: [[0, 0, 1, 0.01], "Blend between gradient and base color (0 = pure gradient, 1 = pure base color)"],
+            compress: [[1, 0.1, 10, 0.01], "Squeeze the gradient tighter around the center (higher = more compressed)"],
+            shift: [[0, -100, 100, 1], "Offset the gradient center along its direction (% of bounding diameter)"],
+        }
     }
 
 }
 
 const commonMaterialParams = {
-    material: [["basic", "lambert", "phong", "physical", "envMap"],"Type of Material lighting"],
+    material: [["basic", "lambert", "phong", "physical", "envMap", "gradient"],"Type of Material lighting"],
     wireframe: [false, "Display geometry object as a wireframe"],
     edges: [false, "Display geometry object as edges"],
     depthTest: [true, "Enable depth testing"],
@@ -1310,8 +1475,21 @@ export class CNode3DObject extends CNode3DGroup {
         for (const key in v.geometryParams) {
             this.geometryParams[key] = v.geometryParams[key];
         }
-        for (const key in v.materialParams) {
-            this.materialParams[key] = v.materialParams[key];
+
+        // First rebuildMaterial creates the correct param structure and UI
+        // for the (possibly new) material type. This resets this.materialParams
+        // with defaults and builds fresh GUI controllers.
+        this.rebuildMaterial();
+
+        // Now copy deserialized material params into the freshly created object.
+        // The GUI controllers are bound to this.materialParams with .listen(),
+        // so they'll reflect the restored values.
+        if (v.materialParams) {
+            for (const key in v.materialParams) {
+                if (key in this.materialParams) {
+                    this.materialParams[key] = v.materialParams[key];
+                }
+            }
         }
 
         // Migrate old 'specularcolor' to correct Three.js property names (Feb 2026)
@@ -1325,8 +1503,8 @@ export class CNode3DObject extends CNode3DGroup {
             delete this.materialParams.specularcolor;
         }
 
-        // might need a modelParams
-
+        // Rebuild material again with the deserialized values.
+        // Since the type hasn't changed, params won't be reset.
         this.rebuildMaterial();
         this.rebuild();
 
@@ -1486,6 +1664,19 @@ export class CNode3DObject extends CNode3DGroup {
                 this.materialFolder.hide();
             } else {
                 this.materialFolder.show();
+            }
+
+            // Hide common material controls that don't apply to gradient ShaderMaterial
+            const isGradient = this.common.material?.toLowerCase() === "gradient";
+            const hideForGradient = ['wireframe', 'edges', 'depthTest', 'opacity', 'transparent'];
+            for (const c of this.materialFolder.controllers) {
+                if (hideForGradient.includes(c.property)) {
+                    if (isGradient) {
+                        c.hide();
+                    } else {
+                        c.show();
+                    }
+                }
             }
         }
     }
@@ -1930,15 +2121,38 @@ export class CNode3DObject extends CNode3DGroup {
 
         const params = {...this.materialParams};
         const isEnvMap = materialType === "envmap";
+        const isGradient = materialType === "gradient";
 
-        if (isEnvMap) {
+        if (isGradient) {
+            this.disposeCubeCamera();
+            const palette = this.materialParams.gradientPalette ?? "Ironbow";
+            const gradientTexture = createGradientTexture(palette);
+
+            this.material = new ShaderMaterial({
+                uniforms: {
+                    gradientMap: { value: gradientTexture },
+                    gradientCenter: { value: new Vector3() },
+                    gradientDir: { value: new Vector3(0, -1, 0) },
+                    boundingSphereRadius: { value: 1.0 },
+                    compress: { value: this.materialParams.compress ?? 1.0 },
+                    useWorldCoords: { value: (this.materialParams.gradientDirection ?? "Model Down") !== "Model Down" ? 1.0 : 0.0 },
+                    reverseGradient: { value: this.materialParams.reverse ? 1.0 : 0.0 },
+                    baseColor: { value: new Color(this.materialParams.color ?? "black") },
+                    baseMix: { value: this.materialParams.baseMix ?? 0.0 },
+                    ...sharedUniforms,
+                },
+                vertexShader: gradientVertexShader,
+                fragmentShader: gradientFragmentShader,
+                fog: false,
+            });
+        } else if (isEnvMap) {
             delete params.envMapResolution;
             this.setupCubeCamera();
+            this.material = new materialDef.m(params);
         } else {
             this.disposeCubeCamera();
+            this.material = new materialDef.m(params);
         }
-
-        this.material = new materialDef.m(params);
     }
 
     setupCubeCamera() {
@@ -1981,13 +2195,15 @@ export class CNode3DObject extends CNode3DGroup {
         if (this.model === undefined || !this.common.applyMaterial) {
             return;
         }
+        const isShader = this.material && this.material.isShaderMaterial;
         this.model.traverse((child) => {
             if (child.isMesh) {
                 if (child.originalMaterial === undefined) {
                     // save the original material so we can restore it later
                     child.originalMaterial = child.material;
                 }
-                child.material = this.material.clone();
+                // ShaderMaterial is shared (not cloned) to avoid texture/uniform issues
+                child.material = isShader ? this.material : this.material.clone();
                 // // if the material has a map, then set the colorSpace to NoColorSpace
                 // if (child.material.map) {
                 //     child.material.map.colorSpace = NoColorSpace;
@@ -2084,6 +2300,46 @@ export class CNode3DObject extends CNode3DGroup {
         }
 
         this.updateEnvMap(view);
+
+        // Update gradient material uniforms with bounding sphere and direction data
+        if (this.material && this.material.isShaderMaterial && this.material.uniforms.boundingSphereRadius) {
+            if (this.cachedBoundingSphere) {
+                const direction = this.materialParams.gradientDirection ?? "Model Down";
+                const isMotionForward = direction === "Motion Forward";
+                const useWorldCoords = direction !== "Model Down";
+                this.material.uniforms.useWorldCoords.value = useWorldCoords ? 1.0 : 0.0;
+
+                let center;
+                let dir;
+
+                if (isMotionForward) {
+                    // Compute velocity direction from source track positions
+                    dir = this.getMotionForwardVector();
+                    // Motion forward uses world coordinates
+                    center = this.cachedBoundingSphere.center.clone();
+                    center.applyMatrix4(this.group.matrixWorld);
+                } else if (direction === "World Down") {
+                    center = this.cachedBoundingSphere.center.clone();
+                    center.applyMatrix4(this.group.matrixWorld);
+                    dir = new Vector3(0, -1, 0);
+                } else {
+                    // Model Down: local coordinates
+                    center = this.cachedBoundingSphere.center.clone();
+                    dir = new Vector3(0, -1, 0);
+                }
+
+                // Apply shift: offset center along gradient direction by % of bounding diameter
+                const shift = this.materialParams.shift ?? 0;
+                if (shift !== 0) {
+                    const diameter = this.cachedBoundingSphere.radius * 2;
+                    center.addScaledVector(dir, shift / 100 * diameter);
+                }
+
+                this.material.uniforms.gradientCenter.value.copy(center);
+                this.material.uniforms.gradientDir.value.copy(dir);
+                this.material.uniforms.boundingSphereRadius.value = this.cachedBoundingSphere.radius;
+            }
+        }
     }
 
     updateEnvMap(view) {
@@ -2122,6 +2378,40 @@ export class CNode3DObject extends CNode3DGroup {
         GlobalScene.background = savedBackground;
 
         this.group.visible = true;
+    }
+
+    // Find the source track that drives this object's position via controllers
+    getSourceTrack() {
+        for (const inputID in this.inputs) {
+            const input = this.inputs[inputID];
+            if (input.isController && input.in && input.in.sourceTrack) {
+                return input.in.sourceTrack;
+            }
+        }
+        return null;
+    }
+
+    // Compute the forward direction from the object's motion (velocity vector)
+    // Returns a normalized world-space direction vector, or down if unavailable
+    getMotionForwardVector() {
+        const track = this.getSourceTrack();
+        if (track) {
+            const f = par.frame;
+            const maxF = (track.frames ?? Sit.frames) - 1;
+            // Use central difference when possible, forward/backward at edges
+            const f0 = Math.max(0, Math.min(f - 1, maxF));
+            const f1 = Math.max(0, Math.min(f + 1, maxF));
+            if (f0 !== f1) {
+                const p0 = track.p(f0);
+                const p1 = track.p(f1);
+                const dir = p1.sub(p0);
+                if (dir.lengthSq() > 0) {
+                    return dir.normalize();
+                }
+            }
+        }
+        // Fallback: use world down if no track or zero velocity
+        return new Vector3(0, -1, 0);
     }
 
     applyEnvMapToModel(texture) {
