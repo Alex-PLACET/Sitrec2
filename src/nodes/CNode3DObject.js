@@ -549,6 +549,7 @@ function createGradientTexture(paletteName) {
 
 const gradientVertexShader = `
     varying vec3 vWorldPosition;
+    varying vec3 vWorldNormal;
     varying vec4 vPosition;
 
     void main() {
@@ -556,6 +557,7 @@ const gradientVertexShader = `
         // consistent across model hierarchies with varying internal transforms.
         vec4 worldPos = modelMatrix * vec4(position, 1.0);
         vWorldPosition = worldPos.xyz;
+        vWorldNormal = normalize(mat3(modelMatrix) * normal);
         vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
         vPosition = projectionMatrix * mvPosition;
         gl_Position = vPosition;
@@ -568,6 +570,8 @@ const gradientFragmentShader = `
     uniform vec3 gradientDir;
     uniform float gradientHalfHeight;
     uniform float gradientScale;
+    uniform float gradientShift;
+    uniform float useLeadingEdge;
     uniform float reverseGradient;
     uniform vec3 baseColor;
     uniform float baseMix;
@@ -575,15 +579,28 @@ const gradientFragmentShader = `
     uniform float farPlane;
 
     varying vec3 vWorldPosition;
+    varying vec3 vWorldNormal;
     varying vec4 vPosition;
 
     void main() {
-        // Project world-space position onto gradient direction vector
-        float d = dot(vWorldPosition - gradientCenter, gradientDir);
+        float t;
 
-        // Normalize to 0-1 based on object height, scaled by percentage
-        float extent = gradientHalfHeight * (gradientScale / 100.0);
-        float t = d / (2.0 * extent) + 0.5;
+        if (useLeadingEdge > 0.5) {
+            // Leading Edge: color based on angle between surface normal and motion direction.
+            // Surfaces facing into the motion (nose, wing leading edges) are "hot" (t=1),
+            // surfaces perpendicular or facing away are "cold" (t=0).
+            // The dot product gives 0-1, treated as a unit-diameter space so
+            // scale and shift apply the same way as position-based modes.
+            float d = dot(normalize(vWorldNormal), gradientDir) - gradientShift;
+            float extent = 0.5 * (gradientScale / 100.0);
+            t = d / (2.0 * extent) + 0.5;
+        } else {
+            // Position-based gradient: project onto direction vector
+            float d = dot(vWorldPosition - gradientCenter, gradientDir);
+            float extent = gradientHalfHeight * (gradientScale / 100.0);
+            t = d / (2.0 * extent) + 0.5;
+        }
+
         if (reverseGradient > 0.5) {
             t = 1.0 - t;
         }
@@ -674,9 +691,9 @@ const materialTypes = {
         m: null, // custom ShaderMaterial, not a standard Three.js material
         params: {
             gradientPalette: [["Ironbow", "Black Hot", "White Hot", "Rainbow", "Lava", "Arctic", "Plasma"], "Color palette for the gradient (thermal imaging presets)"],
-            gradientDirection: [["Model Down", "World Down", "Motion Forward"], "Axis along which the gradient is mapped: Model Down uses local Y, World Down uses world Y, Motion Forward uses the object's velocity direction"],
+            gradientDirection: [["Model Down", "World Down", "Motion Forward", "Leading Edge"], "Axis along which the gradient is mapped: Model/World Down use Y axis, Motion Forward along velocity, Leading Edge colors by angle between surface normal and velocity"],
             reverse: [false, "Flip the gradient so the start color appears at the opposite end"],
-            color: ["black", "Base color to blend with the gradient"],
+            baseColor: ["black", "Base color to blend with the gradient"],
             baseMix: [[0, 0, 1, 0.01], "Blend between gradient and base color (0 = pure gradient, 1 = pure base color)"],
             scale: [[100, 1, 1000, 1], "Scale the gradient extent as a percentage of the object height (100% = full height)"],
             shift: [[0, -100, 100, 1], "Offset the gradient center along its direction (% of bounding diameter)"],
@@ -1542,7 +1559,7 @@ export class CNode3DObject extends CNode3DGroup {
 
             let controller;
 
-            const colorNames = ["color", "emissive", "specularColor", "sheenColor"]
+            const colorNames = ["color", "emissive", "specularColor", "sheenColor", "baseColor"]
             if (colorNames.includes(key)) {
                 // assume string values are colors
                 // (might need to have an array of names of color keys, like "emissive"
@@ -2134,8 +2151,10 @@ export class CNode3DObject extends CNode3DGroup {
                     gradientDir: { value: new Vector3(0, -1, 0) },
                     gradientHalfHeight: { value: 1.0 },
                     gradientScale: { value: this.materialParams.scale ?? 100 },
+                    gradientShift: { value: 0.0 },
+                    useLeadingEdge: { value: 0.0 },
                     reverseGradient: { value: this.materialParams.reverse ? 1.0 : 0.0 },
-                    baseColor: { value: new Color(this.materialParams.color ?? "black") },
+                    baseColor: { value: new Color(this.materialParams.baseColor ?? "black") },
                     baseMix: { value: this.materialParams.baseMix ?? 0.0 },
                     ...sharedUniforms,
                 },
@@ -2310,8 +2329,11 @@ export class CNode3DObject extends CNode3DGroup {
                 const center = this.cachedBoundingSphere.center.clone();
                 center.applyMatrix4(this.group.matrixWorld);
 
+                const isLeadingEdge = direction === "Leading Edge";
+                const usesMotion = direction === "Motion Forward" || isLeadingEdge;
+
                 let dir;
-                if (direction === "Motion Forward") {
+                if (usesMotion) {
                     dir = this.getMotionForwardVector();
                 } else if (direction === "World Down") {
                     dir = new Vector3(0, -1, 0);
@@ -2323,13 +2345,23 @@ export class CNode3DObject extends CNode3DGroup {
                     dir.transformDirection(this.group.matrixWorld);
                 }
 
-                // Use half-length (Z) for Motion Forward, half-height (Y) for down modes
-                const halfExtent = (direction === "Motion Forward")
+                this.material.uniforms.useLeadingEdge.value = isLeadingEdge ? 1.0 : 0.0;
+
+                // Use half-length (Z) for motion-based modes, half-height (Y) for down modes
+                const halfExtent = usesMotion
                     ? (this.cachedHalfLength ?? this.cachedBoundingSphere.radius)
                     : (this.cachedHalfHeight ?? this.cachedBoundingSphere.radius);
                 const shift = this.materialParams.shift ?? 0;
-                if (shift !== 0) {
-                    center.addScaledVector(dir, shift / 100 * halfExtent * 2);
+                if (isLeadingEdge) {
+                    // Leading Edge uses dot product space (0-1 unit diameter),
+                    // so shift is applied directly in the shader as an offset to d.
+                    this.material.uniforms.gradientShift.value = shift / 100;
+                } else {
+                    // Position-based modes: shift the center along the direction
+                    this.material.uniforms.gradientShift.value = 0;
+                    if (shift !== 0) {
+                        center.addScaledVector(dir, shift / 100 * halfExtent * 2);
+                    }
                 }
 
                 this.material.uniforms.gradientCenter.value.copy(center);
