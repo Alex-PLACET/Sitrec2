@@ -96,6 +96,8 @@ class CMetaTrack {
 
         // a bit messy, should keep track of nodes some other way
         NodeMan.unlinkDisposeRemove(this.trackID + "_smoothValue");
+        NodeMan.unlinkDisposeRemove(this.trackID + "_tensionValue");
+        NodeMan.unlinkDisposeRemove(this.trackID + "_intervalsValue");
 
         NodeMan.unlinkDisposeRemove(this.trackDataNode);
         NodeMan.unlinkDisposeRemove(this.trackNode);
@@ -232,11 +234,34 @@ class CTrackManager extends CManager {
             desc: "Smoothing window",
         }, guiFolder);
 
+        new CNodeGUIValue({
+            id: trackID + "_tensionValue",
+            value: 0.5,
+            start: 0,
+            end: 1,
+            step: 0.01,
+            desc: "Catmull Tension",
+        }, guiFolder);
+
+        new CNodeGUIValue({
+            id: trackID + "_intervalsValue",
+            value: 10,
+            start: 2,
+            end: 100,
+            step: 1,
+            desc: "Catmull Intervals",
+        }, guiFolder);
+
         return new CNodeSmoothedPositionTrack({
             id: trackID,
             source: trackID + "_unsmoothed",
-            method: "moving",
+            dataTrack: dataID,
+            method: "spline",  // 2/20/26 - changed from "moving" to "spline" as the default, as the moving average was not giving good results for some tracks, and the spline is much better, and not much more expensive to calculate
             window: trackID + "_smoothValue",
+            tension: trackID + "_tensionValue",
+            intervals: trackID + "_intervalsValue",
+            isDynamicSmoothing: true,
+            guiFolder: guiFolder,
             copyData: true,
             exportable: false,
         });
@@ -575,6 +600,7 @@ class CTrackManager extends CManager {
         trackOb.displayTargetSphere.addController("ObjectTilt", {
             track: trackID,
             tiltType: "banking",
+            guiFolder: trackOb.displayTargetSphere.gui,
             //                 wind: "targetWind" // NOT ALL SITCHES HAVE THIS
         })
     }
@@ -1268,7 +1294,8 @@ class CTrackManager extends CManager {
                 // When disposing this object, use: CustomMan.disposeObjectWithControllers(objectID)
                 objectNode.addController("ObjectTilt", {
                     track: trackID,
-                    tiltType: "banking"
+                    tiltType: "banking",
+                    guiFolder: objectNode.gui,
                 });
 
                 console.log(`Associated object ${options.objectID} with track ${trackID} and added controllers`);

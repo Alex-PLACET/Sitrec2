@@ -9,6 +9,28 @@ import {CNodeSmoothedPositionTrack} from "./CNodeSmoothedPositionTrack";
 import {getGlareAngleFromFrame} from "../JetUtils";
 
 
+// Full set of tilt options for sitch-defined objects (Gimbal, etc.)
+const allTiltOptions = {
+    banking:"banking",
+    none:"none",
+    frontPointing:"frontPointing",
+    frontPointingAir:"frontPointingAir",
+    axialPush:"axialPush",
+    axialPull:"axialPull",
+    axialPushZeroG:"axialPushZeroG",
+    axialPullZeroG:"axialPullZeroG",
+    bottomPointing:"bottomPointing",
+    bottomPointingAir:"bottomPointingAir",
+    glareAngle:"glareAngle",
+};
+
+// Simplified set for dynamically-added track objects
+const simpleTiltOptions = {
+    none:"none",
+    banking:"banking",
+    frontPointing:"frontPointing",
+};
+
 export class CNodeControllerObjectTilt extends CNodeController {
     constructor(v) {
         super(v);
@@ -18,13 +40,7 @@ export class CNodeControllerObjectTilt extends CNodeController {
         this.tiltType = v.tiltType ?? "none"
         this._savedQuaternion = null;
 
-        // the input track is likely not smooth enought, so create a smoothed version
-        this.smoothedTrack = new CNodeSmoothedPositionTrack({
-            id: this.id + "Smoothed",
-            source: this.in.track,
-            method: "sliding",
-            window: 200}
-        )
+
 
         // with a large smoothing sliding window, the smoothed track will be offset from the original track
         // when going around a corner.
@@ -45,33 +61,41 @@ export class CNodeControllerObjectTilt extends CNodeController {
 
 
 
-        // Add orientation type menu - initially to physics, can be moved later
+        // Add orientation type menu
         this.noMenu = v.noMenu;
         this.tiltTypeGui = null;
         this.tiltTypeGuiParent = null;
-        console.log("CNodeControllerObjectTilt constructor, tiltType:", this.tiltType, "noMenu:", v.noMenu)
-        if (this.tiltType !== "banking" && !v.noMenu) {
-            console.log("  Creating tiltType GUI in physics menu")
-            this.tiltTypeGuiParent = guiMenus.physics;
-            this.tiltTypeGui = this.tiltTypeGuiParent.add(this,"tiltType",{
-                banking:"banking",
-                none:"none", // we need a none if we are going to use it to init things
-                frontPointing:"frontPointing",
-                frontPointingAir:"frontPointingAir",
-                axialPush:"axialPush",
-                axialPull:"axialPull",
-                axialPushZeroG:"axialPushZeroG",
-                axialPullZeroG:"axialPullZeroG",
-                bottomPointing:"bottomPointing",
-                bottomPointingAir:"bottomPointingAir",
-                glareAngle:"glareAngle",
-            }).name("Object Orientation type")
+        if (!v.noMenu) {
+            this.tiltTypeGuiParent = v.guiFolder ?? guiMenus.physics;
+            this._explicitGuiFolder = !!v.guiFolder;
+            const options = this._explicitGuiFolder ? simpleTiltOptions : allTiltOptions;
+            this.tiltTypeGui = this.tiltTypeGuiParent.add(this,"tiltType", options)
+                .name("Banking")
                 .listen(()=>{setRenderOne(true)})
+            // Mark as common so CNode3DObject.destroyNonCommonUI() preserves it
+            // when rebuilding geometry-specific GUI controls during deserialization
+            this.tiltTypeGui.isCommon = true;
         }
+
+        // the input track is likely not smooth enought, so create a smoothed version
+        this.smoothedTrack = new CNodeSmoothedPositionTrack({
+            id: this.id + "Smoothed",
+            source: this.in.track,
+            method: "sliding",
+            window: 200}
+        )
+
+        // hook the to this node so it will get updated before this node does
+        this.addInput("smoothedTrack", this.smoothedTrack)
 
         // optional input for the angle of attack
         this.input("angleOfAttack",true);
 
+    }
+
+    recalculate() {
+
+        super.recalculate();
     }
 
     dispose() {
@@ -85,27 +109,14 @@ export class CNodeControllerObjectTilt extends CNodeController {
 
     // Move the tilt type GUI from physics menu to the object's GUI folder
     moveGuiTo(newParent) {
-        console.log("moveGuiTo called, tiltTypeGui:", this.tiltTypeGui, "parent:", this.tiltTypeGuiParent, "newParent:", newParent)
+        if (this._explicitGuiFolder) return;
         if (this.tiltTypeGui && this.tiltTypeGuiParent !== newParent) {
-            console.log("  Moving tilt type GUI to new parent")
-            // Destroy the old one
             this.tiltTypeGui.destroy();
-            // Create new one in the target folder
             this.tiltTypeGuiParent = newParent;
-            this.tiltTypeGui = newParent.add(this,"tiltType",{
-                banking:"banking",
-                none:"none",
-                frontPointing:"frontPointing",
-                frontPointingAir:"frontPointingAir",
-                axialPush:"axialPush",
-                axialPull:"axialPull",
-                axialPushZeroG:"axialPushZeroG",
-                axialPullZeroG:"axialPullZeroG",
-                bottomPointing:"bottomPointing",
-                bottomPointingAir:"bottomPointingAir",
-                glareAngle:"glareAngle",
-            }).name("Object Orientation type")
+            this.tiltTypeGui = newParent.add(this,"tiltType", allTiltOptions)
+                .name("Banking")
                 .listen(()=>{setRenderOne(true)})
+            this.tiltTypeGui.isCommon = true;
         }
     }
 
