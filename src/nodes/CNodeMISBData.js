@@ -41,6 +41,11 @@ export class CNodeMISBDataTrack extends CNodeEmptyArray {
         }
         this.trackStartTime = "";       // user-entered ISO datetime string
 
+        // G-force filter for removing spurious data points
+        this.filterEnabled = false;
+        this.filterMaxG = 3.0;  // 3g is a lot higher than you'd get in reality, but with sparse curved tracks the effective g can be quite high. Most spurious data will result in much higher values (like >100g)
+        this.filteredSlots = new Set();
+
         this.selectSourceColumns(v.columns || ["SensorLatitude", "SensorLongitude", "SensorTrueAltitude", "AltitudeAGL"]);
 
         this.recalculate()
@@ -76,6 +81,105 @@ export class CNodeMISBDataTrack extends CNodeEmptyArray {
             .tooltip("Override start time (e.g., '10:30', 'Jan 15', '2024-01-15T10:30:00Z'). Leave blank for global start time.");
 
         this.addSimpleSerial("trackStartTime");
+    }
+
+    // Add GUI controls for the g-force filter
+    setupFilterGUI(guiFolder) {
+        const folder = guiFolder.addFolder("Filter Bad Data").close();
+        folder.add(this, "filterEnabled").name("Enable Filter").onChange(() => {
+            this.runGForceFilter();
+            this.recalculateCascade();
+        });
+        folder.add(this, "filterMaxG", 0.1, 10, 0.1).name("Max G").onChange(() => {
+            this.runGForceFilter();
+            this.recalculateCascade();
+        });
+    }
+
+    // Multi-pass g-force filter: marks slots where acceleration exceeds filterMaxG * 9.81 m/s²
+    runGForceFilter() {
+        this.filteredSlots.clear();
+        if (!this.filterEnabled) return;
+
+        const maxAccel = this.filterMaxG * 9.81;
+        let changed = true;
+
+        while (changed) {
+            changed = false;
+
+            // Build list of currently valid slots (passing basic isValid checks, not yet filtered)
+            const validSlots = [];
+            for (let i = 0; i < this.misb.length; i++) {
+                if (!this.filteredSlots.has(i) && this._isValidBasic(i)) {
+                    validSlots.push(i);
+                }
+            }
+
+            // Check consecutive triplets
+            for (let idx = 1; idx < validSlots.length - 1; idx++) {
+                const a = validSlots[idx - 1];
+                const b = validSlots[idx];
+                const c = validSlots[idx + 1];
+
+                const posA = this.getPosition(a);
+                const posB = this.getPosition(b);
+                const posC = this.getPosition(c);
+
+                const timeA = this.getTime(a);
+                const timeB = this.getTime(b);
+                const timeC = this.getTime(c);
+
+                const dtAB = (timeB - timeA) / 1000; // seconds
+                const dtBC = (timeC - timeB) / 1000;
+
+                if (dtAB <= 0 || dtBC <= 0) continue;
+
+                // velocity vectors in m/s
+                const velAB = posB.clone().sub(posA).divideScalar(dtAB);
+                const velBC = posC.clone().sub(posB).divideScalar(dtBC);
+
+                // acceleration magnitude at B
+                const dtAC = (timeC - timeA) / 2000; // half-span in seconds
+                const accel = velBC.clone().sub(velAB).length() / dtAC;
+
+                if (accel > maxAccel) {
+                    this.filteredSlots.add(b);
+                    changed = true;
+                }
+            }
+        }
+
+        if (this.filteredSlots.size > 0) {
+            console.log(`Filtered ${this.filteredSlots.size} points from track ${this.id} (max ${this.filterMaxG}g)`);
+        }
+    }
+
+    // Basic validity check without the g-force filter (used by runGForceFilter to avoid circular dependency)
+    _isValidBasic(slotNumber) {
+        let lat = this.getLat(slotNumber)
+        let lon = this.getLon(slotNumber)
+        let alt = this.getAlt(slotNumber)
+        let time = this.getTime(slotNumber)
+
+        if (isNaN(time) || time < 0 || time > 4102444800000) return false
+        if (isNaN(lat) || isNaN(lon) || isNaN(alt)) return false
+        if (lat < -90 || lat > 90) return false
+        if (lon < -360 || lon > 360) return false
+        if (alt < -1000) return false
+        if (alt > 36000000) return false
+
+        if (lat === 0) {
+            if (this.lastValidSlot === undefined || Math.abs(this.getLat(this.lastValidSlot)) > 1.0) {
+                return false;
+            }
+        }
+        if (lon === 0) {
+            if (this.lastValidSlot === undefined || Math.abs(this.getLon(this.lastValidSlot)) > 1.0) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     // Parse trackStartTime using chrono-node with parsingBaseTime as reference.
@@ -233,6 +337,9 @@ export class CNodeMISBDataTrack extends CNodeEmptyArray {
             if (this.isValid(f)) {
                 var pos = LLAToEUS(this.getLat(f), this.getLon(f), this.getAlt(f));
                 this.array.push({position: pos})
+            } else if (this.filteredSlots.has(f)) {
+                // Filtered out by g-force filter — skip silently
+                this.array.push({})
             } else {
                 // otherwise, just give it an empty structure
                 console.warn("CNodeMISBDataTrack: invalid data at frame " + f + " in track " + this.id + " lat=" + this.getLat(f) + " lon=" + this.getLon(f) + " alt=" + this.getAlt(f));
@@ -334,6 +441,7 @@ export class CNodeMISBDataTrack extends CNodeEmptyArray {
     // a slot is valid if it has a valid timestamp
     // and the lat/lon/alt are not NaN
     isValid(slotNumber) {
+        if (this.filteredSlots && this.filteredSlots.has(slotNumber)) return false;
         let lat = this.getLat(slotNumber)
         let lon = this.getLon(slotNumber)
         let alt = this.getAlt(slotNumber)
@@ -393,6 +501,7 @@ export class CNodeMISBDataTrack extends CNodeEmptyArray {
 
 
     recalculate() {
+        this.runGForceFilter();
         this.makeArrayForTrackDisplay()
     }
 }
