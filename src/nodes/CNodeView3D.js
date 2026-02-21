@@ -2079,7 +2079,9 @@ export class CNodeView3D extends CNodeViewCanvas {
             const trackNode = trackOb.trackNode;
             const trackDataNode = trackOb.trackDataNode;
             
-            if (!trackNode || !trackNode.visible) return;
+            // Check the display node's visibility (trackDisplayNode for loaded tracks, displayTrack for synthetic)
+            const displayNode = trackOb.trackDisplayNode || trackOb.displayTrack;
+            if (!trackNode || (displayNode && !displayNode.visible)) return;
             
             // Check ONLY the track data node if it exists (raw data points)
             // This represents the actual track data (e.g., from KML/CSV) and is the complete track
