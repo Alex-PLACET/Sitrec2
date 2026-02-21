@@ -394,23 +394,36 @@ if (customSitch !== null) {
         }
     }
 
-    await fetch(customSitch, {mode: 'cors'}).then(response => response.text()).then(data => {
-        console.log("Custom sitch = " + customSitch)
+    let customSitchLoaded = false;
+    try {
+        const response = await fetch(customSitch, {mode: 'cors'});
+        if (!response.ok) {
+            showError("Failed to load custom sitch: HTTP " + response.status + " " + response.statusText + "\nURL: " + customSitch);
+        } else {
+            const data = await response.text();
+            console.log("Custom sitch = " + customSitch)
 
-        Globals.sitchEstablished = true;
+            Globals.sitchEstablished = true;
 
-        let sitchObject = textSitchToObject(data);
+            let sitchObject = textSitchToObject(data);
 
-        setSit(new CSituation(sitchObject))
+            setSit(new CSituation(sitchObject))
 
-        Sit.initialDropZoneAnimation = false;
-        
-        if (typeof window !== 'undefined') {
-            window.Sit = Sit;
+            Sit.initialDropZoneAnimation = false;
+
+            if (typeof window !== 'undefined') {
+                window.Sit = Sit;
+            }
+
+            customSitchLoaded = true;
         }
+    } catch (e) {
+        showError("Failed to load custom sitch: " + e.message + "\nURL: " + customSitch, e);
+    }
 
-
-    });
+    if (!customSitchLoaded) {
+        selectInitialSitch();
+    }
 // }
 //
 //
