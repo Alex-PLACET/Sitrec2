@@ -2607,6 +2607,7 @@ export class QuadTreeTile {
                     if (!this.map.scene) {
                         console.warn("QuadTreeTile.applyMaterial: map.scene is not defined, not adding mesh to scene (changed levels?)")
                         this.loaded = true; // Mark as loaded even if scene is not available
+                        this.map.invalidateCoverageCache();
                         this.isLoading = false;
                         this.isCancelling = false; // Clear cancelling state
                         this.updateDebugGeometry();
@@ -2622,6 +2623,7 @@ export class QuadTreeTile {
                         });
                     } else {
                         this.loaded = true;
+                        this.map.invalidateCoverageCache();
                         this.isLoading = false;
                         this.isCancelling = false;
                         this.updateDebugGeometry();
@@ -2631,6 +2633,7 @@ export class QuadTreeTile {
                 }).catch((error) => {
                     // Even if material loading fails, mark tile as "loaded" to prevent infinite pending state
                     this.loaded = true;
+                    this.map.invalidateCoverageCache();
                     this.isLoading = false; // Clear loading state on error
                     this.isCancelling = false; // Clear cancelling state on error
                     this.updateDebugGeometry(); // Update debug geometry to remove loading indicator
@@ -2639,6 +2642,7 @@ export class QuadTreeTile {
             } else {
                 // No texture URL available, but tile is still considered "loaded"
                 this.loaded = true;
+                this.map.invalidateCoverageCache();
                 this.isLoading = false;
                 this.isCancelling = false; // Clear cancelling state
                 this.updateDebugGeometry();
@@ -2649,6 +2653,7 @@ export class QuadTreeTile {
 
     addAfterLoaded() {
         this.loaded = true;
+        this.map.invalidateCoverageCache();
 
         if (this.tileLayers > 0) {
             this.map.scene.add(this.mesh);

@@ -35,7 +35,14 @@ export class QuadTreeMap {
         this.inactiveTileTimeout = 100000; // Time in ms before pruning inactive tiles (100 seconds)
         this.currentStats = new Map(); // Store current stats per view for debug display
         this.parentTiles = new Set(); // Track tiles that have children for efficient iteration
+        this._tileStateGeneration = 0; // Generation counter for areaCoveredByDescendants cache
 
+    }
+
+    // Invalidate the areaCoveredByDescendants cache by bumping the generation counter.
+    // Called whenever tile state changes that could affect coverage results.
+    invalidateCoverageCache() {
+        this._tileStateGeneration++;
     }
 
     // Helper methods for nested cache access
@@ -65,8 +72,9 @@ export class QuadTreeMap {
                     // Parent no longer has children, remove from parent tracking set
                     this.parentTiles.delete(tile.parent);
                 }
+                this.invalidateCoverageCache();
             }
-            
+
             // Clean up tree structure: clear children references
             if (tile.children) {
                 tile.children.forEach(child => {
@@ -75,6 +83,7 @@ export class QuadTreeMap {
                 tile.children = null;
                 // This tile no longer has children, remove from parent tracking set
                 this.parentTiles.delete(tile);
+                this.invalidateCoverageCache();
             }
             tile.parent = null;
             
@@ -769,6 +778,7 @@ export class QuadTreeMap {
 
         // Track this tile as a parent for efficient iteration
         this.parentTiles.add(tile);
+        this.invalidateCoverageCache();
 
         // For texture maps: Deactivate parent if all children are loaded and added
         // (even if using parent data - that's valid for display, just lower quality)
@@ -874,6 +884,7 @@ export class QuadTreeMap {
         }
         
         if (oldMask !== layerMask) {
+            this.invalidateCoverageCache();
             EventManager.dispatchEvent("tileVisibilityChanged", {tile, oldMask, newMask: layerMask});
         }
     }

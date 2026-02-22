@@ -86,6 +86,7 @@ class QuadTreeMapTexture extends QuadTreeMap {
                     this.scene.add(tile.skirtMesh);
                 }
                 tile.added = true;
+                this.invalidateCoverageCache();
                 this.refreshDebugGeometry(tile);
                 setRenderOne(true);
             }
@@ -196,41 +197,50 @@ class QuadTreeMapTexture extends QuadTreeMap {
     // this is a sanity check before removing a parent tile from the scene
     // should only be needed for debugging
     areaCoveredByDescendants(tile, tileLayerMask) {
+        // Cache check: if tile state hasn't changed since last check, return cached result
+        if (tile._coverageCacheGen === this._tileStateGeneration
+            && tile._coverageCacheMask === tileLayerMask) {
+            return tile._coverageCacheResult;
+        }
+
         // if no children, return false
         if (!tile.children) {
+            tile._coverageCacheGen = this._tileStateGeneration;
+            tile._coverageCacheMask = tileLayerMask;
+            tile._coverageCacheResult = false;
             return false;
         }
 
         // tile.children should have 4 children
         assert(tile.children.length === 4, `Tile ${tile.key()} should have 4 children, has ${tile.children.length}`);
 
+        let result = true;
+
         // for each child, check if it is loaded and visible OR has all visible children
-        for (let child of tile.children) {
-            if (child) {
-                if (!child.loaded
-                    || !child.added
-                    || !child.mesh.visible
-                    || !(child.mesh.layers.mask & tileLayerMask)
-                    || !child.mesh.material
-                    || !child.mesh.material.uniforms?.map           // No texture
-                    || child.mesh.material.wireframe      // Still wireframe
-                    || !child.geometryReady               // Geometry not ready
-                    // || child.isLoading                    // Currently loading
-                    // || child.pendingAncestorLoad          // Waiting for parent
-                    || !child.mesh.parent                 // Not in scene
-                ) {
+        for (let i = 0; i < 4; i++) {
+            const child = tile.children[i];
+            if (!child) continue;
 
-
-                    // child is not loaded or not visible
-                    // but maybe all its children are?
-                    if (!this.areaCoveredByDescendants(child, tileLayerMask)) {
-                        return false;
-                    }
+            if (!child.loaded
+                || !child.added
+                || !child.mesh.visible
+                || !(child.mesh.layers.mask & tileLayerMask)
+                || !child.mesh.material
+                || !child.mesh.material.uniforms?.map           // No texture
+                || child.mesh.material.wireframe      // Still wireframe
+                || !child.geometryReady               // Geometry not ready
+                || !child.mesh.parent                 // Not in scene
+            ) {
+                // child is not loaded or not visible
+                // but maybe all its children are?
+                if (!this.areaCoveredByDescendants(child, tileLayerMask)) {
+                    result = false;
+                    break;
                 }
+            }
 
-                // tile flags look good, check the center is good
-
-                // calculate the LLA position of the center of the tile
+            // Debug: verify tile center position (only in dev, only once per tile)
+            if (isLocal && !child._positionVerified) {
                 const lat1 = this.options.mapProjection.getNorthLatitude(child.y, child.z);
                 const lon1 = this.options.mapProjection.getLeftLongitude(child.x, child.z);
                 const lat2 = this.options.mapProjection.getNorthLatitude(child.y + 1, child.z);
@@ -238,17 +248,20 @@ class QuadTreeMapTexture extends QuadTreeMap {
                 const lat = (lat1 + lat2) / 2;
                 const lon = (lon1 + lon2) / 2;
                 const center = LLAToEUS(lat, lon, 0);
-
                 assert(center.x === child.mesh.position.x
                     && center.y === child.mesh.position.y
                     && center.z === child.mesh.position.z,
-                    `Child tile ${child.key()} center position mismatch: expected (${center.x}, ${center.y}, ${center.z}), got (${child.mesh.position.x}, ${child.mesh.position.y}, ${child.mesh.position.z}), `
+                    `Child tile ${child.key()} center position mismatch`
                 );
-
+                child._positionVerified = true;
             }
-
         }
-        return true;
+
+        // Cache the result
+        tile._coverageCacheGen = this._tileStateGeneration;
+        tile._coverageCacheMask = tileLayerMask;
+        tile._coverageCacheResult = result;
+        return result;
     }
 
     // Covered if EITHER
@@ -343,6 +356,7 @@ class QuadTreeMapTexture extends QuadTreeMap {
                 this.scene.remove(tile.skirtMesh);
             }
             tile.added = false;
+            this.invalidateCoverageCache();
         }
 
         //   removeDebugSphere(key)
@@ -449,9 +463,11 @@ class QuadTreeMapTexture extends QuadTreeMap {
         tile.geometryReady = false;
         tile.curvePromise = tile.recalculateCurve().then(() => {
             tile.geometryReady = true;
+            this.invalidateCoverageCache();
         }).catch(error => {
             console.warn(`Failed to recalculate curve for tile ${z}/${x}/${y}:`, error);
             tile.geometryReady = true;
+            this.invalidateCoverageCache();
         });
         this.setTile(x, y, z, tile);
         
@@ -485,9 +501,10 @@ class QuadTreeMapTexture extends QuadTreeMap {
             tile.mesh.material = material;
             tile.updateSkirtMaterial();
             tile.loaded = true;
-            
+            this.invalidateCoverageCache();
+
             this.addTileWhenReady(tile);
-            
+
             return tile;
         }
 
@@ -545,6 +562,7 @@ class QuadTreeMapTexture extends QuadTreeMap {
                                     currentTile.updateSkirtMaterial();
                                     currentTile.usingParentData = true;
                                     currentTile.loaded = true;
+                                    this.invalidateCoverageCache();
                                     currentTile.pendingAncestorLoad = false;
                                     
                                     this.refreshDebugGeometry(currentTile);
@@ -589,7 +607,8 @@ class QuadTreeMapTexture extends QuadTreeMap {
                     tile.updateSkirtMaterial();
                     tile.usingParentData = true;
                     tile.loaded = true;
-                    
+                    this.invalidateCoverageCache();
+
                     this.addTileWhenReady(tile);
                     
                     return tile;
@@ -632,9 +651,10 @@ class QuadTreeMapTexture extends QuadTreeMap {
                     tile.usingParentData = true;
                     tile.needsHighResLoad = true;
                     tile.loaded = true;
-                    
+                    this.invalidateCoverageCache();
+
                     this.addTileWhenReady(tile);
-                    
+
                     return tile;
                 }
             }
