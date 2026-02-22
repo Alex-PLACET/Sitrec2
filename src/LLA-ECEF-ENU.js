@@ -238,8 +238,7 @@ export function ECEFToLLAV(V) {
 
 
 export function LLAToECEFVD(V) {
-    const a = RLLAToECEF(V.x * Math.PI / 180, V.y * Math.PI / 180, V.z);
-    return new Vector3(a[0],a[1],a[2])
+    return RLLAToECEF(V.x * Math.PI / 180, V.y * Math.PI / 180, V.z);
 }
 
 
