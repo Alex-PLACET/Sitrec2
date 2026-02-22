@@ -45,6 +45,39 @@ Example entry format:
 
 ---
 
+## Version 2.28.8 (2026-02-21)
+
+### New Features
+- **G-Force Track Filtering**: Auto-detect bad tracks with spurious data and apply g-force based filtering
+- **Multiple Tracks in CSV Files**: Support multiple tracks in a single CSV file, matching JSON multi-track behavior
+
+### Improvements
+- Confirmation dialog before removing a track
+- "Try Altitude First" option for track filtering, as altitude is often noisier
+- Selectable smoothing types and bank angle for tracks
+- Smoothing parameter visibility updates on folder open and menu mirror
+- Clean handling of missing sitches with user-friendly error
+
+### Bug Fixes
+- Fixed banking menu after loading sitches
+- Fixed disposing of unused controllers with inputs (e.g., tilt controller)
+- Fixed loading a sitch after being in full-screen mode
+- Fixed invisible tracks being selectable with right-click
+- Fixed TLE loading with initial blank lines, now stores multiple entries per satellite and chooses the best one
+
+---
+
+## Version 2.28.6 (2026-02-20)
+
+### New Features
+- **Gradient Material**: Gradient material for 3D objects with leading edge direction control
+- **Export All OSD Data**: Export all OSD data series at once
+
+### Improvements
+- Object editing menu stays open even when clicking outside it
+
+---
+
 ## Version 2.28.4 (2026-02-19)
 
 ### New Features
