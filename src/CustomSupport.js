@@ -1669,8 +1669,14 @@ export class CCustomManager {
             if (controller.constructor.name === 'ColorController') {
                 mirroredController = target.addColor(object, property);
             } else if (controller.constructor.name === 'OptionController') {
-                // For dropdown/select controllers
-                mirroredController = target.add(object, property, controller._values);
+                // For dropdown/select controllers, reconstruct the {label: value} map
+                // so lil-gui uses _names as display labels and _values as stored values.
+                // Passing just _values (an array) would lose the human-readable labels.
+                const optionsMap = {};
+                for (let i = 0; i < controller._names.length; i++) {
+                    optionsMap[controller._names[i]] = controller._values[i];
+                }
+                mirroredController = target.add(object, property, optionsMap);
             } else if (controller.constructor.name === 'NumberController') {
                 // For numeric controllers with min/max
                 if (controller._min !== undefined && controller._max !== undefined) {
