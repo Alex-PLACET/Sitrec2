@@ -529,7 +529,7 @@ export function getLST(date, longitude) {
     const LST = GMST + longitude;
 
     // Reduce to between 0 and 2π radians
-    return LST % (2 * Math.PI);
+    return ((LST % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
 }
 
 
