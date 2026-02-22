@@ -45,6 +45,35 @@ Example entry format:
 
 ---
 
+## Unreleased
+
+### Improvements
+- Tile coverage caching with dirty parent tracking for faster tile iteration
+- Skip GPU usage calculation in dev mode when the GPU usage menu is not visible
+- Don't display bad data filter for serialized sitches
+- CORS header for getsitches.php
+
+### Security
+- Fixed reflected XSS in proxy.php error output
+- Fixed path traversal in chatbot.php getHelpDocContent
+- Fixed open redirect and reflected XSS in cachemaps.php
+- XSS hardening across server-side code
+- Restricted unsafe file extensions (like .php)
+- Clarified example keys to avoid false security triggers
+
+### Bug Fixes
+- Fixed CNodeSpecificFrame using passed frame instead of its own specificFrame
+- Fixed getLST returning negative values for western longitudes
+- Fixed LLAToECEFVD returning NaN from array-indexing a Vector3
+- Fixed ECEFToLLA longitude using atan2 instead of atan
+- Fixed event listener leak in PointEditor
+- Fixed off-by-one day in tleEpochToDate
+- Fixed addInput duplicate-key assert checking literal "key" instead of dynamic key
+- Dispose render targets, shader materials, and geometry in CNodeView3D to prevent memory leaks
+- Disabled unused CNodeCode.js
+
+---
+
 ## Version 2.28.8 (2026-02-21)
 
 ### New Features
@@ -54,15 +83,23 @@ Example entry format:
 ### Improvements
 - Confirmation dialog before removing a track
 - "Try Altitude First" option for track filtering, as altitude is often noisier
-- Selectable smoothing types and bank angle for tracks
 - Smoothing parameter visibility updates on folder open and menu mirror
 - Clean handling of missing sitches with user-friendly error
 
 ### Bug Fixes
 - Fixed banking menu after loading sitches
+- Fixed invisible tracks being selectable with right-click
+
+---
+
+## Version 2.28.7 (2026-02-21)
+
+### Improvements
+- Selectable smoothing types and bank angle for tracks
+
+### Bug Fixes
 - Fixed disposing of unused controllers with inputs (e.g., tilt controller)
 - Fixed loading a sitch after being in full-screen mode
-- Fixed invisible tracks being selectable with right-click
 - Fixed TLE loading with initial blank lines, now stores multiple entries per satellite and chooses the best one
 
 ---
@@ -75,6 +112,13 @@ Example entry format:
 
 ### Improvements
 - Object editing menu stays open even when clicking outside it
+
+---
+
+## Version 2.28.5 (2026-02-19)
+
+### Bug Fixes
+- Fixed EPS (Google Earth Studio) exporting
 
 ---
 
