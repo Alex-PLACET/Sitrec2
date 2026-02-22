@@ -487,7 +487,10 @@ class CTrackManager extends CManager {
                     // For primary tracks (not center tracks), check for spurious data points
                     // and offer to enable filtering. Done after all nodes are set up so
                     // recalculateCascade works correctly.
-                    if (trackIndex === 0) {
+                    // Only prompt for manually imported/drag-and-drop files, not when
+                    // loading from a saved sitch. For saved sitches, filterEnabled is
+                    // restored via deserialization.
+                    if (trackIndex === 0 && !Globals.deserializing) {
                         const maxG = trackDataNode.getMaxGForce();
                         if (maxG > trackDataNode.filterMaxG) {
                             const enable = confirm(
