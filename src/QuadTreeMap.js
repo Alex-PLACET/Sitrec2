@@ -36,13 +36,26 @@ export class QuadTreeMap {
         this.currentStats = new Map(); // Store current stats per view for debug display
         this.parentTiles = new Set(); // Track tiles that have children for efficient iteration
         this._tileStateGeneration = 0; // Generation counter for areaCoveredByDescendants cache
+        this._dirtyParents = new Set(); // Parents that need coverage re-check (event-driven)
 
     }
 
-    // Invalidate the areaCoveredByDescendants cache by bumping the generation counter.
+    // Invalidate the areaCoveredByDescendants cache and mark dirty parents.
     // Called whenever tile state changes that could affect coverage results.
-    invalidateCoverageCache() {
+    // Walks up the tree from the changed tile, adding all ancestors to the dirty set.
+    invalidateCoverageCache(tile) {
         this._tileStateGeneration++;
+        if (!tile) return;
+        // If this tile itself is a parent, mark it dirty (e.g., its children changed)
+        if (tile.children) {
+            this._dirtyParents.add(tile);
+        }
+        // Walk up the tree marking all ancestors as needing coverage re-check
+        let current = tile.parent;
+        while (current) {
+            this._dirtyParents.add(current);
+            current = current.parent;
+        }
     }
 
     // Helper methods for nested cache access
@@ -72,7 +85,7 @@ export class QuadTreeMap {
                     // Parent no longer has children, remove from parent tracking set
                     this.parentTiles.delete(tile.parent);
                 }
-                this.invalidateCoverageCache();
+                this.invalidateCoverageCache(tile);
             }
 
             // Clean up tree structure: clear children references
@@ -83,7 +96,7 @@ export class QuadTreeMap {
                 tile.children = null;
                 // This tile no longer has children, remove from parent tracking set
                 this.parentTiles.delete(tile);
-                this.invalidateCoverageCache();
+                this.invalidateCoverageCache(tile);
             }
             tile.parent = null;
             
@@ -584,19 +597,26 @@ export class QuadTreeMap {
      * instead of all tiles. With 100 tiles, typically only 10-25 are parents (75-90% reduction).
      */
     deactivateParentsWithLoadedChildren(tileLayers) {
-        // Iterate only over parent tiles (tiles that have children)
-        // This is much more efficient than iterating all tiles
-        this.parentTiles.forEach((tile) => {
-            if (tile.z >= this.maxZoom) return;
-            if (tile.isLoading) return;
-            if (tile.isDeadBranch) return;
+        if (this._dirtyParents.size === 0) return;
 
-            const allChildrenReady = this.areaCoveredByDescendants(tile, tileLayers)
-            
-            if (allChildrenReady) {
+        // Process only parents whose children changed state.
+        // Copy to array since deactivateTile may trigger further invalidations.
+        const toCheck = [...this._dirtyParents];
+        this._dirtyParents.clear();
+
+        for (let i = 0; i < toCheck.length; i++) {
+            const tile = toCheck[i];
+            if (!tile.children) continue;       // already pruned
+            if (tile.z >= this.maxZoom) continue;
+            if (tile.isLoading) continue;
+            if (tile.isDeadBranch) continue;
+            // Only check if tile is still active in this view
+            if (!(tile.tileLayers & tileLayers)) continue;
+
+            if (this.areaCoveredByDescendants(tile, tileLayers)) {
                 this.deactivateTile(tile, tileLayers, true);
             }
-        });
+        }
     }
 
     /**
@@ -778,7 +798,7 @@ export class QuadTreeMap {
 
         // Track this tile as a parent for efficient iteration
         this.parentTiles.add(tile);
-        this.invalidateCoverageCache();
+        this.invalidateCoverageCache(tile);
 
         // For texture maps: Deactivate parent if all children are loaded and added
         // (even if using parent data - that's valid for display, just lower quality)
@@ -884,7 +904,7 @@ export class QuadTreeMap {
         }
         
         if (oldMask !== layerMask) {
-            this.invalidateCoverageCache();
+            this.invalidateCoverageCache(tile);
             EventManager.dispatchEvent("tileVisibilityChanged", {tile, oldMask, newMask: layerMask});
         }
     }

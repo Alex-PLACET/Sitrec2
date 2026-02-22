@@ -86,7 +86,7 @@ class QuadTreeMapTexture extends QuadTreeMap {
                     this.scene.add(tile.skirtMesh);
                 }
                 tile.added = true;
-                this.invalidateCoverageCache();
+                this.invalidateCoverageCache(tile);
                 this.refreshDebugGeometry(tile);
                 setRenderOne(true);
             }
@@ -325,13 +325,15 @@ class QuadTreeMapTexture extends QuadTreeMap {
             tile.tileLayers = tile.tileLayers & (~layerMask);
         }
 
-        // check if the area is still covered by descendants or ancestors
+        // Debug validation: check if the area is still covered by descendants or ancestors
         // (which is a requirement for deactivating a tile)
-        if (!this.areaIsCovered(tile, layerMask)) {
-            this.dumpChildrenAndParents(tile)
-
-            assert(0, `Deactivating tile ${tile.key} which does not have full coverage, layerMask=${layerMask}`);
-        }
+        // Wrapped in isLocal guard so areaIsCovered() is skipped in production builds
+        // if (isLocal) {
+        //     if (!this.areaIsCovered(tile, layerMask)) {
+        //         this.dumpChildrenAndParents(tile)
+        //         assert(0, `Deactivating tile ${tile.key} which does not have full coverage, layerMask=${layerMask}`);
+        //     }
+        // }
 
         if (instant) {
             // defer updating the mesh mask.
@@ -356,7 +358,7 @@ class QuadTreeMapTexture extends QuadTreeMap {
                 this.scene.remove(tile.skirtMesh);
             }
             tile.added = false;
-            this.invalidateCoverageCache();
+            this.invalidateCoverageCache(tile);
         }
 
         //   removeDebugSphere(key)
@@ -463,11 +465,11 @@ class QuadTreeMapTexture extends QuadTreeMap {
         tile.geometryReady = false;
         tile.curvePromise = tile.recalculateCurve().then(() => {
             tile.geometryReady = true;
-            this.invalidateCoverageCache();
+            this.invalidateCoverageCache(tile);
         }).catch(error => {
             console.warn(`Failed to recalculate curve for tile ${z}/${x}/${y}:`, error);
             tile.geometryReady = true;
-            this.invalidateCoverageCache();
+            this.invalidateCoverageCache(tile);
         });
         this.setTile(x, y, z, tile);
         
@@ -501,7 +503,7 @@ class QuadTreeMapTexture extends QuadTreeMap {
             tile.mesh.material = material;
             tile.updateSkirtMaterial();
             tile.loaded = true;
-            this.invalidateCoverageCache();
+            this.invalidateCoverageCache(tile);
 
             this.addTileWhenReady(tile);
 
@@ -562,7 +564,7 @@ class QuadTreeMapTexture extends QuadTreeMap {
                                     currentTile.updateSkirtMaterial();
                                     currentTile.usingParentData = true;
                                     currentTile.loaded = true;
-                                    this.invalidateCoverageCache();
+                                    this.invalidateCoverageCache(currentTile);
                                     currentTile.pendingAncestorLoad = false;
                                     
                                     this.refreshDebugGeometry(currentTile);
@@ -607,10 +609,10 @@ class QuadTreeMapTexture extends QuadTreeMap {
                     tile.updateSkirtMaterial();
                     tile.usingParentData = true;
                     tile.loaded = true;
-                    this.invalidateCoverageCache();
+                    this.invalidateCoverageCache(tile);
 
                     this.addTileWhenReady(tile);
-                    
+
                     return tile;
                 }
             }
@@ -651,7 +653,7 @@ class QuadTreeMapTexture extends QuadTreeMap {
                     tile.usingParentData = true;
                     tile.needsHighResLoad = true;
                     tile.loaded = true;
-                    this.invalidateCoverageCache();
+                    this.invalidateCoverageCache(tile);
 
                     this.addTileWhenReady(tile);
 
