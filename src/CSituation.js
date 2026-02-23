@@ -131,7 +131,7 @@ export class CSituation {
 
         // SitCustom (name:"custom") defaults to ellipsoid unless the sitch data
         // explicitly sets useEllipsoid:false.
-        if (this.name === "custom" && !('useEllipsoid' in props)) {
+        if (props.useEllipsoid) {
             this.useEllipsoid = true;
         }
 

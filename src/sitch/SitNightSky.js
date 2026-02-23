@@ -13,7 +13,6 @@ import {MV3} from "../threeUtils";
 import {getPTZController} from "../js/CameraControls";
 
 import {waitForParsingToComplete} from "../CFileManager";
-import {updateEarthRadii} from "../LLA-ECEF-ENU";
 
 
 export const SitNightSky = {
@@ -113,12 +112,6 @@ export const SitNightSky = {
     // we want to make that a switch.
 
     setup2: function () {
-
-        guiMenus.main.add(Sit, "useEllipsoid")
-            .name("Use Ellipsoid Earth Model")
-            .tooltip("Sphere: fast legacy model. Ellipsoid: accurate WGS84 shape (higher latitudes benefit most).")
-            .listen()
-            .onChange((v) => { updateEarthRadii(v); setRenderOne(true); });
 
         const cameraSwitch = new CNodeSwitch({
             id: "cameraSwitch",

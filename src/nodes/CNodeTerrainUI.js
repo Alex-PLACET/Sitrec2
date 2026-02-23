@@ -1,10 +1,10 @@
 import {CNode} from "./CNode";
-import {Globals, guiMenus, NodeMan, Sit} from "../Globals";
+import {Globals, guiMenus, NodeMan, setRenderOne, Sit} from "../Globals";
 import {assert} from "../assert";
 import {configParams} from "../login";
 import {isLocal, SITREC_APP, SITREC_TERRAIN} from "../configUtils";
 import {CNodeSwitch} from "./CNodeSwitch";
-import {EUSToLLA} from "../LLA-ECEF-ENU";
+import {EUSToLLA, updateEarthRadii} from "../LLA-ECEF-ENU";
 import {CNodeTerrain} from "./CNodeTerrain";
 import {CNodeBuildings3DTiles} from "./CNodeBuildings3DTiles";
 import {par} from "../par";
@@ -497,6 +497,13 @@ export class CNodeTerrainUI extends CNode {
             }
         }
 
+        // Ellipsoid Earth Model toggle (moved here from global settings)
+        this.gui.add(Sit, "useEllipsoid")
+            .name("Use Ellipsoid Earth Model")
+            .tooltip("Sphere: fast legacy model. Ellipsoid: accurate WGS84 shape (higher latitudes benefit most).")
+            .listen()
+            .onChange((v) => { updateEarthRadii(v); setRenderOne(true); });
+
         console.log("CNodeTerrainUI: calling setMapType for initial map type " + this.mapType);
         // setMapType is async because it loads the capabilities
         this.setMapType(this.mapType).then(() => {
@@ -744,6 +751,7 @@ export class CNodeTerrainUI extends CNode {
         }
         this.layersMenu = this.gui.add(this, "layer", this.localLayers).listen().name("Layer")
             .tooltip("Layer for the current map type's terrain textures")
+            .moveAfter("Map Type")
 
         // if the layer has changed, then unload the map and reload it
         // new layer will be handled by the mapDef.layer
