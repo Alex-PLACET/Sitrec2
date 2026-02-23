@@ -3,10 +3,11 @@ import {wgs84} from "./LLA-ECEF-ENU";
 import {Globals} from "./Globals";
 import {Vector3} from "three";
 
-// Plugin for 3d-tiles-renderer that injects day/night lighting into tile materials.
-// Uses onBeforeCompile to patch the existing material shaders so the
-// PBR textures and UVs are preserved while adding the same global sun-based
-// illumination that TerrainDayNightMaterial provides to the terrain tiles.
+// Plugin for 3d-tiles-renderer that patches tile materials via onBeforeCompile
+// to apply the same TerrainDayNightMaterial-style lighting as terrain tiles.
+// This preserves the original material's texture pipeline (map, vertex colors,
+// texture atlases, etc.) while replacing Three.js's standard lighting with the
+// custom sun-based day/night system.
 export class TilesDayNightPlugin {
 
     constructor() {
@@ -24,7 +25,7 @@ export class TilesDayNightPlugin {
 
         tiles.addEventListener('load-model', this._onLoadModel);
 
-        // Patch materials on any already-loaded tiles
+        // Patch any already-loaded tiles
         tiles.forEachLoadedModel((scene) => {
             scene.traverse(child => {
                 if (child.isMesh && child.material) {
@@ -41,25 +42,23 @@ export class TilesDayNightPlugin {
         const hasNormals = material.isMeshStandardMaterial || material.isMeshPhongMaterial
             || material.isMeshLambertMaterial || material.isMeshPhysicalMaterial;
 
-        // Store reference to shared uniforms so the shader stays in sync
         const extraUniforms = {
             sunDirection: {value: Globals.sunLight.position},
             earthCenter: {value: new Vector3(0, -wgs84.RADIUS, 0)},
             sunGlobalTotal: sharedUniforms.sunGlobalTotal,
             sunAmbientIntensity: sharedUniforms.sunAmbientIntensity,
             useDayNight: sharedUniforms.useDayNight,
-            terrainShadingStrength: {value: 0.3},
+            terrainShadingStrength: {value: 0.5},
+            brightnessBoost: {value: 1.5},
         };
 
         const prevOnBeforeCompile = material.onBeforeCompile;
         material.onBeforeCompile = (shader) => {
             if (prevOnBeforeCompile) prevOnBeforeCompile(shader);
 
-            // Merge our uniforms into the shader
             Object.assign(shader.uniforms, extraUniforms);
 
-            // --- Vertex shader ---
-            // Declare varyings
+            // --- Vertex shader: pass world position (and normal if available) ---
             shader.vertexShader = shader.vertexShader.replace(
                 '#include <common>',
                 `#include <common>
@@ -67,9 +66,6 @@ varying vec3 vWorldPositionDN;
 ${hasNormals ? 'varying vec3 vWorldNormalDN;' : ''}`
             );
 
-            // Compute world position (and normal if available).
-            // For materials with #include <worldpos_vertex> we append there.
-            // For MeshBasicMaterial etc. we append after #include <project_vertex>.
             const vertexInjection = hasNormals
                 ? `vWorldPositionDN = (modelMatrix * vec4(transformed, 1.0)).xyz;
 vWorldNormalDN = normalize((modelMatrix * vec4(objectNormal, 0.0)).xyz);`
@@ -89,7 +85,7 @@ ${vertexInjection}`
                 );
             }
 
-            // --- Fragment shader: apply day/night blend after standard lighting ---
+            // --- Fragment shader ---
             shader.fragmentShader = shader.fragmentShader.replace(
                 '#include <common>',
                 `#include <common>
@@ -99,13 +95,16 @@ uniform float sunGlobalTotal;
 uniform float sunAmbientIntensity;
 uniform bool useDayNight;
 uniform float terrainShadingStrength;
+uniform float brightnessBoost;
 varying vec3 vWorldPositionDN;
 ${hasNormals ? 'varying vec3 vWorldNormalDN;' : ''}`
             );
 
-            // Insert our day/night modulation right before the final output.
-            // For materials with normals we use local terrain shading;
-            // for MeshBasicMaterial we use only the global day/night blend.
+            // Replace Three.js lighting with terrain-style day/night lighting.
+            // We inject after dithering so gl_FragColor has the fully-lit PBR result.
+            // We treat gl_FragColor.rgb as the "texture color" (it already includes
+            // the diffuse texture, vertex colors, etc. from the PBR pipeline) and
+            // replace Three.js's lighting contribution with our own sun model.
             const fragmentInjection = hasNormals
                 ? `if (useDayNight) {
     vec3 globalNormal = normalize(vWorldPositionDN - earthCenter);
@@ -114,7 +113,7 @@ ${hasNormals ? 'varying vec3 vWorldNormalDN;' : ''}`
     float blendFactor = smoothstep(-0.1, 0.1, globalIntensity);
     float localIntensity = dot(vWorldNormalDN, sunNorm);
     float terrainShading = mix(1.0 - terrainShadingStrength, 1.0, localIntensity * 0.5 + 0.5);
-    vec3 dayColor = gl_FragColor.rgb * sunGlobalTotal * terrainShading;
+    vec3 dayColor = gl_FragColor.rgb * sunGlobalTotal * brightnessBoost * terrainShading;
     vec3 nightColor = gl_FragColor.rgb * sunAmbientIntensity;
     gl_FragColor.rgb = mix(nightColor, dayColor, blendFactor);
 }`
@@ -123,7 +122,7 @@ ${hasNormals ? 'varying vec3 vWorldNormalDN;' : ''}`
     vec3 sunNorm = normalize(sunDirection);
     float globalIntensity = max(dot(globalNormal, sunNorm), -0.1);
     float blendFactor = smoothstep(-0.1, 0.1, globalIntensity);
-    vec3 dayColor = gl_FragColor.rgb * sunGlobalTotal;
+    vec3 dayColor = gl_FragColor.rgb * sunGlobalTotal * brightnessBoost;
     vec3 nightColor = gl_FragColor.rgb * sunAmbientIntensity;
     gl_FragColor.rgb = mix(nightColor, dayColor, blendFactor);
 }`;
@@ -135,7 +134,6 @@ ${fragmentInjection}`
             );
         };
 
-        // Force recompilation
         material.needsUpdate = true;
     }
 
