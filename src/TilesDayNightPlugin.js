@@ -12,9 +12,11 @@ export class TilesDayNightPlugin {
 
     constructor() {
         this._onLoadModel = null;
+        this._tiles = null;
     }
 
     init(tiles) {
+        this._tiles = tiles;
         this._onLoadModel = ({scene}) => {
             scene.traverse(child => {
                 if (child.isMesh && child.material) {
@@ -137,9 +139,10 @@ ${fragmentInjection}`
         material.needsUpdate = true;
     }
 
-    dispose(tiles) {
-        if (this._onLoadModel) {
-            tiles.removeEventListener('load-model', this._onLoadModel);
+    dispose() {
+        if (this._onLoadModel && this._tiles) {
+            this._tiles.removeEventListener('load-model', this._onLoadModel);
         }
+        this._tiles = null;
     }
 }
