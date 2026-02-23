@@ -87,8 +87,8 @@ export function updateEarthRadii(useEllipsoid) {
     const newEquator = wgs84.RADIUS;
     // Testing: use 0.5 * equatorialRadius when ellipsoid is enabled for obvious visual difference.
     // Replace 0.5 * wgs84.RADIUS with wgs84.POLAR_RADIUS once the implementation is verified.
-//    const newPolar = useEllipsoid ? 0.5 * wgs84.RADIUS : wgs84.RADIUS;
-    const newPolar = useEllipsoid ? wgs84.POLAR_RADIUS : wgs84.RADIUS;
+    const newPolar = useEllipsoid ? 0.5 * wgs84.RADIUS : wgs84.RADIUS;
+//    const newPolar = useEllipsoid ? wgs84.POLAR_RADIUS : wgs84.RADIUS;
 
     if (newEquator === Globals.equatorRadius && newPolar === Globals.polarRadius) return;
 

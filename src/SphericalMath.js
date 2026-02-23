@@ -258,10 +258,23 @@ export {drop, drop3, CueAz,PRJ2EA,EAJP2PR,XYZJ2PR,XYZ2EA,EA2XYZ,PRJ2XYZ}
 // position is in EUS (East, Up, South) coordinates relative to an arbitary origin
 // origin might be above the surface (in Gimbal it's the start of the jet track, so that is passed in
 export function getLocalUpVector(position, radius=wgs84.RADIUS) {
-    // Uses earthCenterEUS() for the default radius (wgs84.RADIUS).
-    // ELLIPSOID: the center concept breaks down — up will become the geodetic normal.
-    const center = (radius === wgs84.RADIUS) ? earthCenterEUS() : V3(0, -radius, 0);
-    return position.clone().sub(center).normalize();
+    if (radius !== wgs84.RADIUS) {
+        // Legacy: non-default radius uses simple sphere model
+        const center = V3(0, -radius, 0);
+        return position.clone().sub(center).normalize();
+    }
+
+    // Compute the geodetic normal for the current earth model.
+    // The outward normal to the ellipsoid x²/a² + y²/a² + z²/b² = 1
+    // at ECEF point (X,Y,Z) is proportional to (X/a², Y/a², Z/b²).
+    // For a sphere (a === b) this degenerates to the geocentric direction.
+    const ecef = EUSToECEF_radii(position);
+    const a = Globals.equatorRadius;
+    const b = Globals.polarRadius;
+    const normalECEF = V3(ecef.x / (a * a), ecef.y / (a * a), ecef.z / (b * b)).normalize();
+
+    // Rotate from ECEF to EUS (rotation only, no translation)
+    return ECEF2EUS(normalECEF, radians(Sit.lat), radians(Sit.lon), wgs84.RADIUS, true);
 }
 
 export function getLocalDownVector(position, radius=wgs84.RADIUS) {
@@ -270,9 +283,15 @@ export function getLocalDownVector(position, radius=wgs84.RADIUS) {
 
 
 export function getNorthPole(radius=wgs84.RADIUS) {
-    const northPoleECEF = V3(0, 0, radius)
-    const northPoleEUS = ECEF2EUS(northPoleECEF, radians(Sit.lat), radians(Sit.lon), radius)
-    return northPoleEUS;
+    if (radius !== wgs84.RADIUS) {
+        // Legacy: non-default radius uses simple sphere model
+        const northPoleECEF = V3(0, 0, radius)
+        return ECEF2EUS(northPoleECEF, radians(Sit.lat), radians(Sit.lon), radius)
+    }
+
+    // North Pole in ECEF is at (0, 0, polarRadius) for an ellipsoid
+    const northPoleECEF = V3(0, 0, Globals.polarRadius);
+    return ECEFToEUS_radii(northPoleECEF);
 }
 
 export function getLocalNorthVector(position, radius=wgs84.RADIUS) {
