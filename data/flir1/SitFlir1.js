@@ -287,7 +287,6 @@ export const SitFlir1 = {
             speed: "jetTAS",
             altitude: "jetAltitude",
             turnRate: "turnRate",
-            radius: "radiusMiles",
             wind: "localWind",
             heading: "initialHeading",
             origin: "jetOrigin",
