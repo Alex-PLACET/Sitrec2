@@ -3,13 +3,14 @@
 // Supports Cesium Ion OSM Buildings and Google Photorealistic 3D Tiles.
 
 import {CNode} from "./CNode";
-import {Globals, NodeMan, Sit} from "../Globals";
+import {NodeMan, Sit} from "../Globals";
 import {GlobalScene} from "../LocalFrame";
-import {Group, Matrix4, Vector3} from "three";
+import {Group, Matrix4} from "three";
 import {RLLAToECEF} from "../LLA-ECEF-ENU";
 import * as LAYER from "../LayerMasks";
 import {TilesRenderer} from "3d-tiles-renderer";
 import {CesiumIonAuthPlugin, GoogleCloudAuthPlugin} from "3d-tiles-renderer/plugins";
+import {TilesDayNightPlugin} from "../TilesDayNightPlugin";
 
 // Build a Matrix4 that transforms ECEF coordinates to EUS (East-Up-South) local frame.
 // This is the matrix form of ECEFToEUS(), applied to the TilesRenderer group
@@ -112,6 +113,9 @@ export class CNodeBuildings3DTiles extends CNode {
                 apiToken: this.googleApiKey,
             }));
         }
+
+        // Apply day/night lighting to match terrain tiles
+        this.tilesRenderer.registerPlugin(new TilesDayNightPlugin());
 
         // Apply the ECEF→EUS transform so tiles appear in the correct local position
         const ecefToEUS = buildECEFToEUSMatrix4();
