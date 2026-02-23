@@ -617,6 +617,12 @@ export class CNodeTerrainUI extends CNode {
             this.buildingsNode = null;
             this.setTerrainVisible(true);
         }
+
+        // Hide the grey sphere when 3D tiles are active
+        if (this.terrainNode) {
+            this.terrainNode.hide3DTilesGreySphere = !!this.buildingsNode;
+            this.terrainNode.updateGreySphereVisibility();
+        }
     }
 
     setTerrainVisible(visible) {

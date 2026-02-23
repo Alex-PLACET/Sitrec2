@@ -1,6 +1,11 @@
 // CNodeBuildings3DTiles.js
 // Renders 3D building tiles using NASA's 3DTilesRendererJS library.
 // Supports Cesium Ion OSM Buildings and Google Photorealistic 3D Tiles.
+//
+// Each visible 3D view gets its own TilesRenderer instance with independent
+// LOD so that views with very different cameras (e.g. close-up mainView vs
+// distant lookView) each load tiles at the appropriate resolution without
+// competing for budget.
 
 import {CNode} from "./CNode";
 import {NodeMan, Sit} from "../Globals";
@@ -59,6 +64,57 @@ function buildECEFToEUSMatrix4() {
 }
 
 
+// Per-view state: a TilesRenderer instance, its parent group, and the view it tracks.
+class PerViewTiles {
+    constructor(parentGroup, layerMask, source, cesiumIonToken, googleApiKey) {
+        this.renderer = new TilesRenderer();
+
+        if (source === "cesium-osm") {
+            this.renderer.registerPlugin(new CesiumIonAuthPlugin({
+                apiToken: cesiumIonToken,
+                assetId: 96188, // Cesium OSM Buildings
+            }));
+        } else if (source === "google-photorealistic") {
+            this.renderer.registerPlugin(new GoogleCloudAuthPlugin({
+                apiToken: googleApiKey,
+            }));
+        }
+
+        this.renderer.registerPlugin(new TilesDayNightPlugin());
+
+        const ecefToEUS = buildECEFToEUSMatrix4();
+        this.renderer.group.applyMatrix4(ecefToEUS);
+        this.renderer.group.layers.mask = layerMask;
+
+        // Set layer mask on all tile meshes as they load
+        this.renderer.addEventListener('load-model', ({scene}) => {
+            scene.traverse(child => {
+                if (child.isMesh || child.isLine || child.isPoints) {
+                    child.layers.mask = layerMask;
+                }
+            });
+        });
+
+        parentGroup.add(this.renderer.group);
+    }
+
+    update(view) {
+        if (!view || !view.visible || !view.camera || !view.renderer) return;
+        // Ensure the camera's world matrix is current — controllers may not
+        // have run yet this frame depending on node update order.
+        view.camera.updateMatrixWorld();
+        this.renderer.setCamera(view.camera);
+        this.renderer.setResolutionFromRenderer(view.camera, view.renderer);
+        this.renderer.update();
+    }
+
+    dispose(parentGroup) {
+        parentGroup.remove(this.renderer.group);
+        this.renderer.dispose();
+    }
+}
+
+
 export class CNodeBuildings3DTiles extends CNode {
     constructor(v) {
         super(v);
@@ -71,12 +127,12 @@ export class CNodeBuildings3DTiles extends CNode {
         this.group.layers.mask = LAYER.MASK_MAIN | LAYER.MASK_LOOK;
         GlobalScene.add(this.group);
 
-        this.tilesRenderer = null;
+        this._perView = {}; // keyed by view id
         this._initialized = false;
 
         this.updateWhilePaused = true;
 
-        this.initTilesRenderer();
+        this.initTilesRenderers();
     }
 
     // Resolve which source to actually use: prefer the requested source,
@@ -90,10 +146,8 @@ export class CNodeBuildings3DTiles extends CNode {
         return null;
     }
 
-    initTilesRenderer() {
-        if (this.tilesRenderer) {
-            this.disposeTilesRenderer();
-        }
+    initTilesRenderers() {
+        this.disposeTilesRenderers();
 
         const activeSource = this.resolveSource();
         if (!activeSource) {
@@ -101,27 +155,19 @@ export class CNodeBuildings3DTiles extends CNode {
             return;
         }
 
-        this.tilesRenderer = new TilesRenderer();
+        // One TilesRenderer per view, each with its own LOD and layer mask.
+        const viewConfigs = [
+            {id: "mainView", mask: LAYER.MASK_MAIN},
+            {id: "lookView", mask: LAYER.MASK_LOOK},
+        ];
 
-        if (activeSource === "cesium-osm") {
-            this.tilesRenderer.registerPlugin(new CesiumIonAuthPlugin({
-                apiToken: this.cesiumIonToken,
-                assetId: 96188, // Cesium OSM Buildings
-            }));
-        } else if (activeSource === "google-photorealistic") {
-            this.tilesRenderer.registerPlugin(new GoogleCloudAuthPlugin({
-                apiToken: this.googleApiKey,
-            }));
+        for (const {id, mask} of viewConfigs) {
+            this._perView[id] = new PerViewTiles(
+                this.group, mask, activeSource,
+                this.cesiumIonToken, this.googleApiKey
+            );
         }
 
-        // Apply day/night lighting to match terrain tiles
-        this.tilesRenderer.registerPlugin(new TilesDayNightPlugin());
-
-        // Apply the ECEF→EUS transform so tiles appear in the correct local position
-        const ecefToEUS = buildECEFToEUSMatrix4();
-        this.tilesRenderer.group.applyMatrix4(ecefToEUS);
-
-        this.group.add(this.tilesRenderer.group);
         this._initialized = true;
         this._activeSource = activeSource;
 
@@ -129,12 +175,11 @@ export class CNodeBuildings3DTiles extends CNode {
             + (activeSource !== this.source ? " (requested " + this.source + ")" : ""));
     }
 
-    disposeTilesRenderer() {
-        if (this.tilesRenderer) {
-            this.group.remove(this.tilesRenderer.group);
-            this.tilesRenderer.dispose();
-            this.tilesRenderer = null;
+    disposeTilesRenderers() {
+        for (const pv of Object.values(this._perView)) {
+            pv.dispose(this.group);
         }
+        this._perView = {};
         this._initialized = false;
     }
 
@@ -142,29 +187,22 @@ export class CNodeBuildings3DTiles extends CNode {
     setSource(source) {
         if (source === this.source) return;
         this.source = source;
-        this.initTilesRenderer();
+        this.initTilesRenderers();
     }
 
     update(f) {
         super.update(f);
 
-        if (!this._initialized || !this.tilesRenderer) return;
+        if (!this._initialized) return;
 
-        // Get the main view's camera and renderer for LOD calculations
-        const mainView = NodeMan.get("mainView");
-        if (!mainView) return;
-
-        const camera = mainView.camera;
-        const renderer = mainView.renderer;
-        if (!camera || !renderer) return;
-
-        this.tilesRenderer.setCamera(camera);
-        this.tilesRenderer.setResolutionFromRenderer(camera, renderer);
-        this.tilesRenderer.update();
+        for (const [viewId, pv] of Object.entries(this._perView)) {
+            const view = NodeMan.get(viewId, false);
+            pv.update(view);
+        }
     }
 
     dispose() {
-        this.disposeTilesRenderer();
+        this.disposeTilesRenderers();
 
         if (this.group) {
             GlobalScene.remove(this.group);

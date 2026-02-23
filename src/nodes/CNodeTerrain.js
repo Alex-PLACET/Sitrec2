@@ -51,6 +51,7 @@ export class CNodeTerrain extends CNode {
         //   this.debugLog = true;
 
         this.loaded = false;
+        this.hide3DTilesGreySphere = false;
 
         this.radius = Globals.equatorRadius;
 
@@ -390,9 +391,11 @@ export class CNodeTerrain extends CNode {
     }
 
     updateGreySphereVisibility() {
-        // Grey sphere should only be visible when Globals.dynamicSubdivision is true
+        // Grey sphere should only be visible when dynamic subdivision is on
+        // and 3D tiles are not active (they provide their own ground surface).
         if (this.greySphere) {
-            this.greySphere.visible = Globals.dynamicSubdivision === true;
+            this.greySphere.visible = Globals.dynamicSubdivision === true
+                && !this.hide3DTilesGreySphere;
             // Sync scale, rotation and position with the active earth model.
             this.greySphere.scale.set(
                 Globals.equatorRadius - 1000,
