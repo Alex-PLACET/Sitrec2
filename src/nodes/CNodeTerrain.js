@@ -11,6 +11,7 @@ import {CTileMappingGoogleCRS84Quad, CTileMappingGoogleMapsCompatible} from "../
 import {EventManager} from "../CEventManager";
 import {QuadTreeMapTexture} from "../QuadTreeMapTexture";
 import {QuadTreeMapElevation} from "../QuadTreeMapElevation";
+import {meanSeaLevelOffset} from "../EGM96Geoid";
 import * as LAYER from "../LayerMasks";
 import {ViewMan} from "../CViewManager";
 import {CNodeViewUI} from "./CNodeViewUI";
@@ -790,23 +791,23 @@ export class CNodeTerrain extends CNode {
 
 
         const LLA = EUSToLLA(A)
-        let elevation = 0;
+        let elevation = meanSeaLevelOffset(LLA.x, LLA.y);
         if (this.elevationMap)
             elevation = this.elevationMap.getElevationInterpolated(LLA.x, LLA.y)
 
-        if (elevation < 0) {
-            // if the elevation is negative, then we assume it's below sea level
-            // so we set it to zero
-            elevation = 0;
+        // Clamp to geoid sea level to avoid z-fighting with ocean tiles
+        const seaLevel = meanSeaLevelOffset(LLA.x, LLA.y);
+        if (elevation < seaLevel) {
+            elevation = seaLevel;
         }
-
 
         return setAltitudeMSL(A, elevation + agl);
     }
 
     getPointBelowWithTileInfo(A, agl = 0) {
         const LLA = EUSToLLA(A)
-        let elevation = 0;
+        const seaLevel = meanSeaLevelOffset(LLA.x, LLA.y);
+        let elevation = seaLevel;
         let tileZ = -1, tileX = -1, tileY = -1;
         if (this.elevationMap) {
             const info = this.elevationMap.getElevationWithTileInfo(LLA.x, LLA.y);
@@ -817,8 +818,9 @@ export class CNodeTerrain extends CNode {
         }
 
         const rawElevation = elevation;
-        if (elevation < 0) {
-            elevation = 0;
+        // Clamp to geoid sea level to avoid z-fighting with ocean tiles
+        if (elevation < seaLevel) {
+            elevation = seaLevel;
         }
 
         const point = setAltitudeMSL(A, elevation + agl);

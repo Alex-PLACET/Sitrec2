@@ -9,6 +9,7 @@ import {asyncOperationRegistry} from "./AsyncOperationRegistry";
 import {assert} from "./assert";
 import {isLocal} from "./configUtils";
 import "./threeExt";
+import {meanSeaLevelOffset} from "./EGM96Geoid";
 
 class QuadTreeMapTexture extends QuadTreeMap {
     constructor(scene, terrainNode, geoLocation, options = {}) {
@@ -173,7 +174,7 @@ class QuadTreeMapTexture extends QuadTreeMap {
 
         if (!this.elevationMap) {
             console.warn("No elevation map available for interpolation");
-            return 0; // default to sea level if no elevation map
+            return meanSeaLevelOffset(lat, lon); // default to geoid sea level if no elevation map
         }
 
         return this.elevationMap.getElevationInterpolated(lat, lon, desiredZoom);
@@ -181,7 +182,7 @@ class QuadTreeMapTexture extends QuadTreeMap {
 
     getElevationWithTileInfo(lat, lon, desiredZoom = null) {
         if (!this.elevationMap) {
-            return {elevation: 0, tileZ: -1, tileX: -1, tileY: -1};
+            return {elevation: meanSeaLevelOffset(lat, lon), tileZ: -1, tileX: -1, tileY: -1};
         }
         return this.elevationMap.getElevationWithTileInfo(lat, lon, desiredZoom);
     }
