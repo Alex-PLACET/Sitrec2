@@ -192,14 +192,157 @@ The standard defines Tag 15 as "MSL" but **does not explicitly specify EGM96**. 
 
 ---
 
+# Altitude in KML, ADS-B, and Flight Tracking Services
+
+## KML Altitude Modes (OGC Standard)
+
+KML defines altitude through the `<altitudeMode>` element. The standard (non-extended) values are:
+
+| Mode | Meaning |
+|---|---|
+| `clampToGround` | **Default.** Ignores altitude value entirely; places feature on terrain surface. |
+| `relativeToGround` | Altitude in meters above the terrain surface (AGL). |
+| `absolute` | Altitude in meters above MSL — specifically the **EGM96 geoid**. This is the mode used for flight tracks. |
+
+Google's `gx:` extension namespace adds two sea-floor variants (`clampToSeaFloor`, `relativeToSeaFloor`) not relevant to aviation.
+
+**Key point:** KML `absolute` mode = EGM96 orthometric height. Google Earth's terrain rendering uses EGM96 for its vertical datum, so `absolute` altitudes render correctly relative to terrain only when the altitude source is also EGM96-based. If the data is HAE (WGS84 ellipsoidal), the KML will appear offset by the local geoid undulation N (typically 20–50 m in mid-latitudes).
+
+---
+
+## ADS-B Altitude: What Gets Transmitted
+
+ADS-B Extended Squitter (1090ES) mandates two altitude fields per FAR 91.227(d):
+
+**Barometric (pressure) altitude** — always required, always referenced to **1013.25 hPa (QNE)**. This is the raw transponder Mode C output. It is *never* QNH-corrected in the transmitted data stream — QNH correction only happens onboard the aircraft and in ATC systems on the ground.
+
+**Geometric (GNSS) altitude** — also required, transmitted as **HAE (height above WGS84 ellipsoid)**. This is GPS-derived. Not used for ATC separation — only as a cross-check and for EGPWS/terrain systems.
+
+These two values are almost never the same. The difference at cruising altitude can easily be hundreds of feet.
+
+---
+
+## ADSBexchange: Three KML Export Options
+
+When exporting a KML track from globe.adsbexchange.com, three altitude options are offered:
+
+### 1. Geometric altitude (EGM96)
+- Takes the raw `alt_geom` field (HAE, WGS84 ellipsoid) and **adds the EGM96 geoid undulation** for the aircraft's position
+- Result: orthometric height (MSL, EGM96)
+- This is the **correct option for Google Earth** since KML `absolute` mode uses EGM96
+- The aircraft will appear at the right height above the terrain model
+
+### 2. Baro + avg.(EGM96 − baro)
+- Takes the `alt_baro` field (QNE pressure altitude) and adds a **regional average offset** between EGM96 and barometric altitude
+- Compensates for the aggregate effect of geoid undulation and local atmospheric pressure deviation from standard
+- A reasonable approximation when geometric altitude is unavailable or noisy, but not precise
+
+### 3. Uncorrected pressure altitude
+- Raw `alt_baro` field: pressure altitude at **1013.25 hPa standard**, no correction
+- This is what ATC Mode C radar sees before QNH correction
+- Looks wrong in Google Earth because it doesn't account for geoid undulation or non-standard pressure
+- Lowest quality for 3D reconstruction; use only when the others are unavailable
+
+### ADSBexchange API fields (for reference):
+- `alt_baro` — barometric pressure altitude, feet, QNE (1013.25 hPa), or `"ground"`
+- `alt_geom` — geometric/GNSS altitude, feet, referenced to **WGS84 ellipsoid** (HAE)
+
+---
+
+## FlightRadar24
+
+FR24 displays **barometric altitude only** — specifically the raw QNE (1013.25 hPa standard pressure) altitude from the ADS-B transponder. It is **not** corrected for local QNH.
+
+Consequences:
+- At high-altitude airports (e.g., Denver KDEN, elevation 5,433 ft), aircraft on the ground will show ~5,400 ft, then jump to 0 ft when the "on ground" bit is set, creating a discontinuous step.
+- FR24 does show GPS altitude separately where available (aircraft transmitting geometric altitude), displayed as a secondary field.
+- The primary altitude shown is always the raw QNE pressure altitude — not true MSL, not HAE, not EGM96.
+
+**FR24 statement:** *"ADS-B only reports altitude values based on the standard pressure of 1013 hectopascals."*
+
+---
+
+## FlightAware
+
+FlightAware similarly displays **barometric pressure altitude at 29.92 inHg (QNE)**. It is uncorrected for local altimeter setting.
+
+This means the altitude shown is the same datum as FR24 — raw QNE pressure altitude. Not true MSL in the geodetic sense; not HAE; not EGM96-corrected.
+
+FlightAware can show geometric altitude when available from ADS-B, but it is not the primary displayed value.
+
+**Practical implication:** A flight at 5,500 ft indicated (with a local altimeter setting of, say, 30.15 inHg) may appear on FlightAware at ~5,125 ft because FlightAware uses QNE, not QNH.
+
+---
+
+## Barometric Altimetry and the 18,000 ft Rule
+
+### Below the transition altitude (US: 18,000 ft / FL180)
+Pilots set their altimeter to **QNH** — the local sea-level pressure at the nearest reporting station. The altimeter reads altitude AMSL. This is a reasonable approximation of geodetic MSL but is meteorologically influenced (varies with weather). Each reporting station issues a new QNH ~hourly.
+
+### At and above 18,000 ft MSL (FL180 and above)
+All aircraft set altimeters to the **standard pressure setting: 29.92 inHg / 1013.25 hPa (QNE)**. The altitude indicated becomes a **Flight Level** — a pressure surface, not a true altitude.
+
+This means:
+- FL350 (35,000 ft) is the pressure level corresponding to 35,000 ft in the **International Standard Atmosphere (ISA)**, not necessarily 35,000 ft above the geoid.
+- On a cold day, the atmosphere is denser and FL350 is geometrically *lower* than 35,000 ft.
+- On a hot day, FL350 is geometrically *higher* than 35,000 ft.
+- The divergence between pressure altitude and geometric altitude at cruise altitudes can easily exceed **1,000 ft** in extreme temperature conditions.
+
+### Why the transition exists
+The purpose of QNE above FL180 is not accuracy — it's **uniformity**. Every aircraft uses the same datum above the transition, so vertical separation is consistent even if the absolute altitude is off. ATC radar works with Mode C (QNE) codes and applies its own QNH correction to convert to displayed altitude for controllers.
+
+### Temperature error — the key non-obvious effect
+A barometric altimeter is calibrated to ISA (15°C at sea level, lapse rate of 2°C/1000 ft). It has no temperature compensation for real-world conditions. On a cold day:
+- Air is denser; a given pressure is reached at a *lower* geometric altitude
+- The aircraft is physically lower than the altimeter indicates
+- **Cold temperature correction** is required for obstacle clearance; it is safety-critical and commonly neglected
+
+At cruise altitude, ISA deviations of ±20–30°C are routine, producing geometric altitude errors of several hundred to over 1,000 feet.
+
+---
+
+## Summary: What Each Source's Altitude Actually Means
+
+| Source | Altitude type | Reference | Notes |
+|---|---|---|---|
+| ADS-B `alt_baro` | Pressure altitude | QNE (1013.25 hPa) | Never QNH-corrected in the data stream |
+| ADS-B `alt_geom` | Geometric / HAE | WGS84 ellipsoid | GPS-derived; not used by ATC |
+| ADSBx KML: geometric (EGM96) | Orthometric | EGM96 geoid | Best for Google Earth / 3D reconstruction |
+| ADSBx KML: baro + avg | Approximate MSL | EGM96 approximate | Good fallback; regional correction only |
+| ADSBx KML: uncorrected pressure | Pressure altitude | QNE | Raw; worst for 3D reconstruction |
+| FlightRadar24 | Pressure altitude | QNE (1013.25 hPa) | Same as raw ADS-B baro |
+| FlightAware | Pressure altitude | QNE (1013.25 hPa) | Same as raw ADS-B baro |
+| KML `absolute` mode | Orthometric | EGM96 geoid | Assumed by Google Earth renderer |
+| MISB ST0601 Tag 15 | Orthometric (MSL) | EGM96 (assumed) | Sensor true altitude in military KLV |
+| MISB ST0601 Tag 75/104 | HAE | WGS84 ellipsoid | Explicitly defined |
+
+---
+
+## Relevance to UAP/ADS-B Analysis
+
+When reconstructing aircraft geometry (e.g., in Sitrec) from ADS-B data:
+
+1. Use `alt_geom` (HAE) if available — it's geometrically clean and can be used directly with WGS84 lat/lon.
+2. If only `alt_baro` (QNE) is available, you need to apply two corrections to get HAE:
+    - **QNH correction**: convert from QNE to orthometric height using local pressure (requires meteorological data for that time/place)
+    - **Geoid correction**: add EGM96 undulation N to convert from orthometric to HAE
+3. ADSBx's "geometric (EGM96)" KML export already does this correctly and is suitable for Google Earth rendering and 3D reconstruction.
+4. The uncorrected QNE baro altitude can be off by hundreds to over a thousand feet from true geometric altitude at cruise — never use it for precision geometry without correction.
+
+
+
+---
+
 ## Summary of What to Assume
 
-| Source | What "altitude" likely means |
-|---|---|
-| Raw GPS / GNSS receiver output | HAE (ellipsoidal) |
-| NMEA $GPGGA "MSL altitude" field | Orthometric (geoid), quality varies |
-| Aviation altimeter / ATC reports | Barometric MSL |
-| Military KLV/MISB Tag 15 | EGM96 orthometric MSL |
-| Military KLV/MISB Tag 75/104 | HAE (WGS84) |
-| ArcGIS / web mapping elevation | EGM96 orthometric MSL |
-| SRTM terrain data | EGM96 orthometric MSL |
+| Source | What "altitude" likely means           |
+|---|----------------------------------------|
+| Raw GPS / GNSS receiver output | HAE (ellipsoidal)                      |
+| NMEA $GPGGA "MSL altitude" field | Orthometric (geoid), quality varies    |
+| Aviation altimeter / ATC reports | Barometric MSL                         |
+| Military KLV/MISB Tag 15 | EGM96 orthometric MSL                  |
+| Military KLV/MISB Tag 75/104 | HAE (WGS84)                            |
+| ArcGIS / web mapping elevation | EGM96 orthometric MSL                  |
+| KML ADSB Tracks | EGM96 ortometric MSL or Barometric MSL |
+| SRTM terrain data | EGM96 orthometric MSL                  |
+

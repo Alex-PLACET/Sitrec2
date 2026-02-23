@@ -1,6 +1,7 @@
 import {interpolate} from "../utils";
 import {GlobalDateTimeNode, Globals, NodeMan, Sit} from "../Globals";
 import {RLLAToECEF_radii} from "../LLA-ECEF-ENU";
+import {meanSeaLevelOffset} from "../EGM96Geoid";
 
 import {MISB} from "../MISBUtils";
 import {saveAs} from "file-saver";
@@ -88,7 +89,7 @@ export class CNodeTrackFromMISB extends CNodeTrack {
                 + "," + "," + ","
                 + misb.getLat(slot) + "," + misb.getLon(slot) + ","
                 + "," + ","
-                + misb.getAlt(slot) + ","
+                + misb.getAltMSL(slot) + ","
                 + "F-15" + ","+ id + ","
                 + 0 + "\n" // speed is currently ignored
 
@@ -143,7 +144,7 @@ export class CNodeTrackFromMISB extends CNodeTrack {
         var points = misb.misb.length
         const id = this.id;
         for (let slot = 0; slot < points; slot++) {
-            geo.addPoint(id, misb.getLat(slot), misb.getLon(slot), misb.getAlt(slot), misb.getTime(slot))
+            geo.addPoint(id, misb.getLat(slot), misb.getLon(slot), misb.getAltMSL(slot), misb.getTime(slot))
         }
     }
 
@@ -399,7 +400,9 @@ export class CNodeTrackFromMISB extends CNodeTrack {
 
             const lat = interpolate(this.latArray[slot], this.latArray[slot +1], fraction);
             const lon = interpolate(this.lonArray[slot], this.lonArray[slot +1], fraction);
-            const alt = misb.adjustAlt(interpolate(this.rawAltArray[slot], this.rawAltArray[slot +1], fraction), lat, lon);
+            // SensorTrueAltitude is MSL (orthometric); convert to HAE for EUS (h = H + N)
+            const altMSL = misb.adjustAlt(interpolate(this.rawAltArray[slot], this.rawAltArray[slot +1], fraction), lat, lon);
+            const alt = altMSL + meanSeaLevelOffset(lat, lon);
 
 
             //const pos = LLAToEUS(lat, lon, alt)

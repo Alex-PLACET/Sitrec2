@@ -10,6 +10,7 @@ import {assert} from "../assert";
 import {EventManager} from "../CEventManager";
 import {elevationAtLL} from "../threeExt";
 import {parsePartialDateTime} from "../ParseUtils";
+import {meanSeaLevelOffset} from "../EGM96Geoid";
 
 //export const MISBFields = Object.keys(MISB).length;
 
@@ -178,8 +179,8 @@ export class CNodeMISBDataTrack extends CNodeEmptyArray {
                         const timeA = this.getTime(a);
                         const timeC = this.getTime(c);
                         const t = (timeBMs - timeA) / (timeC - timeA);
-                        const altA = this.getAlt(a);
-                        const altC = this.getAlt(c);
+                        const altA = this.getAltMSL(a);
+                        const altC = this.getAltMSL(c);
                         const interpolatedAlt = altA + (altC - altA) * t;
 
                         // Temporarily apply the fix and recheck
@@ -262,7 +263,7 @@ export class CNodeMISBDataTrack extends CNodeEmptyArray {
     _isValidBasic(slotNumber) {
         let lat = this.getLat(slotNumber)
         let lon = this.getLon(slotNumber)
-        let alt = this.getAlt(slotNumber)
+        let alt = this.getAltMSL(slotNumber)
         let time = this.getTime(slotNumber)
 
         if (isNaN(time) || time < 0 || time > 4102444800000) return false
@@ -390,7 +391,7 @@ export class CNodeMISBDataTrack extends CNodeEmptyArray {
 
             const lat = this.getLat(f);
             const lon = this.getLon(f);
-            const alt = this.getAlt(f);
+            const alt = this.getAltMSL(f);
             coordLines.push(`<gx:coord>${lon} ${lat} ${alt}</gx:coord>`);
         }
 
@@ -439,14 +440,14 @@ export class CNodeMISBDataTrack extends CNodeEmptyArray {
         for (var f = 0; f < points; f++) {
             // we only handle rows that have valid data
             if (this.isValid(f)) {
-                var pos = LLAToEUS(this.getLat(f), this.getLon(f), this.getAlt(f));
+                var pos = LLAToEUS(this.getLat(f), this.getLon(f), this.getAltHAE(f));
                 this.array.push({position: pos})
             } else if (this.filteredSlots.has(f)) {
                 // Filtered out by g-force filter — skip silently
                 this.array.push({})
             } else {
                 // otherwise, just give it an empty structure
-                console.warn("CNodeMISBDataTrack: invalid data at frame " + f + " in track " + this.id + " lat=" + this.getLat(f) + " lon=" + this.getLon(f) + " alt=" + this.getAlt(f));
+                console.warn("CNodeMISBDataTrack: invalid data at frame " + f + " in track " + this.id + " lat=" + this.getLat(f) + " lon=" + this.getLon(f) + " alt=" + this.getAltMSL(f));
                 console.warn("Returning empty object {}")
                 assert(0, "CNodeMISBDataTrack: invalid data at frame " + f + " in track " + this.id);
                 this.array.push({})
@@ -501,13 +502,21 @@ export class CNodeMISBDataTrack extends CNodeEmptyArray {
     }
 
 
-    getAlt(i) {
+    // Returns MSL altitude (orthometric). Use for exports (KML, CSV, GeoJSON).
+    getAltMSL(i) {
         // If this slot had its altitude corrected by the filter, use that
         if (this.altitudeFixedSlots && this.altitudeFixedSlots.has(i)) {
             return this.altitudeFixedSlots.get(i);
         }
         let a = this.getRawAlt(i);
         return this.adjustAlt(a, this.getLat(i), this.getLon(i));
+    }
+
+    // Returns HAE altitude (h = H + N). Use for EUS/ECEF conversions.
+    getAltHAE(i) {
+        const lat = this.getLat(i);
+        const lon = this.getLon(i);
+        return this.getAltMSL(i) + meanSeaLevelOffset(lat, lon);
     }
 
     // get time at frame i in milliseconds since epoch
@@ -537,7 +546,7 @@ export class CNodeMISBDataTrack extends CNodeEmptyArray {
 
     // get EUS position at frame i
     getPosition(i) {
-        return LLAToEUS(this.getLat(i), this.getLon(i), this.getAlt(i));
+        return LLAToEUS(this.getLat(i), this.getLon(i), this.getAltHAE(i));
     }
 
     // given a time in ms (UNIX time), return the position at that time
@@ -552,7 +561,7 @@ export class CNodeMISBDataTrack extends CNodeEmptyArray {
         if (this.filteredSlots && this.filteredSlots.has(slotNumber)) return false;
         let lat = this.getLat(slotNumber)
         let lon = this.getLon(slotNumber)
-        let alt = this.getAlt(slotNumber)
+        let alt = this.getAltMSL(slotNumber)
         let time = this.getTime(slotNumber)
 
         // time is in unix time, check its a number and from 1970 to 2100
@@ -590,7 +599,7 @@ export class CNodeMISBDataTrack extends CNodeEmptyArray {
             // always allow alt === 0, as it's common for grounded planes (ADS-B)
             // maybe we might want to check if it is on the ground and use terrain elevation?
             // // check if the last valid slot's alt was near zero, if so we allow this
-            // if (this.lastValidSlot === undefined || Math.abs(this.getAlt(this.lastValidSlot)) > 1000) {
+            // if (this.lastValidSlot === undefined || Math.abs(this.getAltMSL(this.lastValidSlot)) > 1000) {
             //     return false;
             // }
             if (!this.warnedAboutZeroAltitude)
