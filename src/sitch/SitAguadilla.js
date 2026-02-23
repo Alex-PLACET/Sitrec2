@@ -78,10 +78,14 @@ export const SitAguadilla = {
 
     },
 
+    // Aguadilla terrain location. 8x8 tiles at zooom level 15
+    // there's no file for terrain, it all comes from the server
+    // based purely on the lat/lon
+    terrain: {lat:  18.499617, lon: -67.113636, zoom:15, nTiles:8},
 
     mainCamera: {
-        startCameraPosition: [-9851.407079455104, 2847.1976940099407, -2584.264310831998],
-        startCameraTarget: [-8986.013511122388, 2586.5050262571704, -2156.3235382146754],
+        startCameraPositionLLA:[18.599594,-67.201396,6577.336072],
+        startCameraTargetLLA:[18.592961,-67.196258,6178.143664],
     },
     mainView: {left: 0.0, top: 0, width: 1, height: 1, fov:50, background: '#005000'},
 
@@ -140,10 +144,6 @@ export const SitAguadilla = {
     videoFile: "../sitrec-videos/public/Aquadilla High Quality Original.mp4",
     videoView: {left: 0.6250, top: 0, width: -1.5, height: 0.5,},
 
-    // Aguadilla terrain location. 8x8 tiles at zooom level 15
-    // there's no file for terrain, it all comes from the server
-    // based purely on the lat/lon
-    terrain: {lat:  18.499617, lon: -67.113636, zoom:15, nTiles:8},
 
     focusTracks:{
         "Ground (No Track)": "default",

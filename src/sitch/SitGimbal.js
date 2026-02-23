@@ -412,8 +412,8 @@ export const SitGimbal = {
     defaultTraverse: "Const Air Spd",
 
     mainCamera: {
-        startCameraPosition: [45827.79, 51645.36, 17968.72],
-        startCameraTarget: [44976.22, 51163.57, 17762.06],
+        startCameraPositionLLA:[28.470586,-79.100902,26132.346324],
+        startCameraTargetLLA:[28.470824,-79.110720,25870.046771],
     },
 
     lookCamera: { fov:0.35 },
@@ -528,8 +528,8 @@ export const SitGimbalNear = {
     defaultTraverse:"Straight Line",
 
     mainCamera: {
-        startCameraPosition: [22361.77, 19855.62, 1055.93],
-        startCameraTarget: [21400.39, 19583.24, 1095.64],
+        startCameraPositionLLA:[28.439097,-79.122589,27625.934704],
+        startCameraTargetLLA:[28.440007,-79.132252,27330.469158]
     },
 
     lookCamera: { fov:0.35 },
@@ -646,8 +646,8 @@ export const SitGimbalSR71 = {
     },
 
     mainCamera: {
-        startCameraPosition:[8485.70,11640.47,2794.97],
-        startCameraTarget:[7548.47,11387.54,2554.90]
+        startCameraPositionLLA:[28.484775,-79.425842,11025.313939],
+        startCameraTargetLLA:[28.486547,-79.435512,10775.171728],
     },
 
     videoView: {left: 0.66, top: 0.45, width: -1, height: 0.5,background:[1,0,0,0]},
