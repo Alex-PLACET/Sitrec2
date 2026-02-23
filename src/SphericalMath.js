@@ -215,15 +215,15 @@ export function hiddenBelowHorizon(h, d, r = Globals.equatorRadius) {
 ////////////////////////////////////////////////////////////////////////////////
 
 // How much is the ground below the EUS plane
-// x, y and radius are in meters
+// x, y are in meters
 // Note there two Pythagorean ways you can derive drop
 // Either the distance straight down, or the distance towards the center of the Earth
 // this uses the former, so subtracting this from Y will give a point on the surface.
 // (using the latter would need a scaled vector towards the center)
-function drop(x,y,radius) {
+function drop(x,y) {
     // dist = how far it is from 0,0 horizontally
     const dist = Math.sqrt(x*x + y*y);
-    return earthSurfaceDrop(dist, radius);
+    return earthSurfaceDrop(dist);
 }
 
 export function dropFromDistance(dist, radius=Globals.equatorRadius) {
@@ -231,24 +231,23 @@ export function dropFromDistance(dist, radius=Globals.equatorRadius) {
 }
 
 
-// get altitude of a point in EUS coordinates above the WGS84 sphere
+// get altitude of a point in EUS coordinates above MSL
 // for full terrain use altitudeAt(position) or altitudeAtLL(lat, lon)
-export function pointAltitude(position, radius=wgs84.RADIUS) {
-    return V3(0,-radius,0).sub(position).length() - radius;
+export function pointAltitude(position) {
+    return altitudeMSL(position);
 }
-// preferred: use altitudeMSL(position) for MSL altitude calculations
 
 
-export function raisePoint(position, raise, radius=wgs84.RADIUS) {
-    let up = getLocalUpVector(position, radius)
+export function raisePoint(position, raise) {
+    let up = getLocalUpVector(position)
     let result = position.clone().add(up.multiplyScalar(raise))
     return result;
 }
 
 
 // get as a point, drop below surface
-function drop3(x,y,r) {
-    return new Vector3(x,y,-drop(x,y,r))
+function drop3(x,y) {
+    return new Vector3(x,y,-drop(x,y))
 }
 
 
@@ -257,13 +256,7 @@ export {drop, drop3, CueAz,PRJ2EA,EAJP2PR,XYZJ2PR,XYZ2EA,EA2XYZ,PRJ2XYZ}
 
 // position is in EUS (East, Up, South) coordinates relative to an arbitary origin
 // origin might be above the surface (in Gimbal it's the start of the jet track, so that is passed in
-export function getLocalUpVector(position, radius=wgs84.RADIUS) {
-    if (radius !== wgs84.RADIUS) {
-        // Legacy: non-default radius uses simple sphere model
-        const center = V3(0, -radius, 0);
-        return position.clone().sub(center).normalize();
-    }
-
+export function getLocalUpVector(position) {
     // Compute the geodetic normal for the current earth model.
     // The outward normal to the ellipsoid x²/a² + y²/a² + z²/b² = 1
     // at ECEF point (X,Y,Z) is proportional to (X/a², Y/a², Z/b²).
@@ -277,58 +270,53 @@ export function getLocalUpVector(position, radius=wgs84.RADIUS) {
     return ECEF2EUS(normalECEF, radians(Sit.lat), radians(Sit.lon), wgs84.RADIUS, true);
 }
 
-export function getLocalDownVector(position, radius=wgs84.RADIUS) {
-    return getLocalUpVector(position, radius).negate();
+export function getLocalDownVector(position) {
+    return getLocalUpVector(position).negate();
 }
 
 
-export function getNorthPole(radius=wgs84.RADIUS) {
-    if (radius !== wgs84.RADIUS) {
-        // Legacy: non-default radius uses simple sphere model
-        const northPoleECEF = V3(0, 0, radius)
-        return ECEF2EUS(northPoleECEF, radians(Sit.lat), radians(Sit.lon), radius)
-    }
-
+export function getNorthPole() {
     // North Pole in ECEF is at (0, 0, polarRadius) for an ellipsoid
     const northPoleECEF = V3(0, 0, Globals.polarRadius);
     return ECEFToEUS_radii(northPoleECEF);
 }
 
-export function getLocalNorthVector(position, radius=wgs84.RADIUS) {
+export function getLocalNorthVector(position) {
     assert(Sit.lat !== undefined && Sit.lon !== undefined, "Sit.lat and Sit.lon must be defined for getLocalNorthVector() to work.");
     // to get a northish direction we get the vector from here to the north pole.
     // to get the north pole in EUS, we take the north pole's position in ECEF
-    const northPoleEUS = getNorthPole(radius);
+    const northPoleEUS = getNorthPole();
     const toNorth = northPoleEUS.clone().sub(position).normalize()
     // take only the component perpendicular to the local up vector
-    const up = getLocalUpVector(position, radius);
+    const up = getLocalUpVector(position);
     const dot = toNorth.dot(up)
     const north = toNorth.clone().sub(up.clone().multiplyScalar(dot)).normalize()
     return north;
 }
 
-export function getLocalSouthVector(position, radius=wgs84.RADIUS) {
-    return getLocalNorthVector(position, radius).negate();
+export function getLocalSouthVector(position) {
+    return getLocalNorthVector(position).negate();
 }
 
-export function getLocalEastVector(position, radius=wgs84.RADIUS) {
-    const up = getLocalUpVector(position,radius);
-    const north = getLocalNorthVector(position, radius);
+export function getLocalEastVector(position) {
+    const up = getLocalUpVector(position);
+    const north = getLocalNorthVector(position);
     const south = north.clone().negate()
     const east = V3().crossVectors(up, south)
     return east;
 
 }
 
-export function getLocalWestVector(position, radius=wgs84.RADIUS) {
-    return getLocalEastVector(position, radius).negate();
+export function getLocalWestVector(position) {
+    return getLocalEastVector(position).negate();
 }
 
 
-// given a position (A) and a vector direction (fwd), and a radius (might be tops of clouds), then find the position of the horizion
-// in that direction
+// given a position (A) and a vector direction (fwd), and an altitude for the horizon surface,
+// find the position of the horizon in that direction
 // this actually calculates the distance to the horizon, and then a point that distance along the fwd vector.
-export function calcHorizonPoint(A, fwd, horizonAlt, earthRadius) {
+export function calcHorizonPoint(A, fwd, horizonAlt) {
+    const earthRadius = Globals.equatorRadius;
     const horizonRadius = earthRadius + horizonAlt
 
     // convert points to ECEF (i.e. origin at the center of the earth)
@@ -479,10 +467,10 @@ export function getCompassHeading(position, forward, camera) {
 
 }
 
-export function distanceToHorizon(h, r = wgs84.RADIUS) {
+export function distanceToHorizon(h, r = Globals.equatorRadius) {
     return horizonDistance(h, r);
 }
 
-export function hiddenByGlobe(h, d, r = wgs84.RADIUS) {
+export function hiddenByGlobe(h, d, r = Globals.equatorRadius) {
     return hiddenBelowHorizon(h, d, r);
 }

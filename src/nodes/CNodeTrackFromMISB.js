@@ -1,6 +1,6 @@
 import {interpolate} from "../utils";
-import {GlobalDateTimeNode, NodeMan, Sit} from "../Globals";
-import {RLLAToECEFV_Sphere, wgs84} from "../LLA-ECEF-ENU";
+import {GlobalDateTimeNode, Globals, NodeMan, Sit} from "../Globals";
+import {RLLAToECEF_radii} from "../LLA-ECEF-ENU";
 
 import {MISB} from "../MISBUtils";
 import {saveAs} from "file-saver";
@@ -300,7 +300,6 @@ export class CNodeTrackFromMISB extends CNodeTrack {
 
         const lon1 = rSitLon
         const lat1 = rSitLat
-        const radius = wgs84.RADIUS;
 
 
 
@@ -336,13 +335,19 @@ export class CNodeTrackFromMISB extends CNodeTrack {
 
 
 // Translation
-        const originECEF = RLLAToECEFV_Sphere(lat1, lon1, 0, wgs84.RADIUS);
+        const originECEF = RLLAToECEF_radii(lat1, lon1, 0);
         const translation = new Matrix4().makeTranslation(-originECEF.x, -originECEF.y, -originECEF.z);
 
 // Final matrix: rotate * translate
 
         // TODO!!! this should be global, and used in many other places for ECEF->EUS
         mECEF2EUS.multiply(translation);
+
+        // Pre-compute ellipsoid constants for per-vertex ECEF conversion
+        const eqR = Globals.equatorRadius;
+        const polR = Globals.polarRadius;
+        const _e2 = (eqR * eqR - polR * polR) / (eqR * eqR);
+        const _ratio = (polR * polR) / (eqR * eqR);
 
         for (var f=0;f<Sit.frames;f++) {
             var msNow = msStart + Math.floor(frameTime*1000)
@@ -399,19 +404,19 @@ export class CNodeTrackFromMISB extends CNodeTrack {
 
             //const pos = LLAToEUS(lat, lon, alt)
 
-            // expanded LLAToEUS out for speed
+            // expanded LLAToEUS out for speed (ellipsoid-aware)
             const rLat = lat * Math.PI / 180
             const rLon = lon * Math.PI / 180
             const cosLat = Math.cos(rLat)
             const sinLat = Math.sin(rLat)
             const cosLon = Math.cos(rLon)
             const sinLon = Math.sin(rLon)
-            const radiusAlt = radius + alt;
+            const N = eqR / Math.sqrt(1 - _e2 * sinLat * sinLat);
 
-            // convert LLA to ECEF, including altitude
-            const ecefX = radiusAlt * cosLat * cosLon;
-            const ecefY = radiusAlt * cosLat * sinLon;
-            const ecefZ = radiusAlt * sinLat;
+            // convert LLA to ECEF using ellipsoid model
+            const ecefX = (N + alt) * cosLat * cosLon;
+            const ecefY = (N + alt) * cosLat * sinLon;
+            const ecefZ = (_ratio * N + alt) * sinLat;
 
             // convert ECEF to ENU
             // const ecef = new Vector3(ecefX, ecefY, ecefZ);

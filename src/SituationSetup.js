@@ -10,8 +10,8 @@ import {
     SitchMan,
     TrackManager
 } from "./Globals";
-import {CNode, CNodeConstant} from "./nodes/CNode";
-import {LLAToEUS, wgs84} from "./LLA-ECEF-ENU";
+import {CNode} from "./nodes/CNode";
+import {LLAToEUS} from "./LLA-ECEF-ENU";
 import {CNodeGUIValue, makeCNodeGUIValue} from "./nodes/CNodeGUIValue";
 import {CNodeCamera} from "./nodes/CNodeCamera";
 import * as LAYER from "./LayerMasks";
@@ -66,8 +66,7 @@ export async function SituationSetup(runDeferred = false) {
      //
      // setSit(deserialized);
 
-    if (!runDeferred)
-        new CNodeConstant({id:"radiusMiles", value: wgs84.radiusMiles});
+    // radiusMiles constant removed — use Globals.equatorRadius instead
 
     await SituationSetupFromData(Sit, runDeferred);
 
@@ -835,7 +834,6 @@ export async function SetupFromKeyAndData(key, _data, depth=0) {
                     step: 0.1,
                     desc: "Camera Alt (ft)"
                 }, data.gui ?? guiMenus.view),
-                radiusMiles: "radiusMiles",
             })
             break;
 

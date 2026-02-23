@@ -314,7 +314,6 @@ export const SitGoFast = {
                 speed: "jetTAS",         // new CNodeWatch({ob:par,watchID:"TAS"}),
                 altitude: "jetAltitude",
                 turnRate: "turnRate",
-                radius: "radiusMiles",
                 wind: "localWind",
                 heading: "initialHeading",
                 origin: "jetOrigin",
@@ -451,8 +450,6 @@ export const SitGoFast = {
         new CNodeDisplayOcean({
             id: "oceanDisplay",
             inputs: {
-                //     OceanData: OceanDataNode,
-                radius: "radiusMiles",
                 material: new CNodeConstant({id: "oceanMaterial", value: waterMaterial})
             },
         })

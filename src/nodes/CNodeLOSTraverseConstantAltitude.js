@@ -4,9 +4,9 @@
 import {Color, Ray, Sphere} from "three";
 import {CNodeTrack} from "./CNodeTrack";
 import {intersectSphere2, V3} from "../threeUtils";
-import {wgs84} from "../LLA-ECEF-ENU";
 import {assert} from "../assert";
 import {showError} from "../showError";
+import {Globals} from "../Globals";
 
 export class CNodeLOSTraverseConstantAltitude extends CNodeTrack {
     constructor(v) {
@@ -21,7 +21,7 @@ export class CNodeLOSTraverseConstantAltitude extends CNodeTrack {
     recalculate() {
         this.array = [];
         this.frames = this.in.LOS.frames
-        var earthRadius = wgs84.RADIUS;
+        var earthRadius = Globals.equatorRadius;
         if (this.in.radius !== undefined) {
             showError("Radius deprecated, generally we assume fixed wgs84 radius")
             earthRadius = (this.in.radius.v0)

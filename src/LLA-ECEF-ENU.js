@@ -466,9 +466,9 @@ export function ECEFToEUS(posECEF, radius) {
         Math.cos(lat1) * Math.cos(lon1), Math.cos(lat1) * Math.sin(lon1), Math.sin(lat1)
     );
     
-    // Get the origin in ECEF
-    const originECEF = RLLAToECEFV_Sphere(lat1, lon1, 0);
-    
+    // Get the origin in ECEF using the ellipsoid model
+    const originECEF = RLLAToECEF_radii(lat1, lon1, 0);
+
     // Subtract origin and apply rotation to get ENU
     const enu = posECEF.clone().sub(originECEF).applyMatrix3(mECEF2ENU);
     
@@ -495,8 +495,8 @@ export function EUSToECEF(posEUS, radius) {
     mENU2ECEF.copy(mECEF2ENU)
     mENU2ECEF.invert()
 
-    // RLLAToECEFV_Sphere converts from spherical coordinates to ECEF
-    const originECEF = RLLAToECEFV_Sphere(lat1, lon1, 0);
+    // Get the origin in ECEF using the ellipsoid model
+    const originECEF = RLLAToECEF_radii(lat1, lon1, 0);
 
     // Convert from eus to enu
     const enu = new Vector3(posEUS.x, -posEUS.z, posEUS.y);

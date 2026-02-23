@@ -33,7 +33,6 @@ export function SetupCloudNodes() {
         id: "cloudDisplay",
         inputs: {
             cloudData: "cloudData",
-            radius: "radiusMiles",
             material: new CNodeConstant({id: "cloudMaterial", value: cloudMaterial}),
             wind: "cloudWind",
             heading: "initialHeading",
@@ -48,7 +47,6 @@ export function SetupCloudNodes() {
         inputs: {
             LOS: "JetLOS",
             cloudAltitude: "cloudAltitude",
-            radius: "radiusMiles",
         }
     })
 

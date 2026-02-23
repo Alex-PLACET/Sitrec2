@@ -1,4 +1,4 @@
-import {degrees, metersFromMiles, metersPerSecondFromKnots, radians} from "../utils";
+import {degrees, metersPerSecondFromKnots, radians} from "../utils";
 import {calcHorizonPoint, getLocalUpVector} from "../SphericalMath";
 import {CNodeEmptyArray} from "./CNodeArray";
 import {assert} from "../assert.js";
@@ -25,7 +25,7 @@ export class CNodeTurnRateFromClouds extends CNodeEmptyArray {
         super(v);
         this.startTurnRate = v.startTurnRate ?? 0
         // cloud speed is the desired speed of the clouds
-        this.checkInputs(["cloudAlt","cloudSpeed","az", "speed", "altitude", "radius"])
+        this.checkInputs(["cloudAlt","cloudSpeed","az", "speed", "altitude"])
         this.frames = this.in.az.frames
         this.fps = this.in.az.fps
         assert(this.frames >0, "Need frames in az input to CNodeTurnRateFromClouds")
@@ -39,7 +39,6 @@ export class CNodeTurnRateFromClouds extends CNodeEmptyArray {
     recalculate() {
         this.array = []
         var jetHeading = 0
-        var radius = metersFromMiles(this.in.radius.v0)
         var jetPos = V3(0,this.in.altitude.v0,0)   // this is above the EUS (East, Up, South) origin
         var jetFwd = V3(0,0,-1) // start out pointing north (Z = -1 in EUS
 
@@ -57,7 +56,7 @@ export class CNodeTurnRateFromClouds extends CNodeEmptyArray {
             jetPos.add(jetFwd.clone().multiplyScalar(jetSpeed / this.fps)) // one frame
 
             // rotate around local up (opposite of gravity)
-            var upAxis = getLocalUpVector(jetPos, radius)
+            var upAxis = getLocalUpVector(jetPos)
             jetFwd.applyAxisAngle(upAxis, -radians(turnRate / this.fps))
             var rightAxis = V3()
             rightAxis.crossVectors(upAxis, jetFwd)  // right is calculated as being at right angles to up and fwd
@@ -86,11 +85,11 @@ export class CNodeTurnRateFromClouds extends CNodeEmptyArray {
 
             let LOS = lastFwd.clone()
         //    var upAxis = V3(0, 1, 0)
-            var upAxis = getLocalUpVector(lastPosition, radius) // not a real difference
+            var upAxis = getLocalUpVector(lastPosition)
 
             LOS.applyAxisAngle(upAxis, radians(-this.in.az.v(f)))
 
-            let horizon1 = calcHorizonPoint(lastPosition, LOS, cloudAlt, radius)
+            let horizon1 = calcHorizonPoint(lastPosition, LOS, cloudAlt)
             let from1 = horizon1.clone().sub(lastPosition).normalize()
             let from2 = horizon1.clone().sub(jetPos).normalize()
             let angle1 = Math.atan2(from1.z, from1.x)

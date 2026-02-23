@@ -388,7 +388,7 @@ export function ChangedPR() {
     LocalFrame.matrix.extractBasis(_x, _y, _z)  // matrix or matrixWorld? parent is GlobalScene, so
 
     // INPUT
-    const localUp = getLocalUpVector(LocalFrame.position, metersFromMiles(NodeMan.get("radiusMiles").v0))
+    const localUp = getLocalUpVector(LocalFrame.position)
 
     _y.copy(localUp)
 
@@ -779,7 +779,6 @@ export function CreateTraverseNodes(idExtra="", los = "JetLOS") {
         id: "LOSTraverseStraightLine"+idExtra,
         LOS: los,
         startDist: "startDistance",
-        radius: "radiusMiles",
         lineHeading: "targetActualHeading",
     })
 

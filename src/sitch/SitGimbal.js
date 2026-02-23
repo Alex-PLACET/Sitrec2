@@ -810,7 +810,6 @@ export function SetupGimbal() {
             cloudAlt: "cloudAltitude",
             speed: "jetTAS",
             altitude: "jetAltitude",
-            radius: "radiusMiles",
             az: "azSources",
             cloudSpeed: "cloudSpeedEditor",
         }
@@ -850,8 +849,6 @@ export function SetupGimbal() {
         knots: Sit.cloudWindKnots,
         name: "Cloud",
         arrowColor: "white",
-        radius: "radiusMiles",
-
         pos: "jetTrack",
 
     }, gui)
@@ -862,9 +859,7 @@ export function SetupGimbal() {
         knots: Sit.targetWindKnots,  // 90
         name: "Target",
         arrowColor: "yellow",
-        radius: "radiusMiles",
         pos: "LOSTraverseSelect",
-
 
     }, gui)
 
@@ -874,9 +869,7 @@ export function SetupGimbal() {
         knots: Sit.localWindKnots,  // 120 knots from the west
         name: "Local",
         arrowColor: "cyan",
-        radius: "radiusMiles",
         pos: "jetTrack",
-
 
     }, gui)
 
@@ -897,7 +890,6 @@ export function SetupGimbal() {
             speed: "jetTAS",
             altitude: "jetAltitude",
             turnRate: "turnRate",
-            radius: "radiusMiles",
             wind: "localWind",
             heading: "initialHeading",
             origin: "jetOrigin",
