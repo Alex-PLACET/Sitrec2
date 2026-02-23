@@ -1,6 +1,6 @@
 import {atan, degrees, radians, tan} from "../utils";
 import {par} from "../par";
-import {ECEFToLLAVD_Sphere, EUSToECEF, LLAToEUS, wgs84} from "../LLA-ECEF-ENU";
+import {EUSToLLA, LLAToEUS, wgs84} from "../LLA-ECEF-ENU";
 import {isKeyHeld} from "../KeyBoardHandler";
 import {GlobalDateTimeNode, gui, guiMenus, guiPhysics, NodeMan, setRenderOne, Sit, UndoManager} from "../Globals";
 import {getLocalEastVector, getLocalNorthVector, getLocalUpVector} from "../SphericalMath";
@@ -221,8 +221,7 @@ export class CNodeControllerManualPosition extends CNodeController {
                     this.undoCameraLon = NodeMan.get("cameraLon").value;
                 }
                 this.applying = true;
-                const ecef = EUSToECEF(cursorPos)
-                const LLA = ECEFToLLAVD_Sphere(ecef)
+                const LLA = EUSToLLA(cursorPos);
 
                 NodeMan.get("cameraLat").value = LLA.x
                 NodeMan.get("cameraLon").value = LLA.y

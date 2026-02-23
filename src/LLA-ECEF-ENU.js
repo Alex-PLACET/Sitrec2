@@ -3,7 +3,7 @@
 
 import {Matrix3, Vector3} from "three";
 // Removed import of cos, degrees, radians, sin - using direct Math functions instead
-import {Globals, Sit} from "./Globals";
+import {Globals, NodeMan, setRenderOne, Sit} from "./Globals";
 import {assert} from "./assert.js";
 
 // Earth radius in kilometers (average)
@@ -84,8 +84,107 @@ wgs84.CIRC = 2*Math.PI*wgs84.RADIUS
  * Call this when a sitch loads and when the user toggles the earth model.
  */
 export function updateEarthRadii(useEllipsoid) {
-    Globals.equatorRadius = wgs84.RADIUS;
-    Globals.polarRadius   = useEllipsoid ? wgs84.POLAR_RADIUS : wgs84.RADIUS;
+    const newEquator = wgs84.RADIUS;
+    // Testing: use 0.5 * equatorialRadius when ellipsoid is enabled for obvious visual difference.
+    // Replace 0.5 * wgs84.RADIUS with wgs84.POLAR_RADIUS once the implementation is verified.
+//    const newPolar = useEllipsoid ? 0.5 * wgs84.RADIUS : wgs84.RADIUS;
+    const newPolar = useEllipsoid ? wgs84.POLAR_RADIUS : wgs84.RADIUS;
+
+    if (newEquator === Globals.equatorRadius && newPolar === Globals.polarRadius) return;
+
+    Globals.equatorRadius = newEquator;
+    Globals.polarRadius   = newPolar;
+
+    // Refresh scene if the node graph is already set up (not during initial sitch load).
+    if (NodeMan?.recalculateAllRootFirst) {
+        NodeMan.recalculateAllRootFirst();
+        if (NodeMan.exists("terrainUI")) {
+            NodeMan.get("terrainUI").doRefresh();
+        }
+        setRenderOne(true);
+    }
+}
+
+/** Radius of curvature in the prime vertical at geodetic latitude, using Globals radii. */
+export function getN_radii(latitude) {
+    const a = Globals.equatorRadius;
+    const b = Globals.polarRadius;
+    const e2 = (a*a - b*b) / (a*a);
+    const sinLat = Math.sin(latitude);
+    return a / Math.sqrt(1 - e2 * sinLat * sinLat);
+}
+
+/** LLA (radians) → ECEF Vector3 using Globals.equatorRadius / Globals.polarRadius. */
+export function RLLAToECEF_radii(latitude, longitude, altitude) {
+    const a = Globals.equatorRadius;
+    const b = Globals.polarRadius;
+    const N = getN_radii(latitude);
+    const ratio = (b*b) / (a*a);
+    const X = (N + altitude) * Math.cos(latitude) * Math.cos(longitude);
+    const Y = (N + altitude) * Math.cos(latitude) * Math.sin(longitude);
+    const Z = (ratio * N + altitude) * Math.sin(latitude);
+    return new Vector3(X, Y, Z);
+}
+
+/** ECEF → [lat, lon, alt] (radians) using the Bowring method with Globals radii. */
+export function ECEFToLLA_radii(X, Y, Z) {
+    const a = Globals.equatorRadius;
+    const b = Globals.polarRadius;
+    const asqr = a*a;
+    const bsqr = b*b;
+    const e2      = (asqr - bsqr) / asqr;
+    const eprime2 = (asqr - bsqr) / bsqr;
+
+    const p        = Math.sqrt(X*X + Y*Y);
+    const theta    = Math.atan((Z*a) / (p*b));
+    const sintheta = Math.sin(theta);
+    const costheta = Math.cos(theta);
+
+    const num = Z + eprime2 * b * sintheta * sintheta * sintheta;
+    const denom = p - e2 * a * costheta * costheta * costheta;
+
+    const latitude  = Math.atan(num / denom);
+    const longitude = Math.atan2(Y, X);
+    const N         = getN_radii(latitude);
+    const cosLat    = Math.cos(latitude);
+    // Near the poles cos(lat)→0 and p→0, so use the Z-based formula instead.
+    const altitude  = Math.abs(cosLat) > 1e-10
+        ? (p / cosLat) - N
+        : Math.abs(Z) / Math.abs(Math.sin(latitude)) - N * (1 - e2);
+    return [latitude, longitude, altitude];
+}
+
+/** EUS → ECEF using the ellipsoid origin at Sit.lat/lon computed from Globals radii. */
+export function EUSToECEF_radii(posEUS) {
+    const lat1 = Sit.lat * Math.PI / 180;
+    const lon1 = Sit.lon * Math.PI / 180;
+
+    const mECEF2ENU = new Matrix3().set(
+        -Math.sin(lon1), Math.cos(lon1), 0,
+        -Math.sin(lat1) * Math.cos(lon1), -Math.sin(lat1) * Math.sin(lon1), Math.cos(lat1),
+        Math.cos(lat1) * Math.cos(lon1), Math.cos(lat1) * Math.sin(lon1), Math.sin(lat1)
+    );
+    const mENU2ECEF = new Matrix3().copy(mECEF2ENU).invert();
+
+    const originECEF = RLLAToECEF_radii(lat1, lon1, 0);
+    const enu = new Vector3(posEUS.x, -posEUS.z, posEUS.y);
+    return enu.applyMatrix3(mENU2ECEF).add(originECEF);
+}
+
+/** ECEF → EUS using the ellipsoid origin at Sit.lat/lon computed from Globals radii. */
+export function ECEFToEUS_radii(posECEF) {
+    const lat1 = Sit.lat * Math.PI / 180;
+    const lon1 = Sit.lon * Math.PI / 180;
+
+    const mECEF2ENU = new Matrix3().set(
+        -Math.sin(lon1), Math.cos(lon1), 0,
+        -Math.sin(lat1) * Math.cos(lon1), -Math.sin(lat1) * Math.sin(lon1), Math.cos(lat1),
+        Math.cos(lat1) * Math.cos(lon1), Math.cos(lat1) * Math.sin(lon1), Math.sin(lat1)
+    );
+
+    const originECEF = RLLAToECEF_radii(lat1, lon1, 0);
+    const enu = posECEF.clone().sub(originECEF).applyMatrix3(mECEF2ENU);
+    return new Vector3(enu.x, enu.z, -enu.y);
 }
 
 
@@ -227,8 +326,9 @@ export function ECEFToLLAVD_Sphere(V) {
 }
 
 export function EUSToLLA(eus) {
-    const ecef = EUSToECEF(eus);
-    return ECEFToLLAVD_Sphere(ecef);
+    const ecef = EUSToECEF_radii(eus);
+    const lla = ECEFToLLA_radii(ecef.x, ecef.y, ecef.z);
+    return new Vector3(lla[0] * 180 / Math.PI, lla[1] * 180 / Math.PI, lla[2]);
 }
 
 
@@ -397,35 +497,48 @@ export function EUSToECEF(posEUS, radius) {
     return ecef;
 }
 
-// Pre-computed constants for optimization - updated when Sit location changes
+// Pre-computed constants for optimization - updated when Sit location or earth model changes
 let _sitLatRad, _sitLonRad, _sitSinLat, _sitCosLat, _sitSinLon, _sitCosLon;
 let _originEcefX, _originEcefY, _originEcefZ;
 let _m00, _m01, _m10, _m11, _m12, _m20, _m21, _m22;
+// Pre-computed per-vertex ellipsoid constants (used in LLAToEUSRadians)
+let _llaeus_e2, _llaeus_ratio;
 let _lastSitLat = null, _lastSitLon = null;
+let _lastEquatorRadius = null, _lastPolarRadius = null;
 
 // Constant for radians conversion (Math.PI / 180)
 const _DEG_TO_RAD = 0.017453292519943295;
 
-// Update pre-computed constants when Sit location changes
+// Update pre-computed constants when Sit location or earth model changes
 function _updateSitConstants() {
-    if (Sit.lat === _lastSitLat && Sit.lon === _lastSitLon) {
+    if (Sit.lat === _lastSitLat && Sit.lon === _lastSitLon
+            && Globals.equatorRadius === _lastEquatorRadius && Globals.polarRadius === _lastPolarRadius) {
         return; // No change, constants are still valid
     }
-    
+
     _lastSitLat = Sit.lat;
     _lastSitLon = Sit.lon;
-    
+    _lastEquatorRadius = Globals.equatorRadius;
+    _lastPolarRadius   = Globals.polarRadius;
+
     _sitLatRad = Sit.lat * _DEG_TO_RAD;
     _sitLonRad = Sit.lon * _DEG_TO_RAD;
     _sitSinLat = Math.sin(_sitLatRad);
     _sitCosLat = Math.cos(_sitLatRad);
     _sitSinLon = Math.sin(_sitLonRad);
     _sitCosLon = Math.cos(_sitLonRad);
-    
-    // Pre-compute origin ECEF coordinates
-    _originEcefX = wgs84.RADIUS * _sitCosLat * _sitCosLon;
-    _originEcefY = wgs84.RADIUS * _sitCosLat * _sitSinLon;
-    _originEcefZ = wgs84.RADIUS * _sitSinLat;
+
+    // Pre-compute ellipsoid constants for vertex ECEF conversion
+    const a = Globals.equatorRadius;
+    const b = Globals.polarRadius;
+    _llaeus_e2    = (a*a - b*b) / (a*a);
+    _llaeus_ratio = (b*b) / (a*a);
+
+    // Pre-compute origin ECEF using the current earth model (ellipsoid or degenerate sphere)
+    const N_origin = a / Math.sqrt(1 - _llaeus_e2 * _sitSinLat * _sitSinLat);
+    _originEcefX = N_origin * _sitCosLat * _sitCosLon;
+    _originEcefY = N_origin * _sitCosLat * _sitSinLon;
+    _originEcefZ = _llaeus_ratio * N_origin * _sitSinLat;
     
     // Pre-compute transformation matrix elements
     _m00 = -_sitSinLon;
@@ -439,26 +552,28 @@ function _updateSitConstants() {
     _m22 = _sitSinLat;
 }
 
-// Convert LLA to Spherical EUS. Optional earth's radius parameter is deprecated, and should not be used.
-// OPTIMIZED VERSION: All calculations inlined with pre-computed constants for maximum performance
+// Convert LLA to EUS. Optional earth's radius parameter is deprecated, and should not be used.
+// OPTIMIZED VERSION: All calculations inlined with pre-computed constants for maximum performance.
+// Uses Globals.equatorRadius / Globals.polarRadius; degenerates to sphere when they are equal.
 export function LLAToEUSRadians(lat, lon, alt=0, radius) {
     assert(radius === undefined, "undexpected radius in LLAToEUS")
     assert(Sit.lat !== undefined, "Sit.lat undefined in LLAToEUS")
-    
-    // Update constants if Sit location changed
+
+    // Update constants if Sit location or earth model changed
     _updateSitConstants();
-    
+
     // Pre-compute trigonometric functions
     const cos_lat = Math.cos(lat);
     const sin_lat = Math.sin(lat);
     const cos_lon = Math.cos(lon);
     const sin_lon = Math.sin(lon);
-    
-    // Convert LLA to ECEF (spherical) - inlined for speed
-    const r_plus_alt = wgs84.RADIUS + alt;
-    const ecef_x = r_plus_alt * cos_lat * cos_lon;
-    const ecef_y = r_plus_alt * cos_lat * sin_lon;
-    const ecef_z = r_plus_alt * sin_lat;
+
+    // Convert LLA to ECEF using the current earth model (ellipsoid or degenerate sphere)
+    // When _llaeus_e2 == 0 (sphere), N = equatorRadius and ratio = 1, giving the classic formula.
+    const N = Globals.equatorRadius / Math.sqrt(1 - _llaeus_e2 * sin_lat * sin_lat);
+    const ecef_x = (N + alt) * cos_lat * cos_lon;
+    const ecef_y = (N + alt) * cos_lat * sin_lon;
+    const ecef_z = (_llaeus_ratio * N + alt) * sin_lat;
     
     // Subtract origin ECEF to get relative position
     const rel_x = ecef_x - _originEcefX;

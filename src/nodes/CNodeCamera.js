@@ -1,7 +1,7 @@
 import {Camera, PerspectiveCamera, Vector3} from "three";
 import {f2m, m2f} from "../utils";
 import {GlobalDateTimeNode, guiMenus, NodeMan} from "../Globals";
-import {ECEFToLLAVD_Sphere, EUSToECEF, EUSToLLA, LLAVToEUS} from "../LLA-ECEF-ENU";
+import {EUSToLLA, LLAVToEUS} from "../LLA-ECEF-ENU";
 import {
     altitudeAboveSphere,
     getAzElFromPositionAndForward,
@@ -154,8 +154,7 @@ export class CNodeCamera extends CNode3D {
     updateUIPosition() {
         // propagate the camera position values value to the camera position UI (if there is one)
         if (NodeMan.exists("cameraLat")) {
-            const ecef = EUSToECEF(this.camera.position)
-            const LLA = ECEFToLLAVD_Sphere(ecef)
+            const LLA = EUSToLLA(this.camera.position)
             NodeMan.get("cameraLat").value = LLA.x
             NodeMan.get("cameraLon").value = LLA.y
             NodeMan.get("cameraAlt").value = m2f(LLA.z)

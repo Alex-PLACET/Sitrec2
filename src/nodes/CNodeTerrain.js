@@ -2,10 +2,10 @@ import {CNode} from "./CNode";
 import {pointAbove} from "../threeExt";
 import {cos, radians} from "../utils";
 import {Globals, NodeMan, Sit} from "../Globals";
-import {EUSToLLA, RLLAToECEFV_Sphere, wgs84} from "../LLA-ECEF-ENU";
+import {EUSToLLA, RLLAToECEFV_Sphere} from "../LLA-ECEF-ENU";
+import {earthCenterEUS, setAltitudeMSL} from "../SphericalMath";
 import {Group, Mesh, MeshBasicMaterial, Raycaster, SphereGeometry} from "three";
 import {GlobalScene} from "../LocalFrame";
-import {V3} from "../threeUtils";
 import {assert} from "../assert";
 import {CTileMappingGoogleCRS84Quad, CTileMappingGoogleMapsCompatible} from "../WMSUtils";
 import {EventManager} from "../CEventManager";
@@ -51,7 +51,7 @@ export class CNodeTerrain extends CNode {
 
         this.loaded = false;
 
-        this.radius = wgs84.RADIUS;
+        this.radius = Globals.equatorRadius;
 
         this.input("flattening", true) //optional
 
@@ -119,14 +119,25 @@ export class CNodeTerrain extends CNode {
         this.group = new Group();
         GlobalScene.add(this.group);
 
-        // Create a grey sphere positioned at the center of the Earth
-        // Radius is 1km less than the globe radius to prevent z-fighting
-        // Only visible when Globals.dynamicSubdivision is true
-        const greySphereRadius = wgs84.RADIUS - 1000;
-        const greySphereGeometry = new SphereGeometry(greySphereRadius, 32, 32);
+        // Create a grey ellipsoid positioned at the centre of the Earth.
+        // Semi-axes are 1 km smaller than the earth model radii to prevent z-fighting.
+        // A unit sphere is scaled non-uniformly: equatorial (a) on X/Z, polar (b) on Y.
+        // The local Y axis (polar) is then rotated so it points along the actual Earth
+        // rotation axis in EUS space: R_x(lat − 90°) maps Y → (0, sin(lat), −cos(lat)).
+        // Degenerates to a sphere when polarRadius === equatorRadius.
+        // Only visible when Globals.dynamicSubdivision is true.
+        const greySphereGeometry = new SphereGeometry(1, 32, 32);
         const greySphereMaterial = new MeshBasicMaterial({ color: 0x808080 }); // Grey
         this.greySphere = new Mesh(greySphereGeometry, greySphereMaterial);
-        this.greySphere.position.set(0, -wgs84.RADIUS, 0);
+        this.greySphere.scale.set(
+            Globals.equatorRadius - 1000,  // X – equatorial semi-axis
+            Globals.polarRadius  - 1000,   // Y – polar semi-axis (before rotation)
+            Globals.equatorRadius - 1000   // Z – equatorial semi-axis
+        );
+        // Rotate so the polar (local-Y) axis aligns with the Earth's rotation axis in EUS.
+        this.greySphere.rotation.x = Sit.lat * Math.PI / 180 - Math.PI / 2;
+        // Position at the true Earth centre in EUS (depends on ellipsoid shape and latitude).
+        this.greySphere.position.copy(earthCenterEUS());
         this.greySphere.visible = Globals.dynamicSubdivision === true;
         GlobalScene.add(this.greySphere);
 
@@ -381,6 +392,14 @@ export class CNodeTerrain extends CNode {
         // Grey sphere should only be visible when Globals.dynamicSubdivision is true
         if (this.greySphere) {
             this.greySphere.visible = Globals.dynamicSubdivision === true;
+            // Sync scale, rotation and position with the active earth model.
+            this.greySphere.scale.set(
+                Globals.equatorRadius - 1000,
+                Globals.polarRadius  - 1000,
+                Globals.equatorRadius - 1000
+            );
+            this.greySphere.rotation.x = Sit.lat * Math.PI / 180 - Math.PI / 2;
+            this.greySphere.position.copy(earthCenterEUS());
         }
     }
 
@@ -401,7 +420,8 @@ export class CNodeTerrain extends CNode {
         this.elevationMap.clean()
         this.elevationMap = undefined;
         this.unloadMap(mapID);
-        this.loadMap(mapID)
+        this.loadMap(mapID);
+        this.updateGreySphereVisibility();
     }
 
     loadMapElevation(id, deferLoad) {
@@ -781,13 +801,7 @@ export class CNodeTerrain extends CNode {
         }
 
 
-        // then we scale a vector from the center of the earth to the point
-        // so that its length is the radius of the earth plus the elevation
-        // then the end of this vector (added to the center) is the point on the terrain
-        const earthCenterENU = V3(0, -wgs84.RADIUS, 0)
-        const centerToA = A.clone().sub(earthCenterENU)
-        const scale = (wgs84.RADIUS + elevation + agl) / centerToA.length()
-        return earthCenterENU.add(centerToA.multiplyScalar(scale))
+        return setAltitudeMSL(A, elevation + agl);
     }
 
     getPointBelowWithTileInfo(A, agl = 0) {
@@ -807,10 +821,7 @@ export class CNodeTerrain extends CNode {
             elevation = 0;
         }
 
-        const earthCenterENU = V3(0, -wgs84.RADIUS, 0)
-        const centerToA = A.clone().sub(earthCenterENU)
-        const scale = (wgs84.RADIUS + elevation + agl) / centerToA.length()
-        const point = earthCenterENU.add(centerToA.multiplyScalar(scale))
+        const point = setAltitudeMSL(A, elevation + agl);
         return {point, elevation: rawElevation, tileZ, tileX, tileY};
     }
 

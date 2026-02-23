@@ -1,6 +1,6 @@
 import {Plane, Vector3} from "three";
 import {atan2, cos, degrees, radians, sin} from "./utils.js";
-import {ECEF2EUS, wgs84} from "./LLA-ECEF-ENU";
+import {ECEF2EUS, ECEFToEUS_radii, ECEFToLLA_radii, EUSToECEF_radii, RLLAToECEF_radii, wgs84} from "./LLA-ECEF-ENU";
 import {Globals, Sit} from "./Globals";
 import {assert} from "./assert.js";
 import {MV3, V3} from "./threeUtils";
@@ -144,34 +144,38 @@ function PRJ2EA(pitch, roll, jetPitch) {
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * Earth center in EUS (East-Up-South) rendering coordinates.
- * Uses Globals.equatorRadius, which equals wgs84.RADIUS in both sphere and ellipsoid
- * mode — the equatorial radius is the same. When full geodetic support arrives, callers
- * that need a latitude-specific "center" will be replaced with geodetic-normal calls.
+ * Earth centre in EUS (East-Up-South) rendering coordinates.
+ * Computed as the EUS position of the ECEF origin (0,0,0) using the active earth model.
+ * In sphere mode (polarRadius === equatorRadius) this returns V3(0, -equatorRadius, 0).
+ * In ellipsoid mode the Y component depends on latitude:
+ *   - equator (lat=0):  Y = -equatorRadius
+ *   - pole (lat=90°):   Y = -polarRadius
  */
 export function earthCenterEUS() {
-    return V3(0, -Globals.equatorRadius, 0);
+    return ECEFToEUS_radii(V3(0, 0, 0));
 }
 
 /**
- * MSL altitude of a point in EUS coordinates.
- * Uses Globals.equatorRadius. When Globals.polarRadius === Globals.equatorRadius this
- * is an exact sphere result. Proper geodetic altitude (perpendicular to ellipsoid
- * surface) will be implemented here once EUSToECEF/ECEFToLLA are fully parameterised.
+ * Geodetic MSL altitude of a point in EUS coordinates.
+ * Converts EUS → ECEF → LLA using the active earth model (Globals radii).
+ * When Globals.polarRadius === Globals.equatorRadius this degenerates to the
+ * same result as the old sphere formula, preserving regression stability.
  */
 export function altitudeMSL(point) {
-    return point.clone().sub(earthCenterEUS()).length() - Globals.equatorRadius;
+    const ecef = EUSToECEF_radii(point);
+    return ECEFToLLA_radii(ecef.x, ecef.y, ecef.z)[2];
 }
 
 /**
- * Move a point to a specific MSL altitude, staying on the same radial line.
+ * Move a point to a specific geodetic MSL altitude.
+ * Converts EUS → ECEF → LLA, replaces the altitude, then converts back.
  * Degenerates to exact sphere result when polarRadius === equatorRadius.
- * Will be replaced with a geodetic-normal offset once the ECEF pipeline is parameterised.
  */
 export function setAltitudeMSL(point, altitude) {
-    const center = earthCenterEUS();
-    const dir = point.clone().sub(center).normalize();
-    return center.clone().add(dir.multiplyScalar(Globals.equatorRadius + altitude));
+    const ecef = EUSToECEF_radii(point);
+    const lla  = ECEFToLLA_radii(ecef.x, ecef.y, ecef.z);
+    const ecef2 = RLLAToECEF_radii(lla[0], lla[1], altitude);
+    return ECEFToEUS_radii(ecef2);
 }
 
 /**

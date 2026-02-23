@@ -925,7 +925,7 @@ export class CNodeTerrainUI extends CNode {
                 this.terrainNode.elevationMap.options.zScale = this.elevationScale;
             }
 
-            map.recalculateCurveMap(this.radius, true)
+            map.recalculateCurveMap(this.terrainNode.radius, true)
 
             return;
 

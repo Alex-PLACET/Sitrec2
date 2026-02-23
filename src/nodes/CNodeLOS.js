@@ -102,7 +102,10 @@ export class CNodeLOS extends CNodeTrack {
                 continue;
             }
 
-            // Convert position from EUS to ECEF, then to ENU with new origin
+            // TODO: EUSToECEF (sphere) + ECEF2ENU (sphere radius) are both sphere-only.
+            // For full ellipsoid correctness, use EUSToECEF_radii here and update ECEF2ENU
+            // to accept Globals.equatorRadius/polarRadius instead of wgs84.RADIUS.
+            // This is a mission-critical export — fix together with ECEF2ENU ellipsoid support.
             const posEUS = data.position;
             const posECEF = EUSToECEF(posEUS);
             const posENU = ECEF2ENU(posECEF, originLat, originLon, wgs84.RADIUS, false);

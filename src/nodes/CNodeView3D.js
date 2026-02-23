@@ -1,7 +1,7 @@
 import {par} from "../par";
 import {createVideoExporter, DefaultVideoFormat, getBestFormatForResolution, getVideoExtension} from "../VideoExporter";
 import {drawVideoWatermark, ExportProgressWidget} from "../utils";
-import {XYZ2EA, XYZJ2PR} from "../SphericalMath";
+import {earthCenterEUS, XYZ2EA, XYZJ2PR} from "../SphericalMath";
 import {raDec2Celestial} from "../CelestialMath";
 import {Frame2Az, Frame2El} from "../JetUtils";
 import {
@@ -54,7 +54,6 @@ import {
 } from "../threeExt";
 import {CNodeViewCanvas} from "./CNodeViewCanvas";
 import {CNode} from "./CNode";
-import {wgs84} from "../LLA-ECEF-ENU";
 import {getCameraNode} from "./CNodeCamera";
 import {CNodeEffect} from "./CNodeEffect";
 import {assert} from "../assert.js";
@@ -1942,7 +1941,7 @@ export class CNodeView3D extends CNodeViewCanvas {
             } else {
                 var possibleTarget = V3()
                 this.raycaster.setFromCamera(mouseRay, this.camera);
-                const dragSphere = new Sphere(new Vector3(0, -wgs84.RADIUS, 0), wgs84.RADIUS /* + f2m(this.defaultTargetHeight) */)
+                const dragSphere = new Sphere(earthCenterEUS(), Globals.equatorRadius /* + f2m(this.defaultTargetHeight) */)
                 if (this.raycaster.ray.intersectSphere(dragSphere, possibleTarget)) {
                     target = possibleTarget.clone()
                 }

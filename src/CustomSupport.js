@@ -31,7 +31,7 @@ import {
     Units
 } from "./Globals";
 import {isKeyHeld, toggler} from "./KeyBoardHandler";
-import {ECEFToLLAVD_Sphere, EUSToECEF, EUSToLLA, LLAToEUS, updateEarthRadii} from "./LLA-ECEF-ENU";
+import {EUSToLLA, LLAToEUS, updateEarthRadii} from "./LLA-ECEF-ENU";
 import {par} from "./par";
 import {GlobalScene} from "./LocalFrame";
 import {refreshLabelsAfterLoading} from "./nodes/CNodeLabels3D";
@@ -4064,8 +4064,7 @@ export class CCustomManager {
                 const cursorPos = getCursorPositionFromTopView();
                 if (cursorPos) {
                     setSitchEstablished(true);
-                    const ecef = EUSToECEF(cursorPos)
-                    const LLA = ECEFToLLAVD_Sphere(ecef)
+                    const LLA = EUSToLLA(cursorPos);
 
                     if (terrainUI.lat !== LLA.x || terrainUI.lon !== LLA.y) {
                         terrainUI.lat = LLA.x

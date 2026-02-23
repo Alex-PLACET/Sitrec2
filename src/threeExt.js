@@ -25,7 +25,7 @@ import {Globals, NodeMan, setRenderOne, Synth3DManager} from './Globals';
 import {par} from "./par";
 
 
-import {altitudeMSL, drop3, pointOnSphereBelow, raisePoint, setAltitudeMSL} from "./SphericalMath"
+import {altitudeMSL, drop3, earthCenterEUS, pointOnSphereBelow, raisePoint, setAltitudeMSL} from "./SphericalMath"
 import {GlobalScene} from "./LocalFrame";
 import * as LAYER from "./LayerMasks";
 import {ECEFToEUS, EUSToECEF, LLAToEUS, wgs84} from "./LLA-ECEF-ENU";
@@ -616,10 +616,9 @@ export class DEBUGGroup extends Group {
     }
 }
 
-// get intersection of a point/heading ray with the Mean Sea Level
-// i.e. intersection with the WGS84 sphere, intersect the globe at radius wgs84.RADIUS
+// get intersection of a point/heading ray with the Mean Sea Level ellipsoid surface
 export function intersectMSL(point, headingVector) {
-    const globe = new Sphere(new Vector3(0, -wgs84.RADIUS, 0), wgs84.RADIUS);
+    const globe = new Sphere(earthCenterEUS(), Globals.equatorRadius);
     const ray = new Ray(point, headingVector.clone().normalize());
     const sphereCollision = new Vector3();
     if (intersectSphere2(ray, globe, sphereCollision))

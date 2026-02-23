@@ -5,7 +5,7 @@
 // and in feet in the GUI
 //
 // Now with optional wind to adjust the position over time
-import {ECEFToLLAVD_Sphere, EUSToECEF, EUSToLLA, LLAToEUS} from "../LLA-ECEF-ENU";
+import {EUSToLLA, LLAToEUS} from "../LLA-ECEF-ENU";
 import {CNode} from "./CNode";
 import {CNodeTrack} from "./CNodeTrack";
 import {V3} from "../threeUtils";
@@ -358,8 +358,7 @@ export class CNodePositionLLA extends CNodeTrack {
     setFromEUS(cursorPos, changeAlt=false) {
 
         // convert to LLA
-        const ecef = EUSToECEF(cursorPos)
-        const LLA = ECEFToLLAVD_Sphere(ecef)
+        const LLA = EUSToLLA(cursorPos);
 
         // we set the values in the UI nodes
         this.guiLat.value = LLA.x

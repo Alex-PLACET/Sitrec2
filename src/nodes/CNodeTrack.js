@@ -1,13 +1,12 @@
 import {CNodeEmptyArray} from "./CNodeArray";
 import {GlobalDateTimeNode, NodeMan, Sit} from "../Globals";
-import {EUSToLLA, LLAToEUS, wgs84} from "../LLA-ECEF-ENU";
+import {EUSToLLA, LLAToEUS} from "../LLA-ECEF-ENU";
 import {EventManager} from "../CEventManager";
 import {getAzElFromPositionAndForward, getLocalUpVector, pointOnSphereBelow} from "../SphericalMath";
 import {showError} from "../showError";
 import {MISB} from "../MISBUtils";
 import {saveAs} from "file-saver";
 import {degrees} from "../utils";
-import {V3} from "../threeUtils";
 
 export class CNodeTrack extends CNodeEmptyArray {
     constructor(v) {
@@ -78,12 +77,7 @@ export class CNodeTrack extends CNodeEmptyArray {
     }
 
     _pointFromElevation(lat, lon, elevation, agl) {
-        const pos = LLAToEUS(lat, lon, 0);
-        const earthCenterENU = V3(0, -wgs84.RADIUS, 0);
-        const centerToA = pos.clone().sub(earthCenterENU);
-        const elev = Math.max(0, elevation);
-        const scale = (wgs84.RADIUS + elev + agl) / centerToA.length();
-        return earthCenterENU.add(centerToA.multiplyScalar(scale));
+        return LLAToEUS(lat, lon, Math.max(0, elevation) + agl);
     }
 
     serializeElevationCache() {

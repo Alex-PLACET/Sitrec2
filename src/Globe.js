@@ -13,6 +13,7 @@ import {GlobalScene} from "./LocalFrame";
 import {wgs84} from "./LLA-ECEF-ENU";
 import {radians} from "./utils";
 import {Globals, NodeMan, setRenderOne, Sit} from "./Globals";
+import {earthCenterEUS} from "./SphericalMath";
 
 import {SITREC_APP} from "./configUtils";
 import {sharedUniforms} from "./js/map33/material/SharedUniforms";
@@ -228,7 +229,8 @@ export function addAlignedGlobe(globeScale = 1) {
     else
         sphere = createSphere(equatorRadius, polarRadius, 80);
 
-    sphere.position.set(0, -wgs84.RADIUS, 0)
+    const center = earthCenterEUS();
+    sphere.position.set(center.x, center.y, center.z)
     world.add(sphere)
 
 // Convert target latitude and longitude to radians
