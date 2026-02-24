@@ -41,7 +41,7 @@ class PerViewTiles {
             }));
         }
 
-        this.renderer.registerPlugin(new TilesDayNightPlugin());
+        this.renderer.registerPlugin(new TilesDayNightPlugin({source}));
 
         const ecefToEUS = buildECEFToEUSMatrix4();
         this.renderer.group.applyMatrix4(ecefToEUS);
