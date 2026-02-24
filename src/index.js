@@ -1184,6 +1184,8 @@ async function initializeOnce() {
     // Expose objects to window for testing purposes
     if (typeof window !== 'undefined') {
         window.NodeMan = NodeMan;
+        window.LocalFrame = LocalFrame;
+        window.GlobalScene = GlobalScene;
         window.DragDropHandler = DragDropHandler;
         window.UndoManager = undoManager;
         window.toggleMotionAnalysis = toggleMotionAnalysis;
@@ -1608,6 +1610,8 @@ function initRendering() {
     setupLocalFrame(new Group())
 
     GlobalScene.add(LocalFrame)
+    window.LocalFrame = LocalFrame;
+    window.GlobalScene = GlobalScene;
 
     disableScroll()
     SetupMouseHandler();
