@@ -3,7 +3,6 @@ import {atan2, cos, degrees, radians, sin} from "./utils.js";
 import {
     ECEF2EUS,
     ECEFToEUS_radii,
-    ECEFToLLA,
     ECEFToLLA_radii,
     EUSToECEF_radii,
     RLLAToECEF_radii,
@@ -328,7 +327,7 @@ export function calcHorizonPoint(A, fwd, horizonAlt) {
     // Using equatorialRadius fails at non-equatorial latitudes because the Earth is oblate:
     // at lat 28.5°, the geocentric distance is ~6373 km vs equatorial 6378 km,
     // so (A.length() - equatorialRadius - cloudAlt) can go negative → sqrt(negative) = NaN.
-    const lla = ECEFToLLA(A.x, A.y, A.z); // [lat_rad, lon_rad, altitude_m]
+    const lla = ECEFToLLA_radii(A.x, A.y, A.z); // [lat_rad, lon_rad, altitude_m]
     const geodeticAlt = lla[2];
     const localSurfaceRadius = A.length() - geodeticAlt;
     const horizonRadius = localSurfaceRadius + horizonAlt;

@@ -3,7 +3,7 @@ import {calcHorizonPoint, getLocalNorthVector, getLocalUpVector} from "../Spheri
 import {CNodeEmptyArray} from "./CNodeArray";
 import {assert} from "../assert.js";
 import {V3} from "../threeUtils";
-import {RLLAToECEF} from "../LLA-ECEF-ENU";
+import {RLLAToECEF_radii} from "../LLA-ECEF-ENU";
 import {Sit} from "../Globals";
 
 /*
@@ -42,7 +42,7 @@ export class CNodeTurnRateFromClouds extends CNodeEmptyArray {
         this.array = []
         var jetHeading = 0
         // Initialize jet position from Sit lat/lon at the given altitude (already in meters)
-        var jetPos = RLLAToECEF(radians(Sit.lat), radians(Sit.lon), this.in.altitude.v0)
+        var jetPos = RLLAToECEF_radii(radians(Sit.lat), radians(Sit.lon), this.in.altitude.v0)
         var jetFwd = getLocalNorthVector(jetPos) // start out pointing north in ECEF
 
         var turnRate = this.startTurnRate // initial value of turn rate - could start with something better

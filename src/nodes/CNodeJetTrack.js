@@ -5,7 +5,7 @@ import {CNode} from "./CNode";
 import {CNodeTrack} from "./CNodeTrack";
 import {assert} from "../assert.js";
 import {V3} from "../threeUtils";
-import {wgs84} from "../LLA-ECEF-ENU";
+
 import {showError} from "../showError";
 import {EventManager} from "../CEventManager";
 
@@ -64,8 +64,6 @@ export class CNodeJetTrack extends CNodeTrack {
         }
 
 
-        const radius = wgs84.RADIUS
-
         const jetPos = this.in.origin.p(0)
 
         // Get terrain node for AGL mode
@@ -110,7 +108,7 @@ export class CNodeJetTrack extends CNodeTrack {
             }
 
             // rotate around local up (opposite of gravity)
-            const upAxis = getLocalUpVector(jetPos, radius)
+            const upAxis = getLocalUpVector(jetPos)
             jetFwd.applyAxisAngle(upAxis, -radians(turnRate / Sit.fps))
 
             // x = cross(y,z)
