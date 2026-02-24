@@ -2,14 +2,18 @@
 // angular difference between the lines beteeen the nodes
 // for this frame and the previous frame.
 import {CNode} from "./CNode";
-import {asin, clockwiseZX, degrees} from "../utils";
+import {asin, degrees} from "../utils";
 import {getLocalUpVector} from "../SphericalMath";
 
-// Project a position onto the local horizontal plane at refPos
-// (removes the component along the local up direction)
+// Project a position onto the local horizontal (tangent) plane at refPos.
+// Works by projecting the relative offset onto the plane perpendicular to local up,
+// then adding refPos back. This is essential in ECEF where absolute positions are
+// ~6.4M meters from origin — projecting absolute coords through the origin is wrong.
 function projectHorizontal(pos, refPos) {
     const up = getLocalUpVector(refPos)
-    return pos.clone().sub(up.clone().multiplyScalar(pos.dot(up)))
+    const rel = pos.clone().sub(refPos)
+    const horizontalRel = rel.sub(up.clone().multiplyScalar(rel.dot(up)))
+    return refPos.clone().add(horizontalRel)
 }
 
 export class CNodeTraverseAngularSpeed extends CNode {
@@ -59,7 +63,11 @@ export class CNodeTraverseAngularSpeed extends CNode {
 
         let angleDifferenceDegrees = -degrees(asin(viewComponentOfStep.length()/offset.length())) * this.fps;
 
-        if (!clockwiseZX(trackPos,traversePos,traversePos.clone().add(viewComponentOfStep))) {
+        // Determine sign using cross product projected onto local up
+        const up = getLocalUpVector(trackPos);
+        const toTraverse = traversePos.clone().sub(trackPos);
+        const crossSign = toTraverse.cross(viewComponentOfStep).dot(up);
+        if (crossSign > 0) {
             angleDifferenceDegrees = -angleDifferenceDegrees;
         }
 
