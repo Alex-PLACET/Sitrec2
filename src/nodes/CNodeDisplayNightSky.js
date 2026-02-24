@@ -23,7 +23,13 @@ import {CNodeDisplayEarthShadow} from "./CNodeDisplayEarthShadow";
 import {CNodeDisplayMoonShadow} from "./CNodeDisplayMoonShadow";
 import {assert} from "../assert.js";
 import {intersectSphere2, V3} from "../threeUtils";
-import {getCelestialDirectionFromRaDec, getJulianDate, getSiderealTime, raDecToAltAz} from "../CelestialMath";
+import {
+    getCelestialDirectionFromRaDec,
+    getGeocentricBodyPositionEUS,
+    getJulianDate,
+    getSiderealTime,
+    raDecToAltAz
+} from "../CelestialMath";
 import {ViewMan} from "../CViewManager";
 import {CNodeLabeledArrow} from "./CNodeLabels3D";
 import {CNodeDisplaySkyOverlay} from "./CNodeDisplaySkyOverlay";
@@ -1244,35 +1250,27 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
 
         // Handle Sun-specific calculations for flare region
         if (planet === "Sun") {
-            const eusDir = getCelestialDirectionFromRaDec(ra, dec, date)
+            const sunPos = getGeocentricBodyPositionEUS(Astronomy.Body.Sun, date, true);
+            const sunDir = sunPos.clone().normalize();
 
             // Store sun direction vectors for flare calculations
-            this.satellites.toSun.copy(eusDir.clone().normalize())
+            this.satellites.toSun.copy(sunDir)
             this.satellites.fromSun.copy(this.satellites.toSun.clone().negate())
             Globals.fromSun = this.satellites.fromSun.clone()
             Globals.toSun = this.satellites.toSun.clone()
+            Globals.sunPos = sunPos.clone()
 
             this.updateFlareRegion(ra, dec, date);
         }
 
         // Handle Moon-specific calculations for shadow
         if (planet === "Moon") {
-            const eusDir = getCelestialDirectionFromRaDec(ra, dec, date)
-            
-            Globals.toMoon = eusDir.clone().normalize()
+            const moonPos = getGeocentricBodyPositionEUS(Astronomy.Body.Moon, date, true);
+
+            Globals.toMoon = moonPos.clone().normalize()
             Globals.fromMoon = Globals.toMoon.clone().negate()
-            
-            // For eclipse geometry, use geocentric Moon coordinates.
-            // Using a topocentric observer (Sit.lat/lon) introduces parallax that
-            // shifts the umbra footprint on Earth (often visibly north/south).
-            const geocentricObserver = new Astronomy.Observer(0, 0, 0);
-            const moonGeocentric = Astronomy.Equator(planet, date, geocentricObserver, false, true);
-            const moonDistance = moonGeocentric.dist * 149597870700;
-            const moonRA = (moonGeocentric.ra) / 24 * 2 * Math.PI;
-            const moonDec = radians(moonGeocentric.dec);
-            const moonDir = getCelestialDirectionFromRaDec(moonRA, moonDec, date);
-            
-            Globals.moonPos = moonDir.clone().multiplyScalar(moonDistance)
+
+            Globals.moonPos = moonPos
         }
     }
 
@@ -1437,5 +1435,3 @@ export function addNightSky(def) {
 
     return nightSky;
 }
-
-

@@ -167,3 +167,26 @@ export function getCelestialDirectionFromRaDec(ra, dec, date) {
     const eusDir = ECEF2EUS(ecef, radians(Sit.lat), radians(Sit.lon), 0, true).normalize();
     return eusDir;
 }
+
+// Geocentric body vector in ECEF/EUS (meters).
+// Uses astronomy-engine's geocentric EQJ vector, rotates to EQD (of-date),
+// then rotates by GAST into Earth-fixed coordinates.
+export function getGeocentricBodyPositionEUS(body, date, aberration = true) {
+    const time = Astronomy.MakeTime(date);
+    const bodyId = typeof body === "string" ? Astronomy.Body[body] : body;
+    const eqj = Astronomy.GeoVector(bodyId, time, aberration); // AU, EQJ
+    const eqd = Astronomy.RotateVector(Astronomy.Rotation_EQJ_EQD(time), eqj); // AU, EQD
+
+    const gastRad = radians(15 * Astronomy.SiderealTime(time));
+    const x = eqd.x * Math.cos(gastRad) + eqd.y * Math.sin(gastRad);
+    const y = -eqd.x * Math.sin(gastRad) + eqd.y * Math.cos(gastRad);
+    const z = eqd.z;
+
+    const scale = Astronomy.KM_PER_AU * 1000; // AU -> meters
+    const ecef = V3(x * scale, y * scale, z * scale);
+    return ECEF2EUS(ecef, radians(Sit.lat), radians(Sit.lon), 0, false);
+}
+
+export function getGeocentricBodyDirectionEUS(body, date, aberration = true) {
+    return getGeocentricBodyPositionEUS(body, date, aberration).normalize();
+}
