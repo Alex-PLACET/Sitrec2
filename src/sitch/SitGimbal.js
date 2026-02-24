@@ -855,6 +855,7 @@ export function SetupGimbal() {
             az: "azSources",
             cloudSpeed: "cloudSpeedEditor",
             wind: "localWind",
+            cloudWind: "cloudWind",
             heading: "initialHeading",
             origin: "jetOrigin",
         }

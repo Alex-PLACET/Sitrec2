@@ -25,6 +25,7 @@ export class DayNightStandardMaterial extends MeshStandardMaterial {
             sunDirection: {value: Globals.sunLight.position},
             earthCenter: {value: new Vector3(0, 0, 0)},
             useDayNight: sharedUniforms.useDayNight,
+            sunGlobalTotal: sharedUniforms.sunGlobalTotal,
             sunAmbientIntensity: sharedUniforms.sunAmbientIntensity,
         };
 
@@ -65,6 +66,7 @@ ${vertexInjection}`
 uniform vec3 sunDirection;
 uniform vec3 earthCenter;
 uniform bool useDayNight;
+uniform float sunGlobalTotal;
 uniform float sunAmbientIntensity;
 varying vec3 vWorldPositionDN;`
         );
@@ -81,7 +83,11 @@ if (useDayNight) {
     vec3 sunNorm = normalize(sunDirection);
     float globalIntensity = max(dot(globalNormal, sunNorm), -0.1);
     float dayFactor = smoothstep(-0.1, 0.1, globalIntensity);
-    gl_FragColor.rgb = mix(gl_FragColor.rgb * sunAmbientIntensity, gl_FragColor.rgb, dayFactor);
+    // gl_FragColor already includes PBR lighting, including ambient.
+    // Normalize ambient against total global light to avoid over-darkening.
+    float normalizedAmbient = sunAmbientIntensity / max(sunGlobalTotal, 0.0001);
+    float nightAttenuation = clamp(normalizedAmbient, 0.35, 1.0);
+    gl_FragColor.rgb *= mix(nightAttenuation, 1.0, dayFactor);
 }`
         );
     }

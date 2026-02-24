@@ -21,6 +21,7 @@ import {V3} from "../threeUtils";
         az         = azimuth track of the ATFLIR pod
         speed      = true airspeed of the jet
         wind       = wind node (same as CNodeJetTrack's wind, e.g. localWind)
+        cloudWind  = cloud wind node (same as TAS's wind input)
         heading    = initial heading node (same as CNodeJetTrack's heading)
         origin     = jet origin node (same as CNodeJetTrack's origin)
  */
@@ -28,7 +29,7 @@ export class CNodeTurnRateFromClouds extends CNodeEmptyArray {
     constructor(v) {
         super(v);
         this.startTurnRate = v.startTurnRate ?? 0
-        this.checkInputs(["cloudAlt", "cloudSpeed", "az", "speed", "wind", "heading", "origin"])
+        this.checkInputs(["cloudAlt", "cloudSpeed", "az", "speed", "wind", "cloudWind", "heading", "origin"])
         this.frames = this.in.az.frames
         this.fps = this.in.az.fps
         assert(this.frames > 0, "Need frames in az input to CNodeTurnRateFromClouds")
@@ -91,7 +92,10 @@ export class CNodeTurnRateFromClouds extends CNodeEmptyArray {
             let offset = horizon_f1.clone().sub(jetPos)
             offset.sub(upAxis.clone().multiplyScalar(offset.dot(upAxis)))
 
-            let step = horizon_f1.clone().sub(horizon_f)
+            // TAS computes: step = horizon(f) - (horizon(f-1) + cloudWind)
+            // So we add cloudWind to horizon_f before subtracting, matching TAS exactly
+            const cloudWindVec = this.in.cloudWind.v(f + 1)
+            let step = horizon_f1.clone().sub(horizon_f.clone().add(cloudWindVec))
             step.sub(upAxis.clone().multiplyScalar(step.dot(upAxis)))
 
             const viewNormal = offset.clone().normalize()

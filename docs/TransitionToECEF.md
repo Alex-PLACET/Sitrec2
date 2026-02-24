@@ -330,8 +330,10 @@ Additionally, TRC's internal jet simulation did not match `CNodeJetTrack`'s beha
 
 2. **Matching internal simulation:** Added `wind`, `heading`, and `origin` inputs (same as CNodeJetTrack). The internal jet sim now uses the same starting position, heading, and wind as the actual jet track. Removed the unused `altitude` input.
 
-3. **Multi-pass convergence:** Single-pass computation caused frame-to-frame oscillation because the turn rate at frame f immediately affects the geometry measured at frame f. The fix uses 10 full passes over the entire frame range: each pass simulates the complete trajectory with the current turn rate array, measures what TAS would read back, and adjusts each frame's turn rate by the error. This converges to a stable, smooth turn rate array.
+3. **Cloud wind in step computation:** Added `cloudWind` input (same node TAS uses). TAS computes `step = horizon(f) - (horizon(f-1) + cloudWind)`, subtracting cloud drift from the horizon motion. TRC now does the same, ensuring both sides account for cloud wind identically.
 
-4. **Node ordering in SitGimbal.js:** Moved `localWind` and `initialHeading` creation before `CNodeTurnRateFromClouds` so the string-based input references resolve correctly (inputs are resolved eagerly during construction).
+4. **Multi-pass convergence:** Single-pass computation caused frame-to-frame oscillation because the turn rate at frame f immediately affects the geometry measured at frame f. The fix uses 10 full passes over the entire frame range: each pass simulates the complete trajectory with the current turn rate array, measures what TAS would read back, and adjusts each frame's turn rate by the error. This converges to a stable, smooth turn rate array.
 
-**Result:** Green/red ratio improved from ~0.554 to ~1.013 across all frames. The ~1.3% residual error is from the cloud wind not being modeled in TRC's internal simulation (TAS subtracts cloud wind from the horizon step; TRC's internal sim has no cloud wind, relying on the `cloudSpeed` input to account for it).
+5. **Node ordering in SitGimbal.js:** Moved `localWind`, `cloudWind`, and `initialHeading` creation before `CNodeTurnRateFromClouds` so the string-based input references resolve correctly (inputs are resolved eagerly during construction).
+
+**Result:** Green/red ratio improved from ~0.554 to ~1.001 across all frames (~0.1% residual error).
