@@ -4,17 +4,17 @@ import {Matrix4, Plane, Raycaster, Sphere, Vector2, Vector3} from "three";
 import {degrees, radians, vdump} from "../utils";
 import {clampAboveGround, DebugArrowAB, DebugSphere, getPointBelow, intersectMSL, pointAbove} from "../threeExt";
 import {par} from "../par";
-import {EUSToLLA, wgs84} from "../LLA-ECEF-ENU";
+import {EUSToLLA} from "../LLA-ECEF-ENU";
 import {
-    altitudeAboveSphere,
-    altitudeMSL,
-    earthCenterEUS,
-    getAzElFromPositionAndForward,
-    getLocalDownVector,
-    getLocalEastVector,
-    getLocalNorthVector,
-    getLocalUpVector,
-    pointOnSphereBelow,
+	altitudeAboveSphere,
+	altitudeMSL,
+	earthCenterEUS,
+	getAzElFromPositionAndForward,
+	getLocalDownVector,
+	getLocalEastVector,
+	getLocalNorthVector,
+	getLocalUpVector,
+	pointOnSphereBelow,
 } from "../SphericalMath";
 import {Globals, NodeFactory, NodeMan, setRenderOne, Sit, UndoManager} from "../Globals";
 import {CNodeControllerPTZUI} from "../nodes/CNodeControllerPTZUI";
@@ -632,7 +632,7 @@ class CameraMapControls {
 
 			var maxDistance;
 			if (Sit.useGlobe) {
-				maxDistance = this.camera.far - 2.5 * wgs84.RADIUS;
+				maxDistance = this.camera.far - 2.5 * Globals.equatorRadius;
 			} else {
 				maxDistance = this.camera.far / 2;
 			}
@@ -1008,7 +1008,10 @@ class CameraMapControls {
 				this.camera.updateMatrixWorld(true)
 				this.camera.matrix.extractBasis(xAxis, yAxis, zAxis)
 
-				if (!Sit.useGlobe && yAxis.y <= 0.01) {
+				// Prevent camera from tilting past horizontal
+				// Check if camera's up basis still has a positive component along local up
+				const localUpForTilt = getLocalUpVector(this.camera.position);
+				if (!Sit.useGlobe && yAxis.dot(localUpForTilt) <= 0.01) {
 					this.camera.position.copy(oldPosition)
 					this.camera.quaternion.setFromRotationMatrix(oldMatrix);
 					this.camera.updateMatrix()
@@ -1038,10 +1041,11 @@ class CameraMapControls {
 				// if useGlobe then us the sphere, of this radius
 
 
-				// make a plane at target height
-				// Note this is LEGACY code, and should be replaced with a sphere
-				// as it will only work when near the origin
-				const dragPlane = new Plane(new Vector3(0, -1, 0), this.target.y)
+				// make a plane at the target, perpendicular to local up
+				// This is used for terrain dragging when not in globe mode
+				const localUpAtTarget = getLocalUpVector(this.target);
+				const dragPlaneDist = localUpAtTarget.dot(this.target);
+				const dragPlane = new Plane(localUpAtTarget.clone().negate(), dragPlaneDist)
 
 				const dragOrigin = earthCenterEUS();
 
@@ -1339,7 +1343,7 @@ class CameraMapControls {
 		var zAxis = new Vector3()
 		this.camera.updateMatrix();
 		this.camera.matrix.extractBasis(xAxis, yAxis, zAxis)
-		const up = getLocalUpVector(this.camera.position, wgs84.RADIUS)
+		const up = getLocalUpVector(this.camera.position)
 		const alt = altitudeAboveSphere(this.camera.position);
 		if (alt < 100000 || force) {
 			const upAngle = degrees(up.angleTo(xAxis))
@@ -1392,7 +1396,7 @@ class CameraMapControls {
 			// console.log("Rotate about ground to " + heading + " from az,el = " + az + "," + el)
 
 			// get the up vector at the ground point
-			const groundUp = getLocalUpVector(ground, wgs84.RADIUS)
+			const groundUp = getLocalUpVector(ground)
 
 			// find angle needed to rotate the camera to the heading
 			const angle = radians(heading - az);
@@ -1432,7 +1436,7 @@ class CameraMapControls {
 	rotateLeft(angle) {
 		this.camera.position.sub(this.target) // make relative to the target
 		//const up = new Vector3(0,1,0)
-		const up = getLocalUpVector(this.target, wgs84.RADIUS)
+		const up = getLocalUpVector(this.target)
 		this.camera.position.applyAxisAngle(up, -angle) // rotate around origin (around target)
 		this.camera.position.add(this.target) // back into world space
 		this.camera.rotateOnWorldAxis(up, -angle) // rotate the camere as well, so target stays in same spot
