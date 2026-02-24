@@ -471,11 +471,11 @@ export class CNodeTerrainUI extends CNode {
         this.buildingsSource = v.buildingsSource ?? "cesium-osm";
         this.buildingsNode = null;
 
-        // Determine available building sources based on configured API keys
-        const cesiumToken = process.env.CESIUM_ION_TOKEN;
-        const googleKey = process.env.GOOGLE_MAPS_API_KEY;
-        const hasCesium = cesiumToken && cesiumToken !== "your_cesium_ion_token_here";
-        const hasGoogle = googleKey && googleKey !== "your_google_maps_api_key_here";
+        // Determine available building sources based on API keys from server
+        const cesiumToken = Globals.userData?.CESIUM_ION_TOKEN;
+        const googleKey = Globals.userData?.GOOGLE_MAPS_API_KEY;
+        const hasCesium = !!cesiumToken;
+        const hasGoogle = !!googleKey;
 
         if (hasCesium || hasGoogle) {
             const buildingsSourcesKV = {};
@@ -606,8 +606,8 @@ export class CNodeTerrainUI extends CNode {
 
     toggleBuildings(show) {
         if (show && !this.buildingsNode) {
-            const cesiumToken = process.env.CESIUM_ION_TOKEN;
-            const googleKey = process.env.GOOGLE_MAPS_API_KEY;
+            const cesiumToken = Globals.userData?.CESIUM_ION_TOKEN;
+            const googleKey = Globals.userData?.GOOGLE_MAPS_API_KEY;
             this.buildingsNode = new CNodeBuildings3DTiles({
                 id: "buildings3DTiles",
                 source: this.buildingsSource,

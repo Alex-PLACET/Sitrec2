@@ -35,9 +35,23 @@ function startS3() {
 }
 
 
-// if we were passed the parameter "getuser", then we just return the user_id
+// if we were passed the parameter "getuser", then we return user data as JSON
 if (isset($_GET['getuser'])) {
-    echo $user_id;
+    header('Content-Type: application/json');
+
+    $response = ['userID' => $user_id];
+
+    // Include API keys for admin users (user 1 or localhost)
+    $isLocalhost = ($_SERVER['REMOTE_ADDR'] === '127.0.0.1' ||
+                    $_SERVER['REMOTE_ADDR'] === '::1');
+    if ($user_id == 1 || $isLocalhost) {
+        $googleKey = getenv('GOOGLE_MAPS_API_KEY');
+        $cesiumToken = getenv('CESIUM_ION_TOKEN');
+        if ($googleKey) $response['GOOGLE_MAPS_API_KEY'] = $googleKey;
+        if ($cesiumToken) $response['CESIUM_ION_TOKEN'] = $cesiumToken;
+    }
+
+    echo json_encode($response);
     exit();
 }
 
