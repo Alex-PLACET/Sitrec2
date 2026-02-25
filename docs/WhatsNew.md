@@ -47,6 +47,40 @@ Example entry format:
 
 ## Unreleased
 
+### New Features
+- **3D Buildings**: Basic 3D building rendering with Google Maps PBR tiles (admin only)
+- **Ellipsoid Earth Model**: Framework for WGS84 ellipsoid earth model with sphere/ellipsoid toggle in terrain options
+- **3D Tile Renderer**: Per-viewport 3D tile rendering with lighting
+- **EGM96 Geoid Correction**: Terrarium elevation corrected from EGM96 geoid to WGS84 altitude
+
+### Improvements
+- Full ECEF coordinate system transition replacing Y-up EUS assumptions with local tangent vectors
+- Ellipsoid model enabled by default in Starlink live mode
+- Gimbal cloud speed matching updated for ECEF coordinates
+- Moon and Earth shadow calculations corrected for ECEF
+- Eclipse umbra sizing fixed with geocentric Sun/Moon vectors
+- Fixed lighting on Google Maps PBR tiles with gamma correction
+- MSL/HAE altitude handling clarified and corrected throughout
+- Removed legacy radius parameters (earth radius is now fixed, no longer variable for refraction simulation)
+- Converted legacy local frame EUS camera start positions to LLA
+- Globe updates when changing globe model; Agua spline recalculates accordingly
+- Per-user tracking and limits for 3D buildings API usage
+- Updated npm packages
+
+### Bug Fixes
+- Fixed SplineEditor breaking linear tracks (SitJellyfish, SitPorterville)
+- Fixed getLocalUp for ellipsoid mode
+- Fixed editing buildings
+- Fixed crashing when switching from 3D to 2D tiles
+- Fixed hardcoded MSL elevation values that need conversion to HAE
+- Fixed projectHorizontal for ECEF and replaced clockwiseZX with cross product
+- Fixed CNodeTrackFromVelocity.getGroundPoint for ECEF coordinates
+- Fixed ECEF camera issues related to assuming local EUS
+
+---
+
+## Version 2.29.0 (2026-02-22)
+
 ### Improvements
 - Tile coverage caching with dirty parent tracking for faster tile iteration
 - Skip GPU usage calculation in dev mode when the GPU usage menu is not visible
