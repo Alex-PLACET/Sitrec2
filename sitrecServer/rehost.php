@@ -11,8 +11,6 @@ header('Expires: 0');        // For older browsers
 
 require('./user.php');
 
-$user_id = getUserID();
-
 $aws = null;
 
 function startS3() {
@@ -91,8 +89,10 @@ function getTileServiceDailyUsage($userId, $service) {
 if (isset($_GET['getuser'])) {
     header('Content-Type: application/json');
 
+    // Avoid double auth initialization by resolving identity once on this path.
     $userInfo = getUserInfo();
-    $userGroups = $userInfo['user_groups'] ?? [];
+    $user_id = $userInfo['user_id'] ?? 0;
+    $userGroups = is_array($userInfo['user_groups'] ?? null) ? $userInfo['user_groups'] : [];
     $allowed3DBuildingGroups = [3, 14, 19]; // Admin, Sitrec Members, Sitrec Plus
     $has3DBuildingGroup = count(array_intersect($userGroups, $allowed3DBuildingGroups)) > 0;
 
@@ -131,6 +131,7 @@ if (isset($_GET['getuser'])) {
     exit();
 }
 
+$user_id = getUserID();
 $userDir = getUserDir($user_id);
 
 // need to be logged in, and a member of group 9 (Verified users)
