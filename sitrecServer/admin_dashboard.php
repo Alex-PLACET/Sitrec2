@@ -68,7 +68,12 @@ function loadTileUsageData($dir) {
             }
         }
     }
-    usort($data, fn($a, $b) => array_sum($b['daily']) <=> array_sum($a['daily']));
+    // Sort by tile count excluding byte-tracking services
+    $excludeKeys = array_flip(['cesium_osm_3d_bytes']);
+    usort($data, fn($a, $b) =>
+        array_sum(array_diff_key($b['daily'], $excludeKeys)) <=>
+        array_sum(array_diff_key($a['daily'], $excludeKeys))
+    );
     return $data;
 }
 
@@ -239,12 +244,23 @@ $tracked3DServices = [
     'cesium_osm_3d_tiles',
     'cesium_osm_3d_bytes',
 ];
+
+// Services that track bytes rather than tile counts — exclude from tile totals
+$byteServices = ['cesium_osm_3d_bytes'];
 foreach ($tracked3DServices as $service) {
     if (!isset($tileTotalHour[$service])) $tileTotalHour[$service] = 0;
     if (!isset($tileTotalDay[$service])) $tileTotalDay[$service] = 0;
 }
 ksort($tileTotalHour);
 ksort($tileTotalDay);
+
+function sumTilesOnly($arr, $byteServices) {
+    $sum = 0;
+    foreach ($arr as $service => $count) {
+        if (!in_array($service, $byteServices)) $sum += $count;
+    }
+    return $sum;
+}
 
 $google3DRootHour = $tileTotalHour['google_3d_root'] ?? 0;
 $google3DRootDay = $tileTotalDay['google_3d_root'] ?? 0;
@@ -412,13 +428,13 @@ $userNames = getUserNames($allUserIds);
             
             <div class="card">
                 <h2>Tile Usage (This Hour)</h2>
-                <div class="stat-value"><?= number_format(array_sum($tileTotalHour)) ?></div>
+                <div class="stat-value"><?= number_format(sumTilesOnly($tileTotalHour, $byteServices)) ?></div>
                 <div class="stat-label">Total tiles across <?= count($tileUsage) ?> users</div>
             </div>
             
             <div class="card">
                 <h2>Tile Usage (Today)</h2>
-                <div class="stat-value"><?= number_format(array_sum($tileTotalDay)) ?></div>
+                <div class="stat-value"><?= number_format(sumTilesOnly($tileTotalDay, $byteServices)) ?></div>
                 <div class="stat-label">Daily total for audit</div>
             </div>
 
@@ -520,7 +536,7 @@ $userNames = getUserNames($allUserIds);
                     <?php foreach (array_slice($tileUsage, 0, 10) as $u): ?>
                     <tr>
                         <td><?= renderUserLink($u['user_id'], $userNames) ?></td>
-                        <td class="highlight"><?= number_format(array_sum($u['daily'])) ?></td>
+                        <td class="highlight"><?= number_format(sumTilesOnly($u['daily'], $byteServices)) ?></td>
                     </tr>
                     <?php endforeach; ?>
                     <?php if (empty($tileUsage)): ?>
