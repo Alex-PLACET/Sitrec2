@@ -7,6 +7,7 @@ import {showError} from "../showError";
 import {MISB} from "../MISBUtils";
 import {saveAs} from "file-saver";
 import {degrees} from "../utils";
+import {meanSeaLevelOffset} from "../EGM96Geoid";
 
 export class CNodeTrack extends CNodeEmptyArray {
     constructor(v) {
@@ -324,6 +325,9 @@ export class CNodeTrackFromLLAArray extends CNodeTrack {
         super(v);
         this.altitudeMode = v.altitudeMode ?? "absolute";
         this.showCap = v.showCap ?? false;
+        // altitudeReference: "HAE" (default) or "MSL"
+        // KML "absolute" is HAE per spec; custom data may provide MSL
+        this.altitudeReference = v.altitudeReference ?? "HAE";
 
 
         // using events to recalculate the track when the terrain is loaded
@@ -391,7 +395,11 @@ export class CNodeTrackFromLLAArray extends CNodeTrack {
         const v = this.array[Math.floor(frame)];
         const lat = v[0]
         const lon = v[1];
-        const alt = v[2];
+        let alt = v[2];
+        // Convert MSL altitude to HAE if needed (h = H + N)
+        if (this.altitudeReference === "MSL") {
+            alt += meanSeaLevelOffset(lat, lon);
+        }
         let eus = LLAToEUS(lat, lon, alt);
 
         // while this is sub optimal, it should not be done constantly.

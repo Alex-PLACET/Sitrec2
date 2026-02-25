@@ -6,11 +6,8 @@ import {Matrix3, Vector3} from "three";
 import {Globals, NodeMan, setRenderOne, Sit} from "./Globals";
 import {assert} from "./assert.js";
 
-// Earth radius in kilometers (average)
-const earthRadiusKM = 6371;
-
 // This is the distance in KM between two lat/long locations
-// assumes a sphere of average radius
+// assumes a sphere of equatorial radius (WGS84)
 export function haversineDistanceKM(lat1, lon1, lat2, lon2) {
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
@@ -21,7 +18,7 @@ export function haversineDistanceKM(lat1, lon1, lat2, lon2) {
     const a = sin_dLat * sin_dLat +
         sin_dLon * sin_dLon * Math.cos(rLat1) * Math.cos(rLat2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return earthRadiusKM * c;
+    return (wgs84.RADIUS / 1000) * c;
 }
 
 export function haversineDistanceABKM(a, b) {
@@ -406,6 +403,42 @@ export function ECEF2ENU(pos,lat1, lon1, radius, justRotate=false) {
 // EXPERIMENT: EUS is now identical to ECEF
 export function ECEF2EUS(pos,lat1, lon1, radius, justRotate=false) {
     return pos.clone();
+}
+
+// Ellipsoid-aware ECEF→ENU using RLLAToECEF_radii for origin (Globals radii).
+// Rotation matrix depends only on geodetic lat/lon, not Earth shape.
+export function ECEF2ENU_radii(pos, lat1, lon1, justRotate=false) {
+    const mECEF2ENU = new Matrix3().set(
+        -Math.sin(lon1), Math.cos(lon1), 0,
+        -Math.sin(lat1) * Math.cos(lon1), -Math.sin(lat1) * Math.sin(lon1), Math.cos(lat1),
+        Math.cos(lat1) * Math.cos(lon1), Math.cos(lat1) * Math.sin(lon1), Math.sin(lat1)
+    );
+    let enu;
+    if (!justRotate) {
+        const originECEF = RLLAToECEF_radii(lat1, lon1, 0);
+        enu = pos.clone().sub(originECEF).applyMatrix3(mECEF2ENU);
+    } else {
+        enu = pos.clone().applyMatrix3(mECEF2ENU);
+    }
+    return enu;
+}
+
+// Ellipsoid-aware ENU→ECEF using RLLAToECEF_radii for origin (Globals radii).
+export function ENU2ECEF_radii(pos, lat1, lon1, justRotate=false) {
+    const mECEF2ENU = new Matrix3().set(
+        -Math.sin(lon1), Math.cos(lon1), 0,
+        -Math.sin(lat1) * Math.cos(lon1), -Math.sin(lat1) * Math.sin(lon1), Math.cos(lat1),
+        Math.cos(lat1) * Math.cos(lon1), Math.cos(lat1) * Math.sin(lon1), Math.sin(lat1)
+    );
+    const mENU2ECEF = new Matrix3().copy(mECEF2ENU).invert();
+    let ecef;
+    if (!justRotate) {
+        const originECEF = RLLAToECEF_radii(lat1, lon1, 0);
+        ecef = pos.clone().applyMatrix3(mENU2ECEF).add(originECEF);
+    } else {
+        ecef = pos.clone().applyMatrix3(mENU2ECEF);
+    }
+    return ecef;
 }
 
 // Inverse of ECEF2ENU - converts from ENU to ECEF

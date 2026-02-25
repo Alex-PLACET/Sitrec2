@@ -616,8 +616,13 @@ export class DEBUGGroup extends Group {
     }
 }
 
-// get intersection of a point/heading ray with the Mean Sea Level ellipsoid surface
+// get intersection of a point/heading ray with the Mean Sea Level surface.
+// In ellipsoid mode, delegates to intersectEllipsoid for accuracy.
+// In sphere mode (equatorRadius === polarRadius), uses fast sphere intersection.
 export function intersectMSL(point, headingVector) {
+    if (Globals.equatorRadius !== Globals.polarRadius) {
+        return intersectEllipsoid(point, headingVector);
+    }
     const globe = new Sphere(earthCenterEUS(), Globals.equatorRadius);
     const ray = new Ray(point, headingVector.clone().normalize());
     const sphereCollision = new Vector3();

@@ -6,8 +6,9 @@ import {assert} from "./assert.js";
 import {MV3, V3} from "./threeUtils";
 
 
-// Local coordinates are a local tangent plane similar to ENU, but with N = -Z
-// so XYZ = EUS (East, Up, South), not ENU (East, North, Up)
+// Scene coordinates are now ECEF (Earth-Centered Earth-Fixed).
+// EUS is an identity mapping to ECEF. The old local tangent plane (East, Up, South)
+// convention is no longer used for coordinate transforms, but some variable names persist.
 // See: https://en.wikipedia.org/wiki/Local_tangent_plane_coordinates
 //
 // the Az=0 and El=0 is always along the -Z axis (horizontal, North)

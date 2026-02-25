@@ -4,8 +4,7 @@
 // X axis - To vernal equinox
 // Y Axis - right angles to this, in the equatorial plane
 // Z Axis - Up through the North pole
-// Compared to a EUS coordinate system where the ECEF X axis exit the surface of the earth
-// EUS(X,Y,Z) would be ECEF(Y, Z, X) (not sure if this is useful info).
+// EUS is now identical to ECEF (identity mapping), so celestial and scene coords are the same.
 // See: https://en.wikipedia.org/wiki/Equatorial_coordinate_system#Rectangular_coordinates
 import {V3} from "./threeUtils";
 import {ECEF2EUS, EUSToLLA, wgs84} from "./LLA-ECEF-ENU";

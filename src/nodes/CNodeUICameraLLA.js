@@ -1,4 +1,4 @@
-import {LLAToEUS, RLLAToECEFV_Sphere} from "../LLA-ECEF-ENU";
+import {LLAToEUS, RLLAToECEF_radii} from "../LLA-ECEF-ENU";
 import {f2m, radians} from "../utils";
 import {Sit} from "../Globals";
 
@@ -21,7 +21,7 @@ export class CNodeControllerUIPositionLLA extends CNodeController {
     apply(f, cameraNode) {
         
         const camera = cameraNode.camera;
-        Sit.originECEF = RLLAToECEFV_Sphere(radians(Sit.lat),radians(Sit.lon),0)
+        Sit.originECEF = RLLAToECEF_radii(radians(Sit.lat),radians(Sit.lon),0)
         assert(!Number.isNaN(Sit.originECEF.x),"Sit.originECEF NaN")
 
         var from;

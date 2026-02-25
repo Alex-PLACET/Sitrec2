@@ -2,7 +2,7 @@ import {CNode} from "./CNode";
 import {pointAbove} from "../threeExt";
 import {cos, radians} from "../utils";
 import {Globals, NodeMan, Sit} from "../Globals";
-import {EUSToLLA, RLLAToECEFV_Sphere} from "../LLA-ECEF-ENU";
+import {EUSToLLA, RLLAToECEF_radii, RLLAToECEFV_Sphere} from "../LLA-ECEF-ENU";
 import {earthCenterEUS, setAltitudeMSL} from "../SphericalMath";
 import {Group, Mesh, MeshBasicMaterial, Raycaster, SphereGeometry} from "three";
 import {GlobalScene} from "../LocalFrame";
@@ -731,7 +731,7 @@ export class CNodeTerrain extends CNode {
         this.log("CNodeTerrain: recalculate")
 
         var radius = this.radius;
-        // flattening is 0 to 1, whenre 0=no flattening, 1=flat
+        // flattening is 0 to 1, where 0=no flattening, 1=flat
         // so scale radius by (1/(1-flattening)
         if (this.in.flattening !== undefined) {
             var flattening = this.in.flattening.v0
@@ -739,7 +739,12 @@ export class CNodeTerrain extends CNode {
             radius *= (1 / (1 - flattening))
 
         }
-        Sit.originECEF = RLLAToECEFV_Sphere(radians(Sit.lat), radians(Sit.lon), 0, radius)
+        // Use ellipsoid-aware origin when no flattening override is active
+        if (this.in.flattening !== undefined && this.in.flattening.v0 > 0) {
+            Sit.originECEF = RLLAToECEFV_Sphere(radians(Sit.lat), radians(Sit.lon), 0, radius)
+        } else {
+            Sit.originECEF = RLLAToECEF_radii(radians(Sit.lat), radians(Sit.lon), 0)
+        }
         const map = this.maps[this.UI.mapType].map;
         assert(map !== undefined, "CNodeTerrain: map is undefined")
         if (!map.loaded) {
