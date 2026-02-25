@@ -8,7 +8,7 @@ import {EUSToLLA, updateEarthRadii} from "../LLA-ECEF-ENU";
 import {CNodeTerrain} from "./CNodeTerrain";
 import {CNodeBuildings3DTiles} from "./CNodeBuildings3DTiles";
 import {par} from "../par";
-import {addAlignedGlobe} from "../Globe";
+import {addAlignedGlobe, updateAlignedGlobe} from "../Globe";
 import {showHider} from "../KeyBoardHandler";
 
 export class CNodeTerrainUI extends CNode {
@@ -502,7 +502,20 @@ export class CNodeTerrainUI extends CNode {
             .name("Use Ellipsoid Earth Model")
             .tooltip("Sphere: fast legacy model. Ellipsoid: accurate WGS84 shape (higher latitudes benefit most).")
             .listen()
-            .onChange((v) => { updateEarthRadii(v); setRenderOne(true); });
+            .onChange((v) => {
+                updateEarthRadii(v);
+
+                if (par.globe) {
+                    const globeScale = Sit.globeScale ?? (Sit.terrain !== undefined ? 0.9999 : 1.0);
+                    updateAlignedGlobe(par.globe, globeScale);
+                }
+
+                if (this.terrainNode) {
+                    this.terrainNode.updateGreySphereVisibility();
+                }
+
+                setRenderOne(true);
+            });
 
         console.log("CNodeTerrainUI: calling setMapType for initial map type " + this.mapType);
         // setMapType is async because it loads the capabilities

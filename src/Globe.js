@@ -242,3 +242,20 @@ export function addAlignedGlobe(globeScale = 1) {
 
 }
 
+// Update an existing globe mesh so its semi-axes match the active earth model.
+// Works for both sphere and ellipsoid modes, and preserves the existing
+// orientation (the +PI/2 Y-up -> Z-up rotation applied in addAlignedGlobe()).
+export function updateAlignedGlobe(globeMesh, globeScale = 1) {
+    if (!globeMesh || !globeMesh.geometry || !globeMesh.geometry.parameters) return;
+
+    const baseRadius = globeMesh.geometry.parameters.radius ?? 1;
+    const equatorRadius = Globals.equatorRadius * globeScale;
+    const polarRadius = Globals.polarRadius * globeScale;
+
+    globeMesh.scale.set(
+        equatorRadius / baseRadius,
+        polarRadius / baseRadius,
+        equatorRadius / baseRadius
+    );
+    globeMesh.position.copy(earthCenterEUS());
+}

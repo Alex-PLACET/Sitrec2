@@ -337,3 +337,41 @@ Additionally, TRC's internal jet simulation did not match `CNodeJetTrack`'s beha
 5. **Node ordering in SitGimbal.js:** Moved `localWind`, `cloudWind`, and `initialHeading` creation before `CNodeTurnRateFromClouds` so the string-based input references resolve correctly (inputs are resolved eagerly during construction).
 
 **Result:** Green/red ratio improved from ~0.554 to ~1.001 across all frames (~0.1% residual error).
+
+### 32. Earth/Moon Shadow Earth-Center Assumptions (`src/nodes/CNodeDisplayEarthShadow.js`, `src/nodes/CNodeDisplayMoonShadow.js`)
+
+**Problem:** Eclipse/shadow visuals still had old-frame assumptions mixed in. In old EUS, many calculations were written around an Earth center offset from the local origin. In ECEF, Earth center must always be `(0, 0, 0)`.
+
+**Fix:**
+- `CNodeDisplayEarthShadow` now explicitly builds shadow geometry from `globeCenter = V3(0, 0, 0)`.
+- `CNodeDisplayMoonShadow` now treats Earth center as origin in its fallback sphere math, and uses Earth radii from globals for consistency with the current earth model.
+
+This removed residual origin-offset behavior from both shadow display nodes.
+
+### 33. Geocentric Sun/Moon Vectors for Eclipse Geometry (`src/CelestialMath.js`, `src/nodes/CNodeDisplayNightSky.js`)
+
+**Problem:** The moon shadow path was offset (notably north/south) because eclipse geometry used observer-relative/topocentric celestial directions. That is fine for local sky viewing but wrong for global umbra placement on Earth.
+
+**Fix:** Added geocentric body position helpers in `CelestialMath.js`:
+- `getGeocentricBodyPositionEUS(body, date, aberration=true)`
+- `getGeocentricBodyDirectionEUS(body, date, aberration=true)`
+
+Implementation uses `Astronomy.GeoVector` (geocentric), rotates EQJ→EQD, applies sidereal rotation into Earth-fixed coordinates, then returns EUS/ECEF coordinates.
+
+`CNodeDisplayNightSky` now stores eclipse inputs from these geocentric vectors:
+- `Globals.sunPos`, `Globals.toSun`, `Globals.fromSun`
+- `Globals.moonPos`, `Globals.toMoon`, `Globals.fromMoon`
+
+This fixed the eclipse center position drift caused by topocentric parallax.
+
+### 34. Moon Umbra Size Too Small (~50%) (`src/nodes/CNodeDisplayMoonShadow.js`)
+
+**Problem:** After center-position fixes, the umbra footprint remained about half expected size.
+
+**Root cause:** `sunMoonDistance` was derived from a fixed `1 AU` Sun proxy (`toSun * 149597870700`) instead of the actual Sun-Moon distance at the current frame. Near the umbra tip, even a small distance error strongly changes computed umbra diameter.
+
+**Fix:**
+- Use actual frame Sun position: `Globals.sunPos.distanceTo(moonCenter)` for `sunMoonDistance` (with fallback only if `sunPos` is unavailable).
+- Use ellipsoid intersection for the shadow axis reference distance (`intersectEllipsoid`) and for footprint rays, keeping the cone/footprint tied to the active Earth model.
+
+Result: umbra center remains correct and footprint size matches expected eclipse scale.
