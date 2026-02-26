@@ -3,6 +3,7 @@ import {TileUsageTracker} from "./TileUsageTracker";
 
 const GOOGLE_3D_TILES_HOSTNAME = "tile.googleapis.com";
 const GOOGLE_3D_TILES_ROOT_PATH = "/v1/3dtiles/root.json";
+const GOOGLE_3D_TILES_BASE_URL = `https://${GOOGLE_3D_TILES_HOSTNAME}`;
 const LOCAL_BASE_URL = "https://local.invalid/";
 
 // Shared auth/session and root tileset cache keyed by API token.
@@ -43,20 +44,34 @@ async function normalizeRootTilesetResponse(result, uri) {
 }
 
 function getRootCacheKey(uri) {
-    const parsed = parseURL(uri);
+    const parsed = parseURL(normalizeGooglePhotorealisticRequestURL(uri));
     if (!parsed) return uri;
     return `${parsed.origin}${parsed.pathname}`;
 }
 
-export function isGooglePhotorealisticRootRequest(uri) {
+function normalizeGooglePhotorealisticRequestURL(uri) {
     const parsed = parseURL(uri);
+    if (!parsed) return uri;
+
+    // Google root tilesets can reference child assets with root-relative paths
+    // (e.g. "/v1/3dtiles/..."). Resolve those to the Google tiles host so auth
+    // and fetches keep working even when relative URLs are emitted.
+    if (parsed.hostname === "local.invalid" && parsed.pathname.startsWith("/v1/3dtiles/")) {
+        return `${GOOGLE_3D_TILES_BASE_URL}${parsed.pathname}${parsed.search}`;
+    }
+
+    return parsed.toString();
+}
+
+export function isGooglePhotorealisticRootRequest(uri) {
+    const parsed = parseURL(normalizeGooglePhotorealisticRequestURL(uri));
     if (!parsed) return false;
     return parsed.hostname === GOOGLE_3D_TILES_HOSTNAME
         && parsed.pathname === GOOGLE_3D_TILES_ROOT_PATH;
 }
 
 export function isGooglePhotorealisticTileRequest(uri) {
-    const parsed = parseURL(uri);
+    const parsed = parseURL(normalizeGooglePhotorealisticRequestURL(uri));
     if (!parsed) return false;
     return parsed.hostname === GOOGLE_3D_TILES_HOSTNAME
         && parsed.pathname.startsWith("/v1/3dtiles/")
@@ -94,19 +109,21 @@ export class SharedGoogleCloudAuthPlugin extends GoogleCloudAuthPlugin {
     }
 
     async fetchData(uri, options) {
-        if (!isGooglePhotorealisticRootRequest(uri)) {
-            if (isGooglePhotorealisticTileRequest(uri)) {
+        const normalizedUri = normalizeGooglePhotorealisticRequestURL(uri);
+
+        if (!isGooglePhotorealisticRootRequest(normalizedUri)) {
+            if (isGooglePhotorealisticTileRequest(normalizedUri)) {
                 TileUsageTracker.trackGoogle3DTile();
             }
-            return this.auth.fetch(uri, options);
+            return this.auth.fetch(normalizedUri, options);
         }
 
-        const cacheKey = getRootCacheKey(uri);
+        const cacheKey = getRootCacheKey(normalizedUri);
         let rootRequest = this.sharedState.rootTilesetRequests.get(cacheKey);
         if (!rootRequest) {
             TileUsageTracker.trackGoogle3DRootSession();
-            rootRequest = Promise.resolve(this.auth.fetch(uri, options))
-                .then(result => normalizeRootTilesetResponse(result, uri))
+            rootRequest = Promise.resolve(this.auth.fetch(normalizedUri, options))
+                .then(result => normalizeRootTilesetResponse(result, normalizedUri))
                 .then(rootTileset => {
                     if (!rootTileset || typeof rootTileset !== "object" || !rootTileset.root) {
                         throw new Error("SharedGoogleCloudAuthPlugin: Invalid root tileset payload.");

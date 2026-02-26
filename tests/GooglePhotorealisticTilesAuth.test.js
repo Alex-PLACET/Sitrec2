@@ -74,6 +74,7 @@ describe("Google Photorealistic root request caching", () => {
     test("detects root requests only for Google 3D tiles root endpoint", () => {
         expect(isGooglePhotorealisticRootRequest("https://tile.googleapis.com/v1/3dtiles/root.json")).toBe(true);
         expect(isGooglePhotorealisticRootRequest("https://tile.googleapis.com/v1/3dtiles/root.json?key=abc")).toBe(true);
+        expect(isGooglePhotorealisticRootRequest("/v1/3dtiles/root.json?key=abc")).toBe(true);
         expect(isGooglePhotorealisticRootRequest("https://tile.googleapis.com/v1/3dtiles/tiles/0.b3dm")).toBe(false);
         expect(isGooglePhotorealisticRootRequest("https://example.com/v1/3dtiles/root.json")).toBe(false);
     });
@@ -150,6 +151,22 @@ describe("Google Photorealistic root request caching", () => {
         expect(mockTrackGoogle3DTile).toHaveBeenCalledTimes(2);
     });
 
+    test("normalizes root-relative google tile URLs before auth fetch", async () => {
+        const sharedState = getSharedGooglePhotorealisticState("test-key");
+        const plugin = new SharedGoogleCloudAuthPlugin({apiToken: "test-key", sharedState});
+        const fetchMock = jest.fn(async () => ({ok: true}));
+        plugin.auth.fetch = fetchMock;
+
+        await plugin.fetchData("/v1/3dtiles/datasets/foo/tiles/0.b3dm?session=session-123", {});
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(fetchMock).toHaveBeenCalledWith(
+            "https://tile.googleapis.com/v1/3dtiles/datasets/foo/tiles/0.b3dm?session=session-123",
+            {}
+        );
+        expect(mockTrackGoogle3DTile).toHaveBeenCalledTimes(1);
+    });
+
     test("clears failed root request from cache so later retries can recover", async () => {
         const sharedState = getSharedGooglePhotorealisticState("test-key");
         const plugin = new SharedGoogleCloudAuthPlugin({apiToken: "test-key", sharedState});
@@ -182,6 +199,7 @@ describe("Google Photorealistic root request caching", () => {
 
     test("detects non-root Google 3D tiles requests", () => {
         expect(isGooglePhotorealisticTileRequest("https://tile.googleapis.com/v1/3dtiles/datasets/foo/tiles/0.b3dm?session=s")).toBe(true);
+        expect(isGooglePhotorealisticTileRequest("/v1/3dtiles/datasets/foo/tiles/0.b3dm?session=s")).toBe(true);
         expect(isGooglePhotorealisticTileRequest("https://tile.googleapis.com/v1/3dtiles/root.json")).toBe(false);
         expect(isGooglePhotorealisticTileRequest("https://example.com/v1/3dtiles/datasets/foo/tiles/0.b3dm")).toBe(false);
     });

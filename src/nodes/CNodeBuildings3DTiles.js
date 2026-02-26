@@ -13,12 +13,20 @@ import {GlobalScene} from "../LocalFrame";
 import {Group, Matrix4} from "three";
 import * as LAYER from "../LayerMasks";
 import {TilesRenderer} from "3d-tiles-renderer";
+import {GLTFExtensionsPlugin} from "3d-tiles-renderer/plugins";
+import {DRACOLoader} from "three/addons/loaders/DRACOLoader.js";
 import {TilesDayNightPlugin} from "../TilesDayNightPlugin";
 import {
     getSharedGooglePhotorealisticState,
     SharedGoogleCloudAuthPlugin,
     TrackedCesiumIonAuthPlugin,
 } from "../GooglePhotorealisticTilesAuth";
+
+function createDracoLoader() {
+    const dracoLoader = new DRACOLoader();
+    dracoLoader.setDecoderPath("./libs/draco/");
+    return dracoLoader;
+}
 
 // Build a Matrix4 that transforms ECEF coordinates to EUS (East-Up-South) local frame.
 // This is the matrix form of ECEFToEUS(), applied to the TilesRenderer group
@@ -33,6 +41,10 @@ function buildECEFToEUSMatrix4() {
 class PerViewTiles {
     constructor(parentGroup, layerMask, source, cesiumIonToken, googleApiKey, googleSharedState) {
         this.renderer = new TilesRenderer();
+        this.dracoLoader = createDracoLoader();
+        this.renderer.registerPlugin(new GLTFExtensionsPlugin({
+            dracoLoader: this.dracoLoader,
+        }));
 
         if (source === "cesium-osm") {
             this.renderer.registerPlugin(new TrackedCesiumIonAuthPlugin({
@@ -78,6 +90,10 @@ class PerViewTiles {
     dispose(parentGroup) {
         parentGroup.remove(this.renderer.group);
         this.renderer.dispose();
+        if (this.dracoLoader && typeof this.dracoLoader.dispose === "function") {
+            this.dracoLoader.dispose();
+            this.dracoLoader = null;
+        }
     }
 }
 

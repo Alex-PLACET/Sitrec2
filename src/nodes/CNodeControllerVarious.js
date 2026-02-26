@@ -142,7 +142,7 @@ export class CNodeControllerTrackPosition extends CNodeController {
         assert(!Number.isNaN(pos.x), "CNodeControllerTrackPosition: track's position.x NaN")
 
         if (objectNode.forceAboveSurface !== false) {
-            const clampHeight = objectNode.cachedCenterToLowestPoint ?? 2;
+            const clampHeight = objectNode.cachedCenterToLowestPoint ?? (object.isCamera ? 0: 0.30); // 0.3m = about a foot, which is a reasonable default for the lowest point of a camera or object, but can be overridden by the node definition, or models
             pos = clampAboveGround(pos, clampHeight);
         }
 
