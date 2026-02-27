@@ -12,6 +12,17 @@ $ANTHROPIC_API_KEY = getenv("ANTHROPIC_API");
 $GROQ_API_KEY = getenv("GROQ_API");
 $GROK_API_KEY = getenv("GROK_API");
 
+// SECURITY: Derive API key from provider name so we never store keys in session
+function getApiKeyForProvider($provider) {
+    global $OPENAI_API_KEY, $ANTHROPIC_API_KEY, $GROQ_API_KEY, $GROK_API_KEY;
+    return match($provider) {
+        'anthropic' => $ANTHROPIC_API_KEY,
+        'groq' => $GROQ_API_KEY,
+        'grok' => $GROK_API_KEY,
+        default => $OPENAI_API_KEY
+    };
+}
+
 // Model permissions by user group
 // Groups: admin=3, registered=2, verified=9, sitrec=14
 $MODEL_PERMISSIONS = [
@@ -213,10 +224,10 @@ if ($continueSession && $toolResults && isset($_SESSION['chatbot_pending'])) {
     }
     
     $pendingState['history'][] = ['role' => 'user', 'text' => $toolResultsText];
-    
+
     $result = runToolLoop(
         $pendingState['provider'],
-        $pendingState['apiKey'],
+        getApiKeyForProvider($pendingState['provider']),
         $pendingState['systemPrompt'],
         $pendingState['history'],
         $pendingState['tools'],
@@ -230,7 +241,6 @@ if ($continueSession && $toolResults && isset($_SESSION['chatbot_pending'])) {
     if (!empty($result['apiCalls'])) {
         $_SESSION['chatbot_pending'] = [
             'provider' => $pendingState['provider'],
-            'apiKey' => $pendingState['apiKey'],
             'systemPrompt' => $pendingState['systemPrompt'],
             'history' => $result['history'],
             'tools' => $pendingState['tools'],
@@ -243,7 +253,7 @@ if ($continueSession && $toolResults && isset($_SESSION['chatbot_pending'])) {
         $result['sessionContinue'] = true;
     }
     unset($result['history']);
-    
+
     $result['debug']['sessionContinued'] = true;
     header('Content-Type: application/json');
     echo json_encode($result);
@@ -1062,18 +1072,12 @@ if (!$selectedProvider) {
         'debug' => ['error' => 'No available models']
     ];
 } else {
-    $apiKey = match($selectedProvider) {
-        'anthropic' => $ANTHROPIC_API_KEY,
-        'groq' => $GROQ_API_KEY,
-        'grok' => $GROK_API_KEY,
-        default => $OPENAI_API_KEY
-    };
+    $apiKey = getApiKeyForProvider($selectedProvider);
     $result = runToolLoop($selectedProvider, $apiKey, $systemPrompt, $history, $tools, $selectedModel, $menuSummary, $available3DModels, $availableDocs, 5);
-    
+
     if (!empty($result['apiCalls'])) {
         $_SESSION['chatbot_pending'] = [
             'provider' => $selectedProvider,
-            'apiKey' => $apiKey,
             'systemPrompt' => $systemPrompt,
             'history' => $result['history'],
             'tools' => $tools,

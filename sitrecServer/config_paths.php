@@ -135,10 +135,20 @@ $server_config = [
 // or you can set clear_env = no in www.conf to allow passing env vars from the shell
 
 if (isset($_GET["FETCH_CONFIG"])) {
+	// SECURITY: Strip server-side filesystem paths and internal details before sending to client
+	$client_config = $server_config;
+	unset($client_config['UPLOAD_PATH']);
+	unset($client_config['CACHE_PATH']);
+	unset($client_config['TERRAIN_PATH']);
+	unset($client_config['ROOT_PATH']);
+	unset($client_config['APP_PATH']);
+	unset($client_config['SHORTENER_PATH']);
+	unset($client_config['SERVER_ADDR']);
+
 	// Add all environment variables that start with SITREC_
 	foreach ($_ENV as $key => $value) {
 		if (strpos($key, 'SITREC_') === 0) {
-			$server_config[$key] = $value;
+			$client_config[$key] = $value;
 		}
 	}
 	// Also check getenv() in case $_ENV is not populated
@@ -146,12 +156,12 @@ if (isset($_GET["FETCH_CONFIG"])) {
 	if (is_array($env_vars)) {
 		foreach ($env_vars as $key => $value) {
 			if (strpos($key, 'SITREC_') === 0) {
-				$server_config[$key] = $value;
+				$client_config[$key] = $value;
 			}
 		}
 	}
-	
+
 	header('Content-Type: application/json');
-	echo json_encode($server_config);
+	echo json_encode($client_config);
 	exit (0);
 }

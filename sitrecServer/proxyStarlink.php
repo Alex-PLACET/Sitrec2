@@ -225,7 +225,7 @@ if ($type == "CUSTOM") {
     // Check for login errors
     if ($http_status !== 200) {
         curl_close($ch);
-        die('ERROR: Space-Track login failed with HTTP ' . $http_status . '. Username: ' . $username . '. Check credentials.');
+        die('ERROR: Space-Track login failed with HTTP ' . $http_status . '. Check credentials.');
     }
 
     // Set cURL options for data query
@@ -245,7 +245,7 @@ if ($type == "CUSTOM") {
 
     // Check for cURL errors during data query
     if ($data === false) {
-        die('ERROR: Space-Track data query cURL failed: ' . $curl_error . '. URL: ' . $dataUrl);
+        die('ERROR: Space-Track data query failed. Please try again later.');
     }
 }
 
