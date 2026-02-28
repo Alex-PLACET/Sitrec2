@@ -125,6 +125,64 @@ async function waitForConsoleText(page, expectedText, timeoutMs = 15000) {
     });
 }
 
+async function waitForSceneToSettle(page, timeoutMs = 45000, stableFrames = 15) {
+    try {
+        await page.waitForFunction(({ requiredStableFrames }) => {
+            const globals = window.Globals;
+            const nodeMan = window.NodeMan;
+
+            if (!globals || !nodeMan || !nodeMan.list) {
+                return false;
+            }
+
+            let hasPendingTiles = false;
+
+            for (const entry of Object.values(nodeMan.list)) {
+                const node = entry?.data;
+                if (!node) continue;
+
+                if (node.elevationMap && node.elevationMap.forEachTile) {
+                    node.elevationMap.forEachTile((tile) => {
+                        if (tile.isLoading || tile.isLoadingElevation || tile.isRecalculatingCurve) {
+                            hasPendingTiles = true;
+                        }
+                    });
+                }
+
+                if (node.maps) {
+                    for (const mapID in node.maps) {
+                        const map = node.maps[mapID]?.map;
+                        if (map && map.forEachTile) {
+                            map.forEachTile((tile) => {
+                                if (tile.isLoading || tile.isRecalculatingCurve) {
+                                    hasPendingTiles = true;
+                                }
+                            });
+                        }
+                    }
+                }
+
+                if (hasPendingTiles) {
+                    break;
+                }
+            }
+
+            const isPending = (globals.pendingActions ?? 0) > 0 || hasPendingTiles;
+            if (isPending) {
+                window.__uiSettleStableFrames = 0;
+                return false;
+            }
+
+            window.__uiSettleStableFrames = (window.__uiSettleStableFrames || 0) + 1;
+            return window.__uiSettleStableFrames >= requiredStableFrames;
+        }, { requiredStableFrames: stableFrames }, { timeout: timeoutMs });
+        return true;
+    } catch (error) {
+        console.log(`Warning: Scene did not fully settle within ${timeoutMs}ms`);
+        return false;
+    }
+}
+
 test.describe.serial('UI Interaction Tests - Playwright', () => {
     let sharedPage;
     let workerIndex;
@@ -137,7 +195,7 @@ test.describe.serial('UI Interaction Tests - Playwright', () => {
             console.log(`[WORKER-${workerIndex}] PAGE CONSOLE [${msg.type()}]: ${msg.text()}`);
         });
         
-        await sharedPage.goto('?ignoreunload=1&regression=1');
+        await sharedPage.goto('?ignoreunload=1&regression=1&mapType=Local&elevationType=Local');
         
         await sharedPage.waitForFunction(() => {
             return document.querySelector('.lil-gui') !== null;
@@ -158,6 +216,7 @@ test.describe.serial('UI Interaction Tests - Playwright', () => {
             console.log('Warning: Did not detect "No pending actions" message');
         });
         
+        await waitForSceneToSettle(sharedPage, 45000);
         await sharedPage.waitForTimeout(5000);
     });
 
@@ -232,6 +291,7 @@ test.describe.serial('UI Interaction Tests - Playwright', () => {
             await consolePromise;
 
             await sharedPage.waitForTimeout(3000);
+            await waitForSceneToSettle(sharedPage, 45000);
             await waitForFrames(sharedPage, 50);
 
             await takeSnapshot(sharedPage, 'import-la-features-csv-snapshot', testInfo);
@@ -284,6 +344,7 @@ test.describe.serial('UI Interaction Tests - Playwright', () => {
             await consolePromise;
 
             await sharedPage.waitForTimeout(3000);
+            await waitForSceneToSettle(sharedPage, 45000);
             await waitForFrames(sharedPage, 50);
 
             await takeSnapshot(sharedPage, 'import-stanag-xml-snapshot', testInfo);
