@@ -1,4 +1,4 @@
-import {ShaderMaterial, Vector3} from "three";
+import {Color, ShaderMaterial, Vector3} from "three";
 import {sharedUniforms} from "./SharedUniforms";
 import {Globals} from "../../../Globals";
 
@@ -21,15 +21,22 @@ export function createTerrainDayNightMaterial(texture, terrainShadingStrength = 
             earthCenter: { value: new Vector3(0, 0, 0) },
             terrainShadingStrength: { value: terrainShadingStrength },
             transparency: { value: transparency },
+            // Required by Three.js when ShaderMaterial.fog = true
+            fogColor: { value: new Color(0xffffff) },
+            fogNear: { value: 1 },
+            fogFar: { value: 1000 },
+            fogDensity: { value: 0.00025 },
             ...sharedUniforms,
         },
         side: doubleSided ? 2 : 0, // 2 = DoubleSide, 0 = FrontSide
         transparent: transparency < 1,
+        fog: true,
         vertexShader: `
             varying vec2 vUv;
             varying vec3 vNormal;
             varying vec3 vWorldPosition;
             varying vec4 vPosition;
+            #include <fog_pars_vertex>
             
             void main() {
                 vUv = uv;
@@ -41,7 +48,9 @@ export function createTerrainDayNightMaterial(texture, terrainShadingStrength = 
                 vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
                 
                 // Calculate position for depth
-                vPosition = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                vPosition = projectionMatrix * mvPosition;
+                #include <fog_vertex>
                 
                 gl_Position = vPosition;
             }
@@ -62,6 +71,7 @@ export function createTerrainDayNightMaterial(texture, terrainShadingStrength = 
             varying vec3 vNormal;
             varying vec3 vWorldPosition;
             varying vec4 vPosition;
+            #include <fog_pars_fragment>
             
             void main() {
                 // Get the base texture color
@@ -107,6 +117,7 @@ export function createTerrainDayNightMaterial(texture, terrainShadingStrength = 
                 finalColor.a = transparency;
                 
                 gl_FragColor = finalColor;
+                #include <fog_fragment>
                 
                 // Logarithmic depth calculation (same as globe shader)
                 float w = vPosition.w;

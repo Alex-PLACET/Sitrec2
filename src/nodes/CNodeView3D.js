@@ -24,6 +24,7 @@ import {GPUMemoryMonitor} from "../GPUMemoryMonitor";
 import {
     Camera,
     Color,
+    FogExp2,
     Group,
     LinearFilter,
     Mesh,
@@ -107,12 +108,24 @@ export class CNodeView3D extends CNodeViewCanvas {
             this.tileLayers |= LAYER.MASK_LOOK;
         }
 
+        const atmosphereDef = v.atmosphere ?? {};
+        this.atmosphereEnabled = atmosphereDef.enabled ?? false;
+        this.atmosphereVisibilityKm = atmosphereDef.visibilityKm ?? 250;
+
         this.northUp = v.northUp ?? false;
         if (this.id === "lookView") {
             guiMenus.view.add(this, "northUp").name("Look View North Up").onChange(value => {
                 this.recalculate();
             })
                 .tooltip("Set the look view to be north up, instead of world up.\nfor Satellite views and similar, looking straight down.\nDoes not apply in PTZ mode")
+
+            guiTweaks.add(this, "atmosphereEnabled").name("Atmosphere").onChange(() => {
+                setRenderOne(true);
+            }).tooltip("Distance attenuation that blends terrain and 3D objects toward the current sky color");
+
+            guiTweaks.add(this, "atmosphereVisibilityKm", 1, 500, 1).name("Atmo Visibility (km)").onChange(() => {
+                setRenderOne(true);
+            }).tooltip("Distance where atmospheric contrast drops to about 50% (smaller = thicker atmosphere)");
             
             // Add XR test button if VR is enabled
             if (Globals.canVR) {
@@ -134,6 +147,9 @@ export class CNodeView3D extends CNodeViewCanvas {
         if (this.background instanceof Array) {
             this.background = new Color(this.background[0], this.background[1], this.background[2])
         }
+
+        this._lookViewFog = new FogExp2(new Color(this.background), 0);
+        this._atmosphereSkyColor = new Color(this.background);
 
         this.scene = GlobalScene;
 
@@ -754,7 +770,12 @@ export class CNodeView3D extends CNodeViewCanvas {
         // Render the scene - Three.js XR system handles stereo rendering automatically
         // This will render twice (once per eye) with proper camera offsets for VR
         // Note: We skip post-processing effects in XR mode for performance
-        this.renderer.render(GlobalScene,this.xrCamera);
+        const atmosphereFogState = this.pushLookViewAtmosphereFog();
+        try {
+            this.renderer.render(GlobalScene, this.xrCamera);
+        } finally {
+            this.popLookViewAtmosphereFog(atmosphereFogState);
+        }
 
     }
 
@@ -799,6 +820,43 @@ export class CNodeView3D extends CNodeViewCanvas {
         if (savedQuaternion) {
             this.camera.quaternion.copy(savedQuaternion);
         }
+    }
+
+    getAtmosphereDensity() {
+        const visibilityMeters = Math.max(1000, this.atmosphereVisibilityKm * 1000);
+        return Math.sqrt(Math.log(2)) / visibilityMeters;
+    }
+
+    getAtmosphereSkyColor() {
+        this._atmosphereSkyColor.copy(this.background);
+
+        const sunNode = NodeMan.get("theSun", false);
+        if (sunNode) {
+            const skyColor = sunNode.calculateSkyColor(this.camera.position);
+            if (skyColor) {
+                this._atmosphereSkyColor.copy(skyColor);
+            }
+        }
+
+        return this._atmosphereSkyColor;
+    }
+
+    pushLookViewAtmosphereFog() {
+        if (this.id !== "lookView" || !this.atmosphereEnabled || !this.scene) {
+            return null;
+        }
+
+        this._lookViewFog.color.copy(this.getAtmosphereSkyColor());
+        this._lookViewFog.density = this.getAtmosphereDensity();
+
+        const previousFog = this.scene.fog;
+        this.scene.fog = this._lookViewFog;
+        return {previousFog};
+    }
+
+    popLookViewAtmosphereFog(state) {
+        if (!state || !this.scene) return;
+        this.scene.fog = state.previousFog;
     }
 
     getCameraOffset() {
@@ -1232,17 +1290,22 @@ export class CNodeView3D extends CNodeViewCanvas {
                     }
                 }
 
-                // [DBG] Render main scene
-                if (Globals.renderDebugFlags.dbg_renderMainScene) {
-                    // Set focal length immediately before rendering (not earlier, to avoid being overwritten by other views)
-                    if (this._rtHeightForFocalLength !== undefined) {
-                        const fov = this.camera.fov * Math.PI / 180;
-                        const rtHeight = this._rtHeightForFocalLength;
-                        const focalLength = rtHeight / (2 * Math.tan(fov / 2));
-                        sharedUniforms.cameraFocalLength.value = focalLength;
+                const atmosphereFogState = this.pushLookViewAtmosphereFog();
+                try {
+                    // [DBG] Render main scene
+                    if (Globals.renderDebugFlags.dbg_renderMainScene) {
+                        // Set focal length immediately before rendering (not earlier, to avoid being overwritten by other views)
+                        if (this._rtHeightForFocalLength !== undefined) {
+                            const fov = this.camera.fov * Math.PI / 180;
+                            const rtHeight = this._rtHeightForFocalLength;
+                            const focalLength = rtHeight / (2 * Math.tan(fov / 2));
+                            sharedUniforms.cameraFocalLength.value = focalLength;
+                        }
+                        
+                        this.renderer.render(GlobalScene, this.camera);
                     }
-                    
-                    this.renderer.render(GlobalScene, this.camera);
+                } finally {
+                    this.popLookViewAtmosphereFog(atmosphereFogState);
                 }
 
                 this.removeCameraOffset(savedQuaternion);
@@ -1588,6 +1651,8 @@ export class CNodeView3D extends CNodeViewCanvas {
             focusTrackName: this.focusTrackName,
             lockTrackName: this.lockTrackName,
             effectsEnabled: this.effectsEnabled,
+            atmosphereEnabled: this.atmosphereEnabled,
+            atmosphereVisibilityKm: this.atmosphereVisibilityKm,
         }
 
     }
@@ -1597,6 +1662,8 @@ export class CNodeView3D extends CNodeViewCanvas {
         if (v.focusTrackName !== undefined) this.focusTrackName = v.focusTrackName
         if (v.lockTrackName !== undefined) this.lockTrackName = v.lockTrackName
         if (v.effectsEnabled !== undefined) this.effectsEnabled = v.effectsEnabled
+        if (v.atmosphereEnabled !== undefined) this.atmosphereEnabled = v.atmosphereEnabled
+        if (v.atmosphereVisibilityKm !== undefined) this.atmosphereVisibilityKm = v.atmosphereVisibilityKm
     }
 
     dispose() {
