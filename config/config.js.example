@@ -18,7 +18,7 @@ export const _configParams = {
             mapURL: (z, x, y, layer) => {
                 // direct URL to the MapBox tile, not via the cachemaps.php
                 // this is the URL that is used by the MapBox GL JS library
-                return `https://api.mapbox.com/v4/mapbox.${layer}/${z}/${x}/${y}@2x.jpg80?access_token=pk.eyJ1IjoibWlja3dlc3QiLCJhIjoiY21ianEydHIwMGliaTJrcHB4cDgzbGZuaSJ9.J7jU9B_pz4Mo723klYpywQ`
+                return `https://api.mapbox.com/v4/mapbox.${layer}/${z}/${x}/${y}@2x.jpg80?access_token=INSERT_TOKEN_HERE`
             },
             layers: {
                 "satellite": {
@@ -247,7 +247,7 @@ export const _configParams = {
         // MapBoxRGB: {
         //     name: "Mapbox Terrain-RGB",
         //     mapURL: (z,x,y) => {
-        //         return`https://api.mapbox.com/v4/mapbox.terrain-rgb/${z}/${x}/${y}.pngraw?access_token=pk.eyJ1IjoibWlja3dlc3QiLCJhIjoiY21nemoxbmpsMDBrbjJzb2lkdWQwdWhwdiJ9.QF7CdAKfsMp_HTsno8qCvw`;
+        //         return`https://api.mapbox.com/v4/mapbox.terrain-rgb/${z}/${x}/${y}.pngraw?access_token=INSERT_TOKEN_HERE`;
         //     },
         //
         //     maxZoom: 15,

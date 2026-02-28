@@ -246,7 +246,6 @@ function isScenePending(state) {
         || state.texturePendingLoads > 0
         || state.textureLoading > 0
         || state.textureRecalc > 0
-        || state.textureNeedsHighRes > 0
         || state.texturePendingAncestor > 0
         || state.elevationLoading > 0
         || state.elevationRecalc > 0
@@ -258,11 +257,12 @@ function sceneSettleSignature(state) {
     return `${state.activeVisibleTextureTiles}:${state.visibleTileHash}:${state.tilesVisibilityVersionHash}`;
 }
 
-async function waitForSceneToSettle(page, timeoutMs = 60000, stableChecks = 20, postSettleRenders = 2) {
+async function waitForSceneToSettle(page, timeoutMs = 60000, stableChecks = 20, postSettleRenders = 2, minWaitMs = 1500) {
     const startMs = Date.now();
     let checks = 0;
     let stableCount = 0;
     let lastSignature = '';
+    let observedBusy = false;
 
     while (Date.now() - startMs < timeoutMs) {
         const state = await getSceneSettleState(page);
@@ -277,7 +277,9 @@ async function waitForSceneToSettle(page, timeoutMs = 60000, stableChecks = 20, 
                 lastSignature = signature;
             }
 
-            if (stableCount >= stableChecks) {
+            const elapsedMs = Date.now() - startMs;
+            const canFinish = (observedBusy || elapsedMs >= minWaitMs) && stableCount >= stableChecks;
+            if (canFinish) {
                 let postSettleStable = true;
                 for (let i = 0; i < postSettleRenders; i++) {
                     await waitForFrames(page, 1);
@@ -297,6 +299,7 @@ async function waitForSceneToSettle(page, timeoutMs = 60000, stableChecks = 20, 
                 }
             }
         } else {
+            observedBusy = true;
             stableCount = 0;
             lastSignature = '';
         }
@@ -306,7 +309,7 @@ async function waitForSceneToSettle(page, timeoutMs = 60000, stableChecks = 20, 
             console.log(`[UI settle] Waiting... ${formatSceneSettleState(state)}`);
         }
 
-        await waitForFrames(page, 1);
+        await waitForFrames(page, 2);
     }
 
     const finalState = await getSceneSettleState(page);

@@ -162,7 +162,6 @@ function isScenePending(state) {
         || state.texturePendingLoads > 0
         || state.textureLoading > 0
         || state.textureRecalc > 0
-        || state.textureNeedsHighRes > 0
         || state.texturePendingAncestor > 0
         || state.elevationLoading > 0
         || state.elevationRecalc > 0
@@ -232,7 +231,7 @@ async function waitForSceneToSettle(page, {
         if (checks % 120 === 0) {
             console.log(`[SETTLE] Waiting... ${formatSceneSettleState(state)}`);
         }
-        await waitForFrames(page, 1);
+        await waitForFrames(page, 2);
     }
 
     const finalState = await getSceneSettleState(page);
