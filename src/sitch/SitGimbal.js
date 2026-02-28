@@ -1,7 +1,8 @@
 import {AlwaysDepth, Color, Group, Matrix4} from "three";
 import * as LAYER from "../LayerMasks";
 import {par} from "../par";
-import {arrayColumn, ExpandKeyframes, RollingAverage, scaleF2M} from "../utils";
+import {arrayColumn, ExpandKeyframes, scaleF2M} from "../utils";
+import {RollingAverage} from "../smoothing";
 import {CNodeCurveEditor} from "../nodes/CNodeCurveEdit";
 import {FileManager, gui, guiJetTweaks, guiTweaks, NodeMan, Sit} from "../Globals";
 import {CNodeArray} from "../nodes/CNodeArray";
@@ -956,6 +957,5 @@ export function SetupGimbal() {
     })
 
 }
-
 
 

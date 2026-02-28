@@ -63,6 +63,7 @@ import {addMenuToLeftSidebar, addMenuToRightSidebar, isInLeftSidebar, isInRightS
 import {CNodeControllerCelestial} from "./nodes/CNodeControllerVarious";
 import {CNodeVideoInfoUI} from "./nodes/CNodeVideoInfoUI";
 import {CNodeOSDDataSeriesController} from "./nodes/CNodeOSDDataSeriesController";
+import {CNodeGUIValue} from "./nodes/CNodeGUIValue";
 import {meanSeaLevelOffset} from "./EGM96Geoid";
 
 export class CCustomManager {
@@ -243,6 +244,98 @@ export class CCustomManager {
         }
     }
 
+    // Upgrade legacy camera smoothing tracks to dynamic smoothing controls.
+    // This keeps older custom sitches compatible without requiring data/custom/SitCustom.js edits.
+    upgradeCameraSmoothingControls() {
+        const smoothTrack = NodeMan.get("cameraTrackSwitchSmooth", false);
+        if (!smoothTrack) return;
+        if (typeof smoothTrack._setupDynamicSmoothingGUI !== "function") return;
+
+        const cameraFolder = guiMenus.camera ?? guiMenus.physics;
+        let smoothingFolder = cameraFolder.getFolder?.("Smoothing");
+        if (!smoothingFolder) {
+            smoothingFolder = cameraFolder.addFolder("Smoothing");
+        }
+        smoothingFolder.close();
+
+        const migrateInputToSmoothingFolder = (inputName, nodeId, defaultValue, start, end, step, desc, tooltip = undefined) => {
+            const existingInput = smoothTrack.in[inputName];
+            let value = defaultValue;
+
+            if (existingInput?.value !== undefined) {
+                value = existingInput.value;
+            } else if (existingInput?.v0 !== undefined) {
+                value = existingInput.v0;
+            }
+
+            if (existingInput && existingInput.gui === smoothingFolder) {
+                return existingInput;
+            }
+
+            if (existingInput) {
+                smoothTrack.removeInput(inputName);
+                if (existingInput.outputs.length === 0) {
+                    NodeMan.unlinkDisposeRemove(existingInput.id);
+                }
+            }
+
+            let inputNode = NodeMan.get(nodeId, false);
+            if (inputNode && inputNode.gui !== smoothingFolder && inputNode.outputs.length === 0) {
+                NodeMan.unlinkDisposeRemove(inputNode.id);
+                inputNode = null;
+            }
+
+            if (!inputNode) {
+                inputNode = new CNodeGUIValue({
+                    id: nodeId,
+                    value,
+                    start,
+                    end,
+                    step,
+                    desc,
+                    tooltip,
+                }, smoothingFolder);
+            }
+
+            if (smoothTrack.in[inputName] !== inputNode) {
+                smoothTrack.addMoreInputs({[inputName]: inputNode});
+            }
+
+            return inputNode;
+        };
+
+        migrateInputToSmoothingFolder("window", "cameraTrackSwitchSmooth_windowValue", 20, 0, 1000, 1, "Camera Smooth Window");
+        migrateInputToSmoothingFolder("tension", "cameraTrackSwitchSmooth_tensionValue", 0.5, 0, 1, 0.01, "Camera Catmull Tension");
+        migrateInputToSmoothingFolder("intervals", "cameraTrackSwitchSmooth_intervalsValue", 20, 2, 200, 1, "Camera Catmull Intervals");
+        migrateInputToSmoothingFolder("polyOrder", "cameraTrackSwitchSmooth_polyOrderValue", 3, 1, 5, 1, "Camera SavGol Poly Order");
+        migrateInputToSmoothingFolder("edgeOrder", "cameraTrackSwitchSmooth_edgeOrderValue", 2, 1, 5, 1, "Camera Edge Fit Order");
+        migrateInputToSmoothingFolder("fitWindow", "cameraTrackSwitchSmooth_fitWindowValue", 100, 3, 1000, 1, "Camera Edge Fit Window");
+
+        if (smoothTrack.smoothingMethodController && smoothTrack.smoothingMethodController.parent !== smoothingFolder) {
+            smoothTrack.smoothingMethodController.destroy();
+            smoothTrack.smoothingMethodController = null;
+        }
+
+        smoothTrack.isDynamicSmoothing = true;
+        smoothTrack.guiFolder = smoothingFolder;
+
+        if (smoothTrack.method === "catmull") {
+            smoothTrack.method = "spline";
+        }
+        const validMethods = new Set(["none", "moving", "movingPolyEdge", "sliding", "savgol", "spline"]);
+        const methodWasNotExplicitlyModified = Sit.mods?.cameraTrackSwitchSmooth?.method === undefined;
+        if (methodWasNotExplicitlyModified && (smoothTrack.method === undefined || smoothTrack.method === "moving" || smoothTrack.method === "movingPolyEdge")) {
+            smoothTrack.method = "savgol";
+        }
+        if (!validMethods.has(smoothTrack.method)) {
+            smoothTrack.method = "savgol";
+        }
+
+        smoothTrack._setupDynamicSmoothingGUI();
+        smoothTrack._updateParameterVisibility?.();
+        smoothTrack.recalculateCascade();
+    }
+
     /**
      * Handle GUI order change events by refreshing any mirrors that depend on the changed GUI
      * @param {GUI} changedGui - The GUI that had its order changed
@@ -313,6 +406,9 @@ export class CCustomManager {
 
         // Add Settings folder to Sitrec menu
         this.setupSettingsMenu();
+
+        // Backfill newer camera smoothing controls for legacy custom sitches.
+        this.upgradeCameraSmoothingControls();
 
         // Add celestial controller to CameraLOSController sweitch
         // switches automatically disable unselected controllers

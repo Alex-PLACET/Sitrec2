@@ -1,4 +1,5 @@
-import {ExpandKeyframes, radians, RollingAverage, tan} from "../utils";
+import {ExpandKeyframes, radians, tan} from "../utils";
+import {RollingAverage} from "../smoothing";
 import {FileManager, Sit} from "../Globals";
 import {V3} from "../threeUtils";
 import {getLocalUpVector} from "../SphericalMath";
@@ -93,5 +94,4 @@ export class CNodeLOSMotionTrack extends CNodeLOS {
     }
 
 }
-
 

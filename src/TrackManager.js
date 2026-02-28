@@ -252,6 +252,33 @@ class CTrackManager extends CManager {
             desc: "Catmull Intervals",
         }, guiFolder);
 
+        new CNodeGUIValue({
+            id: trackID + "_polyOrderValue",
+            value: 3,
+            start: 1,
+            end: 5,
+            step: 1,
+            desc: "SavGol Poly Order",
+        }, guiFolder);
+
+        new CNodeGUIValue({
+            id: trackID + "_edgeOrderValue",
+            value: 2,
+            start: 1,
+            end: 5,
+            step: 1,
+            desc: "Edge Fit Order",
+        }, guiFolder);
+
+        new CNodeGUIValue({
+            id: trackID + "_fitWindowValue",
+            value: 100,
+            start: 3,
+            end: 400,
+            step: 1,
+            desc: "Edge Fit Window",
+        }, guiFolder);
+
         return new CNodeSmoothedPositionTrack({
             id: trackID,
             source: trackID + "_unsmoothed",
@@ -260,6 +287,9 @@ class CTrackManager extends CManager {
             window: trackID + "_smoothValue",
             tension: trackID + "_tensionValue",
             intervals: trackID + "_intervalsValue",
+            polyOrder: trackID + "_polyOrderValue",
+            edgeOrder: trackID + "_edgeOrderValue",
+            fitWindow: trackID + "_fitWindowValue",
             isDynamicSmoothing: true,
             guiFolder: guiFolder,
             copyData: true,
@@ -1128,13 +1158,65 @@ class CTrackManager extends CManager {
             step: 1,
             desc: "Smoothing window",
         }, guiFolder);
+
+        new CNodeGUIValue({
+            id: trackID + "_tensionValue",
+            value: 0.5,
+            start: 0,
+            end: 1,
+            step: 0.01,
+            desc: "Catmull Tension",
+        }, guiFolder);
+
+        new CNodeGUIValue({
+            id: trackID + "_intervalsValue",
+            value: 10,
+            start: 2,
+            end: 100,
+            step: 1,
+            desc: "Catmull Intervals",
+        }, guiFolder);
+
+        new CNodeGUIValue({
+            id: trackID + "_polyOrderValue",
+            value: 3,
+            start: 1,
+            end: 5,
+            step: 1,
+            desc: "SavGol Poly Order",
+        }, guiFolder);
+
+        new CNodeGUIValue({
+            id: trackID + "_edgeOrderValue",
+            value: 2,
+            start: 1,
+            end: 5,
+            step: 1,
+            desc: "Edge Fit Order",
+        }, guiFolder);
+
+        new CNodeGUIValue({
+            id: trackID + "_fitWindowValue",
+            value: 100,
+            start: 3,
+            end: 400,
+            step: 1,
+            desc: "Edge Fit Window",
+        }, guiFolder);
         
         // Create smoothed track node that wraps the unsmoothed spline editor
         const smoothedTrackNode = new CNodeSmoothedPositionTrack({
             id: trackID,
             source: unsmoothedID,
-            method: "moving",
+            method: "movingPolyEdge",
             window: trackID + "_smoothValue",
+            tension: trackID + "_tensionValue",
+            intervals: trackID + "_intervalsValue",
+            polyOrder: trackID + "_polyOrderValue",
+            edgeOrder: trackID + "_edgeOrderValue",
+            fitWindow: trackID + "_fitWindowValue",
+            isDynamicSmoothing: true,
+            guiFolder: guiFolder,
             copyData: false,
             exportable: false,
         });

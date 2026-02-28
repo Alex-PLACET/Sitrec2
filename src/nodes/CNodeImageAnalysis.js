@@ -2,7 +2,7 @@ import {CNodeViewUI} from "./CNodeViewUI";
 import {CRegionSelector} from "../CRegionSelector";
 import {CNodeCurveEditor} from "./CNodeCurveEdit";
 import {FileManager, gui, NodeMan, setRenderOne, Sit} from "../Globals";
-import {RollingAverage} from "../utils";
+import {RollingAverage} from "../smoothing";
 import {CNodeArray} from "./CNodeArray";
 import {CNodeGraphSeries} from "./CNodeGraphSeries";
 import {assert} from "../assert.js";

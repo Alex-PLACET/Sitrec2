@@ -1,4 +1,5 @@
-import {ExpandKeyframes, radians, RollingAverage} from "../utils";
+import {ExpandKeyframes, radians} from "../utils";
+import {RollingAverage} from "../smoothing";
 import {getLocalDownVector, getLocalUpVector, getNorthPole} from "../SphericalMath";
 import {NodeMan, Sit} from "../Globals";
 
@@ -375,4 +376,3 @@ export class CNodeControllerVerticalSpeed extends CNodeController {
 
     }
 }
-

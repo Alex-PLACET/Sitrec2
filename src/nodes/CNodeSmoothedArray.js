@@ -1,4 +1,4 @@
-import {RollingAverage} from "../utils";
+import {RollingAverage} from "../smoothing";
 import {CNodeEmptyArray} from "./CNodeArray";
 
 export class CNodeSmoothedArray extends CNodeEmptyArray {

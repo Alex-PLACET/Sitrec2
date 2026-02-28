@@ -1,8 +1,8 @@
 // given an array of "positions" smooth the x,y,and z tracks by moving average
 // or other techniques
 // optionally copy any other data (like color, fov, etc) to the new array
-import {GlobalDateTimeNode, NodeMan, setRenderOne, Sit} from "../Globals";
-import {RollingAverage, SlidingAverage} from "../utils";
+import {GlobalDateTimeNode, guiMenus, NodeMan, setRenderOne, Sit} from "../Globals";
+import {RollingAveragePolyEdge, SavitzkyGolay, SlidingAverage} from "../smoothing";
 import {CatmullRomCurve3} from "three";
 import {V3} from "../threeUtils";
 import {assert} from "../assert";
@@ -21,13 +21,19 @@ export class CNodeSmoothedPositionTrack extends CNodeTrack {
             this.input("window")
             this.input("tension")
             this.input("intervals")
-            this.optionalInputs(["iterations", "dataTrack"])
+            this.optionalInputs(["iterations", "dataTrack", "polyOrder", "edgeOrder", "fitWindow"])
             this.guiFolder = v.guiFolder
+            if (typeof this.guiFolder === "string") {
+                this.guiFolder = guiMenus[this.guiFolder.toLowerCase()]
+            }
+            if (!this.guiFolder) {
+                this.guiFolder = guiMenus.physics
+            }
         } else {
             // Static mode: only register inputs needed for the current method
-            if (this.method === "moving" || this.method === "sliding") {
+            if (this.method === "moving" || this.method === "movingPolyEdge" || this.method === "sliding" || this.method === "savgol") {
                 this.input("window")
-                this.optionalInputs(["iterations"])
+                this.optionalInputs(["iterations", "polyOrder", "edgeOrder", "fitWindow"])
             }
             if (this.method === "catmull") {
                 this.input("tension")
@@ -54,9 +60,17 @@ export class CNodeSmoothedPositionTrack extends CNodeTrack {
     }
 
     _setupDynamicSmoothingGUI() {
-        const methods = ["moving", "sliding", "catmull"];
-        if (this.in.dataTrack) methods.push("spline");
-        this.guiFolder.add(this, "method", methods)
+        if (this.smoothingMethodController) {
+            this._updateParameterVisibility();
+            return;
+        }
+
+        // Prefer an explicit guiFolder when provided, otherwise fall back to the window control's folder.
+        const parameterFolder = this.guiFolder ?? this.in.window?.gui ?? guiMenus.physics;
+        this.guiFolder = parameterFolder;
+
+        const methods = ["none", "moving", "movingPolyEdge", "sliding", "savgol", "spline"];
+        this.smoothingMethodController = this.guiFolder.add(this, "method", methods)
             .name("Smoothing Method")
             .onChange(() => this._onMethodChanged());
         // Set initial visibility, and defer a second pass to ensure the GUI is fully settled
@@ -80,9 +94,20 @@ export class CNodeSmoothedPositionTrack extends CNodeTrack {
     _updateParameterVisibility() {
         const isCatmull = this.method === "catmull";
         const isSpline = this.method === "spline";
-        this.in.window.show(!isCatmull && !isSpline);
-        this.in.tension.show(isCatmull);
-        this.in.intervals.show(isCatmull);
+        const isDataTrackSpline = isSpline && !!this.in.dataTrack;
+        const isNone = this.method === "none";
+        const usesWindow = !isCatmull && !isDataTrackSpline && !isNone;
+        const usesPoly = this.method === "savgol" || (isSpline && !isDataTrackSpline);
+        const usesEdgeFit = this.method === "savgol" || this.method === "movingPolyEdge" || (isSpline && !isDataTrackSpline);
+        const usesIntervals = isCatmull || (isSpline && !isDataTrackSpline);
+
+        if (this.in.window?.show) this.in.window.show(usesWindow);
+        if (this.in.tension?.show) this.in.tension.show(isCatmull);
+        if (this.in.intervals?.show) this.in.intervals.show(usesIntervals);
+
+        if (this.in.polyOrder?.show) this.in.polyOrder.show(usesPoly);
+        if (this.in.edgeOrder?.show) this.in.edgeOrder.show(usesEdgeFit);
+        if (this.in.fitWindow?.show) this.in.fitWindow.show(usesEdgeFit);
     }
 
 
@@ -175,7 +200,96 @@ export class CNodeSmoothedPositionTrack extends CNodeTrack {
             }
             this.frames = this.array.length;
 
-        } else if (this.method === "moving" || this.method === "sliding") {
+        } else if (this.method === "none") {
+            this.array = []
+            for (let i = 0; i < this.sourceArray.length; i++) {
+                this.array.push({position: this.in.source.p(i)})
+            }
+            this.frames = this.array.length;
+        } else if (this.method === "spline") {
+            // Build a spline from SavGol-smoothed samples, then resample per-frame.
+            const x = []
+            const y = []
+            const z = []
+            for (let i = 0; i < this.sourceArray.length; i++) {
+                const pos = this.in.source.p(i)
+                x.push(pos.x)
+                y.push(pos.y)
+                z.push(pos.z)
+            }
+
+            var window = this.in.window ? this.in.window.v0 : 0
+            var iterations = 1
+            if (this.in.iterations)
+                iterations = this.in.iterations.v0
+
+            if (window > this.sourceArray.length - 3) {
+                console.warn("Window size is larger tha 3 less than the number of frames, reducing.")
+                window = this.sourceArray.length - 3;
+            }
+
+            const isConstant = x.every(v => v === x[0]) && y.every(v => v === y[0]) && z.every(v => v === z[0]);
+
+            let sx = x
+            let sy = y
+            let sz = z
+            if (window > 0 && !isConstant) {
+                const polyOrder = this.in.polyOrder ? this.in.polyOrder.v0 : 3;
+                const edgeOrder = this.in.edgeOrder ? this.in.edgeOrder.v0 : polyOrder;
+                const fitWindow = this.in.fitWindow ? this.in.fitWindow.v0 : window;
+                sx = SavitzkyGolay(x, window, polyOrder, iterations, edgeOrder, fitWindow)
+                sy = SavitzkyGolay(y, window, polyOrder, iterations, edgeOrder, fitWindow)
+                sz = SavitzkyGolay(z, window, polyOrder, iterations, edgeOrder, fitWindow)
+            }
+
+            const intervalCount = this.in.intervals ? this.in.intervals.v0 : 20
+            const step = Math.max(1, Math.floor(this.frames / intervalCount))
+            const controlPoints = []
+            const controlFrames = []
+
+            for (let i = 0; i < this.frames; i += step) {
+                controlPoints.push(V3(sx[i], sy[i], sz[i]))
+                controlFrames.push(i)
+            }
+            if (controlFrames[controlFrames.length - 1] !== this.frames - 1) {
+                const i = this.frames - 1
+                controlPoints.push(V3(sx[i], sy[i], sz[i]))
+                controlFrames.push(i)
+            }
+
+            if (controlPoints.length < 2) {
+                this.array = []
+                for (let i = 0; i < this.frames; i++) {
+                    this.array.push({position: V3(sx[i], sy[i], sz[i])})
+                }
+            } else {
+                this.spline = new CatmullRomCurve3(controlPoints);
+                this.spline.curveType = 'chordal';
+                this.array = []
+                const n = controlPoints.length
+
+                for (let f = 0; f < this.frames; f++) {
+                    let t;
+                    if (f <= controlFrames[0]) {
+                        t = 0;
+                    } else if (f >= controlFrames[n - 1]) {
+                        t = 1;
+                    } else {
+                        let idx = 0;
+                        while (idx < n - 2 && controlFrames[idx + 1] < f) {
+                            idx++;
+                        }
+                        const denom = controlFrames[idx + 1] - controlFrames[idx];
+                        const alpha = denom > 0 ? (f - controlFrames[idx]) / denom : 0;
+                        t = (idx + alpha) / (n - 1);
+                    }
+                    const pos = V3()
+                    this.spline.getPoint(t, pos)
+                    this.array.push({position: pos})
+                }
+            }
+            this.frames = this.array.length;
+        } else if (this.method === "moving" || this.method === "movingPolyEdge" || this.method === "sliding" || this.method === "savgol") {
 
             // create x,y,z arrays using getValueFrame, so we can smooth abstract data
             // (like catmullrom tracks, which don't create the sourceArray)
@@ -190,7 +304,7 @@ export class CNodeSmoothedPositionTrack extends CNodeTrack {
                 z.push(pos.z)
             }
 
-            var window = this.in.window.v0
+            var window = this.in.window ? this.in.window.v0 : 0
             var iterations = 1
             if (this.in.iterations)
                 iterations = this.in.iterations.v0
@@ -210,9 +324,22 @@ export class CNodeSmoothedPositionTrack extends CNodeTrack {
                 zs = z
             } else {
                 if (this.method === "moving") {
-                    xs = RollingAverage(x, window, iterations)
-                    ys = RollingAverage(y, window, iterations)
-                    zs = RollingAverage(z, window, iterations)
+                    xs = RollingAveragePolyEdge(x, window, iterations, 2, window)
+                    ys = RollingAveragePolyEdge(y, window, iterations, 2, window)
+                    zs = RollingAveragePolyEdge(z, window, iterations, 2, window)
+                } else if (this.method === "movingPolyEdge") {
+                    const edgeOrder = this.in.edgeOrder ? this.in.edgeOrder.v0 : 2;
+                    const fitWindow = this.in.fitWindow ? this.in.fitWindow.v0 : window;
+                    xs = RollingAveragePolyEdge(x, window, iterations, edgeOrder, fitWindow)
+                    ys = RollingAveragePolyEdge(y, window, iterations, edgeOrder, fitWindow)
+                    zs = RollingAveragePolyEdge(z, window, iterations, edgeOrder, fitWindow)
+                } else if (this.method === "savgol") {
+                    const polyOrder = this.in.polyOrder ? this.in.polyOrder.v0 : 2;
+                    const edgeOrder = this.in.edgeOrder ? this.in.edgeOrder.v0 : polyOrder;
+                    const fitWindow = this.in.fitWindow ? this.in.fitWindow.v0 : window;
+                    xs = SavitzkyGolay(x, window, polyOrder, iterations, edgeOrder, fitWindow)
+                    ys = SavitzkyGolay(y, window, polyOrder, iterations, edgeOrder, fitWindow)
+                    zs = SavitzkyGolay(z, window, polyOrder, iterations, edgeOrder, fitWindow)
                 } else {
                     xs = SlidingAverage(x, window, iterations)
                     ys = SlidingAverage(y, window, iterations)
@@ -227,14 +354,15 @@ export class CNodeSmoothedPositionTrack extends CNodeTrack {
             this.frames = this.array.length;
         } else {
             // Catmull: spline through uniformly-sampled points from the per-frame data
-            var interval = Math.floor(this.frames / this.in.intervals.v0)
+            const intervalCount = this.in.intervals ? this.in.intervals.v0 : 10
+            var interval = Math.max(1, Math.floor(this.frames / intervalCount))
             var data = []
             for (var i = 0; i < this.frames; i += interval) {
                 var splinePoint = this.sourceArray[i].position.clone()
                 data.push(splinePoint)
             }
             this.spline = new CatmullRomCurve3(data);
-            this.spline.tension = this.in.tension.v0;  // only has effect for catmullrom
+            this.spline.tension = this.in.tension ? this.in.tension.v0 : 0.5;  // only has effect for catmullrom
 
             // chordal keeps the velocity smooth across a segment
             this.spline.curveType = 'chordal';
@@ -265,7 +393,7 @@ export class CNodeSmoothedPositionTrack extends CNodeTrack {
 
     getValueFrame(frame) {
         let pos;
-        if (this.method === "moving" || this.method === "sliding" || this.method === "spline") {
+        if (this.method === "none" || this.method === "moving" || this.method === "movingPolyEdge" || this.method === "sliding" || this.method === "savgol" || this.method === "spline") {
             assert(this.array[frame] !== undefined, "CNodeSmoothedPositionTrack: array[frame] is undefined, frame=" + frame + " id=" + this.id)
             pos = this.array[frame].position
         } else {

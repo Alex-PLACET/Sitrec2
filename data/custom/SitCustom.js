@@ -421,7 +421,7 @@ sitch = {
 
     cameraTrackSwitchSmooth: {
         kind: "SmoothedPositionTrack",
-        method: "moving",
+        method: "savgol",
         source: "cameraTrackSwitch",
         window: {kind: "GUIValue", value: 20, start:0, end:1000, step:1, desc:"Camera Smooth Window", gui:"camera"},
         // iterations: {kind: "GUIValue", value: 6, start:1, end:100, step:1, desc:"Target Smooth Iterations", gui:"traverse"}

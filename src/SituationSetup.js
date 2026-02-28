@@ -577,7 +577,7 @@ export async function SetupFromKeyAndData(key, _data, depth=0) {
             } else {
                 const file = data.file ?? "cameraFile";
 
-                node = TrackManager.makeTrackFromDataFile(file, id + "Data", id);
+                node = TrackManager.makeTrackFromDataFile(file, id + "Data", id, undefined, 0, guiMenus.camera);
 
                 new CNodeDisplayTrack({
                     id: id + "Display",
@@ -1165,7 +1165,7 @@ export async function SetupFromKeyAndData(key, _data, depth=0) {
         case "smoothTrack":
             SSLog();
 
-            if (data.method === "moving") {
+            if (data.method === "moving" || data.method === "sliding" || data.method === "movingPolyEdge" || data.method === "savgol") {
                 node = NodeFactory.reinterpret(data.track, "SmoothedPositionTrack",
                     {
                         //   source: data.track,

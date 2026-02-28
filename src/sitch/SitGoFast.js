@@ -1,6 +1,7 @@
 import {AlwaysDepth, Color, MeshStandardMaterial, TextureLoader,} from "three";
 import {EarthRadiusMiles, FileManager, gui, NodeFactory, NodeMan, Sit} from "../Globals";
-import {ExpandKeyframes, f2m, metersFromNM, NMFromMeters, RollingAverage, scaleF2M} from "../utils";
+import {ExpandKeyframes, f2m, metersFromNM, NMFromMeters, scaleF2M} from "../utils";
+import {RollingAverage} from "../smoothing";
 import {CNodeCurveEditor} from "../nodes/CNodeCurveEdit";
 import {par} from "../par";
 import {CNodeJetTrack} from "../nodes/CNodeJetTrack";

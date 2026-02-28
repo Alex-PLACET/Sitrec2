@@ -1,6 +1,7 @@
 import {CNodeEmptyArray} from "./CNodeArray";
 import {MISB} from "../MISBUtils";
-import {ExpandMISBKeyframes, RollingAverage, RollingAverageDegrees} from "../utils";
+import {ExpandMISBKeyframes} from "../utils";
+import {RollingAverage, RollingAverageDegrees} from "../smoothing";
 import {CNode} from "./CNode";
 import {assert} from "../assert.js";
 import {showError} from "../showError";
