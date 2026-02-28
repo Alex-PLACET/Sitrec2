@@ -21,6 +21,7 @@ import {undoManager as UndoManager} from "./UndoManager";
 import * as LAYER from "./LayerMasks";
 import {CNodePositionXYZ} from "./nodes/CNodePositionLLA";
 import {CNodeMeasureAltitude, setupMeasurementUI} from "./nodes/CNodeLabels3D";
+import {getLocalUpVector} from "./SphericalMath";
 
 export class PointEditor {
     constructor(_scene, _camera, _renderer, controls, onChange, initialPoints, isLLA=false, legacyEUS=false) {
@@ -97,7 +98,6 @@ export class PointEditor {
             depthWrite: false
         });
         this.positionIndicatorCone = new Mesh(coneGeometry, coneMaterial);
-        this.positionIndicatorCone.rotation.x = Math.PI; // Invert the cone (point down)
         this.positionIndicatorCone.layers.mask = LAYER.MASK_HELPERS;
         this.positionIndicatorCone.visible = false; // Hidden by default
         this.scene.add(this.positionIndicatorCone);
@@ -282,11 +282,21 @@ export class PointEditor {
         // The cone geometry has height=2 and radius=1, so scale accordingly
         this.positionIndicatorCone.scale.set(radiusMeters, heightMeters / 2, radiusMeters);
 
-        // Position the cone so its TIP is at the track position
-        // The cone is inverted (rotated 180° on X axis), so the tip is at the bottom
-        // We need to offset it upward by half the scaled height
-        this.positionIndicatorCone.position.copy(position);
-        this.positionIndicatorCone.position.y += heightMeters / 2;
+        // Align the cone with local gravity so it works correctly in ECEF mode.
+        // Cone geometry points along +Y by default, so rotate +Y to local down.
+        const up = getLocalUpVector(position);
+        if (Number.isFinite(up.x) && Number.isFinite(up.y) && Number.isFinite(up.z) && up.lengthSq() > 0) {
+            const down = up.clone().negate();
+            this.positionIndicatorCone.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), down);
+            // Cone tip is +1 local Y (geometry height = 2), scaled by scale.y (= heightMeters/2).
+            // Move center opposite down (towards up) so the tip sits exactly on track position.
+            this.positionIndicatorCone.position.copy(position).addScaledVector(up, heightMeters / 2);
+        } else {
+            // Fallback to world-up behavior if local up cannot be computed.
+            this.positionIndicatorCone.position.copy(position);
+            this.positionIndicatorCone.position.y += heightMeters / 2;
+            this.positionIndicatorCone.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), new Vector3(0, -1, 0));
+        }
 
         // Update the altitude measurement
         // CNodeMeasureAltitude automatically calculates the ground point below
