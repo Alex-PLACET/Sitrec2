@@ -1,21 +1,11 @@
 import {expect, test} from '@playwright/test';
 import {takeScreenshotOrCompare} from './snapshot-utils.js';
 
-async function waitForFrames(page, count = 10) {
-    await page.evaluate(({ frameCount }) => {
-        return new Promise((resolve) => {
-            let frames = 0;
-            function wait() {
-                frames++;
-                if (frames < frameCount) {
-                    requestAnimationFrame(wait);
-                } else {
-                    resolve();
-                }
-            }
-            requestAnimationFrame(wait);
-        });
-    }, { frameCount: count });
+async function waitForFrames(page, count = 10, maxWaitMs = 5000) {
+    // Avoid page.evaluate here: under heavy GPU/video load, main-thread stalls can make
+    // evaluate itself hit the Playwright test timeout.
+    const targetMs = Math.max(1, count) * 16;
+    await page.waitForTimeout(Math.min(maxWaitMs, targetMs));
 }
 
 async function clickMenuTitle(page, menuName) {
@@ -104,6 +94,7 @@ async function setCheckboxValue(page, folderName, checkboxName, value) {
 async function takeSnapshot(page, snapshotName, testInfo) {
     await takeScreenshotOrCompare(page, snapshotName, testInfo, {
         maxDiffPixels: 100,
+        threshold: 0.05,
     });
 }
 
@@ -125,62 +116,202 @@ async function waitForConsoleText(page, expectedText, timeoutMs = 15000) {
     });
 }
 
-async function waitForSceneToSettle(page, timeoutMs = 45000, stableFrames = 15) {
-    try {
-        await page.waitForFunction(({ requiredStableFrames }) => {
-            const globals = window.Globals;
-            const nodeMan = window.NodeMan;
+async function getSceneSettleState(page) {
+    return page.evaluate(() => {
+        const globals = window.Globals;
+        const nodeMan = window.NodeMan;
 
-            if (!globals || !nodeMan || !nodeMan.list) {
-                return false;
+        const state = {
+            ready: !!globals && !!nodeMan && !!nodeMan.list,
+            pendingActions: 0,
+            texturePendingLoads: 0,
+            textureLoading: 0,
+            textureRecalc: 0,
+            textureNeedsHighRes: 0,
+            texturePendingAncestor: 0,
+            textureUsingParentData: 0,
+            elevationLoading: 0,
+            elevationRecalc: 0,
+            elevationPendingAncestor: 0,
+            activeVisibleTextureTiles: 0,
+            activeElevationTiles: 0,
+            pending3DTiles: 0,
+            visibleTileHash: 0,
+            tilesVisibilityVersionHash: 0,
+        };
+
+        if (!state.ready) {
+            return state;
+        }
+
+        state.pendingActions = globals.pendingActions ?? 0;
+
+        const hashString = (input) => {
+            let hash = 2166136261;
+            for (let i = 0; i < input.length; i++) {
+                hash ^= input.charCodeAt(i);
+                hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+            }
+            return hash >>> 0;
+        };
+
+        const addTileHash = (tile, mapID) => {
+            const tileSig = `${mapID}:${tile.z}/${tile.x}/${tile.y}:${tile.usingParentData ? 1 : 0}:${tile.needsHighResLoad ? 1 : 0}:${tile.pendingAncestorLoad ? 1 : 0}`;
+            state.visibleTileHash = (state.visibleTileHash ^ hashString(tileSig)) >>> 0;
+        };
+
+        for (const entry of Object.values(nodeMan.list)) {
+            const node = entry?.data;
+            if (!node) continue;
+
+            if (node.elevationMap && node.elevationMap.forEachTile) {
+                node.elevationMap.forEachTile((tile) => {
+                    const active = (tile.tileLayers ?? 0) !== 0;
+                    if (!active) return;
+
+                    state.activeElevationTiles++;
+                    if (tile.isLoadingElevation) state.elevationLoading++;
+                    if (tile.isRecalculatingCurve) state.elevationRecalc++;
+                    if (tile.pendingAncestorLoad) state.elevationPendingAncestor++;
+                });
             }
 
-            let hasPendingTiles = false;
+            if (node.maps) {
+                for (const mapID in node.maps) {
+                    const map = node.maps[mapID]?.map;
+                    if (!map || !map.forEachTile) continue;
 
-            for (const entry of Object.values(nodeMan.list)) {
-                const node = entry?.data;
-                if (!node) continue;
+                    if (map.pendingTileLoads && typeof map.pendingTileLoads.size === "number") {
+                        state.texturePendingLoads += map.pendingTileLoads.size;
+                    }
 
-                if (node.elevationMap && node.elevationMap.forEachTile) {
-                    node.elevationMap.forEachTile((tile) => {
-                        if (tile.isLoading || tile.isLoadingElevation || tile.isRecalculatingCurve) {
-                            hasPendingTiles = true;
-                        }
+                    map.forEachTile((tile) => {
+                        const active = (tile.tileLayers ?? 0) !== 0;
+                        const visible = !!tile.mesh?.visible;
+                        if (!active || !visible) return;
+
+                        state.activeVisibleTextureTiles++;
+                        addTileHash(tile, mapID);
+
+                        if (tile.isLoading) state.textureLoading++;
+                        if (tile.isRecalculatingCurve) state.textureRecalc++;
+                        if (tile.needsHighResLoad) state.textureNeedsHighRes++;
+                        if (tile.pendingAncestorLoad) state.texturePendingAncestor++;
+                        if (tile.usingParentData) state.textureUsingParentData++;
                     });
                 }
+            }
 
-                if (node.maps) {
-                    for (const mapID in node.maps) {
-                        const map = node.maps[mapID]?.map;
-                        if (map && map.forEachTile) {
-                            map.forEachTile((tile) => {
-                                if (tile.isLoading || tile.isRecalculatingCurve) {
-                                    hasPendingTiles = true;
-                                }
-                            });
-                        }
+            if (typeof node.getPendingLoadState === "function") {
+                const pending = node.getPendingLoadState();
+                if (pending?.hasPending) {
+                    state.pending3DTiles++;
+                }
+                if (pending?.perView) {
+                    for (const stats of Object.values(pending.perView)) {
+                        const version = stats?.visibilityVersion ?? 0;
+                        state.tilesVisibilityVersionHash = ((state.tilesVisibilityVersionHash * 33) ^ (version + 1)) >>> 0;
+                    }
+                }
+            }
+        }
+
+        return state;
+    });
+}
+
+function formatSceneSettleState(state) {
+    return [
+        `pendingActions=${state.pendingActions}`,
+        `texPendingSet=${state.texturePendingLoads}`,
+        `texLoading=${state.textureLoading}`,
+        `texRecalc=${state.textureRecalc}`,
+        `texNeedsHighRes=${state.textureNeedsHighRes}`,
+        `texPendingAncestor=${state.texturePendingAncestor}`,
+        `texUsingParent=${state.textureUsingParentData}`,
+        `elevLoading=${state.elevationLoading}`,
+        `elevRecalc=${state.elevationRecalc}`,
+        `elevPendingAncestor=${state.elevationPendingAncestor}`,
+        `pending3DTiles=${state.pending3DTiles}`,
+        `activeTexVisible=${state.activeVisibleTextureTiles}`,
+        `activeElev=${state.activeElevationTiles}`,
+        `tileHash=${state.visibleTileHash}`,
+        `tileVersionHash=${state.tilesVisibilityVersionHash}`,
+    ].join(', ');
+}
+
+function isScenePending(state) {
+    if (!state.ready) return true;
+    return state.pendingActions > 0
+        || state.texturePendingLoads > 0
+        || state.textureLoading > 0
+        || state.textureRecalc > 0
+        || state.textureNeedsHighRes > 0
+        || state.texturePendingAncestor > 0
+        || state.elevationLoading > 0
+        || state.elevationRecalc > 0
+        || state.elevationPendingAncestor > 0
+        || state.pending3DTiles > 0;
+}
+
+function sceneSettleSignature(state) {
+    return `${state.activeVisibleTextureTiles}:${state.visibleTileHash}:${state.tilesVisibilityVersionHash}`;
+}
+
+async function waitForSceneToSettle(page, timeoutMs = 60000, stableChecks = 20, postSettleRenders = 2) {
+    const startMs = Date.now();
+    let checks = 0;
+    let stableCount = 0;
+    let lastSignature = '';
+
+    while (Date.now() - startMs < timeoutMs) {
+        const state = await getSceneSettleState(page);
+        const pending = isScenePending(state);
+        const signature = sceneSettleSignature(state);
+
+        if (!pending) {
+            if (signature === lastSignature) {
+                stableCount++;
+            } else {
+                stableCount = 1;
+                lastSignature = signature;
+            }
+
+            if (stableCount >= stableChecks) {
+                let postSettleStable = true;
+                for (let i = 0; i < postSettleRenders; i++) {
+                    await waitForFrames(page, 1);
+                    const postState = await getSceneSettleState(page);
+                    const postPending = isScenePending(postState);
+                    const postSignature = sceneSettleSignature(postState);
+                    if (postPending || postSignature !== signature) {
+                        postSettleStable = false;
+                        stableCount = 0;
+                        lastSignature = postSignature;
+                        break;
                     }
                 }
 
-                if (hasPendingTiles) {
-                    break;
+                if (postSettleStable) {
+                    return true;
                 }
             }
+        } else {
+            stableCount = 0;
+            lastSignature = '';
+        }
 
-            const isPending = (globals.pendingActions ?? 0) > 0 || hasPendingTiles;
-            if (isPending) {
-                window.__uiSettleStableFrames = 0;
-                return false;
-            }
+        checks++;
+        if (checks % 120 === 0) {
+            console.log(`[UI settle] Waiting... ${formatSceneSettleState(state)}`);
+        }
 
-            window.__uiSettleStableFrames = (window.__uiSettleStableFrames || 0) + 1;
-            return window.__uiSettleStableFrames >= requiredStableFrames;
-        }, { requiredStableFrames: stableFrames }, { timeout: timeoutMs });
-        return true;
-    } catch (error) {
-        console.log(`Warning: Scene did not fully settle within ${timeoutMs}ms`);
-        return false;
+        await waitForFrames(page, 1);
     }
+
+    const finalState = await getSceneSettleState(page);
+    console.log(`[UI settle] Timeout after ${timeoutMs}ms: ${formatSceneSettleState(finalState)}`);
+    return false;
 }
 
 test.describe.serial('UI Interaction Tests - Playwright', () => {
@@ -195,7 +326,7 @@ test.describe.serial('UI Interaction Tests - Playwright', () => {
             console.log(`[WORKER-${workerIndex}] PAGE CONSOLE [${msg.type()}]: ${msg.text()}`);
         });
         
-        await sharedPage.goto('?ignoreunload=1&regression=1&mapType=Local&elevationType=Local');
+        await sharedPage.goto('?frame=10&ignoreunload=1&regression=1&mapType=Local&elevationType=Local');
         
         await sharedPage.waitForFunction(() => {
             return document.querySelector('.lil-gui') !== null;
@@ -216,12 +347,14 @@ test.describe.serial('UI Interaction Tests - Playwright', () => {
             console.log('Warning: Did not detect "No pending actions" message');
         });
         
-        await waitForSceneToSettle(sharedPage, 45000);
+        await waitForSceneToSettle(sharedPage, 60000);
         await sharedPage.waitForTimeout(5000);
     });
 
     test.afterAll(async () => {
-        await sharedPage.close();
+        if (sharedPage) {
+            await sharedPage.close();
+        }
     });
 
     test.skip('should adjust Lighting ambient intensity slider to 1.5', async ({}, testInfo) => {
@@ -252,7 +385,7 @@ test.describe.serial('UI Interaction Tests - Playwright', () => {
     test('should import LA Features CSV file via File menu', async ({}, testInfo) => {
         console.log('[TEST:ui-csv:STARTED]');
         try {
-            test.setTimeout(60000);
+            test.setTimeout(120000);
             
             await clickMenuTitle(sharedPage, 'File');
             await sharedPage.waitForTimeout(100);
@@ -305,7 +438,7 @@ test.describe.serial('UI Interaction Tests - Playwright', () => {
     test('should import STANAG 4676 XML file via File menu', async ({}, testInfo) => {
         console.log('[TEST:ui-stanag:STARTED]');
         try {
-            test.setTimeout(60000);
+            test.setTimeout(120000);
             
             await clickMenuTitle(sharedPage, 'File');
             await sharedPage.waitForTimeout(100);

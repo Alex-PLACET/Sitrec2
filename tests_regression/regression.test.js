@@ -25,6 +25,221 @@ const testDataTrackFiles = [
     { id: "mosul", name: "mosul", url: "?custom=https://sitrec.s3.us-west-2.amazonaws.com/99999999/Mosul%20Orb/20250707_055311.js&frame=62"},
 ]
 
+function buildRegressionUrl(url) {
+    const hasParam = (input, key) => new RegExp(`[?&]${key}=`).test(input);
+    let fullUrl = url;
+
+    if (!fullUrl.includes("?")) {
+        fullUrl += "?";
+    }
+
+    const additions = [];
+    if (!hasParam(fullUrl, "ignoreunload")) additions.push("ignoreunload=1");
+    if (!hasParam(fullUrl, "regression")) additions.push("regression=1");
+
+    if (additions.length > 0) {
+        const needsJoin = !fullUrl.endsWith("?") && !fullUrl.endsWith("&");
+        fullUrl += `${needsJoin ? "&" : ""}${additions.join("&")}`;
+    }
+
+    return fullUrl;
+}
+
+async function waitForFrames(page, count = 1, maxWaitMs = 5000) {
+    // Avoid page.evaluate here: under heavy GPU/video load, main-thread stalls can make
+    // evaluate itself hit the Playwright test timeout.
+    const targetMs = Math.max(1, count) * 16;
+    await page.waitForTimeout(Math.min(maxWaitMs, targetMs));
+}
+
+async function getSceneSettleState(page) {
+    return page.evaluate(() => {
+        const globals = window.Globals;
+        const nodeMan = window.NodeMan;
+        const loadingDiv = document.getElementById("loadingIndicator");
+        const terrainUI = nodeMan?.get ? nodeMan.get("terrainUI") : null;
+
+        const state = {
+            ready: !!globals && !!nodeMan && !!nodeMan.list,
+            pendingActions: 0,
+            deserializing: false,
+            parsing: 0,
+            loadingVisible: false,
+            texturePendingLoads: 0,
+            textureLoading: 0,
+            textureRecalc: 0,
+            textureNeedsHighRes: 0,
+            texturePendingAncestor: 0,
+            elevationLoading: 0,
+            elevationRecalc: 0,
+            elevationPendingAncestor: 0,
+            pending3DTiles: 0,
+            activeVisibleTextureTiles: 0,
+            mapType: terrainUI?.mapType || "",
+            elevationType: terrainUI?.elevationType || "",
+            sitName: window.Sit?.name || "",
+            visibleTileHash: 0,
+        };
+
+        if (!state.ready) {
+            return state;
+        }
+
+        state.pendingActions = globals.pendingActions ?? 0;
+        state.deserializing = !!globals.deserializing;
+        state.parsing = globals.parsing ?? 0;
+        state.loadingVisible = !!loadingDiv
+            && loadingDiv.style.display !== "none"
+            && (loadingDiv.textContent || "").includes("Loading");
+
+        const hashString = (input) => {
+            let hash = 2166136261;
+            for (let i = 0; i < input.length; i++) {
+                hash ^= input.charCodeAt(i);
+                hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+            }
+            return hash >>> 0;
+        };
+
+        for (const entry of Object.values(nodeMan.list)) {
+            const node = entry?.data;
+            if (!node) continue;
+
+            if (node.elevationMap && node.elevationMap.forEachTile) {
+                node.elevationMap.forEachTile((tile) => {
+                    const active = (tile.tileLayers ?? 0) !== 0;
+                    if (!active) return;
+                    if (tile.isLoadingElevation) state.elevationLoading++;
+                    if (tile.isRecalculatingCurve) state.elevationRecalc++;
+                    if (tile.pendingAncestorLoad) state.elevationPendingAncestor++;
+                });
+            }
+
+            if (node.maps) {
+                for (const mapID in node.maps) {
+                    const map = node.maps[mapID]?.map;
+                    if (!map || !map.forEachTile) continue;
+
+                    if (map.pendingTileLoads && typeof map.pendingTileLoads.size === "number") {
+                        state.texturePendingLoads += map.pendingTileLoads.size;
+                    }
+
+                    map.forEachTile((tile) => {
+                        const active = (tile.tileLayers ?? 0) !== 0;
+                        const visible = !!tile.mesh?.visible;
+                        if (!active || !visible) return;
+
+                        state.activeVisibleTextureTiles++;
+                        if (tile.isLoading) state.textureLoading++;
+                        if (tile.isRecalculatingCurve) state.textureRecalc++;
+                        if (tile.needsHighResLoad) state.textureNeedsHighRes++;
+                        if (tile.pendingAncestorLoad) state.texturePendingAncestor++;
+
+                        const sig = `${mapID}:${tile.z}/${tile.x}/${tile.y}:${tile.usingParentData ? 1 : 0}:${tile.needsHighResLoad ? 1 : 0}`;
+                        state.visibleTileHash = (state.visibleTileHash ^ hashString(sig)) >>> 0;
+                    });
+                }
+            }
+
+            if (typeof node.getPendingLoadState === "function") {
+                const pending = node.getPendingLoadState();
+                if (pending?.hasPending) {
+                    state.pending3DTiles++;
+                }
+            }
+        }
+
+        return state;
+    });
+}
+
+function isScenePending(state) {
+    if (!state.ready) return true;
+    return state.pendingActions > 0
+        || state.deserializing
+        || state.parsing > 0
+        || state.loadingVisible
+        || state.texturePendingLoads > 0
+        || state.textureLoading > 0
+        || state.textureRecalc > 0
+        || state.textureNeedsHighRes > 0
+        || state.texturePendingAncestor > 0
+        || state.elevationLoading > 0
+        || state.elevationRecalc > 0
+        || state.elevationPendingAncestor > 0
+        || state.pending3DTiles > 0;
+}
+
+function formatSceneSettleState(state) {
+    return [
+        `sit=${state.sitName || "?"}`,
+        `map=${state.mapType || "?"}`,
+        `elev=${state.elevationType || "?"}`,
+        `pendingActions=${state.pendingActions}`,
+        `deserializing=${state.deserializing ? 1 : 0}`,
+        `parsing=${state.parsing}`,
+        `loadingUI=${state.loadingVisible ? 1 : 0}`,
+        `texPendingSet=${state.texturePendingLoads}`,
+        `texLoading=${state.textureLoading}`,
+        `texRecalc=${state.textureRecalc}`,
+        `texNeedsHighRes=${state.textureNeedsHighRes}`,
+        `texPendingAncestor=${state.texturePendingAncestor}`,
+        `elevLoading=${state.elevationLoading}`,
+        `elevRecalc=${state.elevationRecalc}`,
+        `elevPendingAncestor=${state.elevationPendingAncestor}`,
+        `pending3DTiles=${state.pending3DTiles}`,
+        `activeTexVisible=${state.activeVisibleTextureTiles}`,
+        `tileHash=${state.visibleTileHash}`,
+    ].join(", ");
+}
+
+async function waitForSceneToSettle(page, {
+    maxWaitMs = 90000,
+    stableChecks = 20,
+    minWaitMs = 3000,
+} = {}) {
+    const startMs = Date.now();
+    let checks = 0;
+    let stableCount = 0;
+    let lastSignature = "";
+    let observedBusy = false;
+
+    while (Date.now() - startMs < maxWaitMs) {
+        const state = await getSceneSettleState(page);
+        const pending = isScenePending(state);
+        const signature = `${state.activeVisibleTextureTiles}:${state.visibleTileHash}`;
+
+        if (pending) {
+            observedBusy = true;
+            stableCount = 0;
+            lastSignature = "";
+        } else {
+            if (signature === lastSignature) {
+                stableCount++;
+            } else {
+                stableCount = 1;
+                lastSignature = signature;
+            }
+
+            const elapsedMs = Date.now() - startMs;
+            const canFinish = (observedBusy || elapsedMs >= minWaitMs) && stableCount >= stableChecks;
+            if (canFinish) {
+                return { timedOut: false, state };
+            }
+        }
+
+        checks++;
+        if (checks % 120 === 0) {
+            console.log(`[SETTLE] Waiting... ${formatSceneSettleState(state)}`);
+        }
+        await waitForFrames(page, 1);
+    }
+
+    const finalState = await getSceneSettleState(page);
+    console.warn(`[SETTLE] Timeout after ${maxWaitMs}ms: ${formatSceneSettleState(finalState)}`);
+    return { timedOut: true, state: finalState };
+}
+
 
 async function waitForConsoleText(page, expectedText, timeoutMs = 30000) {
     return new Promise((resolve, reject) => {
@@ -57,7 +272,7 @@ test.describe('Visual Regression Testing', () => {
             console.log(`[TEST:${id}:STARTED]`);
             
             try {
-                test.setTimeout(waitFor ? 900000 : 120000);
+                test.setTimeout(waitFor ? 900000 : 300000);
 
                 await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -89,12 +304,13 @@ test.describe('Visual Regression Testing', () => {
                     console.log(`[WORKER-${testInfo.workerIndex}] Request failed: ${req.url()}`);
                 });
 
-                const fullUrl = url + '&ignoreunload=1&regression=1';
+                const fullUrl = buildRegressionUrl(url);
 
                 const runTest = async () => {
                     const expectedText = waitFor || 'No pending actions';
                     const consoleTimeout = waitFor ? 600000 : (timeout || 60000);
                     const consolePromise = waitForConsoleText(page, expectedText, consoleTimeout);
+                    console.log(`[WORKER-${testInfo.workerIndex}] Loading URL for ${name}: ${fullUrl}`);
 
                     const response = await page.goto(fullUrl, {
                         waitUntil: 'load',
@@ -107,19 +323,23 @@ test.describe('Visual Regression Testing', () => {
 
                     await consolePromise;
 
+                    const settleMaxWait = waitFor ? 180000 : Math.max(timeout || 60000, 90000);
+                    const settleResult = await waitForSceneToSettle(page, {
+                        maxWaitMs: settleMaxWait,
+                    });
+                    console.log(`[SETTLE] Ready (${settleResult.timedOut ? "timed out" : "stable"}): ${formatSceneSettleState(settleResult.state)}`);
+
+                    await waitForFrames(page, 5);
+
+                    // Log resolved terrain settings for debugability across custom sitches.
+                    const finalState = await getSceneSettleState(page);
+                    console.log(`[SETTLE] Final terrain: map=${finalState.mapType || "?"}, elev=${finalState.elevationType || "?"}`);
+
                     await page.evaluate(() => {
-                        return new Promise((resolve) => {
-                            let frameCount = 0;
-                            function waitForFrames() {
-                                frameCount++;
-                                if (frameCount < 3) {
-                                    requestAnimationFrame(waitForFrames);
-                                } else {
-                                    resolve();
-                                }
-                            }
-                            requestAnimationFrame(waitForFrames);
-                        });
+                        // Ensure any queued render pass executes before screenshot.
+                        if (window.setRenderOne) {
+                            window.setRenderOne(true);
+                        }
                     });
 
                     await takeScreenshotOrCompare(page, `${name}-snapshot`, testInfo);

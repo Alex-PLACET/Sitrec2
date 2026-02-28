@@ -259,10 +259,19 @@ export class CNodeTerrainUI extends CNode {
             ? (process.env.DOCKER_MAP_TYPE ?? "Debug")
             : (process.env.DEFAULT_MAP_TYPE ?? "Debug");
 
-        // map type from the terrain object in a a saved sitch, or default to the first one
-        // Force "Debug" in quickTerrain mode (testAll=2) - takes priority over regression
-        // Force "Local" in regression mode to avoid network requests
-        this.mapType = Globals.quickTerrain ? "Debug" : (Globals.regression ? "Local" : (v.mapType ?? defaultMapType ?? Object.keys(this.mapSources)[0]));
+        // map type from the terrain object in a saved sitch, or default to configured default.
+        // quickTerrain mode (testAll=2) always forces Debug terrain for speed.
+        // Regression mode no longer forces Local globally; tests that need Local should pass
+        // mapType=Local explicitly in the URL.
+        const regressionForceLocalTerrain =
+            Globals.regression
+            && typeof window !== "undefined"
+            && new URLSearchParams(window.location.search).get("regressionLocalTerrain") === "1";
+        this.mapType = Globals.quickTerrain
+            ? "Debug"
+            : (regressionForceLocalTerrain
+                ? "Local"
+                : (v.mapType ?? defaultMapType ?? Object.keys(this.mapSources)[0]));
 
         this.gui = guiMenus.terrain;
         this.mapTypeMenu = this.gui.add(this, "mapType", this.mapTypesKV).listen().name("Map Type")
@@ -311,9 +320,14 @@ export class CNodeTerrainUI extends CNode {
             ? (process.env.DOCKER_ELEVATION_TYPE ?? "Flat")
             : (process.env.DEFAULT_ELEVATION_TYPE ?? "Flat");
 
-        // Force "Flat" in quickTerrain mode (testAll=2) - takes priority over regression
-        // Force "Local" in regression mode to avoid network requests
-        this.elevationType = Globals.quickTerrain ? "Flat" : (Globals.regression ? "Local" : (v.elevationType ?? defaultElevationType ?? Object.keys(this.elevationSources)[0]))
+        // quickTerrain mode (testAll=2) always forces Flat elevation for speed.
+        // Regression mode no longer forces Local globally; tests that need Local should pass
+        // elevationType=Local explicitly in the URL.
+        this.elevationType = Globals.quickTerrain
+            ? "Flat"
+            : (regressionForceLocalTerrain
+                ? "Local"
+                : (v.elevationType ?? defaultElevationType ?? Object.keys(this.elevationSources)[0]))
         // add the menu
         this.elevationTypeMenu = this.gui.add(this, "elevationType", this.elevationTypesKV).listen().name("Elevation Type")
             .tooltip("Elevation data source for terrain height data")
