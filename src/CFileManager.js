@@ -1923,6 +1923,8 @@ export class CFileManager extends CManager {
             const parsed = csv.toArrays(result.csvString);
             const misbData = parseCustom1CSV(parsed);
             const trackFile = new CTrackFileMISB(stripDuplicateTimes(misbData));
+            trackFile.isRocketTrajectory = true;
+            trackFile.sourceType = "flightclub";
 
             this.add(csvFilename, trackFile, csvBuffer);
             this.list[csvFilename].filename = csvFilename;
@@ -2708,4 +2710,3 @@ export async function waitForParsingToComplete() {
     });
     console.log("Parsing complete!");
 }
-

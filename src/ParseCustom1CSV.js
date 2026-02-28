@@ -5,6 +5,148 @@ import {MISB, MISBFields} from "./MISBUtils";
 import {GlobalDateTimeNode, Sit} from "./Globals";
 import {f2m} from "./utils";
 import {parseMGRS} from "./CoordinateParser";
+import {ecefToLLA, extendECEFTelemetryWithOrbit} from "./ParseFlightClubJSON";
+
+const WGS84_A = 6378137.0;
+const WGS84_F = 1 / 298.257223563;
+const WGS84_E2 = 2 * WGS84_F - WGS84_F * WGS84_F;
+
+function llaToECEF(latDeg, lonDeg, altMeters) {
+    const lat = latDeg * Math.PI / 180;
+    const lon = lonDeg * Math.PI / 180;
+    const sinLat = Math.sin(lat);
+    const cosLat = Math.cos(lat);
+    const cosLon = Math.cos(lon);
+    const sinLon = Math.sin(lon);
+    const N = WGS84_A / Math.sqrt(1 - WGS84_E2 * sinLat * sinLat);
+
+    return [
+        (N + altMeters) * cosLat * cosLon,
+        (N + altMeters) * cosLat * sinLon,
+        (N * (1 - WGS84_E2) + altMeters) * sinLat,
+    ];
+}
+
+function median(values) {
+    if (!values.length) {
+        return null;
+    }
+    const sorted = values.slice().sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    if (sorted.length % 2 === 0) {
+        return (sorted[mid - 1] + sorted[mid]) / 2;
+    }
+    return sorted[mid];
+}
+
+function inferTimeScaleToSeconds(rawTimes) {
+    if (!rawTimes.length) {
+        return 1e-3;
+    }
+
+    const base = Math.abs(rawTimes[0]);
+    if (base > 1e14) {
+        return 1e-6;
+    }
+    if (base > 1e11) {
+        return 1e-3;
+    }
+    if (base > 1e9) {
+        return 1;
+    }
+
+    const deltas = [];
+    for (let i = 1; i < rawTimes.length; i++) {
+        const dt = rawTimes[i] - rawTimes[i - 1];
+        if (Number.isFinite(dt) && dt > 0) {
+            deltas.push(dt);
+        }
+    }
+    const dtMedian = median(deltas);
+    if (!Number.isFinite(dtMedian)) {
+        return 1e-3;
+    }
+    if (dtMedian > 100000) {
+        return 1e-6;
+    }
+    if (dtMedian > 100) {
+        return 1e-3;
+    }
+    return 1;
+}
+
+function extendOrbitalMISBTrack(misbArray) {
+    if (!Array.isArray(misbArray) || misbArray.length < 3) {
+        return 0;
+    }
+
+    const uniqueTrackIDs = new Set();
+    for (const row of misbArray) {
+        const trackID = row[MISB.TrackID];
+        if (trackID !== null && trackID !== undefined && trackID !== "") {
+            uniqueTrackIDs.add(trackID);
+        }
+    }
+    // Avoid extending mixed multi-track files here; those are split downstream.
+    if (uniqueTrackIDs.size > 1) {
+        return 0;
+    }
+
+    const rawTimes = [];
+    const parsedRows = [];
+    for (const row of misbArray) {
+        const rawTime = Number(row[MISB.UnixTimeStamp]);
+        const lat = Number(row[MISB.SensorLatitude]);
+        const lon = Number(row[MISB.SensorLongitude]);
+        const alt = Number(row[MISB.SensorTrueAltitude]);
+        if (!Number.isFinite(rawTime) || !Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(alt)) {
+            continue;
+        }
+        parsedRows.push({rawTime, lat, lon, alt});
+        rawTimes.push(rawTime);
+    }
+
+    if (parsedRows.length < 3) {
+        return 0;
+    }
+
+    const timeScaleToSeconds = inferTimeScaleToSeconds(rawTimes);
+    if (!Number.isFinite(timeScaleToSeconds) || timeScaleToSeconds <= 0) {
+        return 0;
+    }
+
+    const baseRawTime = parsedRows[0].rawTime;
+    const telemetry = parsedRows.map((row) => ({
+        t: (row.rawTime - baseRawTime) * timeScaleToSeconds,
+        x_NI: llaToECEF(row.lat, row.lon, row.alt),
+    }));
+
+    const extendedTelemetry = extendECEFTelemetryWithOrbit(telemetry, 2);
+    if (extendedTelemetry.length <= telemetry.length) {
+        return 0;
+    }
+
+    const singleTrackID = uniqueTrackIDs.size === 1 ? Array.from(uniqueTrackIDs)[0] : null;
+    const added = extendedTelemetry.length - telemetry.length;
+
+    for (let i = telemetry.length; i < extendedTelemetry.length; i++) {
+        const point = extendedTelemetry[i];
+        const [x, y, z] = point.x_NI;
+        const lla = ecefToLLA(x, y, z);
+
+        const newRow = new Array(MISBFields).fill(null);
+        newRow[MISB.UnixTimeStamp] = baseRawTime + point.t / timeScaleToSeconds;
+        newRow[MISB.SensorLatitude] = lla.lat;
+        newRow[MISB.SensorLongitude] = lla.lon;
+        newRow[MISB.SensorTrueAltitude] = lla.alt;
+        if (singleTrackID !== null) {
+            newRow[MISB.TrackID] = singleTrackID;
+        }
+        misbArray.push(newRow);
+    }
+
+    return added;
+}
 
 export function isPBAFile(text) {
     return text.startsWith("---Pico Balloon Archive");
@@ -232,6 +374,11 @@ export function parseCustom1CSV(csv) {
 
     }
 
+    const extensionCount = extendOrbitalMISBTrack(MISBArray);
+    if (extensionCount > 0) {
+        console.log(`Extended orbital CSV track by ${extensionCount} points`);
+    }
+
     // For relative-time tracks, attach metadata so downstream consumers can
     // allow user to override the start time via trackStartTime GUI field
     if (isRelativeTime) {
@@ -320,5 +467,3 @@ export function parseFR24CSV(csv) {
 
     return MISBArray;
 }
-
-

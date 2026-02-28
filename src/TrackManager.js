@@ -33,6 +33,7 @@ import {CGeoJSON} from "./geoJSONUtils";
 import {CNodeSmoothedPositionTrack} from "./nodes/CNodeSmoothedPositionTrack";
 import {CNodeSplineEditor} from "./nodes/CNodeSplineEdit";
 import {CTrackFile} from "./TrackFiles/CTrackFile";
+import {detectRocketLikeTrack} from "./trackHeuristics";
 
 
 class CMetaTrack {
@@ -521,14 +522,23 @@ class CTrackManager extends CManager {
                     // loading from a saved sitch. For saved sitches, filterEnabled is
                     // restored via deserialization.
                     if (trackIndex === 0 && !Globals.deserializing) {
-                        const maxG = trackDataNode.getMaxGForce();
-                        if (maxG > trackDataNode.filterMaxG) {
-                            const enable = confirm(
-                                `Bad points in track data "${shortName}". Max g-force: ${maxG.toFixed(1)}g. Enable Bad Data Filter?`
+                        const trackFile = FileManager.get(trackFileName);
+                        const rocketDetection = detectRocketLikeTrack(trackFileName, trackDataNode.misb, trackFile);
+
+                        if (rocketDetection.isRocketLike) {
+                            console.log(
+                                `Skipping initial bad-point g-force check for rocket-like track "${shortName}" (${rocketDetection.reason})`
                             );
-                            if (enable) {
-                                trackDataNode.filterEnabled = true;
-                                trackDataNode.recalculateCascade();
+                        } else {
+                            const maxG = trackDataNode.getMaxGForce();
+                            if (maxG > trackDataNode.filterMaxG) {
+                                const enable = confirm(
+                                    `Bad points in track data "${shortName}". Max g-force: ${maxG.toFixed(1)}g. Enable Bad Data Filter?`
+                                );
+                                if (enable) {
+                                    trackDataNode.filterEnabled = true;
+                                    trackDataNode.recalculateCascade();
+                                }
                             }
                         }
                     }

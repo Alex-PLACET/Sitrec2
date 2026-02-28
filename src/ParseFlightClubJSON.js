@@ -4,8 +4,20 @@ const WGS84_A = 6378137.0;
 const WGS84_F = 1 / 298.257223563;
 const WGS84_B = WGS84_A * (1 - WGS84_F);
 const WGS84_E2 = (WGS84_A * WGS84_A - WGS84_B * WGS84_B) / (WGS84_A * WGS84_A);
+const EARTH_MU = 3.986004418e14;
+const EARTH_J2 = 1.08262668e-3;
+const EARTH_ROTATION_RATE = 7.292115e-5;
 
-function ecefToLLA(x, y, z) {
+const DEFAULT_ORBIT_EXTENSION_COUNT = 2;
+const MIN_ORBITAL_ALTITUDE_M = 80000;
+const MIN_PERIGEE_ALTITUDE_M = 80000;
+const MIN_ORBITAL_PERIOD_SECONDS = 20 * 60;
+const MAX_ORBITAL_PERIOD_SECONDS = 48 * 60 * 60;
+const MIN_PROPAGATION_STEP_SECONDS = 1;
+const MAX_PROPAGATION_STEP_SECONDS = 5;
+const MAX_PROPAGATION_STEPS = 12000;
+
+export function ecefToLLA(x, y, z) {
     const p = Math.sqrt(x * x + y * y);
     const lon = Math.atan2(y, x) * 180 / Math.PI;
 
@@ -21,6 +33,339 @@ function ecefToLLA(x, y, z) {
     const alt = p / Math.cos(lat) - N;
 
     return {lat: lat * 180 / Math.PI, lon, alt};
+}
+
+function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+}
+
+function toVector3(value) {
+    if (!Array.isArray(value) || value.length < 3) {
+        return null;
+    }
+    const x = Number(value[0]);
+    const y = Number(value[1]);
+    const z = Number(value[2]);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+        return null;
+    }
+    return [x, y, z];
+}
+
+function isFiniteVector3(value) {
+    return toVector3(value) !== null;
+}
+
+function addVectors(a, b) {
+    return [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+}
+
+function subtractVectors(a, b) {
+    return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+}
+
+function scaleVector(v, s) {
+    return [v[0] * s, v[1] * s, v[2] * s];
+}
+
+function dotVector(a, b) {
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+function crossVector(a, b) {
+    return [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ];
+}
+
+function vectorNorm(v) {
+    return Math.sqrt(dotVector(v, v));
+}
+
+function median(values) {
+    if (!values.length) {
+        return null;
+    }
+    const sorted = values.slice().sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    if (sorted.length % 2 === 0) {
+        return (sorted[mid - 1] + sorted[mid]) / 2;
+    }
+    return sorted[mid];
+}
+
+function toInertialVelocity(velocityECEF, positionECEF) {
+    const [x, y] = positionECEF;
+    const [vx, vy, vz] = velocityECEF;
+    const omegaCrossR = [-EARTH_ROTATION_RATE * y, EARTH_ROTATION_RATE * x, 0];
+    return [vx + omegaCrossR[0], vy + omegaCrossR[1], vz + omegaCrossR[2]];
+}
+
+function estimateTerminalState(telemetry) {
+    if (!Array.isArray(telemetry) || telemetry.length < 2) {
+        return null;
+    }
+
+    const validIndices = [];
+    for (let i = 0; i < telemetry.length; i++) {
+        const point = telemetry[i];
+        if (!point || !Number.isFinite(Number(point.t))) {
+            continue;
+        }
+        if (!isFiniteVector3(point.x_NI)) {
+            continue;
+        }
+        validIndices.push(i);
+    }
+
+    if (validIndices.length < 2) {
+        return null;
+    }
+
+    const lastIdx = validIndices[validIndices.length - 1];
+    const lastPoint = telemetry[lastIdx];
+    const position = toVector3(lastPoint.x_NI);
+    if (!position) {
+        return null;
+    }
+
+    const intervals = [];
+    for (let i = 1; i < validIndices.length; i++) {
+        const prevPoint = telemetry[validIndices[i - 1]];
+        const point = telemetry[validIndices[i]];
+        const dt = Number(point.t) - Number(prevPoint.t);
+        if (Number.isFinite(dt) && dt > 0) {
+            intervals.push(dt);
+        }
+    }
+
+    let velocity = toVector3(lastPoint.v_NI);
+    if (!velocity) {
+        let weightedVelocity = [0, 0, 0];
+        let totalWeight = 0;
+        const firstSegment = Math.max(1, validIndices.length - 6);
+        for (let i = firstSegment; i < validIndices.length; i++) {
+            const prevPoint = telemetry[validIndices[i - 1]];
+            const point = telemetry[validIndices[i]];
+            const prevPosition = toVector3(prevPoint.x_NI);
+            const currentPosition = toVector3(point.x_NI);
+            const dt = Number(point.t) - Number(prevPoint.t);
+            if (!prevPosition || !currentPosition || !Number.isFinite(dt) || dt <= 0) {
+                continue;
+            }
+            const segmentVelocity = scaleVector(subtractVectors(currentPosition, prevPosition), 1 / dt);
+            weightedVelocity = addVectors(weightedVelocity, scaleVector(segmentVelocity, dt));
+            totalWeight += dt;
+        }
+        if (totalWeight <= 0) {
+            return null;
+        }
+        velocity = scaleVector(weightedVelocity, 1 / totalWeight);
+    }
+
+    const sampleStepSec = median(intervals);
+    return {
+        timeSec: Number(lastPoint.t),
+        position,
+        velocity,
+        sampleStepSec: Number.isFinite(sampleStepSec) ? sampleStepSec : MIN_PROPAGATION_STEP_SECONDS,
+    };
+}
+
+function estimateOrbit(terminalState) {
+    const r = terminalState.position;
+    const vInertial = toInertialVelocity(terminalState.velocity, terminalState.position);
+
+    const rMag = vectorNorm(r);
+    if (!Number.isFinite(rMag) || rMag <= 0) {
+        return null;
+    }
+
+    const v2 = dotVector(vInertial, vInertial);
+    const specificEnergy = 0.5 * v2 - EARTH_MU / rMag;
+    if (!Number.isFinite(specificEnergy) || specificEnergy >= 0) {
+        return null;
+    }
+
+    const semiMajorAxis = -EARTH_MU / (2 * specificEnergy);
+    if (!Number.isFinite(semiMajorAxis) || semiMajorAxis <= 0) {
+        return null;
+    }
+
+    const h = crossVector(r, vInertial);
+    const hMag = vectorNorm(h);
+    if (!Number.isFinite(hMag) || hMag <= 0) {
+        return null;
+    }
+
+    const eVector = subtractVectors(
+        scaleVector(crossVector(vInertial, h), 1 / EARTH_MU),
+        scaleVector(r, 1 / rMag),
+    );
+    const eccentricity = vectorNorm(eVector);
+    if (!Number.isFinite(eccentricity) || eccentricity >= 1) {
+        return null;
+    }
+
+    const perigeeRadius = semiMajorAxis * (1 - eccentricity);
+    const periodSec = 2 * Math.PI * Math.sqrt((semiMajorAxis * semiMajorAxis * semiMajorAxis) / EARTH_MU);
+    if (!Number.isFinite(periodSec)) {
+        return null;
+    }
+
+    return {periodSec, perigeeRadius};
+}
+
+function canExtendOrbit(terminalState, orbit) {
+    const currentAltitude = vectorNorm(terminalState.position) - WGS84_A;
+    if (!Number.isFinite(currentAltitude) || currentAltitude < MIN_ORBITAL_ALTITUDE_M) {
+        return false;
+    }
+    if (orbit.perigeeRadius < WGS84_A + MIN_PERIGEE_ALTITUDE_M) {
+        return false;
+    }
+    if (orbit.periodSec < MIN_ORBITAL_PERIOD_SECONDS || orbit.periodSec > MAX_ORBITAL_PERIOD_SECONDS) {
+        return false;
+    }
+    return true;
+}
+
+function accelerationECEF(position, velocity) {
+    const [x, y, z] = position;
+    const [vx, vy] = velocity;
+    const r2 = x * x + y * y + z * z;
+    if (r2 <= 0) {
+        return [0, 0, 0];
+    }
+
+    const r = Math.sqrt(r2);
+    const r3 = r2 * r;
+    const r5 = r3 * r2;
+
+    let ax = -EARTH_MU * x / r3;
+    let ay = -EARTH_MU * y / r3;
+    let az = -EARTH_MU * z / r3;
+
+    // Include J2 to keep long-arc propagation realistic for LEO launches.
+    const z2 = z * z;
+    const j2Factor = 1.5 * EARTH_J2 * EARTH_MU * WGS84_A * WGS84_A / r5;
+    const zRatio = 5 * z2 / r2;
+    ax += j2Factor * x * (zRatio - 1);
+    ay += j2Factor * y * (zRatio - 1);
+    az += j2Factor * z * (zRatio - 3);
+
+    const omega2 = EARTH_ROTATION_RATE * EARTH_ROTATION_RATE;
+    ax += 2 * EARTH_ROTATION_RATE * vy + omega2 * x;
+    ay += -2 * EARTH_ROTATION_RATE * vx + omega2 * y;
+
+    return [ax, ay, az];
+}
+
+function stateDerivative(state) {
+    return {
+        position: state.velocity,
+        velocity: accelerationECEF(state.position, state.velocity),
+    };
+}
+
+function advanceState(state, derivative, dt) {
+    return {
+        position: addVectors(state.position, scaleVector(derivative.position, dt)),
+        velocity: addVectors(state.velocity, scaleVector(derivative.velocity, dt)),
+    };
+}
+
+function rk4Step(state, dt) {
+    const k1 = stateDerivative(state);
+    const k2 = stateDerivative(advanceState(state, k1, dt * 0.5));
+    const k3 = stateDerivative(advanceState(state, k2, dt * 0.5));
+    const k4 = stateDerivative(advanceState(state, k3, dt));
+
+    const position = addVectors(
+        state.position,
+        scaleVector(
+            addVectors(
+                addVectors(k1.position, scaleVector(addVectors(k2.position, k3.position), 2)),
+                k4.position,
+            ),
+            dt / 6,
+        ),
+    );
+    const velocity = addVectors(
+        state.velocity,
+        scaleVector(
+            addVectors(
+                addVectors(k1.velocity, scaleVector(addVectors(k2.velocity, k3.velocity), 2)),
+                k4.velocity,
+            ),
+            dt / 6,
+        ),
+    );
+    return {position, velocity};
+}
+
+export function extendECEFTelemetryWithOrbit(telemetry, orbitCount = DEFAULT_ORBIT_EXTENSION_COUNT) {
+    if (!Array.isArray(telemetry) || telemetry.length < 2 || orbitCount <= 0) {
+        return telemetry;
+    }
+
+    const terminalState = estimateTerminalState(telemetry);
+    if (!terminalState) {
+        return telemetry;
+    }
+
+    const orbit = estimateOrbit(terminalState);
+    if (!orbit) {
+        return telemetry;
+    }
+    if (!canExtendOrbit(terminalState, orbit)) {
+        return telemetry;
+    }
+
+    const totalDurationSec = orbit.periodSec * orbitCount;
+    if (!Number.isFinite(totalDurationSec) || totalDurationSec <= 0) {
+        return telemetry;
+    }
+
+    let stepSec = clamp(
+        terminalState.sampleStepSec,
+        MIN_PROPAGATION_STEP_SECONDS,
+        MAX_PROPAGATION_STEP_SECONDS,
+    );
+    const minStepForMaxPoints = totalDurationSec / MAX_PROPAGATION_STEPS;
+    if (Number.isFinite(minStepForMaxPoints) && minStepForMaxPoints > stepSec) {
+        stepSec = minStepForMaxPoints;
+    }
+
+    const extendedTelemetry = telemetry.slice();
+    let state = {
+        position: terminalState.position.slice(),
+        velocity: terminalState.velocity.slice(),
+    };
+
+    let elapsedSec = 0;
+    while (elapsedSec + 1e-9 < totalDurationSec) {
+        const dt = Math.min(stepSec, totalDurationSec - elapsedSec);
+        state = rk4Step(state, dt);
+        elapsedSec += dt;
+
+        if (!isFiniteVector3(state.position) || !isFiniteVector3(state.velocity)) {
+            break;
+        }
+        if (vectorNorm(state.position) < WGS84_A + 20000) {
+            break;
+        }
+
+        extendedTelemetry.push({
+            t: terminalState.timeSec + elapsedSec,
+            x_NI: state.position.slice(),
+            v_NI: state.velocity.slice(),
+        });
+    }
+
+    return extendedTelemetry;
 }
 
 export function isFlightClubJSON(jsonData) {
@@ -106,7 +451,7 @@ export function parseFlightClubJSON(jsonData) {
     const results = [];
 
     stageTrajectories.forEach((stage) => {
-        const telemetry = stage.telemetry;
+        const telemetry = extendECEFTelemetryWithOrbit(stage.telemetry, DEFAULT_ORBIT_EXTENSION_COUNT);
         const stageName = getStageName(jsonData, stage.stageNumber);
         const MISBArray = new Array(telemetry.length);
 
@@ -143,7 +488,7 @@ export function flightClubToCSVStrings(jsonData) {
     const results = [];
 
     stageTrajectories.forEach((stage) => {
-        const telemetry = stage.telemetry;
+        const telemetry = extendECEFTelemetryWithOrbit(stage.telemetry, DEFAULT_ORBIT_EXTENSION_COUNT);
         const stageName = getStageName(jsonData, stage.stageNumber);
 
         let csv = "time,lat,lon,alt\n";
