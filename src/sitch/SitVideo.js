@@ -9,7 +9,7 @@ export const SitVideo = {
     name: "video",
     menuName: "Video Viewer",
     isTextable: false,
-    isTool: true,
+    isMenuButton: true,
 
     framesFromVideo: true,
 

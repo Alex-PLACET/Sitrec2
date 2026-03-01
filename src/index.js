@@ -163,6 +163,7 @@ const sortedSitches = {};
 const selectableSitches = {};
 const toolSitches = {};
 const rootSitches = {};
+const menuButtonSitches = {};
 let toTest;
 let testing = false;
 let fpsInterval, rafInterval, startTime, now, then, thenRender, elapsed;
@@ -1290,6 +1291,8 @@ async function initializeOnce() {
 
         if (sitch.isRoot) {
             rootSitches[key] = sitchName;
+        } else if (sitch.isMenuButton) {
+            menuButtonSitches[key] = sitchName;
         } else if (sitch.isTool) {
             toolSitches[key] = sitchName;
         } else {
@@ -1475,6 +1478,21 @@ async function initializeOnce() {
 
     }
 
+    // add menu buttons (displayed after root sitches)
+    for (const [key, sitch] of Object.entries(menuButtonSitches)) {
+        Globals[""+key+"Button"] = function()  {
+            const url = SITREC_APP+"?sitch=" + sitch
+            newSitch(sitch);
+            window.history.pushState({}, null, url);
+        }
+
+        const sitchObject = SitchMan.get(sitch);
+
+        _gui.add(Globals, ""+key+"Button").name(key).perm()
+            .tooltip(sitchObject.tooltip || "No tooltip defined for this sitch")
+
+    }
+
 
 
 
@@ -1495,7 +1513,7 @@ async function initializeOnce() {
 
     // and one for tools
     par.toolSelect = unselectedText;
-    _gui.add(par, "toolSelect", toolSitches).name("Tools").perm().listen().onChange(sitch => {
+    _gui.add(par, "toolSelect", toolSitches).name("Legacy Tools").perm().listen().onChange(sitch => {
         console.log("SITCH par.name CHANGE TO: "+sitch+" ->"+par.name)
         const url = SITREC_APP+"?sitch=" + sitch
 
