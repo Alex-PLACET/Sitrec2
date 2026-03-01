@@ -18,6 +18,8 @@ export class CNodeLighting extends CNode {
         this.atmosphere = v.atmosphere ?? true;
         this.noMainLighting = v.noMainLighting ?? false;
         this.noCityLights = Sit.noCityLights ?? false;
+        this.sunBoost = v.sunBoost ?? 1;
+        this.sceneExposure = v.sceneExposure ?? 1.0;
 
         this.gui = guiMenus.lighting;
 
@@ -29,6 +31,10 @@ export class CNodeLighting extends CNode {
             .tooltip("Sunlight intensity. 0 is no sunlight, 1 is normal full sunlight, 2 is double sunlight");
         this.addGUIValue("sunScattering", 0, 2, 0.01, "Sun Scattering")
             .tooltip;("Sunlight scattering amount");
+        this.addGUIValue("sunBoost", 1, 100, 1, "Sun Boost (HDR)")
+            .tooltip("Multiplier for sun DirectionalLight intensity (HDR). Increases specular highlight brightness for realistic sun reflections through fog.");
+        this.addGUIValue("sceneExposure", 0.01, 2.0, 0.01, "Scene Exposure (HDR)")
+            .tooltip("Exposure compensation for HDR tone mapping. Lower to compensate for higher sun boost.");
         this.addGUIBoolean("ambientOnly", "Ambient Only")
             .tooltip("If true, then only ambient light is used, no sunlight");
         this.addGUIBoolean("atmosphere", "Atmosphere")
@@ -124,11 +130,12 @@ export class CNodeLighting extends CNode {
             sunNode.ambientOnly = this.ambientOnly;
             sunNode.sunScattering = this.sunScattering;
             sunNode.atmosphere = this.atmosphere;
+            sunNode.sunBoost = this.sunBoost;
 
         } else {
             // otherwise we manage the lights directly
             Globals.ambientLight.intensity = ambientIntensity;
-            Globals.sunLight.intensity = sunIntensity;
+            Globals.sunLight.intensity = sunIntensity * this.sunBoost;
         }
 
         // but we manage the IR ambient light directly, as it's somewhat ad-hoc

@@ -14,6 +14,7 @@ export class CNodeSunlight extends CNode {
 
         this.sunIntensity = 3.0;
         this.ambientIntensity = 1.2;
+        this.sunBoost = 1;
 
         // temp value
         this.sunScattering = 0.1;
@@ -43,7 +44,7 @@ export class CNodeSunlight extends CNode {
         // note, the intensity is in radians
         // so we multiply by PI (so 1.0 is full intensity)
 
-        result.sunIntensity = this.sunIntensity * scale * Math.PI
+        result.sunIntensity = this.sunIntensity * scale * Math.PI * this.sunBoost
 
         // scale the scattering ambient over 10 to -10 degrees
         let scaleScattering = this.sunScattering * brightnessOfSun(angle+this.darkeningAngle,this.darkeningAngle*2)

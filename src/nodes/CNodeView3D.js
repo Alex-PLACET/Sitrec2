@@ -123,19 +123,19 @@ export class CNodeView3D extends CNodeViewCanvas {
             })
                 .tooltip("Set the look view to be north up, instead of world up.\nfor Satellite views and similar, looking straight down.\nDoes not apply in PTZ mode")
 
-            guiTweaks.add(this, "atmosphereEnabled").name("Atmosphere").onChange(() => {
+            guiTweaks.add(this, "atmosphereEnabled").name("Atmosphere").listen().onChange(() => {
                 setRenderOne(true);
             }).tooltip("Distance attenuation that blends terrain and 3D objects toward the current sky color");
 
-            guiTweaks.add(this, "atmosphereVisibilityKm", 1, 500, 1).name("Atmo Visibility (km)").onChange(() => {
+            guiTweaks.add(this, "atmosphereVisibilityKm", 1, 500, 0.1).name("Atmo Visibility (km)").listen().onChange(() => {
                 setRenderOne(true);
             }).tooltip("Distance where atmospheric contrast drops to about 50% (smaller = thicker atmosphere)");
 
-            guiTweaks.add(this, "atmosphereHDR").name("Atmo HDR").onChange(() => {
+            guiTweaks.add(this, "atmosphereHDR").name("Atmo HDR").listen().onChange(() => {
                 setRenderOne(true);
             }).tooltip("Physically-based HDR fog/tone mapping for bright sun reflections through haze");
 
-            guiTweaks.add(this, "atmosphereExposure", 0.1, 5.0, 0.01).name("Atmo Exposure").onChange(() => {
+            guiTweaks.add(this, "atmosphereExposure", 0.1, 5.0, 0.01).name("Atmo Exposure").listen().onChange(() => {
                 setRenderOne(true);
             }).tooltip("HDR atmosphere tone-mapping exposure multiplier for highlight rolloff");
             
@@ -1278,7 +1278,9 @@ export class CNodeView3D extends CNodeViewCanvas {
                     // HDR lookView with atmosphere tone-maps once at the end.
                     if (!useAtmosphereHDR) {
                         const acesFilmicToneMappingPass = new ShaderPass(ACESFilmicToneMappingShader);
-                        acesFilmicToneMappingPass.uniforms['exposure'].value = NodeMan.get("theSky").effectController.exposure;
+                        const lightingNodeSky = NodeMan.get("lighting", true);
+                        const sceneExposureSky = lightingNodeSky?.sceneExposure ?? 1.0;
+                        acesFilmicToneMappingPass.uniforms['exposure'].value = NodeMan.get("theSky").effectController.exposure * sceneExposureSky;
                         acesFilmicToneMappingPass.uniforms['tDiffuse'].value = currentRenderTarget.texture;
 
                         // flip the render targets
@@ -1399,7 +1401,9 @@ export class CNodeView3D extends CNodeViewCanvas {
                 if (Globals.renderDebugFlags.dbg_copyToScreen && currentRenderTarget !== null) {
                     if (useAtmosphereHDR) {
                         const skyExposure = NodeMan.get("theSky", false)?.effectController?.exposure ?? 1.0;
-                        this.hdrToneMappingPass.uniforms['exposure'].value = skyExposure * this.atmosphereExposure;
+                        const lightingNodeHDR = NodeMan.get("lighting", true);
+                        const sceneExposureHDR = lightingNodeHDR?.sceneExposure ?? 1.0;
+                        this.hdrToneMappingPass.uniforms['exposure'].value = skyExposure * this.atmosphereExposure * sceneExposureHDR;
                         this.hdrToneMappingPass.uniforms['tDiffuse'].value = currentRenderTarget.texture;
 
                         const toneMappedTarget = currentRenderTarget === this.renderTargetA ? this.renderTargetB : this.renderTargetA;
