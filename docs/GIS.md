@@ -15,7 +15,7 @@ Key parameters used in Sitrec (`LLA-ECEF-ENU.js`):
 | Flattening (*f*) | 1/298.257223563 |
 | Semi-minor axis (polar radius, *b = a(1-f)*) | 6,356,752.314 m |
 
-The difference between the equatorial and polar radii is about 21.4 km. This is small relative to the total radius but large enough to matter for accurate positioning — using a sphere instead of the ellipsoid introduces altitude errors of several kilometers at mid-latitudes.
+The difference between the equatorial and polar radii is about 21.4 km. This is small relative to the Earth's size, but large enough to matter for precision work. Around mid-latitudes, a simple sphere can differ from the WGS84 ellipsoid by on the order of 10 km in radial distance.
 
 When `useEllipsoid` is **false** (legacy mode), Sitrec treats both radii as equal to *a*, degenerating to a sphere. When **true**, the real WGS84 polar radius is used.
 
@@ -62,7 +62,7 @@ These elevations are **orthometric heights** — heights above the EGM96 geoid (
 
 ### The Geoid Correction
 
-Sitrec works internally in ECEF — a Cartesian coordinate system (x, y, z meters from the Earth's center) that is not itself tied to any ellipsoid. However, converting LLA positions to ECEF requires knowing the altitude's reference surface. When the altitude is HAE (height above the WGS84 ellipsoid), the LLA-to-ECEF conversion is straightforward. When terrain tiles provide orthometric heights (MSL), Sitrec must first convert to HAE by adding the geoid undulation:
+Sitrec works internally in ECEF — a Cartesian coordinate system (x, y, z meters from the Earth's center). ECEF coordinates are just Cartesian positions, but LLA-to-ECEF conversion depends on the geodetic surface and altitude reference. When altitude is HAE (height above the WGS84 ellipsoid), conversion is direct. When terrain tiles provide orthometric heights (MSL-like), Sitrec first converts to HAE by adding the geoid undulation:
 
 ```
 h_ellipsoid = h_terrarium + N
@@ -77,7 +77,9 @@ elevation[ij] = R * 256 + G + B / 256 - 32768
               + interpolateGeoidOffset(geoidCorners, xFrac, yFrac);
 ```
 
-The same correction is applied to Mapbox terrain tiles (`computeElevationFromRGBA_MB`), which also provide orthometric heights.
+The same correction is currently applied to Mapbox Terrain-RGB tiles (`computeElevationFromRGBA_MB`) for consistency with Sitrec's EGM96-based altitude handling.
+
+Mapbox's own documentation states Terrain-RGB is built from mixed vertical datums (for example NAVD88, EGM96, and local datums), so this correction should be treated as a practical approximation, not a universal truth for every tile.
 
 Without this correction, terrain would be displaced vertically by up to ~100 m depending on location, causing visible misalignment with GPS tracks, satellite imagery, and 3D building tiles (all of which derive their positions from HAE, not MSL).
 
@@ -95,7 +97,7 @@ The conversion chain is: **LLA <-> ECEF <-> ENU**, implemented in `LLA-ECEF-ENU.
 
 ## 3D Tiles (Cesium / Google)
 
-Cesium Ion and Google Photorealistic 3D Tiles are delivered directly in ECEF Cartesian coordinates. Sitrec uses these as-is since it works in ECEF internally (`CNodeBuildings3DTiles.js`). No geoid correction is needed — the tile vertices are already absolute Cartesian positions with no altitude ambiguity.
+Cesium Ion and Google Photorealistic 3D Tiles are delivered as 3D Tiles in Cartesian coordinates. For global geospatial tilesets this is typically WGS84 ECEF (often EPSG:4978 per the 3D Tiles spec). Sitrec uses these directly in ECEF (`CNodeBuildings3DTiles.js`). No geoid correction is needed because there is no separate "MSL altitude" field to reinterpret.
 
 
 # (In Depth) Altitude Naming Conventions & the MSL Confusion Problem
@@ -137,17 +139,16 @@ Cesium Ion and Google Photorealistic 3D Tiles are delivered directly in ECEF Car
 h (HAE) = H (orthometric/MSL) + N (geoid undulation)
 ```
 
-The geoid undulation **N** ranges globally from approximately **−107 m** (Indian Ocean) to **+85 m** (North Atlantic). Over the continental US it is typically **+20 to +30 m**.
+The geoid undulation **N** ranges globally from approximately **−107 m** to **+85 m** (EGM96). In the continental US, EGM96 values are typically **negative** (roughly −55 m to −10 m).
 
 ---
 
 ## Geoid Models
 
-| Model | Resolution | Accuracy | Status |
-|---|---|---|---|
-| EGM96 | 15′ | ~1 m | Legacy — still dominant in military avionics, ArcGIS default |
-| EGM2008 | 2.5′ / 1′ | ~10 cm | Current NGA standard, EPSG recommended, slow adoption |
-| EGM2020 | TBD | Better | Not yet released as of early 2026; NGA plans ~2028 |
+| Model | Resolution | Notes |
+|---|---|---|
+| EGM96 | 15′ | Used in Sitrec today (via `egm96-universal`) |
+| EGM2008 | 2.5′ / 1′ | Newer global model with finer resolution |
 
 ---
 
@@ -201,11 +202,13 @@ KML defines altitude through the `<altitudeMode>` element. The standard (non-ext
 |---|---|
 | `clampToGround` | **Default.** Ignores altitude value entirely; places feature on terrain surface. |
 | `relativeToGround` | Altitude in meters above the terrain surface (AGL). |
-| `absolute` | Altitude in meters above MSL — specifically the **EGM96 geoid**. This is the mode used for flight tracks. |
+| `absolute` | Altitude in meters above sea level. In OGC KML geodetic CRS definitions, this corresponds to the EGM96 geoid vertical datum. |
 
 Google's `gx:` extension namespace adds two sea-floor variants (`clampToSeaFloor`, `relativeToSeaFloor`) not relevant to aviation.
 
-**Key point:** KML `absolute` mode = EGM96 orthometric height. Google Earth's terrain rendering uses EGM96 for its vertical datum, so `absolute` altitudes render correctly relative to terrain only when the altitude source is also EGM96-based. If the data is HAE (WGS84 ellipsoidal), the KML will appear offset by the local geoid undulation N (typically 20–50 m in mid-latitudes).
+**Spec point:** KML `absolute` altitude is sea-level referenced (OGC KML: EGM96 geoid vertical datum in the standard geodetic CRS definition).
+
+**Sitrec implementation note (important):** current Sitrec KML track import/export paths treat `absolute` as HAE by default (`altitudeReference: "HAE"` in `CNodeTrackFromLLAArray` / `CNodeTrack`). This is a practical compatibility behavior, but it differs from strict OGC KML interpretation and can introduce a local geoid-offset bias when handling strictly spec-authored KML.
 
 ---
 
@@ -342,6 +345,5 @@ When reconstructing aircraft geometry (e.g., in Sitrec) from ADS-B data:
 | Military KLV/MISB Tag 15 | EGM96 orthometric MSL                  |
 | Military KLV/MISB Tag 75/104 | HAE (WGS84)                            |
 | ArcGIS / web mapping elevation | EGM96 orthometric MSL                  |
-| KML ADSB Tracks | EGM96 ortometric MSL or Barometric MSL |
+| KML ADSB Tracks | Commonly sea-level referenced; in Sitrec today, imported absolute values are treated as HAE unless explicitly handled as MSL |
 | SRTM terrain data | EGM96 orthometric MSL                  |
-
