@@ -27,7 +27,7 @@ export const _configParams = {
             },
             layer: "satellite",
             minZoom: 0,
-            maxZoom: 18,
+            maxZoom: 20,
             supportsOceanSurface: true, // MapBox satellite imagery can have ocean surface overlay
         },
 
@@ -76,7 +76,7 @@ export const _configParams = {
 //                return SITREC_SERVER+"cachemaps.php?url=" + encodeURIComponent(`https://c.tile.openstreetmap.org/${z}/${x}/${y}.png`)
                 return `https://c.tile.openstreetmap.org/${z}/${x}/${y}.png`
             },
-            maxZoom: 17,
+            maxZoom: 19,
             supportsOceanSurface: true, // OpenStreetMap can have ocean surface overlay
 
         },
