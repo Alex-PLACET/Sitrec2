@@ -1,6 +1,6 @@
 import {CNode3DGroup} from "./CNode3DGroup";
 import * as THREE from "three";
-import {setRenderOne, Sit} from "../Globals";
+import {GlobalDateTimeNode, setRenderOne, Sit} from "../Globals";
 import {dispose} from "../threeExt";
 import {V3} from "../threeUtils";
 import {getLocalUpVector} from "../SphericalMath";
@@ -8,17 +8,20 @@ import * as LAYER from "../LayerMasks";
 
 // CNodeContrail renders a flat horizontal white ribbon trailing behind a track,
 // drifting with wind over time. Rebuilt every frame based on the current playback position.
+// If a dataTrack is provided with time-based lookup (getTime/getIndexAtTime),
+// the contrail can extend before the sitch start time into the data track's earlier data.
 export class CNodeContrail extends CNode3DGroup {
     constructor(v) {
-        v.layers ??= LAYER.MASK_HELPERS;
+        v.layers ??= LAYER.MASK_HELPERS | LAYER.MASK_LOOK;
         super(v);
 
         this.input("track");
-        this.optionalInputs(["wind"]);
+        this.optionalInputs(["wind", "dataTrack"]);
 
         this.duration = v.duration ?? 100;         // seconds of trail
         this.sampleInterval = v.sampleInterval ?? 5; // seconds between samples
         this.ribbonWidth = v.ribbonWidth ?? 50;    // meters
+        this.spread = v.spread ?? 0;               // m/s width increase over time
 
         this.mesh = null;
 
@@ -51,96 +54,193 @@ export class CNodeContrail extends CNode3DGroup {
         setRenderOne(true);
     }
 
+    // Binary search for a float frame index in the data track matching a target time.
+    findDataTrackFloatFrame(dataTrack, targetTimeMs) {
+        const n = dataTrack.frames;
+        if (n < 2) return 0;
+
+        if (targetTimeMs <= dataTrack.getTime(0)) return 0;
+        if (targetTimeMs >= dataTrack.getTime(n - 1)) return n - 1;
+
+        let lo = 0, hi = n - 1;
+        while (hi - lo > 1) {
+            const mid = Math.floor((lo + hi) / 2);
+            if (dataTrack.getTime(mid) <= targetTimeMs) {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+
+        const tLo = dataTrack.getTime(lo);
+        const tHi = dataTrack.getTime(hi);
+        if (tHi <= tLo) return lo;
+        const frac = (targetTimeMs - tLo) / (tHi - tLo);
+        return lo + frac;
+    }
+
+    // Get position for a sitch frame, falling back to data track for pre-sitch frames.
+    getPositionAtFrame(frame) {
+        const track = this.in.track;
+
+        if (frame >= 0 && frame < track.frames) {
+            const pos = track.p(frame);
+            if (pos && !isNaN(pos.x)) return pos.clone();
+            return null;
+        }
+
+        if (frame < 0 && this.in.dataTrack && typeof this.in.dataTrack.getTime === 'function') {
+            const dataTrack = this.in.dataTrack;
+            const msStart = GlobalDateTimeNode.getStartTimeValue();
+            const targetTimeMs = msStart + (frame / Sit.fps) * 1000;
+
+            if (targetTimeMs < dataTrack.getTime(0)) return null;
+
+            const floatFrame = this.findDataTrackFloatFrame(dataTrack, targetTimeMs);
+
+            // Validate bracketing frames before interpolating - data track can have
+            // empty slots (filtered/invalid data) that cause assertion failures
+            const lo = Math.floor(floatFrame);
+            const hi = Math.ceil(floatFrame);
+            const loVal = (lo >= 0 && lo < dataTrack.frames) ? dataTrack.v(lo) : null;
+            const hiVal = (hi >= 0 && hi < dataTrack.frames) ? dataTrack.v(hi) : null;
+            const loOk = loVal && loVal.position && !isNaN(loVal.position.x);
+            const hiOk = hiVal && hiVal.position && !isNaN(hiVal.position.x);
+
+            let pos;
+            if (loOk && hiOk) {
+                pos = dataTrack.p(floatFrame); // safe to interpolate
+            } else if (loOk) {
+                pos = loVal.position;
+            } else if (hiOk) {
+                pos = hiVal.position;
+            } else {
+                return null;
+            }
+            if (pos && !isNaN(pos.x)) return pos.clone();
+        }
+
+        return null;
+    }
+
     rebuildRibbon(frame) {
         this.removeMesh();
 
-        const track = this.in.track;
         const wind = this.in.wind;
         const fps = Sit.fps;
 
-        const durationFrames = this.duration * fps;
-        const sampleStep = this.sampleInterval * fps;
+        // Collect sample points with elapsed time
+        const samples = [];
+        const maxOffset = this.duration;
+        const step = this.sampleInterval;
 
-        const startFrame = Math.max(0, Math.floor(frame - durationFrames));
-        const endFrame = Math.min(frame, track.frames - 1);
+        for (let t = maxOffset; t >= 0; t -= step) {
+            const sampleFrame = frame - t * fps;
+            const pos = this.getPositionAtFrame(sampleFrame);
+            if (!pos) continue;
 
-        if (endFrame <= startFrame) return;
-
-        // Collect sample points with wind offset
-        const points = [];
-
-        // Sample from oldest to newest (startFrame to endFrame)
-        for (let f = startFrame; f <= endFrame; f += sampleStep) {
-            const pos = track.p(f);
-            if (!pos || isNaN(pos.x)) continue;
-
-            const point = pos.clone();
-
-            // Apply wind drift: elapsed time since this point was "emitted"
             if (wind) {
-                const elapsedSeconds = (frame - f) / fps;
                 const windPerFrame = wind.v(frame);
-                // wind.v() returns displacement per frame in ECEF
-                // total displacement = windPerFrame * elapsedFrames = windPerFrame * elapsedSeconds * fps
-                point.add(windPerFrame.multiplyScalar(elapsedSeconds * fps));
+                pos.add(windPerFrame.multiplyScalar(t * fps));
             }
 
-            points.push(point);
+            samples.push({pos, elapsed: t});
         }
 
-        // Always include the current frame position (no wind offset since T=0)
-        const lastSampledFrame = startFrame + Math.floor((endFrame - startFrame) / sampleStep) * sampleStep;
-        if (lastSampledFrame < endFrame) {
-            const pos = track.p(endFrame);
-            if (pos && !isNaN(pos.x)) {
-                points.push(pos.clone());
+        // Include current position exactly if loop didn't land on t=0
+        const lastT = maxOffset % step;
+        if (lastT !== 0) {
+            const pos = this.getPositionAtFrame(frame);
+            if (pos) samples.push({pos, elapsed: 0});
+        }
+
+        if (samples.length < 2) return;
+
+        // Compute horizontal wind direction (constant for all points, used for spread)
+        let windDir = null;
+        if (wind && this.spread > 0) {
+            const refPos = samples[Math.floor(samples.length / 2)].pos;
+            const windVec = wind.v(frame);
+            const up = getLocalUpVector(refPos);
+            windDir = windVec.clone().sub(up.clone().multiplyScalar(windVec.dot(up)));
+            if (windDir.lengthSq() > 1e-10) {
+                windDir.normalize();
+            } else {
+                windDir = null;
             }
         }
 
-        if (points.length < 2) return;
-
-        // Compute midpoint for precision (same pattern as CNodeDisplayTrack)
+        // Compute midpoint for float precision
         const mid = V3(0, 0, 0);
-        for (const p of points) {
-            mid.add(p);
-        }
-        mid.divideScalar(points.length);
+        for (const s of samples) mid.add(s.pos);
+        mid.divideScalar(samples.length);
 
-        // Build ribbon geometry: flat horizontal quads between consecutive points
-        const vertices = [];
-        const halfWidth = this.ribbonWidth / 2;
+        // Pre-compute per-point left/right edge positions.
+        // Shared between adjacent quads so there are no gaps.
+        const edges = [];
 
-        for (let i = 0; i < points.length - 1; i++) {
-            const p1 = points[i];
-            const p2 = points[i + 1];
+        for (let i = 0; i < samples.length; i++) {
+            const p = samples[i].pos;
+            const elapsed = samples[i].elapsed;
 
-            // Segment direction
-            const dir = p2.clone().sub(p1);
+            // Per-point travel direction: average of adjacent segments for smooth edges
+            let dir;
+            if (i === 0) {
+                dir = samples[1].pos.clone().sub(p);
+            } else if (i === samples.length - 1) {
+                dir = p.clone().sub(samples[i - 1].pos);
+            } else {
+                dir = samples[i + 1].pos.clone().sub(samples[i - 1].pos);
+            }
             if (dir.lengthSq() < 1e-8) continue;
             dir.normalize();
 
-            // Local up at midpoint of segment
-            const segMid = p1.clone().add(p2).multiplyScalar(0.5);
-            const up = getLocalUpVector(segMid);
+            const up = getLocalUpVector(p);
+            const perp = V3().crossVectors(dir, up).normalize();
 
-            // Width direction: perpendicular to both direction and up
-            const widthDir = V3().crossVectors(dir, up).normalize().multiplyScalar(halfWidth);
+            // Base half-width perpendicular to travel
+            const baseHW = this.ribbonWidth / 2;
 
-            // Quad corners (relative to mid for precision)
-            const p1L = V3(p1.x - mid.x - widthDir.x, p1.y - mid.y - widthDir.y, p1.z - mid.z - widthDir.z);
-            const p1R = V3(p1.x - mid.x + widthDir.x, p1.y - mid.y + widthDir.y, p1.z - mid.z + widthDir.z);
-            const p2L = V3(p2.x - mid.x - widthDir.x, p2.y - mid.y - widthDir.y, p2.z - mid.z - widthDir.z);
-            const p2R = V3(p2.x - mid.x + widthDir.x, p2.y - mid.y + widthDir.y, p2.z - mid.z + widthDir.z);
+            // Spread half-width in wind direction
+            const spreadHW = this.spread * elapsed / 2;
 
-            // Triangle 1: p1L, p2L, p2R
-            vertices.push(p1L.x, p1L.y, p1L.z);
-            vertices.push(p2L.x, p2L.y, p2L.z);
-            vertices.push(p2R.x, p2R.y, p2R.z);
+            let leftOffset, rightOffset;
+            if (windDir && spreadHW > 0) {
+                // Combine base perpendicular width + spread in wind direction
+                const baseOffset = perp.clone().multiplyScalar(baseHW);
+                const spreadOffset = windDir.clone().multiplyScalar(spreadHW);
+                leftOffset = baseOffset.clone().negate().sub(spreadOffset);
+                rightOffset = baseOffset.clone().add(spreadOffset);
+            } else {
+                // No wind or no spread: just perpendicular width
+                leftOffset = perp.clone().multiplyScalar(-baseHW);
+                rightOffset = perp.clone().multiplyScalar(baseHW);
+            }
 
-            // Triangle 2: p1L, p2R, p1R
-            vertices.push(p1L.x, p1L.y, p1L.z);
-            vertices.push(p2R.x, p2R.y, p2R.z);
-            vertices.push(p1R.x, p1R.y, p1R.z);
+            edges.push({
+                left: V3(p.x - mid.x + leftOffset.x, p.y - mid.y + leftOffset.y, p.z - mid.z + leftOffset.z),
+                right: V3(p.x - mid.x + rightOffset.x, p.y - mid.y + rightOffset.y, p.z - mid.z + rightOffset.z),
+            });
+        }
+
+        if (edges.length < 2) return;
+
+        // Build quads from shared edge positions (seamless, no gaps)
+        const vertices = [];
+
+        for (let i = 0; i < edges.length - 1; i++) {
+            const e1 = edges[i];
+            const e2 = edges[i + 1];
+
+            // Triangle 1: e1.left, e2.left, e2.right
+            vertices.push(e1.left.x, e1.left.y, e1.left.z);
+            vertices.push(e2.left.x, e2.left.y, e2.left.z);
+            vertices.push(e2.right.x, e2.right.y, e2.right.z);
+
+            // Triangle 2: e1.left, e2.right, e1.right
+            vertices.push(e1.left.x, e1.left.y, e1.left.z);
+            vertices.push(e2.right.x, e2.right.y, e2.right.z);
+            vertices.push(e1.right.x, e1.right.y, e1.right.z);
         }
 
         if (vertices.length === 0) return;

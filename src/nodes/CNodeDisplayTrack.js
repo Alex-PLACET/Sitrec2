@@ -109,6 +109,7 @@ export class CNodeDisplayTrack extends CNode3DGroup {
         this.visible = true
         this.contrail = false;
         this.contrailDuration = 100;
+        this.contrailSpread = 0;
         this.contrailNode = null;
 
         if (!v.skipGUI) {
@@ -202,6 +203,13 @@ export class CNodeDisplayTrack extends CNode3DGroup {
                 .name("Contrail Secs").listen().onChange(() => {
                     if (this.contrailNode) {
                         this.contrailNode.duration = this.contrailDuration;
+                    }
+                    setRenderOne(true);
+                })
+            this.guiFolder.add(this, "contrailSpread", 0, 5, 0.01)
+                .name("Contrail Spread m/s").listen().onChange(() => {
+                    if (this.contrailNode) {
+                        this.contrailNode.spread = this.contrailSpread;
                     }
                     setRenderOne(true);
                 })
@@ -314,6 +322,7 @@ export class CNodeDisplayTrack extends CNode3DGroup {
         this.simpleSerials.push("trackDisplayStep")
         this.simpleSerials.push("contrail")
         this.simpleSerials.push("contrailDuration")
+        this.simpleSerials.push("contrailSpread")
 
         this.recalculate()
     }
@@ -338,10 +347,14 @@ export class CNodeDisplayTrack extends CNode3DGroup {
             if (NodeMan.exists("targetWind")) {
                 inputs.wind = NodeMan.get("targetWind");
             }
+            if (this.in.dataTrack) {
+                inputs.dataTrack = this.in.dataTrack;
+            }
             this.contrailNode = new CNodeContrail({
                 id: this.id + "_contrail",
                 ...inputs,
                 duration: this.contrailDuration,
+                spread: this.contrailSpread,
                 container: this.container,
             });
         } else if (!this.contrail && this.contrailNode) {
@@ -436,6 +449,7 @@ export class CNodeDisplayTrack extends CNode3DGroup {
         if (v.contrail !== undefined) {
             this.contrail = v.contrail;
             this.contrailDuration = v.contrailDuration ?? 100;
+            this.contrailSpread = v.contrailSpread ?? 0;
             this.updateContrail();
         }
     }
