@@ -150,12 +150,12 @@ test.describe.serial('Satellite Label Visibility Tests', () => {
             let outsideFrustumButMarkedVisible = 0;
             
             for (const sat of satData) {
-                if (!sat.visible || sat.invalidPosition || !sat.eus) continue;
+                if (!sat.visible || sat.invalidPosition || !sat.ecef) continue;
                 
-                const viewPos = sat.eus.clone().applyMatrix4(lookCamera.matrixWorldInverse);
+                const viewPos = sat.ecef.clone().applyMatrix4(lookCamera.matrixWorldInverse);
                 if (viewPos.z >= 0) continue;
                 
-                const screenPos = sat.eus.clone().project(lookCamera);
+                const screenPos = sat.ecef.clone().project(lookCamera);
                 const isInsideFrustum = screenPos.x >= -1 && screenPos.x <= 1 &&
                     screenPos.y >= -1 && screenPos.y <= 1;
                 
