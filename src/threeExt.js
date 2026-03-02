@@ -667,7 +667,7 @@ export function intersectEllipsoid(pointEUS, headingVectorEUS) {
         return null;
     }
     
-    const intersectionECEF = originECEF.clone().add(dirECEF.clone().multiplyScalar(t));
+    const intersectionECEF = pointEUS.clone().add(dirECEF.clone().multiplyScalar(t));
     return intersectionECEF;
 }
 

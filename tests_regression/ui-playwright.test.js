@@ -328,6 +328,10 @@ test.describe.serial('UI Interaction Tests - Playwright', () => {
         sharedPage.on('console', msg => {
             console.log(`[WORKER-${workerIndex}] PAGE CONSOLE [${msg.type()}]: ${msg.text()}`);
         });
+
+        sharedPage.on('pageerror', error => {
+            console.log(`[WORKER-${workerIndex}] PAGE ERROR: ${error.message}`);
+        });
         
         await sharedPage.goto('?frame=10&ignoreunload=1&regression=1&mapType=Local&elevationType=Local');
         
