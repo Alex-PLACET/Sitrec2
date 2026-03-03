@@ -60,7 +60,7 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
 
         // these no longer work with the new rendering pipeline
         // TODO: reimplement them as effects?
-        this.optionalInputs(["brightness", "contrast", "blur", "greyscale", "hue", "invert", "saturate", "enableVideoEffects", "convolutionFilter"])
+        this.optionalInputs(["brightness", "contrast", "blur", "greyscale", "hue", "invert", "saturate", "enableVideoEffects", "convolutionFilter", "elaJpegQuality", "elaErrorScale", "elaOpacity", "elaExpandMethod", "elaContrastClipPercent"])
         //
 
         //  if (this.overlayView === undefined)
@@ -85,6 +85,9 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         this.videos = [];
         this.currentVideoIndex = -1;
         this.videoSelectorController = null;
+        this._elaPendingKey = null;
+        this._elaResultKey = null;
+        this._elaResultCanvas = null;
 
         this.setupMouseHandler();
 
@@ -125,6 +128,7 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
             Sit.frames = undefined; // need to recalculate this
         }
         this.fileName = fileName;
+        this.invalidateELAResult();
         if (this.pendingVideoRestore) {
             this.videoData = null;
             this.staticURL = undefined;
@@ -632,6 +636,7 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         this.staticURL = entry.staticURL;
         this.videoData = entry.videoData;
         this.imageFileID = entry.imageFileID || null;
+        this.invalidateELAResult();
 
         this.positioned = false;
         this.defaultPosition();
@@ -782,6 +787,7 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
             this.currentVideoIndex--;
         }
 
+        this.invalidateELAResult();
         this.updateVideoSelector();
     }
 
@@ -795,6 +801,7 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         this.videos = [];
         this.currentVideoIndex = -1;
         this.videoData = null;
+        this.invalidateELAResult();
         this.updateVideoSelector();
     }
 
@@ -837,6 +844,7 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
     makeImageVideo(filename, img, deleteAfterUsing = false, imageFileID = undefined) {
 
         this.fileName = filename;
+        this.invalidateELAResult();
 
         this.videoData = new CVideoImageData({
             id: this.id + "_data_" + this.videos.length,
@@ -906,6 +914,10 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
 
             let filter = ''
             const effectsEnabled = this.in.enableVideoEffects ? this.in.enableVideoEffects.v0 : true;
+            const elaOverlay = this.getELAOverlayState(frame, image);
+            if (elaOverlay.enabled) {
+                this.requestELAOverlay(image, elaOverlay);
+            }
 
             let sourceImage = image;
             if (effectsEnabled && this.in.convolutionFilter && this.in.convolutionFilter.value !== 'none') {
@@ -1017,6 +1029,22 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
                 ctx.restore();
             }
 
+            if (elaOverlay.enabled && this._elaResultCanvas && this._elaResultKey === elaOverlay.key) {
+                ctx.save();
+                ctx.filter = 'none';
+                ctx.globalAlpha = elaOverlay.opacity;
+                if (this.in.zoom !== undefined) {
+                    ctx.drawImage(this._elaResultCanvas, this.sx, this.sy, this.sWidth, this.sHeight,
+                        this.dx, this.dy, this.dWidth, this.dHeight);
+                } else {
+                    ctx.drawImage(this._elaResultCanvas,
+                        0, 0, this.videoWidth, this.videoHeight,
+                        this.widthPx * (0.5 + this.posLeft), this.heightPx * 0.5 + this.widthPx * this.posTop,
+                        this.widthPx * (this.posRight - this.posLeft), this.widthPx * (this.posBot - this.posTop));
+                }
+                ctx.restore();
+            }
+
             if (flowRotation !== 0) {
                 ctx.restore();
             }
@@ -1062,6 +1090,141 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         }
 
         this.startFullABEcho();
+    }
+
+    invalidateELAResult() {
+        this._elaPendingKey = null;
+        this._elaResultKey = null;
+        this._elaResultCanvas = null;
+    }
+
+    getELAOverlayState(frame, image) {
+        const foldersExpanded = Boolean(
+            guiVideoForensicsFolder &&
+            guiVideoELAFolder &&
+            !guiVideoForensicsFolder._closed &&
+            !guiVideoELAFolder._closed
+        );
+
+        if (!foldersExpanded || !image || !image.width || !image.height) {
+            return { enabled: false, key: null, opacity: 0 };
+        }
+
+        const jpegQuality = Math.max(1, Math.min(100, this.in.elaJpegQuality?.v0 ?? 90));
+        const errorScale = Math.max(0.1, this.in.elaErrorScale?.v0 ?? 20);
+        const opacity = Math.max(0, Math.min(100, this.in.elaOpacity?.v0 ?? 65)) / 100;
+        const expandMethod = this.in.elaExpandMethod?.value ?? 'none';
+        const clipPercent = Math.max(0, Math.min(20, this.in.elaContrastClipPercent?.v0 ?? 0.5));
+
+        if (opacity <= 0) {
+            return { enabled: false, key: null, opacity: 0 };
+        }
+
+        const quantizedScale = Math.round(errorScale * 100) / 100;
+        const quantizedClip = Math.round(clipPercent * 100) / 100;
+        const key = `${this.currentVideoIndex}|${frame}|${image.width}x${image.height}|q${jpegQuality}|s${quantizedScale}|m${expandMethod}|c${quantizedClip}`;
+
+        return {
+            enabled: true,
+            key,
+            jpegQuality: jpegQuality / 100,
+            errorScale: quantizedScale,
+            expandMethod,
+            clipPercent: quantizedClip,
+            opacity
+        };
+    }
+
+    requestELAOverlay(image, overlayState) {
+        if (!overlayState.enabled) return;
+        if (this._elaResultKey === overlayState.key || this._elaPendingKey === overlayState.key) return;
+        if (this._elaPendingKey !== null) return;
+
+        this._elaPendingKey = overlayState.key;
+        this.computeELAOverlay(image, overlayState).catch((err) => {
+            console.warn("[ELA] Failed to compute overlay:", err);
+            if (this._elaPendingKey === overlayState.key) {
+                this._elaPendingKey = null;
+            }
+        });
+    }
+
+    ensureELABuffers(width, height) {
+        if (!this._elaSourceCanvas) {
+            this._elaSourceCanvas = document.createElement('canvas');
+            this._elaSourceCtx = this._elaSourceCanvas.getContext('2d', { willReadFrequently: true });
+        }
+        if (!this._elaRecompressedCanvas) {
+            this._elaRecompressedCanvas = document.createElement('canvas');
+            this._elaRecompressedCtx = this._elaRecompressedCanvas.getContext('2d', { willReadFrequently: true });
+        }
+        if (!this._elaOutputCanvas) {
+            this._elaOutputCanvas = document.createElement('canvas');
+            this._elaOutputCtx = this._elaOutputCanvas.getContext('2d', { willReadFrequently: true });
+        }
+
+        if (this._elaSourceCanvas.width !== width || this._elaSourceCanvas.height !== height) {
+            this._elaSourceCanvas.width = width;
+            this._elaSourceCanvas.height = height;
+            this._elaRecompressedCanvas.width = width;
+            this._elaRecompressedCanvas.height = height;
+            this._elaOutputCanvas.width = width;
+            this._elaOutputCanvas.height = height;
+        }
+    }
+
+    async computeELAOverlay(image, overlayState) {
+        const width = image.width;
+        const height = image.height;
+
+        this.ensureELABuffers(width, height);
+
+        this._elaSourceCtx.clearRect(0, 0, width, height);
+        this._elaSourceCtx.drawImage(image, 0, 0, width, height);
+        const sourcePixels = this._elaSourceCtx.getImageData(0, 0, width, height).data;
+
+        const jpegBlob = await canvasToBlobAsync(this._elaSourceCanvas, 'image/jpeg', overlayState.jpegQuality);
+        if (!jpegBlob || this._elaPendingKey !== overlayState.key) {
+            if (this._elaPendingKey === overlayState.key) {
+                this._elaPendingKey = null;
+            }
+            return;
+        }
+
+        const recompressedImage = await decodeImageBlob(jpegBlob);
+        if (this._elaPendingKey !== overlayState.key) {
+            recompressedImage?.close?.();
+            return;
+        }
+
+        this._elaRecompressedCtx.clearRect(0, 0, width, height);
+        this._elaRecompressedCtx.drawImage(recompressedImage, 0, 0, width, height);
+        recompressedImage?.close?.();
+
+        const recompressedPixels = this._elaRecompressedCtx.getImageData(0, 0, width, height).data;
+        const outputImageData = this._elaOutputCtx.createImageData(width, height);
+        const outputPixels = outputImageData.data;
+        const scale = overlayState.errorScale;
+
+        // ELA: absolute per-channel error between original and JPEG-recompressed frame.
+        for (let i = 0; i < outputPixels.length; i += 4) {
+            outputPixels[i] = Math.min(255, Math.abs(sourcePixels[i] - recompressedPixels[i]) * scale);
+            outputPixels[i + 1] = Math.min(255, Math.abs(sourcePixels[i + 1] - recompressedPixels[i + 1]) * scale);
+            outputPixels[i + 2] = Math.min(255, Math.abs(sourcePixels[i + 2] - recompressedPixels[i + 2]) * scale);
+            outputPixels[i + 3] = 255;
+        }
+
+        applyELAOutputExpansion(outputPixels, width, height, overlayState.expandMethod, overlayState.clipPercent);
+
+        this._elaOutputCtx.putImageData(outputImageData, 0, 0);
+        this._elaResultCanvas = this._elaOutputCanvas;
+        this._elaResultKey = overlayState.key;
+
+        if (this._elaPendingKey === overlayState.key) {
+            this._elaPendingKey = null;
+        }
+
+        setRenderOne(true);
     }
 
     startFullABEcho() {
@@ -1949,6 +2112,10 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
 
 let guiVideoEffectsFolder = null;
 let guiVideoProcessingFolder = null;
+let guiVideoForensicsFolder = null;
+let guiVideoELAFolder = null;
+let guiVideoNoiseFolder = null;
+let noiseAnalysisStatusControl = null;
 
 export function addFiltersToVideoNode(videoNode) {
 
@@ -1960,14 +2127,40 @@ export function addFiltersToVideoNode(videoNode) {
         guiVideoProcessingFolder = guiMenus.video.addFolder("Video Processing").close().perm();
     }
 
+    if (guiVideoForensicsFolder === null) {
+        guiVideoForensicsFolder = guiMenus.video.addFolder("Forensics").close().perm();
+        guiVideoForensicsFolder.onOpenClose(() => setRenderOne(true));
+    }
+
+    if (guiVideoELAFolder === null) {
+        guiVideoELAFolder = guiVideoForensicsFolder.addFolder("Error Level Analysis").close().perm();
+        guiVideoELAFolder.onOpenClose(() => setRenderOne(true));
+    }
+
+    if (guiVideoNoiseFolder === null) {
+        guiVideoNoiseFolder = guiVideoForensicsFolder.addFolder("Noise Analysis").close().perm();
+    }
+
+    if (noiseAnalysisStatusControl === null) {
+        const noiseStatus = { status: "Coming Soon" };
+        noiseAnalysisStatusControl = guiVideoNoiseFolder.add(noiseStatus, "status").name("Status");
+        if (noiseAnalysisStatusControl.disable) {
+            noiseAnalysisStatusControl.disable();
+        }
+    }
+
     let brightness, contrast, blur, greyscale, hue, invert, saturate, enableVideoEffects, convolutionFilter;
     let sharpenAmount, edgeDetectThreshold, embossDepth;
     let echoMin, echoMax, echoFrames, fullABEcho, fullABEchoOpacity, fullABBlend, fullABExposure;
-    let showCache;
-    let convolutionFilterDropdown, sharpenAmountControl, edgeDetectThresholdControl, embossDepthControl;
+    let showCache, elaJpegQuality, elaErrorScale, elaOpacity, elaExpandMethod, elaContrastClipPercent;
+    let convolutionFilterDropdown, sharpenAmountControl, edgeDetectThresholdControl, embossDepthControl, elaExpandMethodDropdown;
 
     const filterOptions = {
         convolutionFilterValue: 'none'
+    };
+
+    const elaExpandMethodOptions = {
+        methodValue: 'none'
     };
 
     const updateConvolutionControlVisibility = () => {
@@ -1975,6 +2168,12 @@ export function addFiltersToVideoNode(videoNode) {
         sharpenAmount?.show(filterType === 'sharpen');
         edgeDetectThreshold?.show(filterType === 'edgeDetect');
         embossDepth?.show(filterType === 'emboss');
+    };
+
+    const updateELAExpandControlVisibility = () => {
+        const method = elaExpandMethod?.value ?? elaExpandMethodOptions.methodValue ?? 'none';
+        const needsClip = method === 'autoContrast' || method === 'autoContrastChannels';
+        elaContrastClipPercent?.show(needsClip);
     };
 
     const reset = {
@@ -2001,6 +2200,15 @@ export function addFiltersToVideoNode(videoNode) {
             if (videoNode.inputs.fullABExposure) videoNode.inputs.fullABExposure.value = false;
             if (videoNode.inputs.fullABEchoOpacity) videoNode.inputs.fullABEchoOpacity.value = 100;
             if (videoNode.inputs.showCache) videoNode.inputs.showCache.value = false;
+            if (videoNode.inputs.elaJpegQuality) videoNode.inputs.elaJpegQuality.value = 90;
+            if (videoNode.inputs.elaErrorScale) videoNode.inputs.elaErrorScale.value = 20;
+            if (videoNode.inputs.elaOpacity) videoNode.inputs.elaOpacity.value = 65;
+            if (videoNode.inputs.elaExpandMethod) videoNode.inputs.elaExpandMethod.value = 'none';
+            if (videoNode.inputs.elaContrastClipPercent) videoNode.inputs.elaContrastClipPercent.value = 0.5;
+            elaExpandMethodOptions.methodValue = 'none';
+            elaExpandMethodDropdown?.updateDisplay();
+            updateELAExpandControlVisibility();
+            videoNode.invalidateELAResult();
             updateConvolutionControlVisibility();
             setRenderOne(true);
         }
@@ -2057,6 +2265,36 @@ export function addFiltersToVideoNode(videoNode) {
             }}, guiVideoProcessingFolder),
             fullABEchoOpacity = new CNodeGUIValue({ id: "videoFullABEchoOpacity", value: 100, start: 0, end: 100, step: 1, desc: "A-B Echo Opacity %" }, guiVideoProcessingFolder),
             showCache = new CNodeGUIFlag({ id: "videoShowCache", value: false, desc: "Show Cache" }, guiVideoProcessingFolder),
+            elaJpegQuality = new CNodeGUIValue({ id: "videoELAJpegQuality", value: 90, start: 1, end: 100, step: 1, desc: "JPEG Quality", onChange: () => {
+                videoNode.invalidateELAResult();
+            }}, guiVideoELAFolder),
+            elaErrorScale = new CNodeGUIValue({ id: "videoELAErrorScale", value: 20, start: 0.1, end: 80, step: 0.1, desc: "Error Scale", onChange: () => {
+                videoNode.invalidateELAResult();
+            }}, guiVideoELAFolder),
+            elaOpacity = new CNodeGUIValue({ id: "videoELAOpacity", value: 65, start: 0, end: 100, step: 1, desc: "Opacity %" }, guiVideoELAFolder),
+            elaExpandMethod = new CNodeConstant({ id: "videoELAExpandMethod", value: 'none' }),
+            elaContrastClipPercent = new CNodeGUIValue({
+                id: "videoELAContrastClipPercent",
+                value: 0.5,
+                start: 0,
+                end: 10,
+                step: 0.1,
+                desc: "Clip %",
+                onChange: () => {
+                    videoNode.invalidateELAResult();
+                }
+            }, guiVideoELAFolder),
+            elaExpandMethodDropdown = guiVideoELAFolder.add(elaExpandMethodOptions, "methodValue", {
+                "None": "none",
+                "Histogram Equalization": "histogramEqualization",
+                "Auto Contrast": "autoContrast",
+                "Auto Contrast Channels": "autoContrastChannels"
+            }).name("Expand Output").onChange(value => {
+                elaExpandMethod.value = value;
+                updateELAExpandControlVisibility();
+                videoNode.invalidateELAResult();
+                setRenderOne(true);
+            }),
             convolutionFilter = new CNodeConstant({ id: "videoConvolutionFilter", value: 'none' }),
             convolutionFilterDropdown = guiVideoEffectsFolder.add(filterOptions, "convolutionFilterValue", ['none', 'sharpen', 'edgeDetect', 'emboss']).name("Convolution Filter").onChange(value => {
                 convolutionFilter.value = value;
@@ -2091,15 +2329,25 @@ export function addFiltersToVideoNode(videoNode) {
         fullABExposure = NodeMan.get("videoFullABExposure");
         fullABEchoOpacity = NodeMan.get("videoFullABEchoOpacity");
         showCache = NodeMan.get("videoShowCache");
+        elaJpegQuality = NodeMan.get("videoELAJpegQuality");
+        elaErrorScale = NodeMan.get("videoELAErrorScale");
+        elaOpacity = NodeMan.get("videoELAOpacity");
+        elaExpandMethod = NodeMan.get("videoELAExpandMethod");
+        elaContrastClipPercent = NodeMan.get("videoELAContrastClipPercent");
         convolutionFilter = NodeMan.get("videoConvolutionFilter");
         if (convolutionFilter) {
             filterOptions.convolutionFilterValue = convolutionFilter.value;
+        }
+        if (elaExpandMethod) {
+            elaExpandMethodOptions.methodValue = elaExpandMethod.value;
         }
         sharpenAmountControl = sharpenAmount?.guiEntry;
         edgeDetectThresholdControl = edgeDetectThreshold?.guiEntry;
         embossDepthControl = embossDepth?.guiEntry;
         updateConvolutionControlVisibility();
     }
+
+    updateELAExpandControlVisibility();
 
 
     videoNode.addMoreInputs({
@@ -2122,7 +2370,12 @@ export function addFiltersToVideoNode(videoNode) {
         fullABBlend: fullABBlend,
         fullABExposure: fullABExposure,
         fullABEchoOpacity: fullABEchoOpacity,
-        showCache: showCache
+        showCache: showCache,
+        elaJpegQuality: elaJpegQuality,
+        elaErrorScale: elaErrorScale,
+        elaOpacity: elaOpacity,
+        elaExpandMethod: elaExpandMethod,
+        elaContrastClipPercent: elaContrastClipPercent
     });
 
     EventManager.addEventListener("abFrameChanged", () => {
@@ -2446,4 +2699,175 @@ function applySourcePixelFilterToImage(image, filterString, videoView) {
     ctx.drawImage(image, 0, 0, width, height);
     ctx.filter = 'none';
     return videoView._sourceFilterCanvas;
+}
+
+function applyELAOutputExpansion(pixels, width, height, method, clipPercent) {
+    switch (method) {
+        case 'histogramEqualization':
+            applyHistogramEqualization(pixels, width, height);
+            break;
+        case 'autoContrast':
+            applyAutoContrast(pixels, width, height, clipPercent);
+            break;
+        case 'autoContrastChannels':
+            applyAutoContrastChannels(pixels, width, height, clipPercent);
+            break;
+        case 'none':
+        default:
+            break;
+    }
+}
+
+function applyHistogramEqualization(pixels, width, height) {
+    const hist = buildLuminanceHistogram(pixels);
+    const pixelCount = width * height;
+    if (pixelCount <= 1) return;
+
+    let cdf = 0;
+    let cdfMin = -1;
+    const lut = new Uint8Array(256);
+    for (let i = 0; i < 256; i++) {
+        cdf += hist[i];
+        if (cdfMin < 0 && cdf > 0) {
+            cdfMin = cdf;
+        }
+        if (cdfMin < 0 || cdf === cdfMin) {
+            lut[i] = 0;
+        } else {
+            lut[i] = clampByte(((cdf - cdfMin) * 255) / (pixelCount - cdfMin));
+        }
+    }
+
+    for (let i = 0; i < pixels.length; i += 4) {
+        const r = pixels[i];
+        const g = pixels[i + 1];
+        const b = pixels[i + 2];
+        const luma = getLuma(r, g, b);
+        const newLuma = lut[luma];
+        if (luma <= 0) {
+            pixels[i] = newLuma;
+            pixels[i + 1] = newLuma;
+            pixels[i + 2] = newLuma;
+            continue;
+        }
+        const scale = newLuma / luma;
+        pixels[i] = clampByte(r * scale);
+        pixels[i + 1] = clampByte(g * scale);
+        pixels[i + 2] = clampByte(b * scale);
+    }
+}
+
+function applyAutoContrast(pixels, width, height, clipPercent) {
+    const hist = buildLuminanceHistogram(pixels);
+    const pixelCount = width * height;
+    const { low, high } = findLowHighFromHistogram(hist, pixelCount, clipPercent);
+    if (high <= low) return;
+
+    const range = high - low;
+    for (let i = 0; i < pixels.length; i += 4) {
+        pixels[i] = clampByte(((pixels[i] - low) * 255) / range);
+        pixels[i + 1] = clampByte(((pixels[i + 1] - low) * 255) / range);
+        pixels[i + 2] = clampByte(((pixels[i + 2] - low) * 255) / range);
+    }
+}
+
+function applyAutoContrastChannels(pixels, width, height, clipPercent) {
+    const pixelCount = width * height;
+    const channelRanges = [];
+
+    for (let c = 0; c < 3; c++) {
+        const hist = new Uint32Array(256);
+        for (let i = c; i < pixels.length; i += 4) {
+            hist[pixels[i]]++;
+        }
+        channelRanges[c] = findLowHighFromHistogram(hist, pixelCount, clipPercent);
+    }
+
+    for (let i = 0; i < pixels.length; i += 4) {
+        for (let c = 0; c < 3; c++) {
+            const { low, high } = channelRanges[c];
+            if (high <= low) continue;
+            pixels[i + c] = clampByte(((pixels[i + c] - low) * 255) / (high - low));
+        }
+    }
+}
+
+function buildLuminanceHistogram(pixels) {
+    const hist = new Uint32Array(256);
+    for (let i = 0; i < pixels.length; i += 4) {
+        const luma = getLuma(pixels[i], pixels[i + 1], pixels[i + 2]);
+        hist[luma]++;
+    }
+    return hist;
+}
+
+function findLowHighFromHistogram(hist, sampleCount, clipPercent = 0) {
+    const clipCount = Math.floor(sampleCount * Math.max(0, clipPercent) / 100);
+
+    let low = 0;
+    let cumulativeLow = 0;
+    while (low < 255 && cumulativeLow + hist[low] <= clipCount) {
+        cumulativeLow += hist[low];
+        low++;
+    }
+
+    let high = 255;
+    let cumulativeHigh = 0;
+    while (high > 0 && cumulativeHigh + hist[high] <= clipCount) {
+        cumulativeHigh += hist[high];
+        high--;
+    }
+
+    return { low, high };
+}
+
+function getLuma(r, g, b) {
+    return clampByte(0.299 * r + 0.587 * g + 0.114 * b);
+}
+
+function clampByte(value) {
+    if (value <= 0) return 0;
+    if (value >= 255) return 255;
+    return Math.round(value);
+}
+
+function canvasToBlobAsync(canvas, type, quality) {
+    return new Promise((resolve) => {
+        if (canvas.toBlob) {
+            canvas.toBlob(resolve, type, quality);
+            return;
+        }
+        resolve(dataURLToBlob(canvas.toDataURL(type, quality)));
+    });
+}
+
+function decodeImageBlob(blob) {
+    if (typeof createImageBitmap === "function") {
+        return createImageBitmap(blob);
+    }
+    return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+            URL.revokeObjectURL(url);
+            resolve(img);
+        };
+        img.onerror = (err) => {
+            URL.revokeObjectURL(url);
+            reject(err);
+        };
+        img.src = url;
+    });
+}
+
+function dataURLToBlob(dataURL) {
+    const parts = dataURL.split(',');
+    const mime = parts[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
+    const binary = atob(parts[1]);
+    const len = binary.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+    return new Blob([bytes], { type: mime });
 }
