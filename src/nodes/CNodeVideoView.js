@@ -88,6 +88,12 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         this._elaPendingKey = null;
         this._elaResultKey = null;
         this._elaResultCanvas = null;
+        this._elaRequestToken = 0;
+        this._elaRequestSeq = 0;
+        this._elaActiveRequest = null;
+        this._elaQueuedRequest = null;
+        this._elaWorker = null;
+        this._elaWorkerFailed = false;
 
         this.setupMouseHandler();
 
@@ -837,6 +843,7 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
     dispose() {
         // Dispose of all video data including audio
         this.disposeAllVideos();
+        this.disposeELAWorker();
         // Call parent dispose
         super.dispose();
     }
@@ -917,6 +924,18 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
             const elaOverlay = this.getELAOverlayState(frame, image);
             if (elaOverlay.enabled) {
                 this.requestELAOverlay(image, elaOverlay);
+            }
+            const elaReady = elaOverlay.enabled && this._elaResultCanvas && this._elaResultKey === elaOverlay.key;
+
+            // Never show the underlying frame while ELA mode is active and pending.
+            if (elaOverlay.enabled && !elaReady) {
+                ctx.save();
+                ctx.filter = 'none';
+                ctx.fillStyle = "#000000";
+                ctx.fillRect(0, 0, this.widthPx, this.heightPx);
+                ctx.restore();
+                this.drawCrosshairIfKeyHeld();
+                return;
             }
 
             let sourceImage = image;
@@ -1029,7 +1048,7 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
                 ctx.restore();
             }
 
-            if (elaOverlay.enabled && this._elaResultCanvas && this._elaResultKey === elaOverlay.key) {
+            if (elaOverlay.enabled && elaReady) {
                 ctx.save();
                 ctx.filter = 'none';
                 ctx.globalAlpha = elaOverlay.opacity;
@@ -1093,9 +1112,16 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
     }
 
     invalidateELAResult() {
-        this._elaPendingKey = null;
+        this._elaRequestToken++;
         this._elaResultKey = null;
+        if (this._elaResultCanvas?.close) {
+            this._elaResultCanvas.close();
+        }
         this._elaResultCanvas = null;
+        this._elaQueuedRequest = null;
+        if (!this._elaActiveRequest) {
+            this._elaPendingKey = null;
+        }
     }
 
     getELAOverlayState(frame, image) {
@@ -1138,15 +1164,175 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
     requestELAOverlay(image, overlayState) {
         if (!overlayState.enabled) return;
         if (this._elaResultKey === overlayState.key || this._elaPendingKey === overlayState.key) return;
-        if (this._elaPendingKey !== null) return;
 
-        this._elaPendingKey = overlayState.key;
-        this.computeELAOverlay(image, overlayState).catch((err) => {
-            console.warn("[ELA] Failed to compute overlay:", err);
-            if (this._elaPendingKey === overlayState.key) {
-                this._elaPendingKey = null;
-            }
+        const requestToken = this._elaRequestToken;
+        if (this._elaPendingKey !== null) {
+            // Keep only the latest pending request to avoid backlog while scrubbing.
+            this._elaQueuedRequest = { image, overlayState, requestToken };
+            return;
+        }
+
+        this.startELARequest(image, overlayState, requestToken);
+    }
+
+    startELARequest(image, overlayState, requestToken) {
+        const request = {
+            requestId: ++this._elaRequestSeq,
+            requestToken,
+            key: overlayState.key,
+            image,
+            overlayState
+        };
+
+        this._elaPendingKey = request.key;
+        this._elaActiveRequest = request;
+
+        if (this.canUseELAWorker()) {
+            this.computeELAOverlayWorker(request);
+            return;
+        }
+
+        this.computeELAOverlayMain(request).catch((err) => {
+            this.handleELARequestError(request, err);
         });
+    }
+
+    isELARequestActive(request) {
+        return Boolean(
+            request &&
+            this._elaActiveRequest &&
+            this._elaActiveRequest.requestId === request.requestId &&
+            this._elaActiveRequest.key === request.key &&
+            request.requestToken === this._elaRequestToken &&
+            this._elaPendingKey === request.key
+        );
+    }
+
+    setELAResult(resultCanvasOrBitmap, key) {
+        if (this._elaResultCanvas && this._elaResultCanvas !== resultCanvasOrBitmap && this._elaResultCanvas.close) {
+            this._elaResultCanvas.close();
+        }
+        this._elaResultCanvas = resultCanvasOrBitmap;
+        this._elaResultKey = key;
+    }
+
+    finalizeELARequest(request, resultCanvasOrBitmap = null) {
+        const isActive = this.isELARequestActive(request);
+
+        if (isActive && resultCanvasOrBitmap) {
+            this.setELAResult(resultCanvasOrBitmap, request.key);
+            setRenderOne(true);
+        } else if (resultCanvasOrBitmap?.close) {
+            resultCanvasOrBitmap.close();
+        }
+
+        // Clear only if this request is still the active one
+        if (this._elaActiveRequest && this._elaActiveRequest.requestId === request.requestId) {
+            this._elaActiveRequest = null;
+            this._elaPendingKey = null;
+        }
+
+        this.processQueuedELARequest();
+    }
+
+    processQueuedELARequest() {
+        if (this._elaPendingKey !== null) return;
+        const queued = this._elaQueuedRequest;
+        this._elaQueuedRequest = null;
+        if (!queued) return;
+        if (queued.requestToken !== this._elaRequestToken) return;
+        this.startELARequest(queued.image, queued.overlayState, queued.requestToken);
+    }
+
+    handleELARequestError(request, err) {
+        console.warn("[ELA] Failed to compute overlay:", err);
+        this.finalizeELARequest(request, null);
+    }
+
+    canUseELAWorker() {
+        if (this._elaWorkerFailed) return false;
+        return (
+            typeof Worker === "function" &&
+            typeof OffscreenCanvas !== "undefined" &&
+            typeof createImageBitmap === "function"
+        );
+    }
+
+    ensureELAWorker() {
+        if (!this.canUseELAWorker()) return null;
+        if (this._elaWorker) return this._elaWorker;
+
+        this._elaWorker = new Worker(new URL("../workers/ELAWorker.js", import.meta.url));
+        this._elaWorker.onmessage = (event) => {
+            const data = event.data;
+            if (!this._elaActiveRequest) {
+                data?.bitmap?.close?.();
+                return;
+            }
+            if (data.type === "result") {
+                if (data.requestId !== this._elaActiveRequest.requestId) {
+                    data?.bitmap?.close?.();
+                    return;
+                }
+                this.finalizeELARequest(this._elaActiveRequest, data.bitmap || null);
+                return;
+            }
+            if (data.type === "error") {
+                if (data.requestId !== this._elaActiveRequest.requestId) return;
+                this.handleELARequestError(this._elaActiveRequest, data.message || "ELA worker error");
+            }
+        };
+        this._elaWorker.onerror = (event) => {
+            console.warn("[ELA] Worker error:", event.message || event);
+            this._elaWorkerFailed = true;
+            this.disposeELAWorker();
+            if (this._elaActiveRequest) {
+                const fallbackRequest = this._elaActiveRequest;
+                this.computeELAOverlayMain(fallbackRequest).catch((err) => this.handleELARequestError(fallbackRequest, err));
+            }
+        };
+        return this._elaWorker;
+    }
+
+    disposeELAWorker() {
+        if (this._elaWorker) {
+            this._elaWorker.onmessage = null;
+            this._elaWorker.onerror = null;
+            this._elaWorker.terminate();
+            this._elaWorker = null;
+        }
+    }
+
+    async computeELAOverlayWorker(request) {
+        const worker = this.ensureELAWorker();
+        if (!worker) {
+            this.computeELAOverlayMain(request).catch((err) => this.handleELARequestError(request, err));
+            return;
+        }
+
+        try {
+            const bitmap = await createImageBitmap(request.image);
+            if (!this.isELARequestActive(request)) {
+                bitmap?.close?.();
+                this.finalizeELARequest(request, null);
+                return;
+            }
+
+            worker.postMessage({
+                type: "process",
+                requestId: request.requestId,
+                key: request.key,
+                bitmap,
+                jpegQuality: request.overlayState.jpegQuality,
+                errorScale: request.overlayState.errorScale,
+                expandMethod: request.overlayState.expandMethod,
+                clipPercent: request.overlayState.clipPercent
+            }, [bitmap]);
+        } catch (err) {
+            this._elaWorkerFailed = true;
+            this.disposeELAWorker();
+            this.computeELAOverlayMain(request).catch((fallbackErr) => this.handleELARequestError(request, fallbackErr || err));
+        }
     }
 
     ensureELABuffers(width, height) {
@@ -1173,7 +1359,8 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         }
     }
 
-    async computeELAOverlay(image, overlayState) {
+    async computeELAOverlayMain(request) {
+        const { image, overlayState } = request;
         const width = image.width;
         const height = image.height;
 
@@ -1184,16 +1371,15 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         const sourcePixels = this._elaSourceCtx.getImageData(0, 0, width, height).data;
 
         const jpegBlob = await canvasToBlobAsync(this._elaSourceCanvas, 'image/jpeg', overlayState.jpegQuality);
-        if (!jpegBlob || this._elaPendingKey !== overlayState.key) {
-            if (this._elaPendingKey === overlayState.key) {
-                this._elaPendingKey = null;
-            }
+        if (!jpegBlob || !this.isELARequestActive(request)) {
+            this.finalizeELARequest(request, null);
             return;
         }
 
         const recompressedImage = await decodeImageBlob(jpegBlob);
-        if (this._elaPendingKey !== overlayState.key) {
+        if (!this.isELARequestActive(request)) {
             recompressedImage?.close?.();
+            this.finalizeELARequest(request, null);
             return;
         }
 
@@ -1217,14 +1403,7 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         applyELAOutputExpansion(outputPixels, width, height, overlayState.expandMethod, overlayState.clipPercent);
 
         this._elaOutputCtx.putImageData(outputImageData, 0, 0);
-        this._elaResultCanvas = this._elaOutputCanvas;
-        this._elaResultKey = overlayState.key;
-
-        if (this._elaPendingKey === overlayState.key) {
-            this._elaPendingKey = null;
-        }
-
-        setRenderOne(true);
+        this.finalizeELARequest(request, this._elaOutputCanvas);
     }
 
     startFullABEcho() {
