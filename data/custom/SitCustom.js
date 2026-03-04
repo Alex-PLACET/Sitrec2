@@ -270,6 +270,7 @@ sitch = {
         name: "Target",
         arrowColor: "cyan",
         originTrack: "targetTrackSwitch",
+        force: true,
     },
 
     // local wind is the wind at the camera location
@@ -282,6 +283,7 @@ sitch = {
         lock: "targetWind",
         gui: "physics",
         originTrack: "cameraTrackSwitch",
+        force: true,
     },
 
     // we can lock them so they are the same, defaults to not locked

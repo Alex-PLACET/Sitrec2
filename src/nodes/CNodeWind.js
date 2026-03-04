@@ -12,6 +12,29 @@ import {showError} from "../showError";
 
 const PRESSURE_LEVELS = [1000, 975, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100, 70, 50, 30];
 
+// Approximate geopotential altitude (meters) for each pressure level under standard atmosphere.
+// Used to select a small subset of levels near the target altitude, keeping the API URL short.
+const APPROX_ALT = {
+    1000: 100, 975: 300, 950: 500, 925: 750, 900: 1000,
+    850: 1500, 800: 2000, 700: 3000, 600: 4200, 500: 5500,
+    400: 7200, 300: 9200, 250: 10400, 200: 11800, 150: 13600,
+    100: 16200, 70: 18500, 50: 20600, 30: 23800,
+};
+
+// Return the subset of PRESSURE_LEVELS that bracket the target altitude,
+// with one extra level on each side for safety.
+function selectPressureLevels(targetAltMSL) {
+    // sorted low-altitude-first (high pressure first) — same order as PRESSURE_LEVELS
+    let upper = 0; // index of first level whose approx alt >= target
+    for (let i = 0; i < PRESSURE_LEVELS.length; i++) {
+        if (APPROX_ALT[PRESSURE_LEVELS[i]] >= targetAltMSL) { upper = i; break; }
+        upper = i; // if target is above everything, clamp to last
+    }
+    const lo = Math.max(0, upper - 1);
+    const hi = Math.min(PRESSURE_LEVELS.length - 1, upper + 1);
+    return PRESSURE_LEVELS.slice(lo, hi + 1);
+}
+
 // Interpolate wind speed and direction at a target altitude given arrays of
 // geopotential heights, wind speeds, and wind directions from pressure-level data.
 function interpolateWindAtAltitude(targetAlt, heights, speeds, dirs) {
@@ -99,7 +122,7 @@ export class CNodeWind extends CNode {
         // add fetch button if we have an origin track to get position from
         this.fetchingWind = false;
         if (this.gui && this.originTrack) {
-            this.fetchWindButtonName = "Fetch " + this.name + " Wind";
+            this.fetchWindButtonName = "[BETA] Fetch " + this.name + " Wind";
             this.guiFetchWind = this.gui.add(this, "fetchWind").name(this.fetchWindButtonName);
         }
 
@@ -300,50 +323,78 @@ export class CNodeWind extends CNode {
             ? "https://historical-forecast-api.open-meteo.com/v1/forecast"
             : "https://api.open-meteo.com/v1/forecast";
 
-        // build query with all pressure levels
-        const windSpeedVars = PRESSURE_LEVELS.map(l => `wind_speed_${l}hPa`).join(",");
-        const windDirVars = PRESSURE_LEVELS.map(l => `wind_direction_${l}hPa`).join(",");
-        const geoHeightVars = PRESSURE_LEVELS.map(l => `geopotential_height_${l}hPa`).join(",");
+        // select only pressure levels near the target altitude to keep URL short
+        const levels = selectPressureLevels(altMSL);
+        const windSpeedVars = levels.map(l => `wind_speed_${l}hPa`).join(",");
+        const windDirVars = levels.map(l => `wind_direction_${l}hPa`).join(",");
+        const geoHeightVars = levels.map(l => `geopotential_height_${l}hPa`).join(",");
 
         const url = `${baseUrl}?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}`
             + `&hourly=${windSpeedVars},${windDirVars},${geoHeightVars}`
             + `&wind_speed_unit=kn&start_date=${dateStr}&end_date=${dateStr}`;
 
-        try {
-            const response = await fetch(url);
-            if (!response.ok) {
-                throw new Error(`Open-Meteo API error: ${response.status} ${response.statusText}`);
+        // retry with 30-second timeout per attempt (Open-Meteo recommends this)
+        const maxRetries = 3;
+        let lastError;
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+                const response = await fetch(url, {signal: controller.signal});
+                clearTimeout(timeoutId);
+
+                if (response.status === 429) {
+                    // rate-limited — wait and retry
+                    throw new Error("Rate limited (429), retrying...");
+                }
+                if (!response.ok) {
+                    throw new Error(`Open-Meteo API error: ${response.status} ${response.statusText}`);
+                }
+                const data = await response.json();
+
+                // find hourly index closest to our time
+                const hourIndex = dateNow.getUTCHours();
+
+                // extract values at this hour for each pressure level
+                const heights = levels.map(l => data.hourly[`geopotential_height_${l}hPa`]?.[hourIndex]);
+                const speeds = levels.map(l => data.hourly[`wind_speed_${l}hPa`]?.[hourIndex]);
+                const dirs = levels.map(l => data.hourly[`wind_direction_${l}hPa`]?.[hourIndex]);
+
+                const result = interpolateWindAtAltitude(altMSL, heights, speeds, dirs);
+
+                this.from = Math.round(result.direction);
+                this.knots = Math.round(result.speed);
+
+                if (this.guiFrom) this.guiFrom.updateDisplay();
+                if (this.guiKnots) this.guiKnots.updateDisplay();
+                this.recalculateCascade();
+
+                console.log(`Fetched ${this.name} wind at ${lat.toFixed(2)}, ${lon.toFixed(2)}, `
+                    + `alt ${altMSL.toFixed(0)}m MSL: from ${this.from}° at ${this.knots} kn`);
+                lastError = null;
+                break; // success
+            } catch (error) {
+                lastError = error;
+                if (error.name === "AbortError") {
+                    lastError = new Error("Request timed out (30s)");
+                }
+                console.warn(`Wind fetch attempt ${attempt}/${maxRetries} failed:`, lastError.message);
+                if (attempt < maxRetries) {
+                    this.guiFetchWind?.name(`Retry ${attempt + 1}/${maxRetries}...`);
+                    await new Promise(r => setTimeout(r, 2000 * attempt)); // backoff
+                }
             }
-            const data = await response.json();
-
-            // find hourly index closest to our time
-            const hourIndex = dateNow.getUTCHours();
-
-            // extract values at this hour for each pressure level
-            const heights = PRESSURE_LEVELS.map(l => data.hourly[`geopotential_height_${l}hPa`]?.[hourIndex]);
-            const speeds = PRESSURE_LEVELS.map(l => data.hourly[`wind_speed_${l}hPa`]?.[hourIndex]);
-            const dirs = PRESSURE_LEVELS.map(l => data.hourly[`wind_direction_${l}hPa`]?.[hourIndex]);
-
-            const result = interpolateWindAtAltitude(altMSL, heights, speeds, dirs);
-
-            this.from = Math.round(result.direction);
-            this.knots = Math.round(result.speed);
-
-            if (this.guiFrom) this.guiFrom.updateDisplay();
-            if (this.guiKnots) this.guiKnots.updateDisplay();
-            this.recalculateCascade();
-
-            console.log(`Fetched ${this.name} wind at ${lat.toFixed(2)}, ${lon.toFixed(2)}, `
-                + `alt ${altMSL.toFixed(0)}m MSL: from ${this.from}° at ${this.knots} kn`);
-
-        } catch (error) {
-            console.error("Wind fetch failed:", error);
-            showError("Failed to fetch wind data: " + error.message);
-        } finally {
-            clearInterval(dotInterval);
-            this.fetchingWind = false;
-            this.guiFetchWind?.name(this.fetchWindButtonName);
         }
+
+        if (lastError) {
+            console.error("Wind fetch failed after retries:", lastError);
+            showError("Failed to fetch wind data: " + lastError.message + "\nFrom:\n" + url);
+        }
+
+        clearInterval(dotInterval);
+        this.fetchingWind = false;
+        this.guiFetchWind?.name(this.fetchWindButtonName);
     }
 
 
