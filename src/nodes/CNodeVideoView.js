@@ -935,23 +935,9 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
             if (elaOverlay.enabled) {
                 this.requestELAOverlay(image, elaOverlay);
             }
-            const elaReady = elaOverlay.enabled && this._elaResultCanvas && this._elaResultKey === elaOverlay.key;
-
             const noiseOverlay = this.getNoiseOverlayState(frame, image);
             if (noiseOverlay.enabled) {
                 this.requestNoiseOverlay(image, noiseOverlay);
-            }
-            const noiseReady = noiseOverlay.enabled && this._noiseResultCanvas && this._noiseResultKey === noiseOverlay.key;
-
-            // Never show the underlying frame while a forensics overlay is active and pending.
-            if ((elaOverlay.enabled && !elaReady) || (noiseOverlay.enabled && !noiseReady)) {
-                ctx.save();
-                ctx.filter = 'none';
-                ctx.fillStyle = "#000000";
-                ctx.fillRect(0, 0, this.widthPx, this.heightPx);
-                ctx.restore();
-                this.drawCrosshairIfKeyHeld();
-                return;
             }
 
             let sourceImage = image;
@@ -1064,7 +1050,7 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
                 ctx.restore();
             }
 
-            if (elaOverlay.enabled && elaReady) {
+            if (elaOverlay.enabled && this._elaResultCanvas) {
                 ctx.save();
                 ctx.filter = 'none';
                 ctx.globalAlpha = elaOverlay.opacity;
@@ -1080,7 +1066,7 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
                 ctx.restore();
             }
 
-            if (noiseOverlay.enabled && noiseReady) {
+            if (noiseOverlay.enabled && this._noiseResultCanvas) {
                 ctx.save();
                 ctx.filter = 'none';
                 ctx.globalAlpha = noiseOverlay.opacity;
@@ -1146,10 +1132,7 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
     invalidateELAResult() {
         this._elaRequestToken++;
         this._elaResultKey = null;
-        if (this._elaResultCanvas?.close) {
-            this._elaResultCanvas.close();
-        }
-        this._elaResultCanvas = null;
+        // Keep _elaResultCanvas as stale display while recomputing
         this._elaQueuedRequest = null;
         if (!this._elaActiveRequest) {
             this._elaPendingKey = null;
@@ -1301,6 +1284,19 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
                 data?.bitmap?.close?.();
                 return;
             }
+            if (data.type === "progress") {
+                if (data.requestId !== this._elaActiveRequest.requestId) {
+                    data?.bitmap?.close?.();
+                    return;
+                }
+                // Show partial result without finalizing (worker still running)
+                if (this._elaResultCanvas && this._elaResultCanvas !== data.bitmap && this._elaResultCanvas.close) {
+                    this._elaResultCanvas.close();
+                }
+                this._elaResultCanvas = data.bitmap;
+                setRenderOne(true);
+                return;
+            }
             if (data.type === "result") {
                 if (data.requestId !== this._elaActiveRequest.requestId) {
                     data?.bitmap?.close?.();
@@ -1443,10 +1439,7 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
     invalidateNoiseResult() {
         this._noiseRequestToken++;
         this._noiseResultKey = null;
-        if (this._noiseResultCanvas?.close) {
-            this._noiseResultCanvas.close();
-        }
-        this._noiseResultCanvas = null;
+        // Keep _noiseResultCanvas as stale display while recomputing
         this._noiseQueuedRequest = null;
         if (!this._noiseActiveRequest) {
             this._noisePendingKey = null;
@@ -1591,6 +1584,19 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
             const data = event.data;
             if (!this._noiseActiveRequest) {
                 data?.bitmap?.close?.();
+                return;
+            }
+            if (data.type === "progress") {
+                if (data.requestId !== this._noiseActiveRequest.requestId) {
+                    data?.bitmap?.close?.();
+                    return;
+                }
+                // Show partial result without finalizing (worker still running)
+                if (this._noiseResultCanvas && this._noiseResultCanvas !== data.bitmap && this._noiseResultCanvas.close) {
+                    this._noiseResultCanvas.close();
+                }
+                this._noiseResultCanvas = data.bitmap;
+                setRenderOne(true);
                 return;
             }
             if (data.type === "result") {

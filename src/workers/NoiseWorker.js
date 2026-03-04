@@ -22,6 +22,23 @@ function ensureCanvases(width, height) {
     }
 }
 
+// Number of progress updates to send during rendering
+const PROGRESS_CHUNKS = 4;
+
+/**
+ * Send a progress bitmap snapshot to the main thread.
+ */
+async function sendProgress(outputImageData, requestId, key) {
+    outputCtx.putImageData(outputImageData, 0, 0);
+    const progressBitmap = await createImageBitmap(outputCanvas);
+    self.postMessage({
+        type: "progress",
+        requestId,
+        key,
+        bitmap: progressBitmap
+    }, [progressBitmap]);
+}
+
 /**
  * Noise Analysis Worker
  *
@@ -34,7 +51,7 @@ function ensureCanvases(width, height) {
  * - "heatmap": Color-coded blocks showing local noise deviation from the global median
  */
 
-async function processNoise(bitmap, blockSize, noiseScale, displayMode) {
+async function processNoise(bitmap, blockSize, noiseScale, displayMode, requestId, key) {
     const width = bitmap.width;
     const height = bitmap.height;
     ensureCanvases(width, height);
@@ -69,9 +86,9 @@ async function processNoise(bitmap, blockSize, noiseScale, displayMode) {
     const outputPixels = outputImageData.data;
 
     if (displayMode === "residual") {
-        renderResidual(laplacian, outputPixels, width, height, noiseScale);
+        await renderResidualProgressive(laplacian, outputPixels, outputImageData, width, height, noiseScale, requestId, key);
     } else {
-        renderHeatmap(laplacian, outputPixels, width, height, blockSize);
+        await renderHeatmapProgressive(laplacian, outputPixels, outputImageData, width, height, blockSize, requestId, key);
     }
 
     outputCtx.putImageData(outputImageData, 0, 0);
@@ -83,28 +100,39 @@ async function processNoise(bitmap, blockSize, noiseScale, displayMode) {
 }
 
 /**
- * Render amplified noise residual. Centered at grey (128), deviations shown
- * as brighter or darker. Useful for visually inspecting noise patterns.
+ * Render amplified noise residual progressively. Centered at grey (128),
+ * deviations shown as brighter or darker.
  */
-function renderResidual(laplacian, outputPixels, width, height, noiseScale) {
-    for (let i = 0; i < laplacian.length; i++) {
-        const val = clampByte(128 + laplacian[i] * noiseScale);
-        const idx = i * 4;
-        outputPixels[idx] = val;
-        outputPixels[idx + 1] = val;
-        outputPixels[idx + 2] = val;
-        outputPixels[idx + 3] = 255;
+async function renderResidualProgressive(laplacian, outputPixels, outputImageData, width, height, noiseScale, requestId, key) {
+    const chunkRows = Math.ceil(height / PROGRESS_CHUNKS);
+
+    for (let startY = 0; startY < height; startY += chunkRows) {
+        const endY = Math.min(startY + chunkRows, height);
+
+        for (let y = startY; y < endY; y++) {
+            for (let x = 0; x < width; x++) {
+                const i = y * width + x;
+                const val = clampByte(128 + laplacian[i] * noiseScale);
+                const idx = i * 4;
+                outputPixels[idx] = val;
+                outputPixels[idx + 1] = val;
+                outputPixels[idx + 2] = val;
+                outputPixels[idx + 3] = 255;
+            }
+        }
+
+        // Send progress after each chunk except the last (which becomes the final result)
+        if (endY < height) {
+            await sendProgress(outputImageData, requestId, key);
+        }
     }
 }
 
 /**
- * Render block-based noise heatmap. Each block's local noise standard deviation
- * is compared to the global median noise level. Blocks are colored:
- * - Blue: significantly lower noise than median (possibly smoothed/synthetic)
- * - Green: noise consistent with median (expected for natural imagery)
- * - Red/Yellow: significantly higher noise (possible artifact/different source)
+ * Render block-based noise heatmap progressively. Each block's local noise
+ * standard deviation is compared to the global median noise level.
  */
-function renderHeatmap(laplacian, outputPixels, width, height, blockSize) {
+async function renderHeatmapProgressive(laplacian, outputPixels, outputImageData, width, height, blockSize, requestId, key) {
     const blocksX = Math.ceil(width / blockSize);
     const blocksY = Math.ceil(height / blockSize);
     const blockStdDevs = new Float32Array(blocksX * blocksY);
@@ -142,29 +170,40 @@ function renderHeatmap(laplacian, outputPixels, width, height, blockSize) {
     const sorted = Array.from(blockStdDevs).filter(v => v > 0).sort((a, b) => a - b);
     const medianNoise = sorted.length > 0 ? sorted[Math.floor(sorted.length / 2)] : 1;
 
-    // Color each pixel based on its block's deviation from the median
-    for (let by = 0; by < blocksY; by++) {
-        for (let bx = 0; bx < blocksX; bx++) {
-            const stdDev = blockStdDevs[by * blocksX + bx];
-            const ratio = medianNoise > 0 ? stdDev / medianNoise : 1;
+    // Render blocks in chunks with progress updates
+    const chunkBlockRows = Math.ceil(blocksY / PROGRESS_CHUNKS);
 
-            // Map ratio to color: <0.5 = blue, 1.0 = green, >2.0 = red
-            const rgb = ratioToColor(ratio);
+    for (let startBy = 0; startBy < blocksY; startBy += chunkBlockRows) {
+        const endBy = Math.min(startBy + chunkBlockRows, blocksY);
 
-            const x0 = bx * blockSize;
-            const y0 = by * blockSize;
-            const x1 = Math.min(x0 + blockSize, width);
-            const y1 = Math.min(y0 + blockSize, height);
+        for (let by = startBy; by < endBy; by++) {
+            for (let bx = 0; bx < blocksX; bx++) {
+                const stdDev = blockStdDevs[by * blocksX + bx];
+                const ratio = medianNoise > 0 ? stdDev / medianNoise : 1;
 
-            for (let y = y0; y < y1; y++) {
-                for (let x = x0; x < x1; x++) {
-                    const idx = (y * width + x) * 4;
-                    outputPixels[idx] = rgb[0];
-                    outputPixels[idx + 1] = rgb[1];
-                    outputPixels[idx + 2] = rgb[2];
-                    outputPixels[idx + 3] = 255;
+                // Map ratio to color: <0.5 = blue, 1.0 = green, >2.0 = red
+                const rgb = ratioToColor(ratio);
+
+                const x0 = bx * blockSize;
+                const y0 = by * blockSize;
+                const x1 = Math.min(x0 + blockSize, width);
+                const y1 = Math.min(y0 + blockSize, height);
+
+                for (let y = y0; y < y1; y++) {
+                    for (let x = x0; x < x1; x++) {
+                        const idx = (y * width + x) * 4;
+                        outputPixels[idx] = rgb[0];
+                        outputPixels[idx + 1] = rgb[1];
+                        outputPixels[idx + 2] = rgb[2];
+                        outputPixels[idx + 3] = 255;
+                    }
                 }
             }
+        }
+
+        // Send progress after each chunk except the last
+        if (endBy < blocksY) {
+            await sendProgress(outputImageData, requestId, key);
         }
     }
 }
@@ -221,7 +260,7 @@ self.onmessage = async (event) => {
 
     const { requestId, key, bitmap, blockSize, noiseScale, displayMode } = msg;
     try {
-        const resultBitmap = await processNoise(bitmap, blockSize, noiseScale, displayMode);
+        const resultBitmap = await processNoise(bitmap, blockSize, noiseScale, displayMode, requestId, key);
         bitmap?.close?.();
         self.postMessage({
             type: "result",

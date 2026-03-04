@@ -28,7 +28,7 @@ function ensureCanvases(width, height) {
     }
 }
 
-async function processELA(bitmap, jpegQuality, errorScale, expandMethod, clipPercent) {
+async function processELA(bitmap, jpegQuality, errorScale, expandMethod, clipPercent, requestId, key) {
     const width = bitmap.width;
     const height = bitmap.height;
     ensureCanvases(width, height);
@@ -56,6 +56,18 @@ async function processELA(bitmap, jpegQuality, errorScale, expandMethod, clipPer
         outputPixels[i + 1] = Math.min(255, Math.abs(sourcePixels[i + 1] - recompressedPixels[i + 1]) * errorScale);
         outputPixels[i + 2] = Math.min(255, Math.abs(sourcePixels[i + 2] - recompressedPixels[i + 2]) * errorScale);
         outputPixels[i + 3] = 255;
+    }
+
+    // Send progress with raw diff before expansion is applied
+    if (expandMethod !== 'none') {
+        outputCtx.putImageData(outputImageData, 0, 0);
+        const progressBitmap = await createImageBitmap(outputCanvas);
+        self.postMessage({
+            type: "progress",
+            requestId,
+            key,
+            bitmap: progressBitmap
+        }, [progressBitmap]);
     }
 
     applyELAOutputExpansion(outputPixels, width, height, expandMethod, clipPercent);
@@ -206,7 +218,7 @@ self.onmessage = async (event) => {
 
     const { requestId, key, bitmap, jpegQuality, errorScale, expandMethod, clipPercent } = msg;
     try {
-        const resultBitmap = await processELA(bitmap, jpegQuality, errorScale, expandMethod, clipPercent);
+        const resultBitmap = await processELA(bitmap, jpegQuality, errorScale, expandMethod, clipPercent, requestId, key);
         bitmap?.close?.();
         self.postMessage({
             type: "result",
