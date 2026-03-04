@@ -432,7 +432,12 @@ export class QuadTreeMap {
         }
 
         // PASS 3: Process each tile for subdivision/merging and lazy loading
-        // Inlined iteration over allTiles Set to avoid callback overhead (hot path)
+        // IMPORTANT: Collect subdivisions into a separate array and apply AFTER iteration.
+        // JavaScript Set for...of visits newly-added elements during iteration, which causes
+        // cascading subdivision (z3→z4→...→z15 in one frame) creating millions of tiles.
+        // By deferring subdivisions, we limit to one zoom level per frame.
+        const tilesToSubdivide = [];
+
         for (const tile of this.allTiles) {
             if (!this.canSubdivide(tile)) continue;
 
@@ -478,15 +483,20 @@ export class QuadTreeMap {
                 }
 
                 tile.subdivisionDeferredFrames = 0;
-
-                this.subdivideTile(tile, tileLayers, isTextureMap);
-                continue; // Process one subdivision at a time
+                tilesToSubdivide.push(tile);
+                continue;
             }
 
             // Check for merging children back to parent
             if (!shouldSubdivide && hasChildren) {
                 this.mergeChildrenIfPossible(tile, tileLayers);
             }
+        }
+
+        // Apply collected subdivisions AFTER iteration to prevent cascade.
+        // Children created here will be processed on the NEXT frame, not this one.
+        for (const tile of tilesToSubdivide) {
+            this.subdivideTile(tile, tileLayers, isTextureMap);
         }
     }
 
@@ -593,9 +603,16 @@ export class QuadTreeMap {
             const projectionOnForward = toSphere.dot(cameraForward);
 
             // If center is behind camera OR tile is near camera (regardless of frustum),
-            // force subdivision and enable lazy loading
+            // mark as visible but scale screen size by FOV to avoid excessive subdivision
+            // with narrow FOV cameras (e.g. satellite views with FOV=0.01°).
             if (projectionOnForward < 0 || (isNearCamera && !frustumIntersects)) {
-                screenSize = 1000000; // Force subdivision for nearby/behind tiles
+                // Scale screenSize by FOV relative to a 30° baseline.
+                // With FOV=30°, screenSize=1,000,000 (original behavior).
+                // With FOV=0.01°, screenSize=333 (below typical thresholds, preventing
+                // massive subdivision of off-frustum tiles in satellite views).
+                const fovDeg = camera.getEffectiveFOV();
+                const fovFactor = Math.min(1, fovDeg / 30);
+                screenSize = 1000000 * fovFactor;
                 visible = true;
                 actuallyVisible = true;
             } else {
