@@ -2687,23 +2687,26 @@ export class CNodeView3D extends CNodeViewCanvas {
 
                         // Get the node from NodeManager
                         const node = NodeMan.get(objectID);
-                        if (node && node.gui) {
+                        // Use guiFolder (the actual lil-gui folder) if available, otherwise gui
+                        // node.gui can be a string like "contents" on CNodeDisplayTrack, so check it's an object
+                        const guiToMirror = node?.guiFolder || (node?.gui && typeof node.gui === 'object' ? node.gui : null);
+                        if (node && guiToMirror) {
                             // Create a draggable window with the node's GUI controls
-                            const menuTitle = node.menuName;
+                            const menuTitle = node.menuName || guiToMirror._title || node.id;
 
 
 
                             // Create a standalone menu and mirror the object's GUI folder
                             // Use dismissOnOutsideClick=false so interacting with the scene doesn't close the menu
                             const standaloneMenu = Globals.menuBar.createStandaloneMenu(menuTitle, event.clientX, event.clientY, false);
-                            
+
                             // If menu creation was blocked (persistent menu is open), return early
                             if (!standaloneMenu) {
                                 return;
                             }
-                            
+
                             // Set up dynamic mirroring for the object's GUI folder
-                            CustomManager.setupDynamicMirroring(node.gui, standaloneMenu);
+                            CustomManager.setupDynamicMirroring(guiToMirror, standaloneMenu);
                             
                             // Add a method to manually refresh the mirror
                             standaloneMenu.refreshMirror = () => {
