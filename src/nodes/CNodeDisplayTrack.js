@@ -110,6 +110,9 @@ export class CNodeDisplayTrack extends CNode3DGroup {
         this.contrail = false;
         this.contrailDuration = 100;
         this.contrailSpread = 0;
+        this.contrailWidth = 50;
+        this.contrailInitialWidth = 15;
+        this.contrailRampDistance = 500;
         this.contrailNode = null;
 
         if (!v.skipGUI) {
@@ -203,6 +206,27 @@ export class CNodeDisplayTrack extends CNode3DGroup {
                 .name("Contrail Secs").listen().onChange(() => {
                     if (this.contrailNode) {
                         this.contrailNode.duration = this.contrailDuration;
+                    }
+                    setRenderOne(true);
+                })
+            this.guiFolder.add(this, "contrailWidth", 10, 200, 1)
+                .name("Contrail Width m").listen().onChange(() => {
+                    if (this.contrailNode) {
+                        this.contrailNode.ribbonWidth = this.contrailWidth;
+                    }
+                    setRenderOne(true);
+                })
+            this.guiFolder.add(this, "contrailInitialWidth", 0, 100, 1)
+                .name("Contrail Initial Width m").listen().onChange(() => {
+                    if (this.contrailNode) {
+                        this.contrailNode.initialWidth = this.contrailInitialWidth;
+                    }
+                    setRenderOne(true);
+                })
+            this.guiFolder.add(this, "contrailRampDistance", 0, 2000, 10)
+                .name("Contrail Ramp m").listen().onChange(() => {
+                    if (this.contrailNode) {
+                        this.contrailNode.rampDistance = this.contrailRampDistance;
                     }
                     setRenderOne(true);
                 })
@@ -323,6 +347,9 @@ export class CNodeDisplayTrack extends CNode3DGroup {
         this.simpleSerials.push("contrail")
         this.simpleSerials.push("contrailDuration")
         this.simpleSerials.push("contrailSpread")
+        this.simpleSerials.push("contrailWidth")
+        this.simpleSerials.push("contrailInitialWidth")
+        this.simpleSerials.push("contrailRampDistance")
 
         this.recalculate()
     }
@@ -355,6 +382,9 @@ export class CNodeDisplayTrack extends CNode3DGroup {
                 ...inputs,
                 duration: this.contrailDuration,
                 spread: this.contrailSpread,
+                ribbonWidth: this.contrailWidth,
+                initialWidth: this.contrailInitialWidth,
+                rampDistance: this.contrailRampDistance,
                 container: this.container,
             });
         } else if (!this.contrail && this.contrailNode) {
@@ -450,6 +480,9 @@ export class CNodeDisplayTrack extends CNode3DGroup {
             this.contrail = v.contrail;
             this.contrailDuration = v.contrailDuration ?? 100;
             this.contrailSpread = v.contrailSpread ?? 0;
+            this.contrailWidth = v.contrailWidth ?? 50;
+            this.contrailInitialWidth = v.contrailInitialWidth ?? 0;
+            this.contrailRampDistance = v.contrailRampDistance ?? 1000;
             this.updateContrail();
         }
     }

@@ -24,6 +24,8 @@ export class CNodeContrail extends CNode3DGroup {
         this.sampleInterval = v.sampleInterval ?? 5; // seconds between samples
         this.ribbonWidth = v.ribbonWidth ?? 50;    // meters
         this.spread = v.spread ?? 0;               // m/s width increase over time
+        this.rampDistance = v.rampDistance ?? 500; // meters from tip to reach full width
+        this.initialWidth = v.initialWidth ?? 15;   // meters width at the very tip
 
         this.mesh = null;
 
@@ -176,6 +178,14 @@ export class CNodeContrail extends CNode3DGroup {
         for (const s of samples) mid.add(s.pos);
         mid.divideScalar(samples.length);
 
+        // Compute cumulative distance from the leading edge (tip) backwards.
+        // Samples are ordered oldest-first, so the tip is the last sample.
+        const distFromTip = new Array(samples.length);
+        distFromTip[samples.length - 1] = 0;
+        for (let i = samples.length - 2; i >= 0; i--) {
+            distFromTip[i] = distFromTip[i + 1] + samples[i].pos.distanceTo(samples[i + 1].pos);
+        }
+
         // Pre-compute per-point left/right edge positions.
         // Shared between adjacent quads so there are no gaps.
         const edges = [];
@@ -200,8 +210,19 @@ export class CNodeContrail extends CNode3DGroup {
             const up = getLocalUpVector(p);
             const perp = V3().crossVectors(dir, up).normalize();
 
+            // Attenuate width near the tip: lerp from initialWidth to ribbonWidth
+            // over the rampDistance, then use ribbonWidth beyond that.
+            const d = distFromTip[i];
+            let effectiveWidth;
+            if (this.rampDistance > 0 && d < this.rampDistance) {
+                const t = d / this.rampDistance;
+                effectiveWidth = this.initialWidth + (this.ribbonWidth - this.initialWidth) * t;
+            } else {
+                effectiveWidth = this.ribbonWidth;
+            }
+
             // Base half-width perpendicular to travel
-            const baseHW = this.ribbonWidth / 2;
+            const baseHW = effectiveWidth / 2;
 
             // Spread half-width in wind direction (computed locally at this point)
             const spreadHW = this.spread * elapsed / 2;
@@ -216,10 +237,18 @@ export class CNodeContrail extends CNode3DGroup {
                 } else {
                     localWindDir = perp; // fallback
                 }
-                const baseOffset = perp.clone().multiplyScalar(baseHW);
-                const spreadOffset = localWindDir.clone().multiplyScalar(spreadHW);
-                leftOffset = baseOffset.clone().negate().sub(spreadOffset);
-                rightOffset = baseOffset.clone().add(spreadOffset);
+                // Project wind direction onto perp axis to get signed shift.
+                // Positive windPerp means wind blows in the +perp direction (toward "right").
+                const windPerp = localWindDir.dot(perp);
+                // Shift the center in the wind direction and expand both edges by spreadHW.
+                // Left edge  = center - baseHW - spreadHW  (in perp units)
+                // Right edge = center + baseHW + spreadHW
+                // where center is shifted by windPerp * spreadHW along perp.
+                const centerShift = windPerp * spreadHW;
+                const leftDist  = centerShift - baseHW - spreadHW;
+                const rightDist = centerShift + baseHW + spreadHW;
+                leftOffset = perp.clone().multiplyScalar(leftDist);
+                rightOffset = perp.clone().multiplyScalar(rightDist);
             } else {
                 leftOffset = perp.clone().multiplyScalar(-baseHW);
                 rightOffset = perp.clone().multiplyScalar(baseHW);
