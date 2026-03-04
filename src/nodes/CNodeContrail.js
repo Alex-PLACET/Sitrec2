@@ -186,6 +186,41 @@ export class CNodeContrail extends CNode3DGroup {
             distFromTip[i] = distFromTip[i + 1] + samples[i].pos.distanceTo(samples[i + 1].pos);
         }
 
+        // Subdivide segments in the ramp zone for smooth width transition (~2m spacing)
+        if (this.rampDistance > 0) {
+            const rampSegLen = 2; // meters
+            const subdividedSamples = [];
+            for (let i = 0; i < samples.length; i++) {
+                subdividedSamples.push(samples[i]);
+                if (i < samples.length - 1) {
+                    const d0 = distFromTip[i];
+                    const d1 = distFromTip[i + 1];
+                    if (d0 <= this.rampDistance || d1 <= this.rampDistance) {
+                        const segLen = samples[i].pos.distanceTo(samples[i + 1].pos);
+                        const subdivs = Math.ceil(segLen / rampSegLen);
+                        if (subdivs > 1) {
+                            for (let s = 1; s < subdivs; s++) {
+                                const frac = s / subdivs;
+                                const pos = samples[i].pos.clone().lerp(samples[i + 1].pos, frac);
+                                const elapsed = samples[i].elapsed + (samples[i + 1].elapsed - samples[i].elapsed) * frac;
+                                const trackAlt = samples[i].trackAlt + (samples[i + 1].trackAlt - samples[i].trackAlt) * frac;
+                                subdividedSamples.push({pos, elapsed, trackAlt});
+                            }
+                        }
+                    }
+                }
+            }
+            samples.length = 0;
+            samples.push(...subdividedSamples);
+
+            // Recompute distFromTip for subdivided samples
+            distFromTip.length = samples.length;
+            distFromTip[samples.length - 1] = 0;
+            for (let i = samples.length - 2; i >= 0; i--) {
+                distFromTip[i] = distFromTip[i + 1] + samples[i].pos.distanceTo(samples[i + 1].pos);
+            }
+        }
+
         // Pre-compute per-point left/right edge positions.
         // Shared between adjacent quads so there are no gaps.
         const edges = [];
