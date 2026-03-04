@@ -1,4 +1,5 @@
 const path = require('path');
+const fs = require('fs');
 const InstallPaths = require('./config/config-install');
 
 // In Docker development mode, sitrecServer is served by Apache via proxy
@@ -55,16 +56,25 @@ if (!isDockerDev && !isServerlessBuild) {
     
     // Copy config.php from the config directory to ensure we get the real file
     // (not the empty placeholder that Docker creates due to overlapping volume mounts)
+    // Falls back to the .example template for fresh worktrees / clones where
+    // the gitignored config.php hasn't been created yet.
+    const configPhpPath = fs.existsSync(path.resolve(__dirname, 'config/config.php'))
+        ? './config/config.php'
+        : './config/config.php.example';
     patterns.push(
-        { from: "./config/config.php", to: "./sitrecServer/config.php"}
+        { from: configPhpPath, to: "./sitrecServer/config.php"}
     );
 }
 
 // copy the shared.env file, renaming it to shared.env.php to prevent direct access
 // combined with the initial <?php tag, this will prevent the file from being served
+// Falls back to .example template for fresh worktrees / clones.
 if (!isServerlessBuild) {
+    const sharedEnvPath = fs.existsSync(path.resolve(__dirname, 'config/shared.env'))
+        ? './config/shared.env'
+        : './config/shared.env.example';
     patterns.push({
-        from: "./config/shared.env", 
+        from: sharedEnvPath,
         to: "./shared.env.php",
         transform: (content, absoluteFrom) => {
             // Convert Buffer to string, prepend '<?php\n', then return as Buffer again

@@ -60,7 +60,7 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
 
         // these no longer work with the new rendering pipeline
         // TODO: reimplement them as effects?
-        this.optionalInputs(["brightness", "contrast", "blur", "greyscale", "hue", "invert", "saturate", "enableVideoEffects", "convolutionFilter", "elaJpegQuality", "elaErrorScale", "elaOpacity", "elaExpandMethod", "elaContrastClipPercent"])
+        this.optionalInputs(["brightness", "contrast", "blur", "greyscale", "hue", "invert", "saturate", "enableVideoEffects", "convolutionFilter", "elaJpegQuality", "elaErrorScale", "elaOpacity", "elaExpandMethod", "elaContrastClipPercent", "noiseBlockSize", "noiseScale", "noiseOpacity", "noiseDisplayMode"])
         //
 
         //  if (this.overlayView === undefined)
@@ -94,6 +94,16 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         this._elaQueuedRequest = null;
         this._elaWorker = null;
         this._elaWorkerFailed = false;
+
+        this._noisePendingKey = null;
+        this._noiseResultKey = null;
+        this._noiseResultCanvas = null;
+        this._noiseRequestToken = 0;
+        this._noiseRequestSeq = 0;
+        this._noiseActiveRequest = null;
+        this._noiseQueuedRequest = null;
+        this._noiseWorker = null;
+        this._noiseWorkerFailed = false;
 
         this.setupMouseHandler();
 
@@ -927,8 +937,14 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
             }
             const elaReady = elaOverlay.enabled && this._elaResultCanvas && this._elaResultKey === elaOverlay.key;
 
-            // Never show the underlying frame while ELA mode is active and pending.
-            if (elaOverlay.enabled && !elaReady) {
+            const noiseOverlay = this.getNoiseOverlayState(frame, image);
+            if (noiseOverlay.enabled) {
+                this.requestNoiseOverlay(image, noiseOverlay);
+            }
+            const noiseReady = noiseOverlay.enabled && this._noiseResultCanvas && this._noiseResultKey === noiseOverlay.key;
+
+            // Never show the underlying frame while a forensics overlay is active and pending.
+            if ((elaOverlay.enabled && !elaReady) || (noiseOverlay.enabled && !noiseReady)) {
                 ctx.save();
                 ctx.filter = 'none';
                 ctx.fillStyle = "#000000";
@@ -1057,6 +1073,22 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
                         this.dx, this.dy, this.dWidth, this.dHeight);
                 } else {
                     ctx.drawImage(this._elaResultCanvas,
+                        0, 0, this.videoWidth, this.videoHeight,
+                        this.widthPx * (0.5 + this.posLeft), this.heightPx * 0.5 + this.widthPx * this.posTop,
+                        this.widthPx * (this.posRight - this.posLeft), this.widthPx * (this.posBot - this.posTop));
+                }
+                ctx.restore();
+            }
+
+            if (noiseOverlay.enabled && noiseReady) {
+                ctx.save();
+                ctx.filter = 'none';
+                ctx.globalAlpha = noiseOverlay.opacity;
+                if (this.in.zoom !== undefined) {
+                    ctx.drawImage(this._noiseResultCanvas, this.sx, this.sy, this.sWidth, this.sHeight,
+                        this.dx, this.dy, this.dWidth, this.dHeight);
+                } else {
+                    ctx.drawImage(this._noiseResultCanvas,
                         0, 0, this.videoWidth, this.videoHeight,
                         this.widthPx * (0.5 + this.posLeft), this.heightPx * 0.5 + this.widthPx * this.posTop,
                         this.widthPx * (this.posRight - this.posLeft), this.widthPx * (this.posBot - this.posTop));
@@ -1404,6 +1436,360 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
 
         this._elaOutputCtx.putImageData(outputImageData, 0, 0);
         this.finalizeELARequest(request, this._elaOutputCanvas);
+    }
+
+    // ── Noise Analysis overlay methods ──────────────────────────────────
+
+    invalidateNoiseResult() {
+        this._noiseRequestToken++;
+        this._noiseResultKey = null;
+        if (this._noiseResultCanvas?.close) {
+            this._noiseResultCanvas.close();
+        }
+        this._noiseResultCanvas = null;
+        this._noiseQueuedRequest = null;
+        if (!this._noiseActiveRequest) {
+            this._noisePendingKey = null;
+        }
+    }
+
+    getNoiseOverlayState(frame, image) {
+        const foldersExpanded = Boolean(
+            guiVideoForensicsFolder &&
+            guiVideoNoiseFolder &&
+            !guiVideoForensicsFolder._closed &&
+            !guiVideoNoiseFolder._closed
+        );
+
+        if (!foldersExpanded || !image || !image.width || !image.height) {
+            return { enabled: false, key: null, opacity: 0 };
+        }
+
+        const blockSize = Math.max(4, Math.min(128, this.in.noiseBlockSize?.v0 ?? 16));
+        const noiseScale = Math.max(0.1, this.in.noiseScale?.v0 ?? 5);
+        const opacity = Math.max(0, Math.min(100, this.in.noiseOpacity?.v0 ?? 65)) / 100;
+        const displayMode = this.in.noiseDisplayMode?.value ?? 'heatmap';
+
+        if (opacity <= 0) {
+            return { enabled: false, key: null, opacity: 0 };
+        }
+
+        const quantizedScale = Math.round(noiseScale * 100) / 100;
+        const key = `noise|${this.currentVideoIndex}|${frame}|${image.width}x${image.height}|b${blockSize}|s${quantizedScale}|m${displayMode}`;
+
+        return {
+            enabled: true,
+            key,
+            blockSize,
+            noiseScale: quantizedScale,
+            displayMode,
+            opacity
+        };
+    }
+
+    requestNoiseOverlay(image, overlayState) {
+        if (!overlayState.enabled) return;
+        if (this._noiseResultKey === overlayState.key || this._noisePendingKey === overlayState.key) return;
+
+        const requestToken = this._noiseRequestToken;
+        if (this._noisePendingKey !== null) {
+            this._noiseQueuedRequest = { image, overlayState, requestToken };
+            return;
+        }
+
+        this.startNoiseRequest(image, overlayState, requestToken);
+    }
+
+    startNoiseRequest(image, overlayState, requestToken) {
+        const request = {
+            requestId: ++this._noiseRequestSeq,
+            requestToken,
+            key: overlayState.key,
+            image,
+            overlayState
+        };
+
+        this._noisePendingKey = request.key;
+        this._noiseActiveRequest = request;
+
+        if (this.canUseNoiseWorker()) {
+            this.computeNoiseOverlayWorker(request);
+            return;
+        }
+
+        this.computeNoiseOverlayMain(request).catch((err) => {
+            this.handleNoiseRequestError(request, err);
+        });
+    }
+
+    isNoiseRequestActive(request) {
+        return Boolean(
+            request &&
+            this._noiseActiveRequest &&
+            this._noiseActiveRequest.requestId === request.requestId &&
+            this._noiseActiveRequest.key === request.key &&
+            request.requestToken === this._noiseRequestToken &&
+            this._noisePendingKey === request.key
+        );
+    }
+
+    setNoiseResult(resultCanvasOrBitmap, key) {
+        if (this._noiseResultCanvas && this._noiseResultCanvas !== resultCanvasOrBitmap && this._noiseResultCanvas.close) {
+            this._noiseResultCanvas.close();
+        }
+        this._noiseResultCanvas = resultCanvasOrBitmap;
+        this._noiseResultKey = key;
+    }
+
+    finalizeNoiseRequest(request, resultCanvasOrBitmap = null) {
+        const isActive = this.isNoiseRequestActive(request);
+
+        if (isActive && resultCanvasOrBitmap) {
+            this.setNoiseResult(resultCanvasOrBitmap, request.key);
+            setRenderOne(true);
+        } else if (resultCanvasOrBitmap?.close) {
+            resultCanvasOrBitmap.close();
+        }
+
+        if (this._noiseActiveRequest && this._noiseActiveRequest.requestId === request.requestId) {
+            this._noiseActiveRequest = null;
+            this._noisePendingKey = null;
+        }
+
+        this.processQueuedNoiseRequest();
+    }
+
+    processQueuedNoiseRequest() {
+        if (this._noisePendingKey !== null) return;
+        const queued = this._noiseQueuedRequest;
+        this._noiseQueuedRequest = null;
+        if (!queued) return;
+        if (queued.requestToken !== this._noiseRequestToken) return;
+        this.startNoiseRequest(queued.image, queued.overlayState, queued.requestToken);
+    }
+
+    handleNoiseRequestError(request, err) {
+        console.warn("[Noise] Failed to compute overlay:", err);
+        this.finalizeNoiseRequest(request, null);
+    }
+
+    canUseNoiseWorker() {
+        if (this._noiseWorkerFailed) return false;
+        return (
+            typeof Worker === "function" &&
+            typeof OffscreenCanvas !== "undefined" &&
+            typeof createImageBitmap === "function"
+        );
+    }
+
+    ensureNoiseWorker() {
+        if (!this.canUseNoiseWorker()) return null;
+        if (this._noiseWorker) return this._noiseWorker;
+
+        this._noiseWorker = new Worker(new URL("../workers/NoiseWorker.js", import.meta.url));
+        this._noiseWorker.onmessage = (event) => {
+            const data = event.data;
+            if (!this._noiseActiveRequest) {
+                data?.bitmap?.close?.();
+                return;
+            }
+            if (data.type === "result") {
+                if (data.requestId !== this._noiseActiveRequest.requestId) {
+                    data?.bitmap?.close?.();
+                    return;
+                }
+                this.finalizeNoiseRequest(this._noiseActiveRequest, data.bitmap || null);
+                return;
+            }
+            if (data.type === "error") {
+                if (data.requestId !== this._noiseActiveRequest.requestId) return;
+                this.handleNoiseRequestError(this._noiseActiveRequest, data.message || "Noise worker error");
+            }
+        };
+        this._noiseWorker.onerror = (event) => {
+            console.warn("[Noise] Worker error:", event.message || event);
+            this._noiseWorkerFailed = true;
+            this.disposeNoiseWorker();
+            if (this._noiseActiveRequest) {
+                const fallbackRequest = this._noiseActiveRequest;
+                this.computeNoiseOverlayMain(fallbackRequest).catch((err) => this.handleNoiseRequestError(fallbackRequest, err));
+            }
+        };
+        return this._noiseWorker;
+    }
+
+    disposeNoiseWorker() {
+        if (this._noiseWorker) {
+            this._noiseWorker.onmessage = null;
+            this._noiseWorker.onerror = null;
+            this._noiseWorker.terminate();
+            this._noiseWorker = null;
+        }
+    }
+
+    async computeNoiseOverlayWorker(request) {
+        const worker = this.ensureNoiseWorker();
+        if (!worker) {
+            this.computeNoiseOverlayMain(request).catch((err) => this.handleNoiseRequestError(request, err));
+            return;
+        }
+
+        try {
+            const bitmap = await createImageBitmap(request.image);
+            if (!this.isNoiseRequestActive(request)) {
+                bitmap?.close?.();
+                this.finalizeNoiseRequest(request, null);
+                return;
+            }
+
+            worker.postMessage({
+                type: "process",
+                requestId: request.requestId,
+                key: request.key,
+                bitmap,
+                blockSize: request.overlayState.blockSize,
+                noiseScale: request.overlayState.noiseScale,
+                displayMode: request.overlayState.displayMode
+            }, [bitmap]);
+        } catch (err) {
+            this._noiseWorkerFailed = true;
+            this.disposeNoiseWorker();
+            this.computeNoiseOverlayMain(request).catch((fallbackErr) => this.handleNoiseRequestError(request, fallbackErr || err));
+        }
+    }
+
+    ensureNoiseBuffers(width, height) {
+        if (!this._noiseSourceCanvas) {
+            this._noiseSourceCanvas = document.createElement('canvas');
+            this._noiseSourceCtx = this._noiseSourceCanvas.getContext('2d', { willReadFrequently: true });
+        }
+        if (!this._noiseOutputCanvas) {
+            this._noiseOutputCanvas = document.createElement('canvas');
+            this._noiseOutputCtx = this._noiseOutputCanvas.getContext('2d', { willReadFrequently: true });
+        }
+
+        if (this._noiseSourceCanvas.width !== width || this._noiseSourceCanvas.height !== height) {
+            this._noiseSourceCanvas.width = width;
+            this._noiseSourceCanvas.height = height;
+            this._noiseOutputCanvas.width = width;
+            this._noiseOutputCanvas.height = height;
+        }
+    }
+
+    async computeNoiseOverlayMain(request) {
+        const { image, overlayState } = request;
+        const width = image.width;
+        const height = image.height;
+
+        this.ensureNoiseBuffers(width, height);
+
+        this._noiseSourceCtx.clearRect(0, 0, width, height);
+        this._noiseSourceCtx.drawImage(image, 0, 0, width, height);
+        const sourcePixels = this._noiseSourceCtx.getImageData(0, 0, width, height).data;
+
+        if (!this.isNoiseRequestActive(request)) {
+            this.finalizeNoiseRequest(request, null);
+            return;
+        }
+
+        // Convert to greyscale luminance
+        const grey = new Float32Array(width * height);
+        for (let i = 0; i < grey.length; i++) {
+            const idx = i * 4;
+            grey[i] = 0.299 * sourcePixels[idx] + 0.587 * sourcePixels[idx + 1] + 0.114 * sourcePixels[idx + 2];
+        }
+
+        // Apply 3x3 Laplacian high-pass filter
+        const laplacian = new Float32Array(width * height);
+        for (let y = 1; y < height - 1; y++) {
+            for (let x = 1; x < width - 1; x++) {
+                const idx = y * width + x;
+                laplacian[idx] =
+                    4 * grey[idx]
+                    - grey[idx - 1]
+                    - grey[idx + 1]
+                    - grey[idx - width]
+                    - grey[idx + width];
+            }
+        }
+
+        const outputImageData = this._noiseOutputCtx.createImageData(width, height);
+        const outputPixels = outputImageData.data;
+
+        if (overlayState.displayMode === 'residual') {
+            // Render amplified noise residual centered at grey (128)
+            for (let i = 0; i < laplacian.length; i++) {
+                const val = clampByte(128 + laplacian[i] * overlayState.noiseScale);
+                const idx = i * 4;
+                outputPixels[idx] = val;
+                outputPixels[idx + 1] = val;
+                outputPixels[idx + 2] = val;
+                outputPixels[idx + 3] = 255;
+            }
+        } else {
+            // Heatmap mode: block-based noise level visualization
+            const blockSize = overlayState.blockSize;
+            const blocksX = Math.ceil(width / blockSize);
+            const blocksY = Math.ceil(height / blockSize);
+            const blockStdDevs = new Float32Array(blocksX * blocksY);
+
+            for (let by = 0; by < blocksY; by++) {
+                for (let bx = 0; bx < blocksX; bx++) {
+                    const x0 = bx * blockSize;
+                    const y0 = by * blockSize;
+                    const x1 = Math.min(x0 + blockSize, width);
+                    const y1 = Math.min(y0 + blockSize, height);
+
+                    let sum = 0;
+                    let sumSq = 0;
+                    let count = 0;
+
+                    for (let y = y0; y < y1; y++) {
+                        for (let x = x0; x < x1; x++) {
+                            const val = laplacian[y * width + x];
+                            sum += val;
+                            sumSq += val * val;
+                            count++;
+                        }
+                    }
+
+                    if (count > 0) {
+                        const mean = sum / count;
+                        const variance = sumSq / count - mean * mean;
+                        blockStdDevs[by * blocksX + bx] = Math.sqrt(Math.max(0, variance));
+                    }
+                }
+            }
+
+            const sorted = Array.from(blockStdDevs).filter(v => v > 0).sort((a, b) => a - b);
+            const medianNoise = sorted.length > 0 ? sorted[Math.floor(sorted.length / 2)] : 1;
+
+            for (let by = 0; by < blocksY; by++) {
+                for (let bx = 0; bx < blocksX; bx++) {
+                    const stdDev = blockStdDevs[by * blocksX + bx];
+                    const ratio = medianNoise > 0 ? stdDev / medianNoise : 1;
+                    const rgb = noiseRatioToColor(ratio);
+
+                    const x0 = bx * blockSize;
+                    const y0 = by * blockSize;
+                    const x1 = Math.min(x0 + blockSize, width);
+                    const y1 = Math.min(y0 + blockSize, height);
+
+                    for (let y = y0; y < y1; y++) {
+                        for (let x = x0; x < x1; x++) {
+                            const idx = (y * width + x) * 4;
+                            outputPixels[idx] = rgb[0];
+                            outputPixels[idx + 1] = rgb[1];
+                            outputPixels[idx + 2] = rgb[2];
+                            outputPixels[idx + 3] = 255;
+                        }
+                    }
+                }
+            }
+        }
+
+        this._noiseOutputCtx.putImageData(outputImageData, 0, 0);
+        this.finalizeNoiseRequest(request, this._noiseOutputCanvas);
     }
 
     startFullABEcho() {
@@ -2294,7 +2680,6 @@ let guiVideoProcessingFolder = null;
 let guiVideoForensicsFolder = null;
 let guiVideoELAFolder = null;
 let guiVideoNoiseFolder = null;
-let noiseAnalysisStatusControl = null;
 
 export function addFiltersToVideoNode(videoNode) {
 
@@ -2318,21 +2703,15 @@ export function addFiltersToVideoNode(videoNode) {
 
     if (guiVideoNoiseFolder === null) {
         guiVideoNoiseFolder = guiVideoForensicsFolder.addFolder("Noise Analysis").close().perm();
-    }
-
-    if (noiseAnalysisStatusControl === null) {
-        const noiseStatus = { status: "Coming Soon" };
-        noiseAnalysisStatusControl = guiVideoNoiseFolder.add(noiseStatus, "status").name("Status");
-        if (noiseAnalysisStatusControl.disable) {
-            noiseAnalysisStatusControl.disable();
-        }
+        guiVideoNoiseFolder.onOpenClose(() => setRenderOne(true));
     }
 
     let brightness, contrast, blur, greyscale, hue, invert, saturate, enableVideoEffects, convolutionFilter;
     let sharpenAmount, edgeDetectThreshold, embossDepth;
     let echoMin, echoMax, echoFrames, fullABEcho, fullABEchoOpacity, fullABBlend, fullABExposure;
     let showCache, elaJpegQuality, elaErrorScale, elaOpacity, elaExpandMethod, elaContrastClipPercent;
-    let convolutionFilterDropdown, sharpenAmountControl, edgeDetectThresholdControl, embossDepthControl, elaExpandMethodDropdown;
+    let noiseBlockSize, noiseScale, noiseOpacity, noiseDisplayMode;
+    let convolutionFilterDropdown, sharpenAmountControl, edgeDetectThresholdControl, embossDepthControl, elaExpandMethodDropdown, noiseDisplayModeDropdown;
 
     const filterOptions = {
         convolutionFilterValue: 'none'
@@ -2340,6 +2719,10 @@ export function addFiltersToVideoNode(videoNode) {
 
     const elaExpandMethodOptions = {
         methodValue: 'none'
+    };
+
+    const noiseDisplayModeOptions = {
+        modeValue: 'heatmap'
     };
 
     const updateConvolutionControlVisibility = () => {
@@ -2388,6 +2771,13 @@ export function addFiltersToVideoNode(videoNode) {
             elaExpandMethodDropdown?.updateDisplay();
             updateELAExpandControlVisibility();
             videoNode.invalidateELAResult();
+            if (videoNode.inputs.noiseBlockSize) videoNode.inputs.noiseBlockSize.value = 16;
+            if (videoNode.inputs.noiseScale) videoNode.inputs.noiseScale.value = 5;
+            if (videoNode.inputs.noiseOpacity) videoNode.inputs.noiseOpacity.value = 65;
+            if (videoNode.inputs.noiseDisplayMode) videoNode.inputs.noiseDisplayMode.value = 'heatmap';
+            noiseDisplayModeOptions.modeValue = 'heatmap';
+            noiseDisplayModeDropdown?.updateDisplay();
+            videoNode.invalidateNoiseResult();
             updateConvolutionControlVisibility();
             setRenderOne(true);
         }
@@ -2474,6 +2864,22 @@ export function addFiltersToVideoNode(videoNode) {
                 videoNode.invalidateELAResult();
                 setRenderOne(true);
             }),
+            noiseBlockSize = new CNodeGUIValue({ id: "videoNoiseBlockSize", value: 16, start: 4, end: 128, step: 1, desc: "Block Size", onChange: () => {
+                videoNode.invalidateNoiseResult();
+            }}, guiVideoNoiseFolder),
+            noiseScale = new CNodeGUIValue({ id: "videoNoiseScale", value: 5, start: 0.1, end: 20, step: 0.1, desc: "Noise Scale", onChange: () => {
+                videoNode.invalidateNoiseResult();
+            }}, guiVideoNoiseFolder),
+            noiseOpacity = new CNodeGUIValue({ id: "videoNoiseOpacity", value: 65, start: 0, end: 100, step: 1, desc: "Opacity %" }, guiVideoNoiseFolder),
+            noiseDisplayMode = new CNodeConstant({ id: "videoNoiseDisplayMode", value: 'heatmap' }),
+            noiseDisplayModeDropdown = guiVideoNoiseFolder.add(noiseDisplayModeOptions, "modeValue", {
+                "Noise Heatmap": "heatmap",
+                "Noise Residual": "residual"
+            }).name("Display Mode").onChange(value => {
+                noiseDisplayMode.value = value;
+                videoNode.invalidateNoiseResult();
+                setRenderOne(true);
+            }),
             convolutionFilter = new CNodeConstant({ id: "videoConvolutionFilter", value: 'none' }),
             convolutionFilterDropdown = guiVideoEffectsFolder.add(filterOptions, "convolutionFilterValue", ['none', 'sharpen', 'edgeDetect', 'emboss']).name("Convolution Filter").onChange(value => {
                 convolutionFilter.value = value;
@@ -2513,12 +2919,19 @@ export function addFiltersToVideoNode(videoNode) {
         elaOpacity = NodeMan.get("videoELAOpacity");
         elaExpandMethod = NodeMan.get("videoELAExpandMethod");
         elaContrastClipPercent = NodeMan.get("videoELAContrastClipPercent");
+        noiseBlockSize = NodeMan.get("videoNoiseBlockSize");
+        noiseScale = NodeMan.get("videoNoiseScale");
+        noiseOpacity = NodeMan.get("videoNoiseOpacity");
+        noiseDisplayMode = NodeMan.get("videoNoiseDisplayMode");
         convolutionFilter = NodeMan.get("videoConvolutionFilter");
         if (convolutionFilter) {
             filterOptions.convolutionFilterValue = convolutionFilter.value;
         }
         if (elaExpandMethod) {
             elaExpandMethodOptions.methodValue = elaExpandMethod.value;
+        }
+        if (noiseDisplayMode) {
+            noiseDisplayModeOptions.modeValue = noiseDisplayMode.value;
         }
         sharpenAmountControl = sharpenAmount?.guiEntry;
         edgeDetectThresholdControl = edgeDetectThreshold?.guiEntry;
@@ -2554,7 +2967,11 @@ export function addFiltersToVideoNode(videoNode) {
         elaErrorScale: elaErrorScale,
         elaOpacity: elaOpacity,
         elaExpandMethod: elaExpandMethod,
-        elaContrastClipPercent: elaContrastClipPercent
+        elaContrastClipPercent: elaContrastClipPercent,
+        noiseBlockSize: noiseBlockSize,
+        noiseScale: noiseScale,
+        noiseOpacity: noiseOpacity,
+        noiseDisplayMode: noiseDisplayMode
     });
 
     EventManager.addEventListener("abFrameChanged", () => {
@@ -3008,6 +3425,39 @@ function clampByte(value) {
     if (value <= 0) return 0;
     if (value >= 255) return 255;
     return Math.round(value);
+}
+
+/**
+ * Map a noise ratio to a color on a blue → green → yellow → red gradient.
+ * ratio < 0.5: deep blue (unusually low noise)
+ * ratio ≈ 1.0: green (consistent with median)
+ * ratio > 2.0: red (unusually high noise)
+ */
+function noiseRatioToColor(ratio) {
+    const t = Math.max(0, Math.min(1, (ratio - 0.25) / 2.75));
+
+    let r, g, b;
+    if (t < 0.27) {
+        // Blue to Cyan (ratio ~0.25 to ~1.0)
+        const s = t / 0.27;
+        r = 0;
+        g = Math.round(s * 200);
+        b = Math.round(200 - s * 100);
+    } else if (t < 0.55) {
+        // Cyan/Green to Yellow (ratio ~1.0 to ~1.75)
+        const s = (t - 0.27) / 0.28;
+        r = Math.round(s * 255);
+        g = 200;
+        b = Math.round(100 * (1 - s));
+    } else {
+        // Yellow to Red (ratio ~1.75 to ~3.0)
+        const s = (t - 0.55) / 0.45;
+        r = 255;
+        g = Math.round(200 * (1 - s));
+        b = 0;
+    }
+
+    return [r, g, b];
 }
 
 function canvasToBlobAsync(canvas, type, quality) {
