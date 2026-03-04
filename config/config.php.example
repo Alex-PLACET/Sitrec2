@@ -34,18 +34,27 @@ require_once __DIR__ . '/injectEnv.php';
     // NOTE: $request_url_map is now configured in shared.env
 
 // installation specific authentication
-// should return a user id which can be used as a directory name
-// or 0 if the user is not authenticated
-// if no authentication is needed, I return 99999999
-// if you want per-user authentication like this, then you'll need to modify this function
-// or just delete this function, so user.php will return 99999998
+// getUserIDCustom returns just the user id
+// getUserInfoCustom returns user id and user groups
+//
+// if no authentication is needed, return 99999999 as user id
+// if you want per-user authentication (e.g. Xenforo), modify getUserInfoCustom
 //
 // Note, calling this twice in one session seems to crash Xenforo
 function getUserIDCustom()
 {
+    $info = getUserInfoCustom();
+    return $info['user_id'];
+}
+
+// Returns user ID and user groups
+// Groups example: admin=3, registered=2, verified=9, sitrec=14
+function getUserInfoCustom()
+{
     // a default user id for testing
     // and for if there's no xenforo
-    $user_id = 0;
+    $user_id = 0; // default to not logged in
+    $user_groups = [];
 
     // SECURITY: Use REMOTE_ADDR (not HTTP_HOST which can be spoofed)
     $isLocalhost = ($_SERVER['REMOTE_ADDR'] === '127.0.0.1' ||
@@ -62,15 +71,22 @@ function getUserIDCustom()
             $app->start();
             $user = XF::visitor();
             $user_id = $user->user_id;
+
+            // Get user groups (primary + secondary)
+            $user_groups = [$user->user_group_id];
+            if (!empty($user->secondary_group_ids)) {
+                $user_groups = array_merge($user_groups, $user->secondary_group_ids);
+            }
         }
     }
 
     // Only return dummy user if NOT logged in AND on localhost
     if ($user_id == 0 && $isLocalhost) {
+        $user_groups = [3, 2, 14, 9]; // admin, registered, sitrec, verified
         $user_id = 99999999;
     }
 
-    return $user_id;
+    return ['user_id' => $user_id, 'user_groups' => $user_groups];
 }
 
 //// Custom TLE fetch function example
