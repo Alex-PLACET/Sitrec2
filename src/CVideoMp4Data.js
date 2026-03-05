@@ -370,6 +370,12 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
      * Implements proper async cancellation rather than flag-checking
      */
     dispose() {
+        // Clear pending audio wait polling timeout
+        if (this._audioWaitTimeout) {
+            clearTimeout(this._audioWaitTimeout);
+            this._audioWaitTimeout = null;
+        }
+
         // Clear callbacks to prevent them from firing after disposal
         this.loadedCallback = null;
         this.errorCallback = null;
