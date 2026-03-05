@@ -45,7 +45,56 @@ Example entry format:
 
 ---
 
-## Unreleased
+## Version 2.31.0
+
+### New Features
+- **Contrails**: Contrail rendering as flat horizontal ribbons trailing behind tracks, with wind drift, initial width ramp, and spread over time
+- **Forensics Menu**: Error Level Analysis (ELA) and noise level analysis for image forensics investigation
+- **Ocean Surface**: Beta ocean surface rendering with 3D tiles
+- **WSPR Track Support**: Import WSPR tracks with Maidenhead grid format locations (e.g., Traquito)
+- **Wind Data Fetching**: Fetch wind data from Open-Meteo API (beta)
+- **Atmosphere/Fog**: Experimental atmosphere rendering with HDR parameters
+
+### Improvements
+- Contrail width ramp subdivided to ~2m segments for smooth visual transition from initial to full width
+- Contrails follow earth's curvature for large contrails
+- Wind direction applied to plane heading angle
+- More accurate usage of HAE (height above WGS84 ellipsoid) and MSL (height above EGM96 geoid)
+- Renamed EUS variables and code to ECEF to reflect actual coordinate system
+- Blur video/image at source pixel level, not display level; allow fractional pixel blur
+- Video and model viewer promoted to top-level buttons in Sitrec menu
+- Automatically extend orbital paths by two orbits (e.g., FlightClub)
+- Improved smoothing methods for camera motion
+- Video export waits for all pending terrain tiles and elevation to load before rendering each frame
+- Unique short names when importing the same track in different format
+- Correctly orient objects in model viewer
+- Allow expanded max in sliders
+- Brighter Google 3D tiles
+- 3D building status serialized; ellipsoid mode forced when enabling 3D buildings
+- Keep stale forensics overlay visible while recalculating with progressive worker updates
+- Security hardening
+- More robust UI tests with local tilesets
+- Package updates including Electron, tar, and electron-builder
+
+### Bug Fixes
+- Fixed synth tracks placed in wrong location (was using EUS in ECEF)
+- Fixed orientation of track indicator (inverted cone)
+- Fixed camera movement on hover disrupting 3D tiles culling
+- Fixed massive tile subdivision explosion with narrow-FOV satellite views
+- Fixed menu detaching to bottom of screen on multi-monitor fullscreen
+- Fixed MSL/HAE handling for camera tracks and altitude labels
+- Fixed shift-C to lock to MSL, not HAE
+- Fixed missing Draco loader for Google 3D tiles
+- Fixed large gap in menus for SitVideo (Video viewer)
+- Fixed rotation change triggering cache lock
+- Fixed track selection for right-click context menu
+- Fixed for sitches missing wind
+- Fixed STANAG test failure from incorrect ECEF usage
+- Fixed warnings from extra gamma parameter passed to standard material
+
+---
+
+## Version 2.30.0 (2026-02-24)
 
 ### New Features
 - **3D Buildings**: Basic 3D building rendering with Google Maps PBR tiles (admin only)
