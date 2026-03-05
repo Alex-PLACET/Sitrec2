@@ -2727,42 +2727,45 @@ export class CNodeView3D extends CNodeViewCanvas {
                 }
                 
                 // If we didn't find an object with nodeId, but we hit something (like terrain/ground)
-                // Ground/sphere collision takes priority over celestial objects
                 if (!foundObject) {
                     // Check if we're close to any track in screen space
                     // Tracks are too thin to pick with raycasting, so we check screen space distance
                     const closestTrack = this.findClosestTrack(mouseX, mouseY, 10);
-                    
+
                     if (closestTrack) {
                         this.showTrackMenu(closestTrack, event);
                         return; // Found a track, don't show ground menu
                     }
-                    
-                    // We hit something (ground/terrain), show ground context menu if in custom sitch
-                    // Ground/sphere takes priority over celestial objects
+
+                    // Check celestial objects BEFORE ground menu - the user may be clicking
+                    // on a star, planet, or satellite even though the ray also hits terrain/globe
+                    const celestialObject = this.findClosestCelestialObject(mouseRay, mouseX, mouseY);
+                    if (celestialObject) {
+                        this.showCelestialObjectMenu(celestialObject, event.clientX, event.clientY);
+                        return;
+                    }
+
+                    // No celestial objects found, show ground context menu if in custom sitch
                     if (Sit.isCustom) {
                         // Get the first intersection point (closest to camera)
                         const groundPoint = intersects[0].point;
-                        console.log(`Ground clicked at:`, groundPoint);
-                        
-                        // Show the ground context menu
                         CustomManager.showGroundContextMenu(mouseX, mouseY, groundPoint);
-                        return; // Ground menu shown, don't check celestial objects
+                        return;
                     }
                 }
             }
-            
+
             // No intersections with 3D objects or ground, check for tracks
             const closestTrack = this.findClosestTrack(mouseX, mouseY, 10);
-            
+
             if (closestTrack) {
                 this.showTrackMenu(closestTrack, event);
                 return; // Found a track, don't check celestial objects
             }
-            
+
             // No tracks found, check for celestial objects (stars, planets, satellites)
             const celestialObject = this.findClosestCelestialObject(mouseRay, mouseX, mouseY);
-            
+
             if (celestialObject) {
                 this.showCelestialObjectMenu(celestialObject, event.clientX, event.clientY);
             }
