@@ -850,6 +850,8 @@ class ObjectTracker {
         const videoData = this.videoView?.videoData;
         const stabEnabled = videoData?.stabilizationEnabled && videoData?.stabilizationData && videoData?.stabilizationReferencePoint;
 
+        // Intentionally hide tracking cursor after stabilization is applied,
+        // since the overlay would be misaligned with the stabilized video.
         if (stabEnabled) return;
         
         const getStabOffset = (f) => {
