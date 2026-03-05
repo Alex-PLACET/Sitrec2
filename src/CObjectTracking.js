@@ -37,7 +37,9 @@ class ObjectTracker {
 
         // Centroid tracking for bright spots (stars, etc)
         this.centerOnBright = false;
-        this.brightnessThreshold = 128;  // 0-255, pixels above this are considered "bright"
+        // Centroid tracking for dark spots
+        this.centerOnDark = false;
+        this.brightnessThreshold = 128;  // 0-255, pixels above/below this are considered "bright"/"dark"
 
         // Search radius - how far from previous position to search for template match
         this.searchRadius = 50;  // pixels
@@ -414,6 +416,73 @@ class ObjectTracker {
         return null;
     }
 
+    // Calculate centroid (center of mass) of dark pixels within radius
+    // Returns {x, y} or null if no dark pixels found
+    calculateDarkCentroid(image, centerX, centerY, radius) {
+        const imgWidth = image.width || image.videoWidth;
+        const imgHeight = image.height || image.videoHeight;
+
+        const minX = Math.max(0, Math.floor(centerX - radius));
+        const maxX = Math.min(imgWidth - 1, Math.ceil(centerX + radius));
+        const minY = Math.max(0, Math.floor(centerY - radius));
+        const maxY = Math.min(imgHeight - 1, Math.ceil(centerY + radius));
+
+        const roiWidth = maxX - minX + 1;
+        const roiHeight = maxY - minY + 1;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = imgWidth;
+        canvas.height = imgHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(image, 0, 0, imgWidth, imgHeight);
+
+        const imageData = ctx.getImageData(minX, minY, roiWidth, roiHeight);
+        const data = imageData.data;
+
+        let totalDarkness = 0;
+        let weightedX = 0;
+        let weightedY = 0;
+        let pixelCount = 0;
+
+        const radiusSquared = radius * radius;
+
+        for (let roiY = 0; roiY < roiHeight; roiY++) {
+            for (let roiX = 0; roiX < roiWidth; roiX++) {
+                const imgX = minX + roiX;
+                const imgY = minY + roiY;
+
+                const dx = imgX - centerX;
+                const dy = imgY - centerY;
+                if (dx * dx + dy * dy > radiusSquared) continue;
+
+                const index = (roiY * roiWidth + roiX) * 4;
+                const r = data[index];
+                const g = data[index + 1];
+                const b = data[index + 2];
+
+                const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
+
+                if (brightness < this.brightnessThreshold) {
+                    // Weight by darkness (inverse brightness) for better centering on dark core
+                    const weight = this.brightnessThreshold - brightness;
+                    totalDarkness += weight;
+                    weightedX += imgX * weight;
+                    weightedY += imgY * weight;
+                    pixelCount++;
+                }
+            }
+        }
+
+        if (totalDarkness > 0 && pixelCount > 0) {
+            return {
+                x: weightedX / totalDarkness,
+                y: weightedY / totalDarkness
+            };
+        }
+
+        return null;
+    }
+
     trackFrame(frame) {
         if (!this.tracking || !this.enabled) return;
 
@@ -438,6 +507,8 @@ class ObjectTracker {
 
         if (this.centerOnBright) {
             this.trackBrightCentroid(frame, currImage, prevPos);
+        } else if (this.centerOnDark) {
+            this.trackDarkCentroid(frame, currImage, prevPos);
         } else if (this.trackingMethod === 'opticalflow') {
             this.trackOpticalFlow(frame, currImage, prevPos, videoData);
         } else {
@@ -447,6 +518,21 @@ class ObjectTracker {
 
     trackBrightCentroid(frame, currImage, prevPos) {
         const centroid = this.calculateBrightCentroid(currImage, prevPos.x, prevPos.y, this.trackRadius);
+
+        if (centroid) {
+            this.trackX = centroid.x;
+            this.trackY = centroid.y;
+        } else {
+            this.trackX = prevPos.x;
+            this.trackY = prevPos.y;
+        }
+
+        this.trackedPositions.set(frame, {x: this.trackX, y: this.trackY});
+        this.updateSliderStatus();
+    }
+
+    trackDarkCentroid(frame, currImage, prevPos) {
+        const centroid = this.calculateDarkCentroid(currImage, prevPos.x, prevPos.y, this.trackRadius);
 
         if (centroid) {
             this.trackX = centroid.x;
@@ -996,7 +1082,7 @@ function toggleStartTracking() {
     }
 
     // Centroid mode doesn't need external libraries
-    if (objectTracker.centerOnBright) {
+    if (objectTracker.centerOnBright || objectTracker.centerOnDark) {
         objectTracker.startTracking();
         if (startMenuItem) startMenuItem.name("Stop Auto Tracking");
         setRenderOne(true);
@@ -1431,6 +1517,7 @@ export function addObjectTrackingMenu() {
         set centerOnBright(v) {
             if (objectTracker) {
                 objectTracker.centerOnBright = v;
+                if (v) objectTracker.centerOnDark = false;
                 // Clear track when switching modes to avoid confusion
                 if (objectTracker.tracking) {
                     objectTracker.clearTrack();
@@ -1445,6 +1532,25 @@ export function addObjectTrackingMenu() {
         .tooltip("Track centroid of bright pixels (better for stars/point lights)")
         .perm();
 
+    const centerOnDarkParams = {
+        get centerOnDark() { return objectTracker?.centerOnDark ?? false; },
+        set centerOnDark(v) {
+            if (objectTracker) {
+                objectTracker.centerOnDark = v;
+                if (v) objectTracker.centerOnBright = false;
+                if (objectTracker.tracking) {
+                    objectTracker.clearTrack();
+                }
+                setRenderOne(true);
+            }
+        }
+    };
+
+    trackingFolder.add(centerOnDarkParams, 'centerOnDark')
+        .name("Center on Dark")
+        .tooltip("Track centroid of dark pixels")
+        .perm();
+
     const brightnessParams = {
         get brightnessThreshold() { return objectTracker?.brightnessThreshold ?? 128; },
         set brightnessThreshold(v) {
@@ -1457,7 +1563,7 @@ export function addObjectTrackingMenu() {
 
     trackingFolder.add(brightnessParams, 'brightnessThreshold', 0, 255, 1)
         .name("Brightness Threshold")
-        .tooltip("Minimum brightness to consider (0-255). Only used in Center on Bright mode")
+        .tooltip("Brightness threshold (0-255). Used in Center on Bright/Dark modes")
         .onChange(() => {
             if (objectTracker) {
                 objectTracker.thresholdPreview = true;
