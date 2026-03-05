@@ -239,18 +239,21 @@ if ($continueSession && $toolResults && isset($_SESSION['chatbot_pending'])) {
     );
     
     if (!empty($result['apiCalls'])) {
-        $_SESSION['chatbot_pending'] = [
-            'provider' => $pendingState['provider'],
-            'systemPrompt' => $pendingState['systemPrompt'],
-            'history' => $result['history'],
-            'tools' => $pendingState['tools'],
-            'model' => $pendingState['model'],
-            'menuSummary' => $pendingState['menuSummary'],
-            'available3DModels' => $pendingState['available3DModels'],
-            'availableDocs' => $pendingState['availableDocs'] ?? [],
-            'remainingIterations' => max(1, $pendingState['remainingIterations'] - 1)
-        ];
-        $result['sessionContinue'] = true;
+        $newRemaining = $pendingState['remainingIterations'] - 1;
+        if ($newRemaining > 0) {
+            $_SESSION['chatbot_pending'] = [
+                'provider' => $pendingState['provider'],
+                'systemPrompt' => $pendingState['systemPrompt'],
+                'history' => $result['history'],
+                'tools' => $pendingState['tools'],
+                'model' => $pendingState['model'],
+                'menuSummary' => $pendingState['menuSummary'],
+                'available3DModels' => $pendingState['available3DModels'],
+                'availableDocs' => $pendingState['availableDocs'] ?? [],
+                'remainingIterations' => $newRemaining
+            ];
+            $result['sessionContinue'] = true;
+        }
     }
     unset($result['history']);
 

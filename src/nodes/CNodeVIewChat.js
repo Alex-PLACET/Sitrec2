@@ -380,7 +380,12 @@ class CNodeViewChat extends CNodeViewText {
         return toolResults;
     }
     
-    async continueSession(toolResults, provider, model) {
+    async continueSession(toolResults, provider, model, depth = 0) {
+        const maxContinuationDepth = 5;
+        if (depth >= maxContinuationDepth) {
+            console.warn(`Session continuation stopped: reached max depth (${maxContinuationDepth})`);
+            return;
+        }
         try {
             const body = JSON.stringify({
                 continueSession: true,
@@ -388,7 +393,7 @@ class CNodeViewChat extends CNodeViewText {
                 provider,
                 model,
             });
-            
+
             const res = await fetch(SITREC_SERVER + 'chatbot.php', {
                 body,
                 method: 'POST',
@@ -404,9 +409,9 @@ class CNodeViewChat extends CNodeViewText {
             if (response.apiCalls && response.apiCalls.length > 0) {
                 this.addDebugMessage(`Continue API calls: ${JSON.stringify(response.apiCalls)}`);
                 const newResults = this.handleAPICalls(response.apiCalls);
-                
+
                 if (response.sessionContinue) {
-                    await this.continueSession(newResults, provider, model);
+                    await this.continueSession(newResults, provider, model, depth + 1);
                 }
             }
         } catch (e) {
