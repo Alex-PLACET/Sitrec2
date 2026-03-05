@@ -263,6 +263,12 @@ class CNodeView extends CNode {
     dispose() {
         console.log("Disposing CNodeView: "+this.id)
 
+        // Clear any pending resize timeout to prevent post-disposal callbacks
+        if (this._resizeTimeout) {
+            clearTimeout(this._resizeTimeout);
+            this._resizeTimeout = null;
+        }
+
         // if it's an overlay view, then we don't want to remove the div
         if (this.overlayView === undefined && this.div) {
             // Clean up draggable and resizable functionality
