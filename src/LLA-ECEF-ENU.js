@@ -279,7 +279,11 @@ export function ECEFToLLA(X, Y, Z) {
     const latitude  = Math.atan(num/denom);
     const longitude = Math.atan2(Y, X);
     const N = getN(latitude);
-    const altitude  = (p / Math.cos(latitude)) - N;
+    const cosLat = Math.cos(latitude);
+    // Near the poles cos(lat)→0 and p→0, so use the Z-based formula instead.
+    const altitude = Math.abs(cosLat) > 1e-10
+        ? (p / cosLat) - N
+        : Math.abs(Z) / Math.abs(Math.sin(latitude)) - N * (1 - e * e);
 
     return [latitude, longitude, altitude];
 }
