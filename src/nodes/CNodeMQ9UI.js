@@ -700,6 +700,9 @@ export class   CNodeMQ9UI extends CNodeViewUI {
         if (this.canvas && this.boundHandleMouseDown) {
             this.canvas.removeEventListener('mousedown', this.boundHandleMouseDown);
         }
+        if (this.canvas && this.boundHandleDblClick) {
+            this.canvas.removeEventListener('dblclick', this.boundHandleDblClick);
+        }
         super.dispose();
     }
 
