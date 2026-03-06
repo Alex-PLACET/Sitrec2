@@ -2474,7 +2474,7 @@ BoxParser.parseOneBox = function(stream, headerOnly, parentSize) {
         return { code: BoxParser.ERR_NOT_ENOUGH_DATA, type: type, size: size, hdr_size: hdr_size, start: start };
     }
     if (size !== 0 && parentSize && size > parentSize) {
-        Log.error("BoxParser", "Box of type '"+type+"' has a size "+size+" greater than its container size "+parentSize);
+        Log.warn("BoxParser", "Box of type '"+type+"' has a size "+size+" greater than its container size "+parentSize);
         return { code: BoxParser.ERR_NOT_ENOUGH_DATA, type: type, size: size, hdr_size: hdr_size, start: start };
     }
     if (size !== 0 && start + size > stream.getEndPosition()) {
