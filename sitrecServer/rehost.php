@@ -156,7 +156,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'getPresignedUrl') {
     $version = isset($requestData['version']) ? basename($requestData['version']) : null;
     $contentHash = isset($requestData['contentHash']) ? $requestData['contentHash'] : null;
     
-    $fileName = preg_replace('/[^\w\s\.\-\(\)]/', '_', $fileName);
+    $fileName = preg_replace('/[^\w\s\.\-\(\),]/', '_', $fileName);
     
     if (!isSafeName($fileName) || !isSafeExtension($fileName) ||
         ($version && (!isSafeName($version) || !isSafeExtension($version)))) {
@@ -252,7 +252,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'initiateMultipart') {
     $contentHash = isset($requestData['contentHash']) ? $requestData['contentHash'] : null;
     $totalParts = (int)$requestData['parts'];
     
-    $fileName = preg_replace('/[^\w\s\.\-\(\)]/', '_', $fileName);
+    $fileName = preg_replace('/[^\w\s\.\-\(\),]/', '_', $fileName);
     
     if (!isSafeName($fileName) || !isSafeExtension($fileName) ||
         ($version && (!isSafeName($version) || !isSafeExtension($version)))) {
@@ -360,7 +360,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'completeMultipart') {
     $uploadId = $requestData['uploadId'];
     $parts = $requestData['parts'];
     
-    $fileName = preg_replace('/[^\w\s\.\-\(\)]/', '_', $fileName);
+    $fileName = preg_replace('/[^\w\s\.\-\(\),]/', '_', $fileName);
     
     if (!isSafeName($fileName) || !isSafeExtension($fileName) ||
         ($version && (!isSafeName($version) || !isSafeExtension($version)))) {
@@ -448,8 +448,8 @@ function writeLog($message) {
 // Secure validation function
 function isSafeName($name) {
     // Check if the name contains only allowed characters
-    // which are A-Z, a-z, 0-9, space, _, -, ., (, )
-    return preg_match('/^[A-Za-z0-9 _\\-\\.\\(\\)]+$/', $name);
+    // which are A-Z, a-z, 0-9, space, _, -, ., (, ), ,
+    return preg_match('/^[A-Za-z0-9 _\\-\\.\\(\\),]+$/', $name);
 }
 
 // Extensions that must never be stored — server-side executables and config overrides
@@ -525,7 +525,7 @@ $version = isset($_POST['version']) ? basename($_POST['version']) : null;
 
 // sanitize the filename by removing any path components
 // or any characters that are not alphanumeric, space, _, -, ., (, )
-$fileName = preg_replace('/[^\w\s\.\-\(\)]/', '_', $fileName);
+$fileName = preg_replace('/[^\w\s\.\-\(\),]/', '_', $fileName);
 
 
 // Validate names and extensions

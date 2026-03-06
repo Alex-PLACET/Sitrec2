@@ -15,7 +15,7 @@ export class CSitchBrowser {
         this.selectedName = null;
         this.overlay = null;
         this.viewMode = "thumbnails"; // "list" or "thumbnails"
-        this.thumbColumns = 3;
+        this.thumbColumns = 4;
         this._thumbObserver = null;
     }
 
