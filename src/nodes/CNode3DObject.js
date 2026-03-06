@@ -65,6 +65,28 @@ import {GlobalScene} from "../LocalFrame";
 import {sharedUniforms} from "../js/map33/material/SharedUniforms";
 import {par} from "../par";
 
+// Map old/renamed model file paths to their current equivalents.
+// Used to remap file paths in loadedFiles and model name references in serialized sitches.
+export const ModelAliases = {
+    "data/models/737 MAX 8 BA.glb": "data/models/B737Max8.glb",
+    "data/models/737%20MAX%208%20BA.glb": "data/models/B737Max8.glb",
+    "data/models/PA28-181.glb": "data/models/PA28.glb",
+};
+
+// Resolve a model name or file path through ModelAliases, returning the canonical value.
+// Also checks if an alias maps to a known ModelFiles key.
+export function resolveModelAlias(name) {
+    const alias = ModelAliases[name];
+    if (alias) {
+        // If the alias is a file path, find the ModelFiles key that uses it
+        for (const [key, value] of Object.entries(ModelFiles)) {
+            if (value.file === alias) return key;
+        }
+        return alias;
+    }
+    return name;
+}
+
 // Note these files are CASE SENSIVE. Mac OS is case insensitive, so be careful. (e.g. F-15.glb will not work on my deployed server)
 export const ModelFiles = {
 // TODO: X1-B
@@ -790,7 +812,7 @@ export class CNode3DObject extends CNode3DGroup {
 
         this.modelOrGeometryMenu.isCommon = true;
 
-        this.selectModel = v.model ?? "F/A-18F";
+        this.selectModel = resolveModelAlias(v.model ?? "F/A-18F");
         this.modelMenu = this.gui.add(this, "selectModel", Object.keys(ModelFiles)).name("Model").onChange((v) => {
             this.modelOrGeometry = "model"
             this.rebuild();
@@ -1459,7 +1481,7 @@ export class CNode3DObject extends CNode3DGroup {
         super.modDeserialize(v)
         this.color = v.color;
         this.modelOrGeometry = v.modelOrGeometry;
-        this.selectModel = v.model;
+        this.selectModel = resolveModelAlias(v.model);
 
 
 
