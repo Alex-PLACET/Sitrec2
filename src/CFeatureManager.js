@@ -42,21 +42,28 @@ class CFeatureManager extends CManager {
      */
     removeFeature(id) {
         if (this.exists(id)) {
-            const featureNode = this.get(id);
-
-            // Dispose the node (removes arrow, overlay text, etc.)
-            if (featureNode.dispose) {
-                featureNode.dispose();
-            }
-            
             // Remove from NodeMan if it's registered there
             if (NodeMan.exists(id)) {
-                NodeMan.unlinkDisposeRemove(id);
+                const node = NodeMan.get(id);
+
+                // Unlink from downstream outputs (same as unlinkDisposeRemove)
+                for (const outputNode of node.outputs) {
+                    for (const key in outputNode.inputs) {
+                        if (outputNode.inputs[key] === node) {
+                            delete outputNode.inputs[key];
+                        }
+                    }
+                }
+                node.outputs = [];
+
+                // Dispose with recursive input removal so auto-created
+                // sub-nodes (like _color_colorInput) are cleaned up too.
+                NodeMan.disposeRemove(id, true);
             }
-            
+
             // Remove from this manager
             this.remove(id);
-            
+
             console.log(`Removed feature marker: ${id}`);
         }
     }
@@ -119,6 +126,13 @@ class CFeatureManager extends CManager {
         
         for (const featureData of featuresData) {
             try {
+                // If the feature already exists (e.g., created by KML extraction
+                // during file loading), remove it first so the saved version
+                // (which may have user edits) takes precedence.
+                if (this.exists(featureData.id)) {
+                    this.removeFeature(featureData.id);
+                }
+
                 this.addFeature({
                     id: featureData.id,
                     text: featureData.text,
