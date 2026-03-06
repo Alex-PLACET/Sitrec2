@@ -27,6 +27,8 @@ export function interpolateGeoidOffset(corners, xFrac, yFrac) {
 
 // Single-point geoid undulation lookup.
 // Returns N in meters: h_ellipsoid = h_MSL + N.
+// Clamps latitude to avoid out-of-bounds access in the EGM96 grid data.
 export function meanSeaLevelOffset(lat, lon) {
+    lat = Math.max(-90, Math.min(90, lat));
     return meanSeaLevel(lat, lon);
 }
