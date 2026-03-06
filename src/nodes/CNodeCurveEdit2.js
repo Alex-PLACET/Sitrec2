@@ -112,7 +112,6 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
         slider.style.zIndex = '100';
         slider.style.writingMode = 'vertical-lr';
         slider.style.direction = 'rtl';
-        slider.style.appearance = 'slider-vertical';
         slider.style.margin = '0';
         slider.style.padding = '0';
         slider.style.cursor = 'pointer';

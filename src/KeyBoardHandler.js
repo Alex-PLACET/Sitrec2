@@ -284,6 +284,14 @@ export function initKeyboard() {
             return;
         }
 
+        if ((e.ctrlKey || e.metaKey) && keyCode === 'KeyO') {
+            e.preventDefault();
+            if (FileManager && FileManager.openBrowseDialog) {
+                FileManager.openBrowseDialog();
+            }
+            return;
+        }
+
         KeyMan.handleKeyDown(e);
 
         EventManager.dispatchEvent("keydown", {key: key, keyCode: keyCode, event: e});

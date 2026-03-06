@@ -2576,6 +2576,8 @@ function disposeEverything() {
     console.log(" >>>>>>>>>>>>>>>>>>>>>>>> disposeEverything() <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
     console.log("");
 
+    Globals.disposing = true;
+
     // cancel any requested animation frames
     if (animationFrameId) {
         cancelAnimationFrame(animationFrameId);
@@ -2657,6 +2659,8 @@ function disposeEverything() {
     assert(ViewMan.size() === 0, "ViewMan.size() should be zero, it's " + ViewMan.size());
     console.log("disposeEverything() is finished");
     console.log("");
+
+    Globals.disposing = false;
 }
 
 /**

@@ -166,15 +166,31 @@ export class CSitchBrowser {
         // Keyboard handler
         this._keyHandler = (e) => {
             if (e.key === "Escape") { this.close(); return; }
-            if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "ArrowLeft" || e.key === "ArrowRight") {
                 e.preventDefault();
                 if (this.filtered.length === 0) return;
                 let idx = this.filtered.findIndex(s => s.name === this.selectedName);
-                if (e.key === "ArrowDown") {
-                    idx = idx < this.filtered.length - 1 ? idx + 1 : 0;
-                } else {
-                    idx = idx > 0 ? idx - 1 : this.filtered.length - 1;
+
+                // Nothing selected yet — select first or last depending on direction
+                if (idx === -1) {
+                    const forward = (e.key === "ArrowDown" || e.key === "ArrowRight");
+                    this.selectIndex(forward ? 0 : this.filtered.length - 1);
+                    return;
                 }
+
+                let delta;
+                if (this.viewMode === "thumbnails") {
+                    // In grid mode: left/right move by 1, up/down move by one row
+                    if (e.key === "ArrowRight") delta = 1;
+                    else if (e.key === "ArrowLeft") delta = -1;
+                    else if (e.key === "ArrowDown") delta = this.thumbColumns;
+                    else delta = -this.thumbColumns;
+                } else {
+                    // In list mode: all arrows move by 1
+                    delta = (e.key === "ArrowDown" || e.key === "ArrowRight") ? 1 : -1;
+                }
+
+                idx = Math.max(0, Math.min(this.filtered.length - 1, idx + delta));
                 this.selectIndex(idx);
             }
             if (e.key === "Enter" && this.selectedName) {

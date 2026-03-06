@@ -1,7 +1,7 @@
 import {CNode} from "./CNode";
 import {addOptionToGUIMenu, removeOptionFromGUIMenu} from "../lil-gui-extras";
 import {isConsole, isLocal} from "../configUtils.js";
-import {NodeMan, Sit} from "../Globals";
+import {Globals, NodeMan, Sit} from "../Globals";
 import {assert} from "../assert.js";
 import {EventManager} from "../CEventManager";
 
@@ -57,8 +57,9 @@ class CNodeSwitch extends CNode {
             this.controller = this.gui.add(this, "choice", this.guiOptions)
                 .name((isLocal?"*":"") + v.desc)
                 .onChange((newValue) => {   // using ()=> preserves this
-//                    console.log("Changed to "+newValue)
-//                    console.log("(changing) this.choice = "+this.choice)
+                    // During disposeEverything, selectValidChoice may trigger this
+                    // but we should not run side-effects on a half-torn-down graph
+                    if (Globals.disposing) return;
 
                     this.choiceChanged();
 

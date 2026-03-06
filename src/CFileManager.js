@@ -276,7 +276,7 @@ export class CFileManager extends CManager {
         // Add Browse button for S3-backed deployments
         if (parseBoolean(process.env.SAVE_TO_S3)) {
             this.sitchBrowser = new CSitchBrowser(this);
-            this.guiServer.add(this, "openBrowseDialog").name("Browse...").perm()
+            this.guiServer.add(this, "openBrowseDialog").name("Open").perm()
                 .tooltip("Browse all your saved sitches in a searchable, sortable list");
         }
 
@@ -308,43 +308,12 @@ export class CFileManager extends CManager {
             // add a "-" to the start of the userSaves array, so we can have a blank entry
             this.userSaves.unshift("-");
 
-            // add a selector for loading a file
-            this.loadName = this.userSaves[0];
-            this.guiLoad = this.guiServer.add(this, "loadName", this.userSaves).name("Open").perm().onChange((value) => {
-                this.loadSavedFile(value)
-            }).moveAfter(this.sitchBrowser ? "Browse..." : "Save with Permalink")
-                .tooltip("Load a saved sitch from your personal folder on the server");
-
-            // Create alphabetically sorted version for Open (A-Z)
-            this.userSavesAlphabetical = [...this.userSaves]; // copy the array
-            // Sort alphabetically, but keep "-" at the beginning
-            const dashEntry = this.userSavesAlphabetical.shift(); // remove "-" from beginning
-            this.userSavesAlphabetical.sort((a, b) => a.localeCompare(b)); // sort alphabetically
-            this.userSavesAlphabetical.unshift(dashEntry); // put "-" back at the beginning
-
-            this.loadNameAlphabetical = this.userSavesAlphabetical[0];
-            this.guiLoadAlphabetical = this.guiServer.add(this, "loadNameAlphabetical", this.userSavesAlphabetical).name("Open (A-Z)").perm().onChange((value) => {
-                this.loadSavedFile(value)
-            }).moveAfter("Open")
-                .tooltip("Load a saved sitch from your personal folder on the server (alphabetical order)");
-
-            // this.userVersions = "-";
-            // this.guiVersions = this.guiServer.add(this, "userVersions", this.userVersions).name("Versions").perm().onChange((value) => {
-            //
-            // })
-
-            this.deleteName = this.userSaves[0];
-            this.guiDelete = this.guiServer.add(this, "deleteName", this.userSaves).name("Delete").perm().onChange((value) => {
-                this.deleteSitch(value)
-            }).moveAfter("Open (A-Z)")
-                .tooltip("Delete a saved sitch from your personal folder on the server");
-
             this.versionsList = ["-"];
             this.versionsData = [];
             this.versionName = "-";
             this.guiVersions = this.guiServer.add(this, "versionName", this.versionsList).name("Versions").perm().onChange((value) => {
                 this.loadVersion(value);
-            }).moveAfter("Delete")
+            }).moveAfter(this.sitchBrowser ? "Open" : "Save with Permalink")
                 .tooltip("Load a specific version of the currently selected sitch");
 
             this.refreshVersions();
@@ -518,9 +487,9 @@ export class CFileManager extends CManager {
             }
             // the remove calls will also update the GUI
             // to account for the "-" selection
-            removeOptionFromGUIMenu(this.guiLoad, value);
-            removeOptionFromGUIMenu(this.guiLoadAlphabetical, value);
-            removeOptionFromGUIMenu(this.guiDelete, value);
+            if (this.guiLoad) removeOptionFromGUIMenu(this.guiLoad, value);
+            if (this.guiLoadAlphabetical) removeOptionFromGUIMenu(this.guiLoadAlphabetical, value);
+            if (this.guiDelete) removeOptionFromGUIMenu(this.guiDelete, value);
         });
 
     }
@@ -703,9 +672,9 @@ export class CFileManager extends CManager {
                 return this.saveSitchNamed(Sit.sitchName, local);  // return the Promise here
             }).then(() => {
                 if (!local) {
-                    addOptionToGUIMenu(this.guiLoad, Sit.sitchName);
-                    addOptionToGUIMenu(this.guiLoadAlphabetical, Sit.sitchName);
-                    addOptionToGUIMenu(this.guiDelete, Sit.sitchName);
+                    if (this.guiLoad) addOptionToGUIMenu(this.guiLoad, Sit.sitchName);
+                    if (this.guiLoadAlphabetical) addOptionToGUIMenu(this.guiLoadAlphabetical, Sit.sitchName);
+                    if (this.guiDelete) addOptionToGUIMenu(this.guiDelete, Sit.sitchName);
                     return this.refreshVersions();
                 }
             }).catch((error) => {

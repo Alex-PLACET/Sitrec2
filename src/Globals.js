@@ -24,6 +24,7 @@ export const Globals = {
     arMode: false, // AR mode active (camera follows device orientation)
     tileDelay: 0,  // Additional delay before loading tiles (0-5 seconds)
     screenshotting: false, // true during batch screenshot generation (skips menu rebuilds)
+    disposing: false, // true during disposeEverything() to suppress side-effects
     
     // Granular render debug flags - shared across ALL views
     renderDebugFlags: {

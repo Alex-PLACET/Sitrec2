@@ -107,9 +107,6 @@ export class CNode3DGroup extends CNode3D {
             toggles[key] = hider;
         }
 
-        // ensure we serialize it
-        this.addSimpleSerial("visible")
-
     }
 
     // the "visible" flag is serialized by default, but we need to
