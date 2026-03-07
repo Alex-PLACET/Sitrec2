@@ -421,6 +421,8 @@ export class CFileManager extends CManager {
             return;
         }
 
+        // Refreshing the current user's screenshots, so clear any stale source user override
+        this.sourceUserID = null;
         console.log(`Refreshing screenshots for ${total} sitches...`);
         Globals.screenshotting = true;
         const results = {done: [], failed: []};
@@ -632,6 +634,9 @@ export class CFileManager extends CManager {
      */
     loadSavedFile(name) {
         this.loadName = name;
+        // Loading from user's own saved files, so clear any source user override
+        // (e.g. from a ?custom=S3-URL that set sourceUserID at page load)
+        this.sourceUserID = null;
         console.log("Load Local File")
         console.log(this.loadName);
 
@@ -642,7 +647,12 @@ export class CFileManager extends CManager {
 
         this.getVersions(this.loadName).then((versions) => {
             this.updateVersionsDropdown(versions);
-            
+
+            if (!versions || versions.length === 0) {
+                console.error("No versions found for " + name);
+                return;
+            }
+
             const latestVersion = versions[versions.length - 1].url;
             console.log("Loading " + name + " version " + latestVersion)
 
