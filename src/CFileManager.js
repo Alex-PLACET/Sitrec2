@@ -448,22 +448,50 @@ export class CFileManager extends CManager {
                     check();
                 });
 
-                // Wait for all pending async operations (terrain tiles, 3D tiles, video, etc.)
-                await waitForExportFrameSettled({
-                    frame: Math.floor(par.frame),
-                    maxWaitMs: 60000,
-                    logPrefix: "Screenshot refresh",
-                });
+                const targetFrame = Math.floor(par.frame);
+                const savedPaused = par.paused;
+                const renderAtTargetFrame = async () => {
+                    par.frame = targetFrame;
 
-                if (capturedError) throw new Error(`console.error during load: ${capturedError}`);
+                    // Keep requesting the exact target frame so video decode/cache converges
+                    // even when playback is paused during screenshot generation.
+                    for (const entry of Object.values(NodeMan.list)) {
+                        const node = entry.data;
+                        if (node.videoData && typeof node.videoData.getImage === "function") {
+                            node.videoData.getImage(targetFrame);
+                        }
+                    }
 
-                const blob = await this.captureViewportScreenshot();
-                if (!blob) throw new Error("Screenshot capture returned null");
-                const buffer = await blob.arrayBuffer();
-                const url = await this.rehoster.rehostFile(sitchName, buffer, "screenshot.jpg", {skipHash: true});
-                await this.bumpScreenshotVersion(sitchName);
-                console.log(`  Screenshot saved: ${url}`);
-                results.done.push(sitchName);
+                    setRenderOne(true);
+                    await new Promise(resolve => requestAnimationFrame(resolve));
+                };
+
+                par.paused = true;
+                par.frame = targetFrame;
+                setRenderOne(true);
+
+                try {
+                    // Wait for all pending async operations (terrain tiles, 3D tiles, video, etc.)
+                    await waitForExportFrameSettled({
+                        frame: targetFrame,
+                        maxWaitMs: 60000,
+                        renderFrame: renderAtTargetFrame,
+                        logPrefix: "Screenshot refresh",
+                    });
+
+                    if (capturedError) throw new Error(`console.error during load: ${capturedError}`);
+
+                    const blob = await this.captureViewportScreenshot();
+                    if (!blob) throw new Error("Screenshot capture returned null");
+                    const buffer = await blob.arrayBuffer();
+                    const url = await this.rehoster.rehostFile(sitchName, buffer, "screenshot.jpg", {skipHash: true});
+                    await this.bumpScreenshotVersion(sitchName);
+                    console.log(`  Screenshot saved: ${url}`);
+                    results.done.push(sitchName);
+                } finally {
+                    par.paused = savedPaused;
+                    setRenderOne(true);
+                }
 
             } catch (error) {
                 console.error = originalConsoleError;

@@ -3281,28 +3281,56 @@ export class CCustomManager {
                     check();
                 });
 
-                // Wait for all pending async operations (terrain tiles, 3D tiles, video, etc.)
-                await waitForExportFrameSettled({
-                    frame: Math.floor(par.frame),
-                    maxWaitMs: 60000,
-                    logPrefix: "Screenshot add",
-                });
+                const targetFrame = Math.floor(par.frame);
+                const savedPaused = par.paused;
+                const renderAtTargetFrame = async () => {
+                    par.frame = targetFrame;
 
-                // Check if any console.error occurred during loading
-                if (capturedError) {
-                    throw new Error(`console.error during load: ${capturedError}`);
-                }
+                    // Keep requesting the exact target frame so video decode/cache converges
+                    // even when playback is paused during screenshot generation.
+                    for (const entry of Object.values(NodeMan.list)) {
+                        const node = entry.data;
+                        if (node.videoData && typeof node.videoData.getImage === "function") {
+                            node.videoData.getImage(targetFrame);
+                        }
+                    }
 
-                // Capture and upload the screenshot
-                const blob = await FileManager.captureViewportScreenshot();
-                if (!blob) {
-                    throw new Error("Screenshot capture returned null");
+                    setRenderOne(true);
+                    await new Promise(resolve => requestAnimationFrame(resolve));
+                };
+
+                par.paused = true;
+                par.frame = targetFrame;
+                setRenderOne(true);
+
+                try {
+                    // Wait for all pending async operations (terrain tiles, 3D tiles, video, etc.)
+                    await waitForExportFrameSettled({
+                        frame: targetFrame,
+                        maxWaitMs: 60000,
+                        renderFrame: renderAtTargetFrame,
+                        logPrefix: "Screenshot add",
+                    });
+
+                    // Check if any console.error occurred during loading
+                    if (capturedError) {
+                        throw new Error(`console.error during load: ${capturedError}`);
+                    }
+
+                    // Capture and upload the screenshot
+                    const blob = await FileManager.captureViewportScreenshot();
+                    if (!blob) {
+                        throw new Error("Screenshot capture returned null");
+                    }
+                    const buffer = await blob.arrayBuffer();
+                    const url = await FileManager.rehoster.rehostFile(sitchName, buffer, "screenshot.jpg", {skipHash: true});
+                    await FileManager.bumpScreenshotVersion(sitchName);
+                    console.log(`  Screenshot saved: ${url}`);
+                    results.added.push(sitchName);
+                } finally {
+                    par.paused = savedPaused;
+                    setRenderOne(true);
                 }
-                const buffer = await blob.arrayBuffer();
-                const url = await FileManager.rehoster.rehostFile(sitchName, buffer, "screenshot.jpg", {skipHash: true});
-                await FileManager.bumpScreenshotVersion(sitchName);
-                console.log(`  Screenshot saved: ${url}`);
-                results.added.push(sitchName);
 
             } catch (error) {
                 console.error = originalConsoleError;

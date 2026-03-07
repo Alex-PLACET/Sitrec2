@@ -1022,12 +1022,21 @@ async function checkForTest() {
 
 Globals.newSitchObject = undefined;
 
-function checkFornewSitchObject() {
+async function checkFornewSitchObject() {
 
     if (Globals.newSitchObject !== undefined) {
-        console.log("New Sitch Text = " + Globals.newSitchObject)
-        newSitch(Globals.newSitchObject, true);
-        Globals.newSitchObject = undefined;
+        const requestedSitchObject = Globals.newSitchObject;
+        console.log("New Sitch Text = " + requestedSitchObject)
+        try {
+            await newSitch(requestedSitchObject, true);
+        } catch (error) {
+            console.error("Error loading requested sitch object:", error);
+        } finally {
+            // Only clear if no newer request replaced it while we were loading.
+            if (Globals.newSitchObject === requestedSitchObject) {
+                Globals.newSitchObject = undefined;
+            }
+        }
     }
     setTimeout( checkFornewSitchObject, 500);
 }
@@ -2698,4 +2707,3 @@ async function waitForTerrainToLoad() {
     });
     console.log("loadingTerrain complete!");
 }
-
