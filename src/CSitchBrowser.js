@@ -1166,7 +1166,7 @@ export class CSitchBrowser {
 
             if (sitch.screenshotUrl) {
                 const img = document.createElement("img");
-                Object.assign(img.style, { width: "100%", height: "100%", objectFit: "cover", display: "block" });
+                Object.assign(img.style, { width: "100%", height: "100%", objectFit: "contain", display: "block" });
                 img.dataset.src = sitch.screenshotUrl;
                 img.alt = sitch.name;
                 img.onerror = () => {

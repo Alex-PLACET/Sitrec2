@@ -326,21 +326,6 @@ export class CFileManager extends CManager {
 
     captureViewportScreenshot(targetWidth = 1280) {
         const scale = 1; // don't use retina for thumbnails
-        const srcWidth = ViewMan.widthPx * scale;
-        const srcHeight = ViewMan.heightPx * scale;
-
-        if (srcWidth <= 0 || srcHeight <= 0) return Promise.resolve(null);
-
-        const targetHeight = Math.round(targetWidth * srcHeight / srcWidth);
-
-        // Composite all visible views into a full-size canvas (same as viewport video export)
-        const fullCanvas = document.createElement("canvas");
-        fullCanvas.width = srcWidth;
-        fullCanvas.height = srcHeight;
-        const fullCtx = fullCanvas.getContext("2d");
-        fullCtx.fillStyle = "#000000";
-        fullCtx.fillRect(0, 0, srcWidth, srcHeight);
-
         ViewMan.computeEffectiveVisibility();
 
         const nonOverlays = [];
@@ -355,23 +340,56 @@ export class CFileManager extends CManager {
             }
         });
 
+        // Build capture bounds from currently visible base views.
+        // Keep at least the full manager viewport, but expand if any view spills outside.
+        let minX = 0;
+        let minY = 0;
+        let maxX = ViewMan.widthPx * scale;
+        let maxY = ViewMan.heightPx * scale;
+        for (const view of nonOverlays) {
+            if (!view.canvas) continue;
+            const x = view.leftPx * scale;
+            const y = (view.topPx - ViewMan.topPx) * scale;
+            const w = view.widthPx * scale;
+            const h = view.heightPx * scale;
+            minX = Math.min(minX, x);
+            minY = Math.min(minY, y);
+            maxX = Math.max(maxX, x + w);
+            maxY = Math.max(maxY, y + h);
+        }
+
+        const srcWidth = Math.max(1, Math.ceil(maxX - minX));
+        const srcHeight = Math.max(1, Math.ceil(maxY - minY));
+        const targetHeight = Math.round(targetWidth * srcHeight / srcWidth);
+
+        // Composite all visible views into a full-size canvas (same as viewport video export)
+        const fullCanvas = document.createElement("canvas");
+        fullCanvas.width = srcWidth;
+        fullCanvas.height = srcHeight;
+        const fullCtx = fullCanvas.getContext("2d");
+        fullCtx.fillStyle = "#000000";
+        fullCtx.fillRect(0, 0, srcWidth, srcHeight);
+
         // Re-render each view so WebGL buffers are fresh (preserveDrawingBuffer is not set)
         const frame = Math.floor(par.frame);
         for (const view of nonOverlays) {
             view.renderCanvas(frame);
             if (view.canvas) {
-                const x = view.leftPx * scale;
-                const y = (view.topPx - ViewMan.topPx) * scale;
+                const x = view.leftPx * scale - minX;
+                const y = (view.topPx - ViewMan.topPx) * scale - minY;
                 fullCtx.drawImage(view.canvas, x, y, view.widthPx * scale, view.heightPx * scale);
             }
         }
         for (const view of overlays) {
             const alpha = view.transparency !== undefined ? view.transparency : 1;
             if (alpha <= 0 || !view.canvas) continue;
+            // Hidden overlay canvases can retain stale pixels (e.g. old LOADING text).
+            // Skip canvases hidden by style to match on-screen output.
+            if (view.canvas.style.display === "none" || view.canvas.style.visibility === "hidden") continue;
             view.renderCanvas(frame);
             const parentView = view.overlayView;
-            const x = parentView.leftPx * scale;
-            const y = (parentView.topPx - ViewMan.topPx) * scale;
+            const x = parentView.leftPx * scale - minX;
+            const y = (parentView.topPx - ViewMan.topPx) * scale - minY;
             fullCtx.globalAlpha = alpha;
             fullCtx.drawImage(view.canvas, x, y, parentView.widthPx * scale, parentView.heightPx * scale);
             fullCtx.globalAlpha = 1;

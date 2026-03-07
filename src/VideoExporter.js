@@ -504,6 +504,11 @@ export class VideoExportManager {
                     for (const view of overlays) {
                         const alpha = view.transparency !== undefined ? view.transparency : 1;
                         if (alpha <= 0) continue;
+                        if (view.canvas && (view.canvas.style.display === "none" || view.canvas.style.visibility === "hidden")) {
+                            // Hidden overlay canvases can retain stale pixels if they were previously shown.
+                            // Skip drawing them to match on-screen presentation.
+                            continue;
+                        }
 
                         if (view.canvas) {
                             const ctx = view.canvas.getContext('2d');

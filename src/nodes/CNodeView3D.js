@@ -399,9 +399,16 @@ export class CNodeView3D extends CNodeViewCanvas {
                     ViewMan.iterate((id, childView) => {
                         if (childView === this) return;
                         if (!childView._effectivelyVisible) return;
-                        const isChild = (childView.overlayView === this) ||
+                        const isOverlayChild = (childView.overlayView === this);
+                        const isChild = isOverlayChild ||
                                         (childView.in.relativeTo === this);
                         if (!isChild) return;
+                        if (isOverlayChild && childView.canvas &&
+                            (childView.canvas.style.display === "none" || childView.canvas.style.visibility === "hidden")) {
+                            // Hidden overlay canvases can retain stale pixels if they were previously shown.
+                            // Skip drawing them to match on-screen presentation.
+                            return;
+                        }
 
                         childView.renderCanvas(frame);
                         if (childView.canvas) {
