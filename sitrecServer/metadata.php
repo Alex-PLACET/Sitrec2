@@ -11,12 +11,37 @@
  * when labels are assigned.
  *
  * GET: Returns user metadata {labels: [...], sitchLabels: {...}}
- * POST: Saves user metadata. If "updateSitch" is provided, also writes per-sitch metadata.json
+ * POST: Saves user metadata. If "updateSitches" array is provided, also writes per-sitch metadata.json for each.
  */
 
-require('./user.php');
-
 header('Content-Type: application/json');
+
+// CORS support (matches getsitches.php pattern) — needed because the client
+// calls this endpoint via the absolute SITREC_SERVER URL which may be cross-origin
+// during development (webpack dev server on a different port).
+$requestOrigin = $_SERVER['HTTP_ORIGIN'] ?? '';
+if ($requestOrigin) {
+    $serverOrigin = $_SERVER['REQUEST_SCHEME'] . '://' . $_SERVER['HTTP_HOST'];
+    $allowedOrigins = [$serverOrigin];
+    $localhostEnv = getenv('LOCALHOST');
+    if ($localhostEnv) {
+        $allowedOrigins[] = 'https://' . $localhostEnv;
+        $allowedOrigins[] = 'http://'  . $localhostEnv;
+    }
+    if (in_array($requestOrigin, $allowedOrigins, true)) {
+        header('Access-Control-Allow-Origin: ' . $requestOrigin);
+        header('Vary: Origin');
+        header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+        header('Access-Control-Allow-Headers: Content-Type');
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit();
+}
+
+require('./user.php');
 
 $user_id = getUserID();
 
@@ -86,6 +111,11 @@ function sanitizeMetadata($data) {
             }
             $count++;
         }
+    }
+
+    // Force sitchLabels to encode as JSON object {} not array []
+    if (empty($sanitized['sitchLabels'])) {
+        $sanitized['sitchLabels'] = new \stdClass();
     }
 
     return $sanitized;
@@ -195,10 +225,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Save user-level metadata
             writeS3Json($s3, $aws, 'metadata/' . $user_id . '.json', $sanitized);
 
-            // If updateSitch is specified, write per-sitch metadata.json
-            if (isset($input['updateSitch']) && is_string($input['updateSitch'])) {
-                $sitchName = basename($input['updateSitch']);
-                if (isValidSitchName($sitchName)) {
+            // Write per-sitch metadata.json for each listed sitch
+            if (isset($input['updateSitches']) && is_array($input['updateSitches'])) {
+                foreach ($input['updateSitches'] as $rawName) {
+                    if (!is_string($rawName)) continue;
+                    $sitchName = basename($rawName);
+                    if (!isValidSitchName($sitchName)) continue;
                     $sitchLabels = $sanitized['sitchLabels'][$sitchName] ?? [];
                     $sitchKey = $user_id . '/' . $sitchName . '/metadata.json';
                     writeS3Json($s3, $aws, $sitchKey, ['labels' => $sitchLabels]);
@@ -211,10 +243,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $metaPath = $UPLOAD_PATH . 'metadata/' . $user_id . '.json';
             writeLocalJson($metaPath, $sanitized);
 
-            // If updateSitch is specified, write per-sitch metadata.json
-            if (isset($input['updateSitch']) && is_string($input['updateSitch'])) {
-                $sitchName = basename($input['updateSitch']);
-                if (isValidSitchName($sitchName)) {
+            // Write per-sitch metadata.json for each listed sitch
+            if (isset($input['updateSitches']) && is_array($input['updateSitches'])) {
+                foreach ($input['updateSitches'] as $rawName) {
+                    if (!is_string($rawName)) continue;
+                    $sitchName = basename($rawName);
+                    if (!isValidSitchName($sitchName)) continue;
                     $sitchLabels = $sanitized['sitchLabels'][$sitchName] ?? [];
                     $sitchPath = $UPLOAD_PATH . $user_id . '/' . $sitchName . '/metadata.json';
                     writeLocalJson($sitchPath, ['labels' => $sitchLabels]);

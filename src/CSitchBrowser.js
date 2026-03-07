@@ -66,7 +66,8 @@ export class CSitchBrowser {
                     name: String(e[0]), date: String(e[1]), screenshotUrl: e[2] || null,
                 }));
                 this.userLabels = metaData.labels || [];
-                this.sitchLabels = metaData.sitchLabels || {};
+                const sl = metaData.sitchLabels || {};
+                this.sitchLabels = Array.isArray(sl) ? {} : sl;
                 this._ensurePermanentLabels();
                 this.applyFilterAndSort();
                 this.show();
@@ -1340,14 +1341,18 @@ export class CSitchBrowser {
             this.userLabels.push({name: trimmed, color});
         }
 
+        const changed = [];
         if (assignToSitches && assignToSitches.length > 0) {
             for (const sn of assignToSitches) {
                 if (!this.sitchLabels[sn]) this.sitchLabels[sn] = [];
-                if (!this.sitchLabels[sn].includes(trimmed)) this.sitchLabels[sn].push(trimmed);
+                if (!this.sitchLabels[sn].includes(trimmed)) {
+                    this.sitchLabels[sn].push(trimmed);
+                    changed.push(sn);
+                }
             }
         }
 
-        this._saveMetadata();
+        this._saveMetadata(changed);
         this._rebuildSidebarLabels();
         this.rebuildContent();
     }
@@ -1357,29 +1362,33 @@ export class CSitchBrowser {
         if (!confirm(`Delete label "${labelName}"? This will remove it from all sitches.`)) return;
 
         this.userLabels = this.userLabels.filter(l => l.name !== labelName);
+        const changed = [];
         for (const sn of Object.keys(this.sitchLabels)) {
-            this.sitchLabels[sn] = this.sitchLabels[sn].filter(l => l !== labelName);
-            if (this.sitchLabels[sn].length === 0) delete this.sitchLabels[sn];
+            if (this.sitchLabels[sn].includes(labelName)) {
+                this.sitchLabels[sn] = this.sitchLabels[sn].filter(l => l !== labelName);
+                changed.push(sn);
+                if (this.sitchLabels[sn].length === 0) delete this.sitchLabels[sn];
+            }
         }
         if (this.activeLabel === labelName) this.activeLabel = null;
 
-        this._saveMetadata();
+        this._saveMetadata(changed);
         this.applyFilterAndSort();
         this._rebuildSidebarLabels();
         this.rebuildContent();
     }
 
     _addLabelToSitches(sitchNames, labelName) {
-        let changed = false;
+        const changed = [];
         for (const sn of sitchNames) {
             if (!this.sitchLabels[sn]) this.sitchLabels[sn] = [];
             if (!this.sitchLabels[sn].includes(labelName)) {
                 this.sitchLabels[sn].push(labelName);
-                changed = true;
+                changed.push(sn);
             }
         }
-        if (changed) {
-            this._saveMetadata();
+        if (changed.length > 0) {
+            this._saveMetadata(changed);
             this.applyFilterAndSort();
             this._rebuildSidebar();
             this.rebuildContent();
@@ -1387,31 +1396,39 @@ export class CSitchBrowser {
     }
 
     _removeLabelFromSitches(sitchNames, labelName) {
-        let changed = false;
+        const changed = [];
         for (const sn of sitchNames) {
             if (this.sitchLabels[sn] && this.sitchLabels[sn].includes(labelName)) {
                 this.sitchLabels[sn] = this.sitchLabels[sn].filter(l => l !== labelName);
+                changed.push(sn);
                 if (this.sitchLabels[sn].length === 0) delete this.sitchLabels[sn];
-                changed = true;
             }
         }
-        if (changed) {
-            this._saveMetadata();
+        if (changed.length > 0) {
+            this._saveMetadata(changed);
             this.applyFilterAndSort();
             this._rebuildSidebar();
             this.rebuildContent();
         }
     }
 
-    _saveMetadata() {
+    _saveMetadata(changedSitches) {
         const body = {
             labels: this.userLabels,
             sitchLabels: this.sitchLabels,
         };
+        if (changedSitches && changedSitches.length > 0) {
+            body.updateSitches = changedSitches;
+        }
         fetch(withTestUser(SITREC_SERVER + "metadata.php"), {
             method: "POST", mode: "cors",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify(body),
+        }).then(r => {
+            if (!r.ok) console.error("metadata.php returned", r.status);
+            return r.json();
+        }).then(data => {
+            if (data.error) console.error("metadata save error:", data.error);
         }).catch(err => console.error("Failed to save metadata:", err));
     }
 
