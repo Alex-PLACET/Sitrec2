@@ -300,12 +300,14 @@ if (isset($_GET['get'])) {
                         $sitchPath = $dir . '/' . $file;
                         $versions = @scandir($sitchPath);
                         $newestTime = 0;
+                        $latestVersion = null;
                         if ($versions !== false) {
                             foreach ($versions as $v) {
                                 if ($v !== '.' && $v !== '..' && $v !== 'screenshot.jpg' && $v !== 'metadata.json' && is_file($sitchPath . '/' . $v)) {
                                     $vTime = @filemtime($sitchPath . '/' . $v);
                                     if ($vTime > $newestTime) {
                                         $newestTime = $vTime;
+                                        $latestVersion = $v;
                                     }
                                 }
                             }
@@ -316,7 +318,7 @@ if (isset($_GET['get'])) {
                         if (is_file($screenshotPath)) {
                             $screenshotUrl = $storagePath . $userID . '/' . $file . '/screenshot.jpg';
                         }
-                        $folders[] = [$file, $lastDate, $screenshotUrl];
+                        $folders[] = [$file, $lastDate, $screenshotUrl, $latestVersion];
                     }
                 }
                 echo json_encode($folders);
@@ -335,6 +337,7 @@ if (isset($_GET['get'])) {
                 ));
                 $folderDates = array();
                 $folderScreenshots = array();
+                $folderLatest = array();
                 foreach ($objects as $object) {
                     $key = $object['Key'];
 
@@ -357,6 +360,7 @@ if (isset($_GET['get'])) {
                         } else {
                             if (!isset($folderDates[$folderName]) || $lastDate > $folderDates[$folderName]) {
                                 $folderDates[$folderName] = $lastDate;
+                                $folderLatest[$folderName] = $fileName;
                             }
                         }
                     }
@@ -365,7 +369,8 @@ if (isset($_GET['get'])) {
                 $folders = array();
                 foreach ($folderDates as $name => $date) {
                     $screenshotUrl = isset($folderScreenshots[$name]) ? $folderScreenshots[$name] : null;
-                    $folders[] = [$name, $date, $screenshotUrl];
+                    $latestVersion = isset($folderLatest[$name]) ? $folderLatest[$name] : null;
+                    $folders[] = [$name, $date, $screenshotUrl, $latestVersion];
                 }
                 echo json_encode($folders);
                 exit();

@@ -42,6 +42,7 @@ export async function takeScreenshotOrCompare(page, snapshotName, testInfo, opti
         const actualPng = PNG.sync.read(actualBuffer);
         
         let hasDiff = false;
+        let diffBuffer = null;
         if (expectedPng.width === actualPng.width && expectedPng.height === actualPng.height) {
             const diffPng = new PNG({width: expectedPng.width, height: expectedPng.height});
             const numDiffPixels = pixelmatch(
@@ -53,20 +54,30 @@ export async function takeScreenshotOrCompare(page, snapshotName, testInfo, opti
                 {threshold: mergedOptions.threshold}
             );
             hasDiff = numDiffPixels > 0;
+            if (hasDiff) {
+                diffBuffer = PNG.sync.write(diffPng);
+            }
         } else {
             hasDiff = true;
         }
-        
+
+        const diffPath = join(snapshotDir, `${baseName}_Diff.png`);
         if (hasDiff) {
             copyFileSync(snapshotPath, goodPath);
             writeFileSync(badPath, actualBuffer);
-            console.log(`Diff detected - saved ${baseName}_Good.png and ${baseName}_Bad.png`);
+            if (diffBuffer) {
+                writeFileSync(diffPath, diffBuffer);
+            }
+            console.log(`Diff detected - saved ${baseName}_Good.png, ${baseName}_Bad.png, and ${baseName}_Diff.png`);
         } else {
             if (existsSync(badPath)) {
                 unlinkSync(badPath);
             }
             if (existsSync(goodPath)) {
                 unlinkSync(goodPath);
+            }
+            if (existsSync(diffPath)) {
+                unlinkSync(diffPath);
             }
         }
         

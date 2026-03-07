@@ -53,6 +53,7 @@ import {forceUpdateUIText} from "./nodes/CNodeViewUI";
 import {configParams} from "./login";
 import {showError} from "./showError";
 import {textSitchToObject} from "./RegisterSitches";
+import {waitForExportFrameSettled} from "./ExportFrameSettler";
 import {parseObjectInput as parseObjectInputUtil} from "./utils/parseObjectInput";
 import {initializeSettings, SettingsSaver} from "./SettingsManager";
 import {CNodeCurveEditor2} from "./nodes/CNodeCurveEdit2";
@@ -3280,20 +3281,12 @@ export class CCustomManager {
                     check();
                 });
 
-                // Wait for all pending async operations (model loading, terrain, etc.)
-                const maxWait = 60000;
-                const start = Date.now();
-                await new Promise(resolve => {
-                    const check = () => {
-                        if (Globals.pendingActions <= 0 || Date.now() - start > maxWait) resolve();
-                        else setTimeout(check, 200);
-                    };
-                    // Initial delay to let the sitch setup start registering pending actions
-                    setTimeout(check, 1000);
+                // Wait for all pending async operations (terrain tiles, 3D tiles, video, etc.)
+                await waitForExportFrameSettled({
+                    frame: Math.floor(par.frame),
+                    maxWaitMs: 60000,
+                    logPrefix: "Screenshot add",
                 });
-
-                // One extra frame to ensure rendering is complete
-                await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
                 // Check if any console.error occurred during loading
                 if (capturedError) {
@@ -3307,6 +3300,7 @@ export class CCustomManager {
                 }
                 const buffer = await blob.arrayBuffer();
                 const url = await FileManager.rehoster.rehostFile(sitchName, buffer, "screenshot.jpg", {skipHash: true});
+                await FileManager.bumpScreenshotVersion(sitchName);
                 console.log(`  Screenshot saved: ${url}`);
                 results.added.push(sitchName);
 

@@ -113,9 +113,20 @@ function sanitizeMetadata($data) {
         }
     }
 
+    // Preserve screenshotVersions (integer counters per sitch)
+    if (isset($data['screenshotVersions']) && is_array($data['screenshotVersions'])) {
+        foreach ($data['screenshotVersions'] as $sitchName => $ver) {
+            if (!is_string($sitchName) || !isValidSitchName(basename($sitchName))) continue;
+            $sanitized['screenshotVersions'][basename($sitchName)] = intval($ver);
+        }
+    }
+
     // Force sitchLabels to encode as JSON object {} not array []
     if (empty($sanitized['sitchLabels'])) {
         $sanitized['sitchLabels'] = new \stdClass();
+    }
+    if (empty($sanitized['screenshotVersions'])) {
+        $sanitized['screenshotVersions'] = new \stdClass();
     }
 
     return $sanitized;
@@ -211,6 +222,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!is_array($input)) {
             http_response_code(400);
             echo json_encode(['error' => 'Invalid JSON']);
+            exit();
+        }
+
+        // Handle screenshotVersion bump: read-modify-write
+        if (isset($input['bumpScreenshotVersions']) && is_array($input['bumpScreenshotVersions'])) {
+            global $useAWS;
+            $metaKey = $useAWS ? ('metadata/' . $user_id . '.json') : null;
+            $metaPath = $useAWS ? null : ($GLOBALS['UPLOAD_PATH'] . 'metadata/' . $user_id . '.json');
+
+            // Read existing
+            if ($useAWS) {
+                $s3Data = startS3();
+                $existing = readS3Json($s3Data['s3'], $s3Data['aws'], $metaKey);
+            } else {
+                $existing = readLocalJson($metaPath);
+            }
+            $existing = sanitizeMetadata($existing);
+
+            // Bump versions
+            $versions = (array)($existing['screenshotVersions'] ?? []);
+            foreach ($input['bumpScreenshotVersions'] as $rawName) {
+                if (!is_string($rawName)) continue;
+                $sitchName = basename($rawName);
+                if (!isValidSitchName($sitchName)) continue;
+                $versions[$sitchName] = ($versions[$sitchName] ?? 0) + 1;
+            }
+            $existing['screenshotVersions'] = empty($versions) ? new \stdClass() : $versions;
+
+            // Write back
+            if ($useAWS) {
+                writeS3Json($s3Data['s3'], $s3Data['aws'], $metaKey, $existing);
+            } else {
+                writeLocalJson($metaPath, $existing);
+            }
+
+            echo json_encode(['success' => true, 'screenshotVersions' => $existing['screenshotVersions']]);
             exit();
         }
 

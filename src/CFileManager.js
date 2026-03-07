@@ -44,6 +44,7 @@ import {parseKLVFile, parseMISB1CSV} from "./MISBUtils";
 // Modern CSV parser
 import csv from "./utils/CSVParser";
 import {asyncCheckLogin} from "./login";
+import {waitForExportFrameSettled} from "./ExportFrameSettler";
 import {par} from "./par";
 import {assert} from "./assert.js";
 import {textSitchToObject} from "./RegisterSitches";
@@ -323,7 +324,7 @@ export class CFileManager extends CManager {
         }
     }
 
-    captureViewportScreenshot(targetWidth = 640) {
+    captureViewportScreenshot(targetWidth = 1280) {
         const scale = 1; // don't use retina for thumbnails
         const srcWidth = ViewMan.widthPx * scale;
         const srcHeight = ViewMan.heightPx * scale;
@@ -384,8 +385,99 @@ export class CFileManager extends CManager {
         thumbCtx.drawImage(fullCanvas, 0, 0, targetWidth, targetHeight);
 
         return new Promise(resolve => {
-            thumbCanvas.toBlob(blob => resolve(blob), "image/jpeg", 0.85);
+            thumbCanvas.toBlob(blob => resolve(blob), "image/jpeg", 0.65);
         });
+    }
+
+    bumpScreenshotVersion(sitchName) {
+        return fetch(withTestUser(SITREC_SERVER + "metadata.php"), {
+            method: "POST", mode: "cors",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({bumpScreenshotVersions: [sitchName]}),
+        }).catch(err => console.warn("Failed to bump screenshot version:", err));
+    }
+
+    async refreshScreenshots(sitchNames) {
+        const total = sitchNames.length;
+        if (!confirm(`Refresh thumbnails for ${total} sitch(es)?\n\nThis will load each one, render it, and upload a new screenshot.\n\nContinue?`)) {
+            return;
+        }
+
+        console.log(`Refreshing screenshots for ${total} sitches...`);
+        Globals.screenshotting = true;
+        const results = {done: [], failed: []};
+
+        const originalConsoleError = console.error;
+        let capturedError = null;
+        console.error = function (...args) {
+            originalConsoleError.apply(console, args);
+            if (!capturedError) capturedError = args.join(' ');
+        };
+
+        for (let i = 0; i < sitchNames.length; i++) {
+            const sitchName = sitchNames[i];
+            let latestVersion = "(unknown)";
+            capturedError = null;
+            console.log(`\n[${i + 1}/${total}] Loading: ${sitchName}`);
+
+            try {
+                const versions = await this.getVersions(sitchName);
+                if (!versions || versions.length === 0) throw new Error("No versions found");
+                latestVersion = versions[versions.length - 1].url;
+
+                const response = await fetch(latestVersion);
+                const data = await response.arrayBuffer();
+                const decoder = new TextDecoder('utf-8');
+                let sitchObject = textSitchToObject(decoder.decode(data));
+
+                if (sitchObject.terrainUI) {
+                    sitchObject.terrainUI.mapType = "Local";
+                    sitchObject.terrainUI.elevationType = "Local";
+                } else if (sitchObject.terrain) {
+                    sitchObject.terrain.mapType = "Local";
+                    sitchObject.terrain.elevationType = "Local";
+                }
+
+                setNewSitchObject(sitchObject);
+
+                await new Promise(resolve => {
+                    const check = () => {
+                        if (Globals.newSitchObject === undefined) resolve();
+                        else setTimeout(check, 100);
+                    };
+                    check();
+                });
+
+                // Wait for all pending async operations (terrain tiles, 3D tiles, video, etc.)
+                await waitForExportFrameSettled({
+                    frame: Math.floor(par.frame),
+                    maxWaitMs: 60000,
+                    logPrefix: "Screenshot refresh",
+                });
+
+                if (capturedError) throw new Error(`console.error during load: ${capturedError}`);
+
+                const blob = await this.captureViewportScreenshot();
+                if (!blob) throw new Error("Screenshot capture returned null");
+                const buffer = await blob.arrayBuffer();
+                const url = await this.rehoster.rehostFile(sitchName, buffer, "screenshot.jpg", {skipHash: true});
+                await this.bumpScreenshotVersion(sitchName);
+                console.log(`  Screenshot saved: ${url}`);
+                results.done.push(sitchName);
+
+            } catch (error) {
+                console.error = originalConsoleError;
+                console.error(`  FAILED: ${sitchName} - ${error.message}`);
+                Globals.screenshotting = false;
+                alert(`Screenshot refresh stopped on error!\n\nDone: ${results.done.length}\nFailed: ${sitchName}\nFile: ${latestVersion}\n\n${error.message}`);
+                return;
+            }
+        }
+
+        console.error = originalConsoleError;
+        Globals.screenshotting = false;
+        console.log(`\nScreenshot refresh complete. Done: ${results.done.length}`);
+        alert(`Screenshot refresh complete!\n\nRefreshed: ${results.done.length}`);
     }
 
     /**
@@ -764,6 +856,7 @@ export class CFileManager extends CManager {
                                 return this.rehoster.rehostFile(sitchName, buffer, "screenshot.jpg", {skipHash: true});
                             }).then(url => {
                                 console.log("Screenshot saved: " + url);
+                                return this.bumpScreenshotVersion(sitchName);
                             }).catch(err => {
                                 console.warn("Failed to save screenshot (non-critical):", err);
                             });
@@ -1538,7 +1631,7 @@ export class CFileManager extends CManager {
 
         // ensure we don't parse the file twice.
         if (fileManagerEntry.handled)   {
-            console.error("handleParsedFile: File already handled for " + filename+", skipping");
+            console.warn("handleParsedFile: File already handled for " + filename+", skipping");
             return;
         }
         fileManagerEntry.handled = true;

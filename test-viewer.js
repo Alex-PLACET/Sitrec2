@@ -68,7 +68,7 @@ app.get('/', (req, res) => {
         html += `
         <div class="test-row" data-id="${t.id}" data-group="${t.group}">
             <input type="checkbox" class="test-checkbox" data-id="${t.id}">
-            <span class="test-name">${t.name}</span>
+            ${t.url ? `<a class="test-name" href="https://local.metabunk.org/sitrec${t.url}" target="_blank">${t.name}</a>` : `<span class="test-name">${t.name}</span>`}
             <span class="test-status" id="status-${t.id}">-</span>
             <button class="reset-btn" onclick="resetTest('${t.id}')" title="Reset regression data">R</button>
         </div>`;
@@ -268,6 +268,13 @@ app.get('/', (req, res) => {
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+        }
+        a.test-name {
+            color: #569cd6;
+            text-decoration: none;
+        }
+        a.test-name:hover {
+            text-decoration: underline;
         }
         .test-status {
             width: 16px;

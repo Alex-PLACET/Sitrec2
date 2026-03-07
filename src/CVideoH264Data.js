@@ -450,9 +450,9 @@ export class CVideoH264Data extends CVideoWebCodecBase {
         // Check if frame 0 is a keyframe
         const frame0Type = encodedChunks[0].type;
         if (frame0Type !== 'key') {
-            console.error(`❌ INVALID H.264 STREAM: Frame 0 is type '${frame0Type}', NOT a keyframe!`);
-            console.error("   H.264 streams MUST start with a keyframe (IDR/type='key')");
-            console.error("   This file was likely improperly extracted from a .TS container.");
+            console.warn(`⚠️ H.264 STREAM: Frame 0 is type '${frame0Type}', not a keyframe`);
+            console.warn("   H.264 streams should start with a keyframe (IDR/type='key')");
+            console.warn("   This file was likely extracted from a .TS container — orphaned frames will be skipped.");
         } else {
             console.log(`✓ Frame 0 is correctly a keyframe`);
         }
@@ -467,26 +467,26 @@ export class CVideoH264Data extends CVideoWebCodecBase {
         }
 
         if (firstKeyframeIndex === -1) {
-            console.error("❌ CRITICAL: No keyframe found in entire stream!");
+            console.warn("⚠️ CRITICAL: No keyframe found in entire stream!");
             return;
         }
 
         if (firstKeyframeIndex > 0) {
-            console.error(`❌ ORPHANED FRAMES: Frames 0-${firstKeyframeIndex - 1} are delta frames before first keyframe`);
-            console.error(`   These ${firstKeyframeIndex} frames CANNOT be decoded and will be skipped`);
-            
+            console.warn(`⚠️ ORPHANED FRAMES: Frames 0-${firstKeyframeIndex - 1} are delta frames before first keyframe`);
+            console.warn(`   These ${firstKeyframeIndex} frames cannot be decoded and will be skipped`);
+
             // Show frame type sequence
             let frameSequence = [];
             for (let i = 0; i < Math.min(20, encodedChunks.length); i++) {
                 frameSequence.push(encodedChunks[i].type === 'key' ? 'K' : 'D');
             }
-            console.error(`   Frame sequence (first 20): ${frameSequence.join('')}${encodedChunks.length > 20 ? '...' : ''}`);
-            
+            console.warn(`   Frame sequence (first 20): ${frameSequence.join('')}${encodedChunks.length > 20 ? '...' : ''}`);
+
             // Count total orphaned vs usable
             let orphanedCount = firstKeyframeIndex;
             let usableCount = encodedChunks.length - orphanedCount;
-            console.error(`   Total: ${orphanedCount} orphaned + ${usableCount} usable = ${encodedChunks.length} frames`);
-            console.error(`   Usable video duration: ~${(usableCount / 30).toFixed(2)}s (at 30fps)`);
+            console.warn(`   Total: ${orphanedCount} orphaned + ${usableCount} usable = ${encodedChunks.length} frames`);
+            console.warn(`   Usable video duration: ~${(usableCount / 30).toFixed(2)}s (at 30fps)`);
         }
 
         // General frame breakdown

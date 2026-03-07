@@ -62,9 +62,16 @@ export class CSitchBrowser {
 
         Promise.all([sitchesP, metaP])
             .then(([sitchData, metaData]) => {
-                this.sitches = sitchData.map(e => ({
-                    name: String(e[0]), date: String(e[1]), screenshotUrl: e[2] || null,
-                }));
+                const ssVersions = metaData.screenshotVersions || {};
+                this.sitches = sitchData.map(e => {
+                    let screenshotUrl = e[2] || null;
+                    const name = String(e[0]);
+                    const ver = ssVersions[name];
+                    if (screenshotUrl && ver) {
+                        screenshotUrl += (screenshotUrl.includes("?") ? "&" : "?") + "v=" + ver;
+                    }
+                    return {name, date: String(e[1]), screenshotUrl};
+                });
                 this.userLabels = metaData.labels || [];
                 const sl = metaData.sitchLabels || {};
                 this.sitchLabels = Array.isArray(sl) ? {} : sl;
@@ -618,10 +625,18 @@ export class CSitchBrowser {
             this._hideContextMenu();
         }));
 
+        // Refresh Thumbnails
+        menu.appendChild(this._makeMenuItem("Refresh Thumbnails", () => {
+            this._hideContextMenu();
+            this.close();
+            this.fileManager.refreshScreenshots([...selectedNames]);
+        }));
+
         menu.appendChild(this._makeMenuSep());
 
-        // Label checkboxes (all labels)
+        // Label checkboxes (all labels except "Deleted" — handled by delete button)
         for (const label of this.userLabels) {
+            if (label.name === "Deleted") continue;
             const hasCount = selectedNames.filter(n => this._sitchHasLabel(n, label.name)).length;
             const all = hasCount === selectedNames.length;
             const none = hasCount === 0;
