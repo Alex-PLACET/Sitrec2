@@ -502,14 +502,14 @@ export class CSitchBrowser {
     // ==================== KEYBOARD ====================
 
     _handleKeyDown(e) {
-        // Don't capture if typing in search
-        if (e.target.tagName === "INPUT") return;
-
         if (e.key === "Escape") {
             this._hideContextMenu();
             this.close();
             return;
         }
+
+        // Don't capture other keys if typing in search
+        if (e.target.tagName === "INPUT") return;
 
         if (e.key === "a" && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();
