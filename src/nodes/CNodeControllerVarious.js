@@ -389,7 +389,7 @@ export class CNodeControllerFOV extends CNodeController {
 
         camera.fov = extractFOV(value);
 
-        assert(camera.fov !== undefined && camera.fov>0 && camera.fov <= 180, `bad fov ${this.fov}` )
+        assert(camera.fov !== undefined && camera.fov>0 && camera.fov <= 180, `bad fov ${camera.fov}` )
 
         camera.updateProjectionMatrix()
     }

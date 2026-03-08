@@ -1316,6 +1316,7 @@ export class CFileManager extends CManager {
         if (this.#loadingPromises.has(loadingKey)) {
             console.log(`Asset ${filename} is already being loaded, reusing existing promise`);
             return this.#loadingPromises.get(loadingKey).then(parsedAsset => {
+                if (parsedAsset === null) return null;
                 // If the requested ID is different from the one being loaded,
                 // we'll need to add a new entry with the requested ID
                 if (parsedAsset.id !== id && !this.exists(id)) {
@@ -1515,6 +1516,14 @@ export class CFileManager extends CManager {
                         if (Array.isArray(parsedAsset)) {
                             assert(parsedAsset.length === 1, "Zipped IDed asset contains multiple files")
                             parsedAsset = parsedAsset[0]
+                        }
+
+                        // Skip files that failed to parse (e.g. corrupt KLV)
+                        if (parsedAsset.parsed === null) {
+                            Globals.parsing--;
+                            Globals.pendingActions--;
+                            LoadingManager.completeLoading(loadingId);
+                            return null;
                         }
 
                         // We now have a full parsed asset in a {filename: filename, parsed: parsed} structure
@@ -1788,11 +1797,31 @@ export class CFileManager extends CManager {
                     if (firstColumnHeader === "time") {
                         // convert the time to frame numbers
                         const fps = Sit.fps;
-                        parsedFile.forEach(row => {
-                            if (row[0] !== undefined) {
-                                row[0] = Math.round(row[0] * fps);
-                            }
-                        });
+                        const simSpeed = Sit.simSpeed ?? 1;
+
+                        // Check if time values are ISO 8601 date strings or numeric seconds
+                        const firstTimeValue = parsedFile[0]?.[0];
+                        const isISODate = typeof firstTimeValue === 'string' && firstTimeValue.match(/^\d{4}-\d{2}-\d{2}/);
+
+                        if (isISODate) {
+                            // ISO 8601 date strings - convert to frame numbers relative to Sit.startTime
+                            // Use Sit.startTime (the canonical video start time from the sitch definition)
+                            // rather than GlobalDateTimeNode which can be shifted by track syncing
+                            const startMS = new Date(Sit.startTime).valueOf();
+                            parsedFile.forEach(row => {
+                                if (row[0] !== undefined) {
+                                    const dateMS = new Date(row[0]).valueOf();
+                                    row[0] = Math.round((dateMS - startMS) * fps / (1000 * simSpeed));
+                                }
+                            });
+                        } else {
+                            // Numeric seconds - multiply by fps
+                            parsedFile.forEach(row => {
+                                if (row[0] !== undefined) {
+                                    row[0] = Math.round(row[0] * fps);
+                                }
+                            });
+                        }
                     }
 
 
@@ -2366,6 +2395,12 @@ export class CFileManager extends CManager {
                     break;
                 case "klv": {
                     const klvMisb = parseKLVFile(buffer);
+                    if (klvMisb === undefined) {
+                        console.warn(`parseAsset: KLV parsing failed for "${filename}", skipping file`);
+                        parsed = null;
+                        dataType = "klv";
+                        break;
+                    }
                     parsed = new CTrackFileMISB(klvMisb);
                     dataType = "trackfile";
                     break;
@@ -2870,6 +2905,7 @@ export function detectCSVType(csv) {
         return "FR24CSV";
     }
 
+    // Detect simple CSVs with Frame or Time as the first column, and then specific data types in the second column
     if ((csv[0][0].toLowerCase() === "frame" || csv[0][0].toLowerCase() === "time")
         && csv[0][1].toLowerCase() === "az") {
         return "AZIMUTH"

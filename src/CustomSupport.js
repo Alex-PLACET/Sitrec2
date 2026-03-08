@@ -3970,6 +3970,11 @@ export class CCustomManager {
                     (parsedResult) => {
                         Globals.dontAutoZoom = true;
 
+                        // Skip files that failed to parse (e.g. corrupt KLV)
+                        if (parsedResult === null) {
+                            return;
+                        }
+
                         assert(parsedResult !== undefined, "Parsed result should not be undefined for loaded file id: " + id);
 
                         // since it might be a container that parse to multiple files
