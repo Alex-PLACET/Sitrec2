@@ -127,7 +127,13 @@ export class CFileManager extends CManager {
 
                     // this.guiFolder.add(this, "rehostFile").name("Rehost File").perm().tooltip("Rehost a file from your local system. DEPRECATED");
                 } else {
-                    this.loginButton = this.guiServer.add(this, "loginServer").name("Server Disabled (click to log in)").setLabelColor("#FF8080");
+                    this.loginButton = this.guiServer.add(this, "loginServer").name("Saving Disabled (click to log in)").setLabelColor("#FF8080");
+                    // Still add Browse button for non-logged-in users (shows Featured sitches)
+                    if (parseBoolean(process.env.SAVE_TO_S3)) {
+                        this.sitchBrowser = new CSitchBrowser(this);
+                        this.guiServer.add(this, "openBrowseDialog").name("Open").perm()
+                            .tooltip("Browse featured sitches");
+                    }
                     this.guiServer.close();
                 }
             }
@@ -638,11 +644,11 @@ export class CFileManager extends CManager {
      * Fetches the sitch file, parses it, and initializes a new situation with it.
      * @param {string} name - The name of the sitch to load
      */
-    loadSavedFile(name) {
+    loadSavedFile(name, sourceUserID = null) {
         this.loadName = name;
-        // Loading from user's own saved files, so clear any source user override
-        // (e.g. from a ?custom=S3-URL that set sourceUserID at page load)
-        this.sourceUserID = null;
+        // If a sourceUserID is provided (e.g. loading a featured sitch), use it;
+        // otherwise clear any stale override (e.g. from a ?custom=S3-URL at page load)
+        this.sourceUserID = sourceUserID;
         console.log("Load Local File")
         console.log(this.loadName);
 

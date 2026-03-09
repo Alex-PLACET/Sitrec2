@@ -224,8 +224,9 @@ if (isset($_GET['get'])) {
     $userID = getUserID();
     $dir = getUserDir($userID);
 
-    if ($dir == "") {
+    if ($dir == "" && !($_GET['get'] == "versions" && isset($_GET['userid']))) {
         // return an empty array if the user is not logged in
+        // (but allow versions with explicit userid for featured sitch loading)
         echo json_encode(array());
         exit();
     }

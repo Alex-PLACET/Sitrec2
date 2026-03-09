@@ -45,14 +45,15 @@ require('./user.php');
 
 $user_id = getUserID();
 
-if ($user_id == 0) {
+require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/config_paths.php';
+
+// Allow unauthenticated GET for featured data only; everything else requires login
+if ($user_id == 0 && !($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['featured']))) {
     http_response_code(401);
     echo json_encode(['error' => 'Not logged in']);
     exit();
 }
-
-require_once __DIR__ . '/config.php';
-require_once __DIR__ . '/config_paths.php';
 
 define('MAX_LABELS', 100);
 define('MAX_LABEL_NAME_LENGTH', 50);
@@ -193,6 +194,51 @@ function writeLocalJson($path, $data) {
 // Handle GET - Fetch metadata
 // ============================
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    // GET ?featured=1 — return global featured.json (no auth required beyond login)
+    // Returns [{name, userID, screenshotUrl}] so any user can browse and load featured sitches.
+    if (isset($_GET['featured'])) {
+        try {
+            global $useAWS, $UPLOAD_PATH, $UPLOAD_URL;
+            if ($useAWS) {
+                $s3Data = startS3();
+                $raw = readS3Json($s3Data['s3'], $s3Data['aws'], 'metadata/featured.json');
+            } else {
+                $raw = readLocalJson($UPLOAD_PATH . 'metadata/featured.json');
+            }
+            $sitches = [];
+            if (isset($raw['sitches']) && is_array($raw['sitches'])) {
+                foreach ($raw['sitches'] as $entry) {
+                    if (!is_array($entry) || !isset($entry['name']) || !isset($entry['userID'])) continue;
+                    $name = basename(strval($entry['name']));
+                    $uid = intval($entry['userID']);
+                    if ($uid <= 0 || !isValidSitchName($name)) continue;
+
+                    $screenshotUrl = null;
+                    if ($useAWS) {
+                        // Construct S3 screenshot URL
+                        $ssKey = $uid . '/' . $name . '/screenshot.jpg';
+                        try {
+                            $s3Data['s3']->headObject(['Bucket' => $s3Data['aws']['bucket'], 'Key' => $ssKey]);
+                            $screenshotUrl = $s3Data['s3']->getObjectUrl($s3Data['aws']['bucket'], $ssKey);
+                        } catch (Exception $e) { /* no screenshot */ }
+                    } else {
+                        $ssPath = $UPLOAD_PATH . $uid . '/' . $name . '/screenshot.jpg';
+                        if (is_file($ssPath)) {
+                            $screenshotUrl = $UPLOAD_URL . $uid . '/' . $name . '/screenshot.jpg';
+                        }
+                    }
+
+                    $sitches[] = ['name' => $name, 'userID' => $uid, 'screenshotUrl' => $screenshotUrl];
+                }
+            }
+            echo json_encode(['sitches' => $sitches]);
+        } catch (Exception $e) {
+            http_response_code(500);
+            echo json_encode(['error' => 'Server error: ' . $e->getMessage()]);
+        }
+        exit();
+    }
+
     try {
         global $useAWS;
         if ($useAWS) {
@@ -258,6 +304,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             echo json_encode(['success' => true, 'screenshotVersions' => $existing['screenshotVersions']]);
+            exit();
+        }
+
+        // Handle updateFeatured: admin-only, writes global metadata/featured.json
+        // Each featured entry stores {name, userID} so any user can load them.
+        if (isset($input['updateFeatured']) && $input['updateFeatured']) {
+            if (!isAdmin()) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Admin access required']);
+                exit();
+            }
+
+            $sitches = [];
+            if (isset($input['sitches']) && is_array($input['sitches'])) {
+                foreach ($input['sitches'] as $entry) {
+                    if (is_array($entry) && isset($entry['name']) && isset($entry['userID'])) {
+                        $name = basename(strval($entry['name']));
+                        $uid = intval($entry['userID']);
+                        if ($uid > 0 && isValidSitchName($name)) {
+                            $sitches[] = ['name' => $name, 'userID' => $uid];
+                        }
+                    }
+                }
+            }
+            $featuredData = ['sitches' => $sitches];
+
+            global $useAWS;
+            if ($useAWS) {
+                $s3Data = startS3();
+                writeS3Json($s3Data['s3'], $s3Data['aws'], 'metadata/featured.json', $featuredData);
+            } else {
+                global $UPLOAD_PATH;
+                writeLocalJson($UPLOAD_PATH . 'metadata/featured.json', $featuredData);
+            }
+
+            echo json_encode(['success' => true, 'featured' => $featuredData]);
             exit();
         }
 

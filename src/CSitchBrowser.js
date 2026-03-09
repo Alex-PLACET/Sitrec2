@@ -1,12 +1,12 @@
 /**
  * S3 Sitch Browser - full-screen dialog for browsing saved sitches.
  * Supports list+preview and thumbnail grid modes.
- * Labels system with permanent Private/Deleted labels.
+ * Labels system with permanent Featured/Private/Deleted labels.
  * Multi-selection: click, shift-click, cmd-click, rubber-band drag.
  * Right-click context menu with label checkboxes.
  */
-import {SITREC_SERVER} from "./configUtils";
-import {withTestUser} from "./Globals";
+import {isAdmin, SITREC_SERVER} from "./configUtils";
+import {getEffectiveUserID, withTestUser} from "./Globals";
 
 const LABEL_COLORS = [
     "#4285f4", "#34a853", "#fbbc04", "#24c1e0",
@@ -14,6 +14,7 @@ const LABEL_COLORS = [
 ];
 
 const PERMANENT_LABELS = [
+    {name: "Featured", color: "#f9ab00", permanent: true, global: true},
     {name: "Private", color: "#a142f4", permanent: true},
     {name: "Deleted", color: "#ea4335", permanent: true},
 ];
@@ -35,6 +36,7 @@ export class CSitchBrowser {
         // Labels
         this.userLabels = [];    // [{name, color, permanent?}, ...]
         this.sitchLabels = {};   // {sitchName: [labelName, ...]}
+        this.featuredSitches = new Map(); // name -> {userID, screenshotUrl} (global, shared)
         this.activeLabel = null; // sidebar filter, or null = Home
 
         // Multi-selection
@@ -53,15 +55,31 @@ export class CSitchBrowser {
 
     // ==================== DATA ====================
 
-    fetchFromServer() {
-        const sitchesP = fetch(withTestUser(SITREC_SERVER + "getsitches.php?get=myfiles"), {mode: 'cors'})
-            .then(r => { if (r.status !== 200) throw new Error(`Server ${r.status}`); return r.json(); });
-        const metaP = fetch(withTestUser(SITREC_SERVER + "metadata.php"), {mode: 'cors'})
-            .then(r => r.ok ? r.json() : {labels: [], sitchLabels: {}})
-            .catch(() => ({labels: [], sitchLabels: {}}));
+    _isLoggedIn() {
+        return getEffectiveUserID() > 0;
+    }
 
-        Promise.all([sitchesP, metaP])
-            .then(([sitchData, metaData]) => {
+    fetchFromServer() {
+        const loggedIn = this._isLoggedIn();
+
+        // Always fetch featured (no auth required)
+        const featuredP = fetch(SITREC_SERVER + "metadata.php?featured=1", {mode: 'cors'})
+            .then(r => r.ok ? r.json() : {sitches: []})
+            .catch(() => ({sitches: []}));
+
+        // Only fetch user sitches and metadata if logged in
+        const sitchesP = loggedIn
+            ? fetch(withTestUser(SITREC_SERVER + "getsitches.php?get=myfiles"), {mode: 'cors'})
+                .then(r => { if (r.status !== 200) throw new Error(`Server ${r.status}`); return r.json(); })
+            : Promise.resolve([]);
+        const metaP = loggedIn
+            ? fetch(withTestUser(SITREC_SERVER + "metadata.php"), {mode: 'cors'})
+                .then(r => r.ok ? r.json() : {labels: [], sitchLabels: {}})
+                .catch(() => ({labels: [], sitchLabels: {}}))
+            : Promise.resolve({labels: [], sitchLabels: {}});
+
+        Promise.all([sitchesP, metaP, featuredP])
+            .then(([sitchData, metaData, featuredData]) => {
                 const ssVersions = metaData.screenshotVersions || {};
                 this.sitches = sitchData.map(e => {
                     let screenshotUrl = e[2] || null;
@@ -75,6 +93,32 @@ export class CSitchBrowser {
                 this.userLabels = metaData.labels || [];
                 const sl = metaData.sitchLabels || {};
                 this.sitchLabels = Array.isArray(sl) ? {} : sl;
+
+                // Build featured map: name -> {userID, screenshotUrl}
+                this.featuredSitches = new Map();
+                const featuredArr = Array.isArray(featuredData.sitches) ? featuredData.sitches : [];
+                for (const entry of featuredArr) {
+                    if (entry && entry.name) {
+                        this.featuredSitches.set(entry.name, {
+                            userID: entry.userID,
+                            screenshotUrl: entry.screenshotUrl || null,
+                        });
+                    }
+                }
+
+                // Merge featured sitches into the sitch list (add any not already present)
+                const existingNames = new Set(this.sitches.map(s => s.name));
+                for (const [name, info] of this.featuredSitches) {
+                    if (!existingNames.has(name)) {
+                        this.sitches.push({name, date: "", screenshotUrl: info.screenshotUrl});
+                    }
+                }
+
+                // Non-logged-in users only see featured sitches
+                if (!loggedIn) {
+                    this.activeLabel = "Featured";
+                }
+
                 this._ensurePermanentLabels();
                 this.applyFilterAndSort();
                 this.show();
@@ -106,7 +150,21 @@ export class CSitchBrowser {
     }
 
     _sitchHasLabel(sitchName, labelName) {
+        if (labelName === "Featured") return this.featuredSitches.has(sitchName);
         return this.sitchLabels[sitchName]?.includes(labelName) ?? false;
+    }
+
+    _isFeatured(sitchName) {
+        return this.featuredSitches.has(sitchName);
+    }
+
+    _loadSitch(sitchName) {
+        // If sitch is featured and belongs to another user, pass sourceUserID so
+        // getVersions fetches from the owner's directory.
+        const featuredInfo = this.featuredSitches.get(sitchName);
+        const ownerID = featuredInfo?.userID;
+        const sourceUserID = (ownerID && ownerID !== getEffectiveUserID()) ? ownerID : null;
+        this.fileManager.loadSavedFile(sitchName, sourceUserID);
     }
 
     // ==================== FILTER / SORT ====================
@@ -119,6 +177,13 @@ export class CSitchBrowser {
         } else if (this.activeLabel === "Private") {
             list = list.filter(s =>
                 this._sitchHasLabel(s.name, "Private") && !this._sitchHasLabel(s.name, "Deleted"));
+        } else if (this.activeLabel === "Featured") {
+            // Featured view: has Featured, not Deleted, not Private
+            list = list.filter(s => {
+                if (this._sitchHasLabel(s.name, "Deleted")) return false;
+                if (this._sitchHasLabel(s.name, "Private")) return false;
+                return this._isFeatured(s.name);
+            });
         } else if (this.activeLabel) {
             // Custom label view: has label, not Deleted, not Private
             list = list.filter(s => {
@@ -170,33 +235,53 @@ export class CSitchBrowser {
             gap: "4px", borderRight: "1px solid #333", overflowY: "auto",
         });
 
-        // Home link
-        this._homeLink = this._makeSidebarLink("Home", () => {
-            this.activeLabel = null;
-            this._onFilterChanged();
-        }, !this.activeLabel);
-        sidebar.appendChild(this._homeLink);
+        const loggedIn = this._isLoggedIn();
 
-        // Private link
-        const privateCount = this.sitches.filter(s =>
-            this._sitchHasLabel(s.name, "Private") && !this._sitchHasLabel(s.name, "Deleted")).length;
-        this._privateLink = this._makeSidebarLink(
-            "Private" + (privateCount ? ` (${privateCount})` : ""),
-            () => { this.activeLabel = "Private"; this._onFilterChanged(); },
-            this.activeLabel === "Private"
-        );
-        this._makePermanentLinkDropTarget(this._privateLink, "Private");
-        sidebar.appendChild(this._privateLink);
+        // Home link (logged-in only)
+        this._homeLink = null;
+        if (loggedIn) {
+            this._homeLink = this._makeSidebarLink("Home", () => {
+                this.activeLabel = null;
+                this._onFilterChanged();
+            }, !this.activeLabel);
+            sidebar.appendChild(this._homeLink);
+        }
 
-        // Deleted link
-        const deletedCount = this.sitches.filter(s => this._sitchHasLabel(s.name, "Deleted")).length;
-        this._deletedLink = this._makeSidebarLink(
-            "Deleted" + (deletedCount ? ` (${deletedCount})` : ""),
-            () => { this.activeLabel = "Deleted"; this._onFilterChanged(); },
-            this.activeLabel === "Deleted"
+        // Featured link (always visible)
+        const featuredCount = this.sitches.filter(s =>
+            this._isFeatured(s.name) && !this._sitchHasLabel(s.name, "Deleted") && !this._sitchHasLabel(s.name, "Private")).length;
+        this._featuredLink = this._makeSidebarLink(
+            "Featured" + (featuredCount ? ` (${featuredCount})` : ""),
+            () => { this.activeLabel = "Featured"; this._onFilterChanged(); },
+            this.activeLabel === "Featured"
         );
-        this._makePermanentLinkDropTarget(this._deletedLink, "Deleted");
-        sidebar.appendChild(this._deletedLink);
+        if (isAdmin()) this._makePermanentLinkDropTarget(this._featuredLink, "Featured");
+        sidebar.appendChild(this._featuredLink);
+
+        // Private link (logged-in only)
+        this._privateLink = null;
+        this._deletedLink = null;
+        if (loggedIn) {
+            const privateCount = this.sitches.filter(s =>
+                this._sitchHasLabel(s.name, "Private") && !this._sitchHasLabel(s.name, "Deleted")).length;
+            this._privateLink = this._makeSidebarLink(
+                "Private" + (privateCount ? ` (${privateCount})` : ""),
+                () => { this.activeLabel = "Private"; this._onFilterChanged(); },
+                this.activeLabel === "Private"
+            );
+            this._makePermanentLinkDropTarget(this._privateLink, "Private");
+            sidebar.appendChild(this._privateLink);
+
+            // Deleted link (logged-in only)
+            const deletedCount = this.sitches.filter(s => this._sitchHasLabel(s.name, "Deleted")).length;
+            this._deletedLink = this._makeSidebarLink(
+                "Deleted" + (deletedCount ? ` (${deletedCount})` : ""),
+                () => { this.activeLabel = "Deleted"; this._onFilterChanged(); },
+                this.activeLabel === "Deleted"
+            );
+            this._makePermanentLinkDropTarget(this._deletedLink, "Deleted");
+            sidebar.appendChild(this._deletedLink);
+        }
 
         // View section
         const viewSection = document.createElement("div");
@@ -214,10 +299,13 @@ export class CSitchBrowser {
         sidebar.appendChild(this._listLink);
         sidebar.appendChild(this._thumbLink);
 
-        // Labels section
-        this._labelsContainer = document.createElement("div");
-        sidebar.appendChild(this._labelsContainer);
-        this._rebuildSidebarLabels();
+        // Labels section (logged-in only)
+        this._labelsContainer = null;
+        if (loggedIn) {
+            this._labelsContainer = document.createElement("div");
+            sidebar.appendChild(this._labelsContainer);
+            this._rebuildSidebarLabels();
+        }
 
         const spacer = document.createElement("div");
         spacer.style.flex = "1";
@@ -264,9 +352,10 @@ export class CSitchBrowser {
     }
 
     _rebuildSidebarLinks() {
-        // Update Home/Private/Deleted link styles
+        // Update Home/Featured/Private/Deleted link styles
         const links = [
             [this._homeLink, !this.activeLabel, "Home"],
+            [this._featuredLink, this.activeLabel === "Featured", "Featured"],
             [this._privateLink, this.activeLabel === "Private", "Private"],
             [this._deletedLink, this.activeLabel === "Deleted", "Deleted"],
             [this._listLink, this.viewMode === "list", null],
@@ -279,6 +368,11 @@ export class CSitchBrowser {
         }
 
         // Update counts
+        if (this._featuredLink) {
+            const c = this.sitches.filter(s =>
+                this._isFeatured(s.name) && !this._sitchHasLabel(s.name, "Deleted") && !this._sitchHasLabel(s.name, "Private")).length;
+            this._featuredLink.textContent = "Featured" + (c ? ` (${c})` : "");
+        }
         if (this._privateLink) {
             const c = this.sitches.filter(s =>
                 this._sitchHasLabel(s.name, "Private") && !this._sitchHasLabel(s.name, "Deleted")).length;
@@ -398,7 +492,7 @@ export class CSitchBrowser {
         });
     }
 
-    // Also make the permanent sidebar links (Private, Deleted) drop targets
+    // Also make the permanent sidebar links (Featured, Private, Deleted) drop targets
     _makePermanentLinkDropTarget(element, labelName) {
         const label = PERMANENT_LABELS.find(l => l.name === labelName);
         if (!label) return;
@@ -496,7 +590,7 @@ export class CSitchBrowser {
             return;
         }
 
-        if (e.key === "Delete" || e.key === "Backspace") {
+        if ((e.key === "Delete" || e.key === "Backspace") && this._isLoggedIn()) {
             if (this.selection.size > 0) {
                 const names = [...this.selection];
                 const allDeleted = names.every(n => this._sitchHasLabel(n, "Deleted"));
@@ -562,7 +656,7 @@ export class CSitchBrowser {
 
         if (e.key === "Enter" && this.selectedName) {
             this.close();
-            this.fileManager.loadSavedFile(this.selectedName);
+            this._loadSitch(this.selectedName);
         }
     }
 
@@ -593,26 +687,30 @@ export class CSitchBrowser {
             menu.appendChild(this._makeMenuSep());
         }
 
-        // Delete / Undelete action
-        const allDeleted = selectedNames.every(n => this._sitchHasLabel(n, "Deleted"));
-        menu.appendChild(this._makeMenuItem(allDeleted ? "Undelete" : "Delete", () => {
-            if (allDeleted) this._removeLabelFromSitches(selectedNames, "Deleted");
-            else this._addLabelToSitches(selectedNames, "Deleted");
-            this._hideContextMenu();
-        }));
+        // Label management only for logged-in users
+        if (this._isLoggedIn()) {
+            // Delete / Undelete action
+            const allDeleted = selectedNames.every(n => this._sitchHasLabel(n, "Deleted"));
+            menu.appendChild(this._makeMenuItem(allDeleted ? "Undelete" : "Delete", () => {
+                if (allDeleted) this._removeLabelFromSitches(selectedNames, "Deleted");
+                else this._addLabelToSitches(selectedNames, "Deleted");
+                this._hideContextMenu();
+            }));
 
-        // Refresh Thumbnails
-        menu.appendChild(this._makeMenuItem("Refresh Thumbnails", () => {
-            this._hideContextMenu();
-            this.close();
-            this.fileManager.refreshScreenshots([...selectedNames].filter(n => !this._sitchHasLabel(n, "Deleted")));
-        }));
+            // Refresh Thumbnails
+            menu.appendChild(this._makeMenuItem("Refresh Thumbnails", () => {
+                this._hideContextMenu();
+                this.close();
+                this.fileManager.refreshScreenshots([...selectedNames].filter(n => !this._sitchHasLabel(n, "Deleted")));
+            }));
 
-        menu.appendChild(this._makeMenuSep());
+            menu.appendChild(this._makeMenuSep());
+        }
 
         // Label checkboxes (all labels except "Deleted" — handled by delete button)
         for (const label of this.userLabels) {
             if (label.name === "Deleted") continue;
+            if (label.name === "Featured" && !isAdmin()) continue;
             const hasCount = selectedNames.filter(n => this._sitchHasLabel(n, label.name)).length;
             const all = hasCount === selectedNames.length;
             const none = hasCount === 0;
@@ -977,7 +1075,7 @@ export class CSitchBrowser {
 
             row.addEventListener("click", (e) => this._handleItemClick(e, idx));
             row.addEventListener("mousedown", (e) => this._handleItemMouseDown(e, idx));
-            row.addEventListener("dblclick", () => { this.close(); this.fileManager.loadSavedFile(sitch.name); });
+            row.addEventListener("dblclick", () => { this.close(); this._loadSitch(sitch.name); });
 
             row._setHighlight = setHighlight;
             tbody.appendChild(row);
@@ -1183,7 +1281,7 @@ export class CSitchBrowser {
 
             card.addEventListener("click", (e) => this._handleItemClick(e, idx));
             card.addEventListener("mousedown", (e) => this._handleItemMouseDown(e, idx));
-            card.addEventListener("dblclick", () => { this.close(); this.fileManager.loadSavedFile(sitch.name); });
+            card.addEventListener("dblclick", () => { this.close(); this._loadSitch(sitch.name); });
 
             card._setHighlight = setHighlight;
             this._thumbGrid.appendChild(card);
@@ -1202,6 +1300,7 @@ export class CSitchBrowser {
     _titleText() {
         if (this.activeLabel === "Deleted") return "Deleted Sitches";
         if (this.activeLabel === "Private") return "Private Sitches";
+        if (this.activeLabel === "Featured") return "Featured Sitches";
         if (this.activeLabel) return `Label: ${this.activeLabel}`;
         return "Browse Sitches";
     }
@@ -1247,13 +1346,31 @@ export class CSitchBrowser {
     }
 
     _makeLabelChips(sitchName) {
-        const labels = this.sitchLabels[sitchName];
+        const labels = this.sitchLabels[sitchName] || [];
+        const isFeatured = this._isFeatured(sitchName);
 
         // Always create a container so we can update it in-place later
         const container = document.createElement("div");
         container.dataset.labelChips = sitchName;
         Object.assign(container.style, { display: "flex", flexWrap: "wrap", gap: "3px", marginTop: "2px" });
-        if (!labels || labels.length === 0) return container;
+        if (labels.length === 0 && !isFeatured) return container;
+
+        // Show Featured chip first if applicable
+        if (isFeatured) {
+            const featuredDef = PERMANENT_LABELS.find(l => l.name === "Featured");
+            const chip = document.createElement("span");
+            Object.assign(chip.style, {
+                display: "inline-flex", alignItems: "center", gap: "3px",
+                padding: "1px 6px", borderRadius: "3px", fontSize: "10px",
+                backgroundColor: featuredDef.color + "33", color: featuredDef.color,
+                border: "1px solid " + featuredDef.color + "55",
+                maxWidth: "100px", overflow: "hidden", textOverflow: "ellipsis",
+                whiteSpace: "nowrap", lineHeight: "16px",
+            });
+            chip.textContent = "Featured";
+            chip.title = "Featured";
+            container.appendChild(chip);
+        }
 
         for (const labelName of labels) {
             const labelDef = this.userLabels.find(l => l.name === labelName);
@@ -1452,10 +1569,32 @@ export class CSitchBrowser {
 
     // Check if a label change affects the current filter and requires a full content rebuild
     _labelAffectsFilter(labelName) {
-        return labelName === "Deleted" || labelName === "Private" || labelName === this.activeLabel;
+        return labelName === "Deleted" || labelName === "Private" || labelName === "Featured" || labelName === this.activeLabel;
     }
 
     _addLabelToSitches(sitchNames, labelName) {
+        if (labelName === "Featured") {
+            if (!isAdmin()) return;
+            const added = [];
+            const uid = getEffectiveUserID();
+            for (const sn of sitchNames) {
+                if (!this.featuredSitches.has(sn)) {
+                    this.featuredSitches.set(sn, {userID: uid, screenshotUrl: null});
+                    added.push(sn);
+                }
+            }
+            if (added.length > 0) {
+                this._saveFeatured();
+                this._rebuildSidebar();
+                if (this._labelAffectsFilter(labelName)) {
+                    this.applyFilterAndSort();
+                    this.rebuildContent();
+                } else {
+                    this._refreshLabelChips();
+                }
+            }
+            return;
+        }
         const changed = [];
         for (const sn of sitchNames) {
             if (!this.sitchLabels[sn]) this.sitchLabels[sn] = [];
@@ -1477,6 +1616,27 @@ export class CSitchBrowser {
     }
 
     _removeLabelFromSitches(sitchNames, labelName) {
+        if (labelName === "Featured") {
+            if (!isAdmin()) return;
+            const removed = [];
+            for (const sn of sitchNames) {
+                if (this.featuredSitches.has(sn)) {
+                    this.featuredSitches.delete(sn);
+                    removed.push(sn);
+                }
+            }
+            if (removed.length > 0) {
+                this._saveFeatured();
+                this._rebuildSidebar();
+                if (this._labelAffectsFilter(labelName)) {
+                    this.applyFilterAndSort();
+                    this.rebuildContent();
+                } else {
+                    this._refreshLabelChips();
+                }
+            }
+            return;
+        }
         const changed = [];
         for (const sn of sitchNames) {
             if (this.sitchLabels[sn] && this.sitchLabels[sn].includes(labelName)) {
@@ -1515,6 +1675,27 @@ export class CSitchBrowser {
         }).then(data => {
             if (data.error) console.error("metadata save error:", data.error);
         }).catch(err => console.error("Failed to save metadata:", err));
+    }
+
+    _saveFeatured() {
+        const sitches = [];
+        for (const [name, info] of this.featuredSitches) {
+            sitches.push({name, userID: info.userID});
+        }
+        const body = {
+            updateFeatured: true,
+            sitches,
+        };
+        fetch(withTestUser(SITREC_SERVER + "metadata.php"), {
+            method: "POST", mode: "cors",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify(body),
+        }).then(r => {
+            if (!r.ok) console.error("metadata.php featured save returned", r.status);
+            return r.json();
+        }).then(data => {
+            if (data.error) console.error("featured save error:", data.error);
+        }).catch(err => console.error("Failed to save featured:", err));
     }
 
     // ==================== CLOSE ====================
