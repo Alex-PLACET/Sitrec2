@@ -22,7 +22,7 @@ const PERMANENT_LABELS = [
 export class CSitchBrowser {
     constructor(fileManager) {
         this.fileManager = fileManager;
-        this.sitches = [];      // [{name, date, screenshotUrl}]
+        this.sitches = [];      // [{name, date, screenshotUrl, ownerUserID?, featuredOnly?}]
         this.filtered = [];
         this.sortColumn = "date";
         this.sortAsc = false;
@@ -59,6 +59,52 @@ export class CSitchBrowser {
         return getEffectiveUserID() > 0;
     }
 
+    _canManageFeatured() {
+        return this._isLoggedIn() && isAdmin();
+    }
+
+    _cloneFeaturedSitches(map = this.featuredSitches) {
+        return new Map([...map.entries()].map(([name, info]) => [name, {...info}]));
+    }
+
+    _syncFeaturedSitchesIntoList() {
+        const byName = new Map(this.sitches.map(s => [s.name, s]));
+
+        for (const [name, info] of this.featuredSitches) {
+            if (!byName.has(name)) {
+                const featuredOnlySitch = {
+                    name,
+                    date: "",
+                    screenshotUrl: info.screenshotUrl || null,
+                    ownerUserID: info.userID,
+                    featuredOnly: true,
+                };
+                this.sitches.push(featuredOnlySitch);
+                byName.set(name, featuredOnlySitch);
+                continue;
+            }
+
+            const existing = byName.get(name);
+            if (existing.featuredOnly) {
+                existing.ownerUserID = info.userID;
+                if (!existing.screenshotUrl && info.screenshotUrl) {
+                    existing.screenshotUrl = info.screenshotUrl;
+                }
+            }
+        }
+
+        this.sitches = this.sitches.filter(s => !s.featuredOnly || this.featuredSitches.has(s.name));
+    }
+
+    _refreshFeaturedState() {
+        this._syncFeaturedSitchesIntoList();
+        this.applyFilterAndSort();
+        this._rebuildSidebar();
+        if (this.overlay) {
+            this.rebuildContent();
+        }
+    }
+
     fetchFromServer() {
         const loggedIn = this._isLoggedIn();
 
@@ -88,7 +134,13 @@ export class CSitchBrowser {
                     if (screenshotUrl && ver) {
                         screenshotUrl += (screenshotUrl.includes("?") ? "&" : "?") + "v=" + ver;
                     }
-                    return {name, date: String(e[1]), screenshotUrl};
+                    return {
+                        name,
+                        date: String(e[1]),
+                        screenshotUrl,
+                        ownerUserID: getEffectiveUserID(),
+                        featuredOnly: false,
+                    };
                 });
                 this.userLabels = metaData.labels || [];
                 const sl = metaData.sitchLabels || {};
@@ -106,13 +158,7 @@ export class CSitchBrowser {
                     }
                 }
 
-                // Merge featured sitches into the sitch list (add any not already present)
-                const existingNames = new Set(this.sitches.map(s => s.name));
-                for (const [name, info] of this.featuredSitches) {
-                    if (!existingNames.has(name)) {
-                        this.sitches.push({name, date: "", screenshotUrl: info.screenshotUrl});
-                    }
-                }
+                this._syncFeaturedSitchesIntoList();
 
                 // Non-logged-in users only see featured sitches
                 if (!loggedIn) {
@@ -162,7 +208,8 @@ export class CSitchBrowser {
         // If sitch is featured and belongs to another user, pass sourceUserID so
         // getVersions fetches from the owner's directory.
         const featuredInfo = this.featuredSitches.get(sitchName);
-        const ownerID = featuredInfo?.userID;
+        const sitchInfo = this.sitches.find(s => s.name === sitchName);
+        const ownerID = featuredInfo?.userID ?? sitchInfo?.ownerUserID;
         const sourceUserID = (ownerID && ownerID !== getEffectiveUserID()) ? ownerID : null;
         this.fileManager.loadSavedFile(sitchName, sourceUserID);
     }
@@ -255,7 +302,7 @@ export class CSitchBrowser {
             () => { this.activeLabel = "Featured"; this._onFilterChanged(); },
             this.activeLabel === "Featured"
         );
-        if (isAdmin()) this._makePermanentLinkDropTarget(this._featuredLink, "Featured");
+        if (this._canManageFeatured()) this._makePermanentLinkDropTarget(this._featuredLink, "Featured");
         sidebar.appendChild(this._featuredLink);
 
         // Private link (logged-in only)
@@ -310,6 +357,21 @@ export class CSitchBrowser {
         const spacer = document.createElement("div");
         spacer.style.flex = "1";
         sidebar.appendChild(spacer);
+
+        if (!loggedIn && typeof this.fileManager?.loginServer === "function") {
+            const loginBtn = document.createElement("button");
+            loginBtn.textContent = "Login";
+            Object.assign(loginBtn.style, {
+                padding: "10px 16px", backgroundColor: "#8ab4f8", color: "#0b1320",
+                border: "1px solid #8ab4f8", borderRadius: "6px", cursor: "pointer",
+                fontSize: "14px", fontWeight: "600", marginBottom: "8px",
+            });
+            loginBtn.addEventListener("click", () => {
+                this.close();
+                this.fileManager.loginServer();
+            });
+            sidebar.appendChild(loginBtn);
+        }
 
         const cancelBtn = document.createElement("button");
         cancelBtn.textContent = "Cancel";
@@ -665,6 +727,8 @@ export class CSitchBrowser {
     _showContextMenu(x, y) {
         this._hideContextMenu();
 
+        if (!this._isLoggedIn()) return;
+
         const menu = document.createElement("div");
         this._contextMenu = menu;
         Object.assign(menu.style, {
@@ -687,30 +751,25 @@ export class CSitchBrowser {
             menu.appendChild(this._makeMenuSep());
         }
 
-        // Label management only for logged-in users
-        if (this._isLoggedIn()) {
-            // Delete / Undelete action
-            const allDeleted = selectedNames.every(n => this._sitchHasLabel(n, "Deleted"));
-            menu.appendChild(this._makeMenuItem(allDeleted ? "Undelete" : "Delete", () => {
-                if (allDeleted) this._removeLabelFromSitches(selectedNames, "Deleted");
-                else this._addLabelToSitches(selectedNames, "Deleted");
-                this._hideContextMenu();
-            }));
+        const allDeleted = selectedNames.every(n => this._sitchHasLabel(n, "Deleted"));
+        menu.appendChild(this._makeMenuItem(allDeleted ? "Undelete" : "Delete", () => {
+            if (allDeleted) this._removeLabelFromSitches(selectedNames, "Deleted");
+            else this._addLabelToSitches(selectedNames, "Deleted");
+            this._hideContextMenu();
+        }));
 
-            // Refresh Thumbnails
-            menu.appendChild(this._makeMenuItem("Refresh Thumbnails", () => {
-                this._hideContextMenu();
-                this.close();
-                this.fileManager.refreshScreenshots([...selectedNames].filter(n => !this._sitchHasLabel(n, "Deleted")));
-            }));
+        menu.appendChild(this._makeMenuItem("Refresh Thumbnails", () => {
+            this._hideContextMenu();
+            this.close();
+            this.fileManager.refreshScreenshots([...selectedNames].filter(n => !this._sitchHasLabel(n, "Deleted")));
+        }));
 
-            menu.appendChild(this._makeMenuSep());
-        }
+        menu.appendChild(this._makeMenuSep());
 
         // Label checkboxes (all labels except "Deleted" — handled by delete button)
         for (const label of this.userLabels) {
             if (label.name === "Deleted") continue;
-            if (label.name === "Featured" && !isAdmin()) continue;
+            if (label.name === "Featured" && !this._canManageFeatured()) continue;
             const hasCount = selectedNames.filter(n => this._sitchHasLabel(n, label.name)).length;
             const all = hasCount === selectedNames.length;
             const none = hasCount === 0;
@@ -1574,7 +1633,8 @@ export class CSitchBrowser {
 
     _addLabelToSitches(sitchNames, labelName) {
         if (labelName === "Featured") {
-            if (!isAdmin()) return;
+            if (!this._canManageFeatured()) return;
+            const previousFeatured = this._cloneFeaturedSitches();
             const added = [];
             const uid = getEffectiveUserID();
             for (const sn of sitchNames) {
@@ -1584,14 +1644,8 @@ export class CSitchBrowser {
                 }
             }
             if (added.length > 0) {
-                this._saveFeatured();
-                this._rebuildSidebar();
-                if (this._labelAffectsFilter(labelName)) {
-                    this.applyFilterAndSort();
-                    this.rebuildContent();
-                } else {
-                    this._refreshLabelChips();
-                }
+                this._refreshFeaturedState();
+                this._saveFeatured(previousFeatured);
             }
             return;
         }
@@ -1617,7 +1671,8 @@ export class CSitchBrowser {
 
     _removeLabelFromSitches(sitchNames, labelName) {
         if (labelName === "Featured") {
-            if (!isAdmin()) return;
+            if (!this._canManageFeatured()) return;
+            const previousFeatured = this._cloneFeaturedSitches();
             const removed = [];
             for (const sn of sitchNames) {
                 if (this.featuredSitches.has(sn)) {
@@ -1626,14 +1681,8 @@ export class CSitchBrowser {
                 }
             }
             if (removed.length > 0) {
-                this._saveFeatured();
-                this._rebuildSidebar();
-                if (this._labelAffectsFilter(labelName)) {
-                    this.applyFilterAndSort();
-                    this.rebuildContent();
-                } else {
-                    this._refreshLabelChips();
-                }
+                this._refreshFeaturedState();
+                this._saveFeatured(previousFeatured);
             }
             return;
         }
@@ -1677,7 +1726,7 @@ export class CSitchBrowser {
         }).catch(err => console.error("Failed to save metadata:", err));
     }
 
-    _saveFeatured() {
+    _saveFeatured(previousFeatured = null) {
         const sitches = [];
         for (const [name, info] of this.featuredSitches) {
             sitches.push({name, userID: info.userID});
@@ -1691,11 +1740,23 @@ export class CSitchBrowser {
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify(body),
         }).then(r => {
-            if (!r.ok) console.error("metadata.php featured save returned", r.status);
-            return r.json();
+            return r.json().catch(() => ({})).then(data => {
+                if (!r.ok) {
+                    throw new Error(data.error || `metadata.php featured save returned ${r.status}`);
+                }
+                return data;
+            });
         }).then(data => {
-            if (data.error) console.error("featured save error:", data.error);
-        }).catch(err => console.error("Failed to save featured:", err));
+            if (data.error) {
+                throw new Error(data.error);
+            }
+        }).catch(err => {
+            console.error("Failed to save featured:", err);
+            if (previousFeatured) {
+                this.featuredSitches = this._cloneFeaturedSitches(previousFeatured);
+                this._refreshFeaturedState();
+            }
+        });
     }
 
     // ==================== CLOSE ====================

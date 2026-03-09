@@ -15,17 +15,6 @@ export async function checkLogin()  {
 }
 
 export function asyncCheckLogin() {
-
-    // if configParams.rehostRequiresLogin is false, then we don't need to check
-    // so we can just return a promise that resolves to 12345678
-    if (!configParams.rehostRequiresLogin) {
-        console.log("Rehost attempt does not require login")
-        Globals.userID = 12345678;
-        Globals.userData = { userID: 12345678 };
-        return Promise.resolve();
-    }
-
-
     // In serverless mode, we don't have access to rehost.php, so just use a default ID
     if (isServerless) {
         console.log("Serverless mode: using default user ID")
@@ -42,6 +31,14 @@ export function asyncCheckLogin() {
             Globals.userData = data;
             Globals.userID = data.userID;
             console.log("User ID is " + Globals.userID)
+        })
+        .catch(err => {
+            if (!configParams.rehostRequiresLogin) {
+                console.warn("Login check failed, using fallback user ID", err);
+                Globals.userID = 12345678;
+                Globals.userData = { userID: 12345678, userGroups: [] };
+                return;
+            }
+            throw err;
         });
 }
-

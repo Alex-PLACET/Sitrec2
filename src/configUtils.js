@@ -46,8 +46,13 @@ export async function getConfigFromServer() {
 
 export let isLocal = false;
 
-// Admin if real userID is 1 (production) or 99999999 (localhost default)
+// Prefer server-reported groups so the browser matches PHP's admin checks.
+// Fall back to the legacy userID heuristic if user groups are not available yet.
 export function isAdmin() {
+    const userGroups = Globals.userData?.userGroups;
+    if (Array.isArray(userGroups)) {
+        return userGroups.includes(3);
+    }
     return Globals.userID === 1 || (isLocal && Globals.userID === 99999999);
 }
 
