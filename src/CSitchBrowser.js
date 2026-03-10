@@ -67,6 +67,19 @@ export class CSitchBrowser {
         return new Map([...map.entries()].map(([name, info]) => [name, {...info}]));
     }
 
+    _setFeaturedSitchesFromArray(featuredArr) {
+        this.featuredSitches = new Map();
+        const entries = Array.isArray(featuredArr) ? featuredArr : [];
+        for (const entry of entries) {
+            if (entry && entry.name) {
+                this.featuredSitches.set(entry.name, {
+                    userID: entry.userID,
+                    screenshotUrl: entry.screenshotUrl || null,
+                });
+            }
+        }
+    }
+
     _syncFeaturedSitchesIntoList() {
         const byName = new Map(this.sitches.map(s => [s.name, s]));
 
@@ -103,6 +116,22 @@ export class CSitchBrowser {
         if (this.overlay) {
             this.rebuildContent();
         }
+    }
+
+    _reloadFeaturedFromServer(fallbackFeatured = null) {
+        return fetch(SITREC_SERVER + "metadata.php?featured=1", {mode: "cors"})
+            .then(r => r.ok ? r.json() : Promise.reject(new Error(`featured reload returned ${r.status}`)))
+            .then(featuredData => {
+                this._setFeaturedSitchesFromArray(featuredData.sitches);
+                this._refreshFeaturedState();
+            })
+            .catch(err => {
+                console.error("Failed to reload featured:", err);
+                if (fallbackFeatured) {
+                    this.featuredSitches = this._cloneFeaturedSitches(fallbackFeatured);
+                    this._refreshFeaturedState();
+                }
+            });
     }
 
     fetchFromServer() {
@@ -146,17 +175,7 @@ export class CSitchBrowser {
                 const sl = metaData.sitchLabels || {};
                 this.sitchLabels = Array.isArray(sl) ? {} : sl;
 
-                // Build featured map: name -> {userID, screenshotUrl}
-                this.featuredSitches = new Map();
-                const featuredArr = Array.isArray(featuredData.sitches) ? featuredData.sitches : [];
-                for (const entry of featuredArr) {
-                    if (entry && entry.name) {
-                        this.featuredSitches.set(entry.name, {
-                            userID: entry.userID,
-                            screenshotUrl: entry.screenshotUrl || null,
-                        });
-                    }
-                }
+                this._setFeaturedSitchesFromArray(featuredData.sitches);
 
                 this._syncFeaturedSitchesIntoList();
 
@@ -1752,10 +1771,7 @@ export class CSitchBrowser {
             }
         }).catch(err => {
             console.error("Failed to save featured:", err);
-            if (previousFeatured) {
-                this.featuredSitches = this._cloneFeaturedSitches(previousFeatured);
-                this._refreshFeaturedState();
-            }
+            return this._reloadFeaturedFromServer(previousFeatured);
         });
     }
 

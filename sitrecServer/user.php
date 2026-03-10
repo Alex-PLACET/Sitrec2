@@ -3,10 +3,20 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/config_paths.php';
 
+// Cached wrapper around getUserInfoCustom() (defined in config.php).
+// getUserInfoCustom() must only be called once per request because
+// re-initializing XenForo in the same PHP process crashes it.
+function getCachedUserInfoCustom() {
+  static $cached = null;
+  if ($cached !== null) return $cached;
+  $cached = getUserInfoCustom();
+  return $cached;
+}
+
 // Check if the current user is admin (group 3) based on their real identity
 function isAdmin($userInfo = null) {
   if ($userInfo === null) {
-    $userInfo = getUserInfoCustom();
+    $userInfo = getCachedUserInfoCustom();
   }
   $groups = is_array($userInfo['user_groups'] ?? null) ? $userInfo['user_groups'] : [];
   return in_array(3, $groups);
@@ -21,7 +31,7 @@ function getUserInfo() {
   static $cached = null;
   if ($cached !== null) return $cached;
 
-  $info = getUserInfoCustom();
+  $info = getCachedUserInfoCustom();
   // Allow admin to operate as another user via testUserID parameter
   $testUserID = isset($_GET['testUserID']) ? intval($_GET['testUserID']) : 0;
   if (isAdmin($info) && $testUserID > 1) {
