@@ -45,6 +45,22 @@ Example entry format:
 
 ---
 
+## Version 2.33.0 (2026-03-11)
+
+### New Features
+- **Object References**: Refactored storage from direct S3 URLs to host-agnostic object references (`sitrec://...`), enabling private storage with presigned URLs and decoupling shared links from specific S3 buckets
+- **Featured Sitches**: Admin-curated "Featured" list for highlighting sitches; renamed "Home" tab to "All" and added "Unlabeled" filter
+
+### Improvements
+- Fixed double URL decoding in object resolver that could cause key misinterpretation
+- Extracted shared PHP helpers to eliminate duplicated visibility/env logic across server endpoints
+
+### Bug Fixes
+- Fixed frame for UI tests
+- Don't screenshot deleted sitches
+
+---
+
 ## Version 2.32.0 (2026-03-08)
 
 ### New Features
