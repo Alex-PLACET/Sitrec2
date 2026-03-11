@@ -5,7 +5,7 @@
  * Multi-selection: click, shift-click, cmd-click, rubber-band drag.
  * Right-click context menu with label checkboxes.
  */
-import {isAdmin, SITREC_SERVER} from "./configUtils";
+import {isAdmin, SITREC_APP, SITREC_SERVER} from "./configUtils";
 import {getEffectiveUserID, withTestUser} from "./Globals";
 
 const LABEL_COLORS = [
@@ -46,10 +46,14 @@ export class CSitchBrowser {
         // Context menu
         this._contextMenu = null;
         this._contextMenuCloser = null;
+
+        // When true, open() will be called soon — other code should skip redundant fetches.
+        this.pendingOpen = false;
     }
 
     open() {
         if (this.overlay) return;
+        this.pendingOpen = false;
         this.fetchFromServer();
     }
 
@@ -119,6 +123,8 @@ export class CSitchBrowser {
     }
 
     _reloadFeaturedFromServer(fallbackFeatured = null) {
+        // Skip if open() is about to fetch everything
+        if (this.pendingOpen) return Promise.resolve();
         return fetch(SITREC_SERVER + "metadata.php?featured=1", {mode: "cors"})
             .then(r => r.ok ? r.json() : Promise.reject(new Error(`featured reload returned ${r.status}`)))
             .then(featuredData => {
@@ -186,6 +192,13 @@ export class CSitchBrowser {
 
                 this._ensurePermanentLabels();
                 this.applyFilterAndSort();
+
+                // Share sitch list with FileManager so it doesn't need a separate fetch
+                if (this.fileManager && loggedIn) {
+                    this.fileManager.userSaves = ["-", ...this.sitches.map(s => s.name)];
+                    this.fileManager.refreshVersions();
+                }
+
                 this.show();
             })
             .catch(err => {
@@ -309,6 +322,22 @@ export class CSitchBrowser {
             display: "flex", flexDirection: "column", padding: "16px",
             gap: "4px", borderRight: "1px solid #333", overflowY: "auto",
         });
+
+        // --- New Sitch button ---
+        const newSitchBtn = document.createElement("button");
+        newSitchBtn.textContent = "New Sitch";
+        Object.assign(newSitchBtn.style, {
+            padding: "10px 16px", backgroundColor: "#2ea043", color: "#ffffff",
+            border: "1px solid #3fb950", borderRadius: "6px", cursor: "pointer",
+            fontSize: "14px", fontWeight: "700", marginBottom: "12px",
+            letterSpacing: "0.3px",
+        });
+        newSitchBtn.addEventListener("mouseenter", () => { newSitchBtn.style.backgroundColor = "#3fb950"; });
+        newSitchBtn.addEventListener("mouseleave", () => { newSitchBtn.style.backgroundColor = "#2ea043"; });
+        newSitchBtn.addEventListener("click", () => {
+            window.location = SITREC_APP + "?action=new";
+        });
+        sidebar.appendChild(newSitchBtn);
 
         const loggedIn = this._isLoggedIn();
 

@@ -1,6 +1,6 @@
 export const TEST_REGISTRY = [
     { id: 'testquick', name: 'TestQuick', group: 'Visual', file: 'regression.test.js', grep: 'testquick', snapshot: 'testquick-snapshot', url: '?testAll=2' },
-    { id: 'default', name: 'Default', group: 'Visual', file: 'regression.test.js', grep: 'default', snapshot: 'default-snapshot', url: '?frame=10' },
+    { id: 'default', name: 'Default', group: 'Visual', file: 'regression.test.js', grep: 'default', snapshot: 'default-snapshot', url: '?action=new&frame=10' },
    // { id: 'wmts', name: 'WMTS', group: 'Visual', file: 'regression.test.js', grep: 'WMTS', snapshot: 'WMTS-snapshot' },
     { id: 'agua', name: 'Agua', group: 'Visual', file: 'regression.test.js', grep: 'agua', snapshot: 'agua-snapshot', url: '?sitch=agua&frame=10' },
     { id: 'ocean', name: 'Ocean', group: 'Visual', file: 'regression.test.js', grep: 'ocean surface', snapshot: 'ocean-surface-snapshot', url: '?custom=https://sitrec.s3.us-west-2.amazonaws.com/99999999/REGRESSION%20TEST%20_%20Ocean%20Surface/20251114_234141.js&frame=10&mapType=OceanSurface' },

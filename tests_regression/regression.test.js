@@ -6,7 +6,7 @@ import {takeScreenshotOrCompare} from './snapshot-utils.js';
 // Update TEST_REGISTRY is these are changed
 const testDataDefault = [
     { id: "testquick", name: "testquick", url: "?testAll=2", waitFor: "All tests complete"},
-    { id: 'default', name: 'default', url: '?frame=10' },
+    { id: 'default', name: 'default', url: '?action=new&frame=10' },
  //   { id: 'wmts', name: 'WMTS', url: '?custom=https://sitrec.s3.us-west-2.amazonaws.com/99999999/Regression%20test%20NRL%20WMTS/20251204_001658.js&mapType=WMTS' },
     { id: 'agua', name: 'agua', url: '?sitch=agua&frame=10' },
     { id: 'ocean', name: 'ocean surface', url: '?custom=https://sitrec.s3.us-west-2.amazonaws.com/99999999/REGRESSION%20TEST%20_%20Ocean%20Surface/20251114_234141.js&frame=10&mapType=OceanSurface' },

@@ -141,6 +141,7 @@ export class CFileManager extends CManager {
                     // Still add Browse button for non-logged-in users (shows Featured sitches)
                     if (parseBoolean(process.env.SAVE_TO_S3)) {
                         this.sitchBrowser = new CSitchBrowser(this);
+                        if (Globals.sitchBrowserWillOpen) this.sitchBrowser.pendingOpen = true;
                         this.guiServer.add(this, "openBrowseDialog").name("Open").perm()
                             .tooltip("Browse featured sitches");
                     }
@@ -295,6 +296,7 @@ export class CFileManager extends CManager {
         // Add Browse button for S3-backed deployments
         if (parseBoolean(process.env.SAVE_TO_S3)) {
             this.sitchBrowser = new CSitchBrowser(this);
+            if (Globals.sitchBrowserWillOpen) this.sitchBrowser.pendingOpen = true;
             this.guiServer.add(this, "openBrowseDialog").name("Open").perm()
                 .tooltip("Browse all your saved sitches in a searchable, sortable list");
         }
@@ -312,6 +314,9 @@ export class CFileManager extends CManager {
     }
 
     refreshUserSaves() {
+        // Skip if the sitch browser is about to open — it will fetch and share the data
+        if (this.sitchBrowser && this.sitchBrowser.pendingOpen) return;
+
         fetch(withTestUser(SITREC_SERVER + "getsitches.php?get=myfiles"), {mode: 'cors'}).then(response => {
             if (response.status !== 200) {
                 throw new Error(`Server returned status ${response.status}`);
@@ -562,13 +567,13 @@ export class CFileManager extends CManager {
 
     /**
      * Resets the application to a new blank "custom" situation.
-     * Reloads the page with ?sitch=custom.
+     * Reloads the page with ?action=new to create a fresh sitch.
      */
     newSitch() {
         // we just jump to the "custom" sitch, which is a blank sitch
         // that the user can modify and save
         // doing it as a URL to ensure a clean slate
-        window.location = SITREC_APP + "?sitch=custom";
+        window.location = SITREC_APP + "?action=new";
     }
 
     /**

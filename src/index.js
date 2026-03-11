@@ -171,9 +171,12 @@ console.log ("SITREC START " + process.env.BUILD_VERSION_STRING);
 // However note that the imports above might have code that is executed
 // before this code is executed.
 
-// We NOW default to "Custom" unless overridden by a URL parameter
-// otherwise we get lots of sitches with unnecessary satellites
-let situation = "custom";
+// Detect if this is an explicit new sitch creation via ?action=new
+const isNewSitchAction = !isConsole && new URLSearchParams(window.location.search).get("action") === "new";
+
+// Default to "empty" for fast startup (sitch browser will open on top).
+// When ?action=new, use "custom" to give the full new-sitch experience.
+let situation = isNewSitchAction ? "custom" : "empty";
 
 // Some (essentially) global variables
 let urlParams;
@@ -550,6 +553,12 @@ if (Sit.TerrainModel) {
     }
 }
 
+// Pre-compute whether the sitch browser will auto-open, so CFileManager can skip redundant fetches
+Globals.sitchBrowserWillOpen = !isConsole && !isNewSitchAction && !Globals.regression && !testing
+    && !urlParams.get("sitch") && !urlParams.get("sit")
+    && !urlParams.get("custom") && !urlParams.get("mod")
+    && !urlParams.get("test") && !urlParams.get("testAll");
+
 legacySetup();
 await setupFunctions();
 
@@ -611,6 +620,12 @@ if (isLocal) {
 
 console.log("............... Done with setup, starting animation")
 startAnimating(Sit.fps);
+
+// Auto-open sitch browser when no explicit sitch/action is specified
+if (Globals.sitchBrowserWillOpen && FileManager.sitchBrowser) {
+    FileManager.sitchBrowser.open();
+}
+Globals.sitchBrowserWillOpen = false;
 
 // We continutally check to see if we are testing
 
@@ -1342,7 +1357,8 @@ async function initializeOnce() {
 
 ///////////////////////////////////////////////////////////////////////
 // But if it's local, we default to the local situation, defined in config.js
-    if (isLocal) {
+// Only override if the user explicitly requested a new sitch or a specific sitch via URL params
+    if (isLocal && isNewSitchAction) {
         situation = localSituation
 //        console.log("LOCAL TEST MODE: " + situation + ", isLocal = " + isLocal)
     }

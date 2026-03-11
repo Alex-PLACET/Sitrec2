@@ -546,8 +546,9 @@ export class CCustomManager {
             this._featureButton = adminFolder.add(this, "toggleFeatureSitch").name("Feature")
                 .tooltip("Toggle Featured status for the currently loaded sitch");
             // Fetch featured state to set correct initial button label
+            // Skip if browser is about to open — it will fetch featured data
             const browser = FileManager.sitchBrowser;
-            if (browser) {
+            if (browser && !browser.pendingOpen) {
                 browser._reloadFeaturedFromServer().then(() => this.updateFeatureButton());
             }
         }
