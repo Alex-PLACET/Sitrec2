@@ -533,6 +533,13 @@ export class CCustomManager {
             if (parseBoolean(process.env.SAVE_TO_S3)) {
                 adminFolder.add(this, "addMissingScreenshots").name("Add Missing Screenshots").tooltip("Load each sitch that has no screenshot, render it, and upload a screenshot");
             }
+            this._featureButton = adminFolder.add(this, "toggleFeatureSitch").name("Feature")
+                .tooltip("Toggle Featured status for the currently loaded sitch");
+            // Fetch featured state to set correct initial button label
+            const browser = FileManager.sitchBrowser;
+            if (browser) {
+                browser._reloadFeaturedFromServer().then(() => this.updateFeatureButton());
+            }
         }
 
         // TODO - Multiple events passed to EventManager.addEventListener
@@ -3070,6 +3077,34 @@ export class CCustomManager {
 
     openAdminDashboard() {
         window.open(SITREC_SERVER + 'admin_dashboard.php', '_blank');
+    }
+
+    toggleFeatureSitch() {
+        const sitchName = Sit.sitchName;
+        if (!sitchName) {
+            alert("No saved sitch is currently loaded.");
+            return;
+        }
+        const browser = FileManager.sitchBrowser;
+        if (!browser) {
+            alert("Sitch browser is not available.");
+            return;
+        }
+
+        if (browser._isFeatured(sitchName)) {
+            browser._removeLabelFromSitches([sitchName], "Featured");
+        } else {
+            browser._addLabelToSitches([sitchName], "Featured");
+        }
+        this.updateFeatureButton();
+    }
+
+    updateFeatureButton() {
+        if (!this._featureButton) return;
+        const sitchName = Sit.sitchName;
+        const browser = FileManager.sitchBrowser;
+        const isFeatured = sitchName && browser && browser._isFeatured(sitchName);
+        this._featureButton.name(isFeatured ? "Unfeature" : "Feature");
     }
 
     validateSitchNames() {

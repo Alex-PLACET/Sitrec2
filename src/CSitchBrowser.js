@@ -37,7 +37,7 @@ export class CSitchBrowser {
         this.userLabels = [];    // [{name, color, permanent?}, ...]
         this.sitchLabels = {};   // {sitchName: [labelName, ...]}
         this.featuredSitches = new Map(); // name -> {userID, screenshotUrl} (global, shared)
-        this.activeLabel = null; // sidebar filter, or null = Home
+        this.activeLabel = null; // sidebar filter, or null = All
 
         // Multi-selection
         this.selection = new Set();
@@ -250,6 +250,15 @@ export class CSitchBrowser {
                 if (this._sitchHasLabel(s.name, "Private")) return false;
                 return this._isFeatured(s.name);
             });
+        } else if (this.activeLabel === "Unlabeled") {
+            // Unlabeled view: no labels at all (not Featured, Private, Deleted, or any custom label)
+            list = list.filter(s => {
+                if (this._sitchHasLabel(s.name, "Deleted")) return false;
+                if (this._sitchHasLabel(s.name, "Private")) return false;
+                if (this._isFeatured(s.name)) return false;
+                const labels = this.sitchLabels[s.name];
+                return !labels || labels.length === 0;
+            });
         } else if (this.activeLabel) {
             // Custom label view: has label, not Deleted, not Private
             list = list.filter(s => {
@@ -258,7 +267,7 @@ export class CSitchBrowser {
                 return this._sitchHasLabel(s.name, this.activeLabel);
             });
         } else {
-            // Home: exclude Deleted + Private
+            // All: exclude Deleted + Private
             list = list.filter(s =>
                 !this._sitchHasLabel(s.name, "Deleted") && !this._sitchHasLabel(s.name, "Private"));
         }
@@ -303,14 +312,14 @@ export class CSitchBrowser {
 
         const loggedIn = this._isLoggedIn();
 
-        // Home link (logged-in only)
-        this._homeLink = null;
+        // All link (logged-in only)
+        this._allLink = null;
         if (loggedIn) {
-            this._homeLink = this._makeSidebarLink("Home", () => {
+            this._allLink = this._makeSidebarLink("All", () => {
                 this.activeLabel = null;
                 this._onFilterChanged();
             }, !this.activeLabel);
-            sidebar.appendChild(this._homeLink);
+            sidebar.appendChild(this._allLink);
         }
 
         // Featured link (always visible)
@@ -327,6 +336,7 @@ export class CSitchBrowser {
         // Private link (logged-in only)
         this._privateLink = null;
         this._deletedLink = null;
+        this._unlabeledLink = null;
         if (loggedIn) {
             const privateCount = this.sitches.filter(s =>
                 this._sitchHasLabel(s.name, "Private") && !this._sitchHasLabel(s.name, "Deleted")).length;
@@ -347,6 +357,21 @@ export class CSitchBrowser {
             );
             this._makePermanentLinkDropTarget(this._deletedLink, "Deleted");
             sidebar.appendChild(this._deletedLink);
+
+            // Unlabeled link (logged-in only)
+            const unlabeledCount = this.sitches.filter(s => {
+                if (this._sitchHasLabel(s.name, "Deleted")) return false;
+                if (this._sitchHasLabel(s.name, "Private")) return false;
+                if (this._isFeatured(s.name)) return false;
+                const labels = this.sitchLabels[s.name];
+                return !labels || labels.length === 0;
+            }).length;
+            this._unlabeledLink = this._makeSidebarLink(
+                "Unlabeled" + (unlabeledCount ? ` (${unlabeledCount})` : ""),
+                () => { this.activeLabel = "Unlabeled"; this._onFilterChanged(); },
+                this.activeLabel === "Unlabeled"
+            );
+            sidebar.appendChild(this._unlabeledLink);
         }
 
         // View section
@@ -433,14 +458,15 @@ export class CSitchBrowser {
     }
 
     _rebuildSidebarLinks() {
-        // Update Home/Featured/Private/Deleted link styles
+        // Update All/Featured/Private/Deleted/Unlabeled link styles
         const links = [
-            [this._homeLink, !this.activeLabel, "Home"],
-            [this._featuredLink, this.activeLabel === "Featured", "Featured"],
-            [this._privateLink, this.activeLabel === "Private", "Private"],
-            [this._deletedLink, this.activeLabel === "Deleted", "Deleted"],
-            [this._listLink, this.viewMode === "list", null],
-            [this._thumbLink, this.viewMode === "thumbnails", null],
+            [this._allLink, !this.activeLabel],
+            [this._featuredLink, this.activeLabel === "Featured"],
+            [this._privateLink, this.activeLabel === "Private"],
+            [this._deletedLink, this.activeLabel === "Deleted"],
+            [this._unlabeledLink, this.activeLabel === "Unlabeled"],
+            [this._listLink, this.viewMode === "list"],
+            [this._thumbLink, this.viewMode === "thumbnails"],
         ];
         for (const [el, active] of links) {
             if (!el) continue;
@@ -462,6 +488,16 @@ export class CSitchBrowser {
         if (this._deletedLink) {
             const c = this.sitches.filter(s => this._sitchHasLabel(s.name, "Deleted")).length;
             this._deletedLink.textContent = "Deleted" + (c ? ` (${c})` : "");
+        }
+        if (this._unlabeledLink) {
+            const c = this.sitches.filter(s => {
+                if (this._sitchHasLabel(s.name, "Deleted")) return false;
+                if (this._sitchHasLabel(s.name, "Private")) return false;
+                if (this._isFeatured(s.name)) return false;
+                const labels = this.sitchLabels[s.name];
+                return !labels || labels.length === 0;
+            }).length;
+            this._unlabeledLink.textContent = "Unlabeled" + (c ? ` (${c})` : "");
         }
     }
 
@@ -966,6 +1002,10 @@ export class CSitchBrowser {
     // ==================== CONTENT REBUILD ====================
 
     rebuildContent() {
+        // Save scroll position before destroying content
+        const scrollContainer = this.viewMode === "list" ? this._listScrollContainer : this._thumbScrollContainer;
+        const savedScroll = scrollContainer ? scrollContainer.scrollTop : 0;
+
         this._destroyThumbObserver();
         this._hideContextMenu();
         this._contentArea.innerHTML = "";
@@ -976,6 +1016,12 @@ export class CSitchBrowser {
 
         if (this.viewMode === "list") this.buildListView();
         else this.buildThumbnailView();
+
+        // Restore scroll position after rebuilding
+        const newScrollContainer = this.viewMode === "list" ? this._listScrollContainer : this._thumbScrollContainer;
+        if (newScrollContainer && savedScroll > 0) {
+            newScrollContainer.scrollTop = savedScroll;
+        }
     }
 
     // ==================== LIST VIEW ====================
@@ -1036,6 +1082,7 @@ export class CSitchBrowser {
         // Scrollable list
         const listContainer = document.createElement("div");
         Object.assign(listContainer.style, { flex: "1", overflowY: "auto", padding: "0 24px" });
+        this._listScrollContainer = listContainer;
         const tbody = document.createElement("div");
         this._tbody = tbody;
         this.renderRows(tbody);
@@ -1379,6 +1426,7 @@ export class CSitchBrowser {
         if (this.activeLabel === "Deleted") return "Deleted Sitches";
         if (this.activeLabel === "Private") return "Private Sitches";
         if (this.activeLabel === "Featured") return "Featured Sitches";
+        if (this.activeLabel === "Unlabeled") return "Unlabeled Sitches";
         if (this.activeLabel) return `Label: ${this.activeLabel}`;
         return "Browse Sitches";
     }
@@ -1647,6 +1695,8 @@ export class CSitchBrowser {
 
     // Check if a label change affects the current filter and requires a full content rebuild
     _labelAffectsFilter(labelName) {
+        // When viewing Unlabeled, any label change affects the filter
+        if (this.activeLabel === "Unlabeled") return true;
         return labelName === "Deleted" || labelName === "Private" || labelName === "Featured" || labelName === this.activeLabel;
     }
 
