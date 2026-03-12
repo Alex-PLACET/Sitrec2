@@ -4280,7 +4280,6 @@ export class CCustomManager {
         }
 
         Globals.dontRecalculate = false;
-        Globals.deserializing = false;
 
         // recalculate everything after the mods
         // in case there's some missing dependency
@@ -4293,6 +4292,9 @@ export class CCustomManager {
         // and we do it twice as sometimes there's initialization ordering issues
         // like the Tracking overlay depending on the FOV, but coming before the lookCamera
         NodeMan.recalculateAllRootFirst();
+
+        Globals.deserializing = false;
+        Globals.sitchDirty = false;
         setRenderOne(3);
     }
 

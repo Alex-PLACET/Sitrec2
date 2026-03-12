@@ -1,5 +1,5 @@
 import {CNodeViewText} from "./CNodeViewText.js";
-import {GlobalDateTimeNode, Globals, guiMenus, withTestUser} from "../Globals";
+import {GlobalDateTimeNode, Globals, guiMenus, markSitchDirty, withTestUser} from "../Globals";
 import {SITREC_SERVER} from "../configUtils";
 import {sitrecAPI} from "../CSitrecAPI";
 import {parseBoolean} from "../utils";
@@ -266,6 +266,16 @@ class CNodeViewChat extends CNodeViewText {
                 const response = clientNLU.generateResponse(parseResult, executeResult);
                 this.addSystemMessage(response);
                 this.addDebugMessage(`Local: ${JSON.stringify(executeResult)}`);
+                // Only mark dirty for commands that change serialized sitch state
+                // Navigation/transient commands (camera, frame, time, math) don't count
+                const navigationalIntents = new Set([
+                    "MATH", "SET_FRAME", "SET_DATETIME", "SET_TIME_RELATIVE",
+                    "ZOOM_IN", "ZOOM_OUT", "POINT_AT", "PLAY", "PAUSE",
+                    "GOTO_LLA", "GOTO_NAMED_LOCATION",
+                ]);
+                if (!navigationalIntents.has(parseResult.intent)) {
+                    markSitchDirty();
+                }
                 return;
             }
 
@@ -325,7 +335,10 @@ class CNodeViewChat extends CNodeViewText {
             if (response.text) this.addSystemMessage(response.text);
             if (response.apiCalls && response.apiCalls.length > 0) {
                 this.addDebugMessage(`API calls: ${JSON.stringify(response.apiCalls)}`);
-                const toolResults = this.handleAPICalls(response.apiCalls);
+                const {toolResults, changesSerializedState} = this.handleAPICalls(response.apiCalls);
+                if (changesSerializedState) {
+                    markSitchDirty();
+                }
 
                 this.logUnhandledLLMCall(text, response.apiCalls);
 
@@ -367,9 +380,13 @@ class CNodeViewChat extends CNodeViewText {
     // Process any API calls returned by the server - returns results for session continuation
     handleAPICalls(calls) {
         const toolResults = [];
+        let changesSerializedState = false;
         for (const call of calls) {
             const result = sitrecAPI.handleAPICall(call);
             toolResults.push({ fn: call.fn, args: call.args, result: result.result ?? result });
+            if (sitrecAPI.callChangesSerializedState(call, result)) {
+                changesSerializedState = true;
+            }
             
             // Only show user-facing messages for errors
             // Success messages will come from the LLM's natural language response
@@ -377,7 +394,7 @@ class CNodeViewChat extends CNodeViewText {
                 this.addSystemMessage(`Error: ${result.result.error}`);
             }
         }
-        return toolResults;
+        return {toolResults, changesSerializedState};
     }
     
     async continueSession(toolResults, provider, model, depth = 0) {
@@ -408,7 +425,10 @@ class CNodeViewChat extends CNodeViewText {
             if (response.text) this.addSystemMessage(response.text);
             if (response.apiCalls && response.apiCalls.length > 0) {
                 this.addDebugMessage(`Continue API calls: ${JSON.stringify(response.apiCalls)}`);
-                const newResults = this.handleAPICalls(response.apiCalls);
+                const {toolResults: newResults, changesSerializedState} = this.handleAPICalls(response.apiCalls);
+                if (changesSerializedState) {
+                    markSitchDirty();
+                }
 
                 if (response.sessionContinue) {
                     await this.continueSession(newResults, provider, model, depth + 1);

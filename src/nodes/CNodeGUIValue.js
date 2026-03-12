@@ -2,7 +2,7 @@
 import {CNodeConstant} from "./CNode";
 import {isLocal} from "../configUtils.js"
 import {assert} from "../assert.js";
-import {Globals, NodeMan, setRenderOne, Units} from "../Globals";
+import {Globals, markSitchDirty, NodeMan, setRenderOne, Units} from "../Globals";
 import {roundIfClose, stripComments} from "../utils";
 import {EventManager} from "../CEventManager";
 import {addMathInputs, evaluateExpression} from "./CNodeMath";
@@ -81,6 +81,8 @@ export class CNodeGUIValue extends CNodeGUIConstant {
                 }
                // console.log("GUIValue.onChange."+this.id);
                 EventManager.dispatchEvent("GUIValue.onChange."+this.id, value)
+
+                markSitchDirty();
                 setRenderOne(true);
             }
         ).name(v.desc ? v.desc : "<no desc>").listen()

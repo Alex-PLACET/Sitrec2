@@ -1121,6 +1121,39 @@ class CSitrecAPI {
         }
     }
 
+    callChangesSerializedState(call, apiResult) {
+        if (!call?.fn || !apiResult?.success) {
+            return false;
+        }
+
+        const nestedResult = apiResult.result;
+        if (nestedResult && typeof nestedResult === "object" && nestedResult.success === false) {
+            return false;
+        }
+
+        const transientCalls = new Set([
+            "getCameraLLA",
+            "setCameraAltitude",
+            "setDateTime",
+            "pointCameraAtRaDec",
+            "pointCameraAtNamedObject",
+            "getFrame",
+            "setFrame",
+            "getMenuValue",
+            "listMenus",
+            "listMenuControls",
+            "listObjectFolders",
+            "listAvailableModels",
+            "listAvailableGeometries",
+            "gotoLLA",
+            "play",
+            "pause",
+            "toggleDebug",
+        ]);
+
+        return !transientCalls.has(call.fn);
+    }
+
     call(fn, args = {}) {
         return this.handleAPICall({fn, args});
     }

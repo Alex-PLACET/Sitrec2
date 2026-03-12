@@ -58,7 +58,8 @@ function getFormattedLocalDateTime() {
 }
 
 
-console.log(getFormattedLocalDateTime());
+const buildVersionString = getFormattedLocalDateTime();
+console.log(buildVersionString);
 
 module.exports = (env = {}) => ({
 
@@ -239,12 +240,23 @@ ${bodyContent}
             },
         },
         new webpack.DefinePlugin({
-            'process.env.BUILD_VERSION_STRING': JSON.stringify(getFormattedLocalDateTime()),
+            'process.env.BUILD_VERSION_STRING': JSON.stringify(buildVersionString),
             'process.env.BUILD_VERSION_NUMBER': JSON.stringify(getVersionNumber()),
             'process.env.DOCKER_BUILD': JSON.stringify(process.env.DOCKER_BUILD === 'true'),
             'CAN_REQUIRE_CONTEXT': JSON.stringify(true),
             'INCLUDE_IWER_EMULATOR': JSON.stringify(env.includeIWER !== false),
         }),
+
+        // Write build-version.txt so the app can detect stale cached index.html
+        {
+            apply: (compiler) => {
+                compiler.hooks.emit.tap('WriteBuildVersion', (compilation) => {
+                    const version = buildVersionString;
+                    compilation.emitAsset('build-version.txt',
+                        new webpack.sources.RawSource(version));
+                });
+            }
+        },
 
         {
             apply: (compiler) => {

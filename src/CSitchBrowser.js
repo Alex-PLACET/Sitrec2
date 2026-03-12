@@ -6,7 +6,7 @@
  * Right-click context menu with label checkboxes.
  */
 import {isAdmin, SITREC_APP, SITREC_SERVER} from "./configUtils";
-import {getEffectiveUserID, withTestUser} from "./Globals";
+import {getEffectiveUserID, Globals, withTestUser} from "./Globals";
 
 const LABEL_COLORS = [
     "#4285f4", "#34a853", "#fbbc04", "#24c1e0",
@@ -1126,8 +1126,12 @@ export class CSitchBrowser {
 
         // Title
         const titleBar = document.createElement("div");
-        Object.assign(titleBar.style, { padding: "16px 24px", fontSize: "20px", fontWeight: "600", borderBottom: "1px solid #333" });
+        Object.assign(titleBar.style, { padding: "16px 24px", fontSize: "20px", fontWeight: "600", borderBottom: "1px solid #333", display: "flex", justifyContent: "space-between", alignItems: "center" });
         titleBar.textContent = this._titleText();
+        const versionLabel = document.createElement("span");
+        Object.assign(versionLabel.style, { fontSize: "12px", color: "#666", fontWeight: "400" });
+        versionLabel.textContent = process.env.BUILD_VERSION_STRING;
+        titleBar.appendChild(versionLabel);
         listArea.appendChild(titleBar);
 
         // Search
@@ -1314,8 +1318,12 @@ export class CSitchBrowser {
 
         // Title
         const titleBar = document.createElement("div");
-        Object.assign(titleBar.style, { padding: "16px 24px", fontSize: "20px", fontWeight: "600", borderBottom: "1px solid #333" });
+        Object.assign(titleBar.style, { padding: "16px 24px", fontSize: "20px", fontWeight: "600", borderBottom: "1px solid #333", display: "flex", justifyContent: "space-between", alignItems: "center" });
         titleBar.textContent = this._titleText();
+        const versionLabel = document.createElement("span");
+        Object.assign(versionLabel.style, { fontSize: "12px", color: "#666", fontWeight: "400" });
+        versionLabel.textContent = process.env.BUILD_VERSION_STRING;
+        titleBar.appendChild(versionLabel);
         area.appendChild(titleBar);
 
         // Search + sort + columns

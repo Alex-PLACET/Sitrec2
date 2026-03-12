@@ -16,7 +16,7 @@ import {adjustHeightAboveGround, elevationAtLL} from "../threeExt";
 import {assert} from "../assert";
 import {getCursorPositionFromTopView} from "../mouseMoveView";
 import {EventManager} from "../CEventManager";
-import {guiMenus, NodeMan, setSitchEstablished, Sit, UndoManager} from "../Globals";
+import {guiMenus, markSitchDirty, NodeMan, setSitchEstablished, Sit, UndoManager} from "../Globals";
 import {getApproximateLocationFromIP} from "../GeoLocation";
 import {customAltitudeFunction, customLocationFunction} from "../../config/config";
 import {showError} from "../showError";
@@ -139,6 +139,7 @@ export class CNodePositionLLA extends CNodeTrack {
 
                 gui.add(this, "agl").name("Above Ground Level").onChange((v) => {
                     this.recalculateCascade()
+                    markSitchDirty();
                 }).listen();
 
 
@@ -180,6 +181,7 @@ export class CNodePositionLLA extends CNodeTrack {
                                 }
 
                                 this.goTo();
+                                markSitchDirty();
                                 EventManager.dispatchEvent("PositionLLA.onChange", {id: this.id});
 
                                 if (NodeMan.exists("terrainUI")) {
@@ -247,6 +249,7 @@ export class CNodePositionLLA extends CNodeTrack {
             this.guiAlt.setValueWithUnits(alt, "metric", "small", true);
         }
         this.recalculateCascade();
+        markSitchDirty();
         EventManager.dispatchEvent("PositionLLA.onChange", {id: this.id})
 
     }
@@ -276,6 +279,7 @@ export class CNodePositionLLA extends CNodeTrack {
         this.agl = true; // set AGL to true, so we adjust the altitude above ground level
 
         this.recalculateCascade();
+        markSitchDirty();
         NodeMan.get("mainCamera").goToPoint(this.ecef,2300000,100000);
 
 
@@ -366,6 +370,7 @@ export class CNodePositionLLA extends CNodeTrack {
         this.guiLon.value = LLA.y
         this._LLA[0] = LLA.x
         this._LLA[1] = LLA.y
+        markSitchDirty();
 
         if (changeAlt) {
 

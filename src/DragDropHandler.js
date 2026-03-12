@@ -1,6 +1,6 @@
 //////////////////////////////////////////////////////
 ///  DRAG AND DROP FILES?
-import {FileManager, Globals, NodeMan, Sit, Synth3DManager} from "./Globals";
+import {FileManager, Globals, markSitchDirty, NodeMan, Sit, Synth3DManager} from "./Globals";
 import {cos, isSubdomain, radians} from "./utils";
 import {ECEFToLLAVD_radii, LLAToECEF} from "./LLA-ECEF-ENU";
 import {getLocalSouthVector, getLocalUpVector} from "./SphericalMath";
@@ -234,6 +234,8 @@ class CDragDropHandler {
         this.dropQueue = [];
         e.preventDefault();
         this.hideDropZone();
+        // Don't mark dirty here — wait until a file is actually processed
+        // (cancelled dialogs, unsupported files, or invalid drops shouldn't arm beforeunload)
         // we defer the checkDrop to a check in the main loop
         // to simplify debugging.
         const dt = e.dataTransfer;
@@ -317,6 +319,7 @@ class CDragDropHandler {
                 return;
             }
             NodeMan.get("video").uploadFile(file);
+            markSitchDirty();
             return;
         }
 
@@ -387,6 +390,7 @@ class CDragDropHandler {
                 videoNode.makeImageVideo(file.name, img, false, file.name);
                 videoNode.imageFileID = file.name;
                 console.log(`Loaded image "${file.name}" as video source (${img.width}x${img.height})`);
+                markSitchDirty();
                 resolve();
             };
             img.onerror = () => {
@@ -469,6 +473,7 @@ class CDragDropHandler {
             // Enter edit mode so user can adjust position/size
             overlay.setEditMode(true);
             console.log(`Created ground overlay "${overlay.name}" from image at screen center`);
+            markSitchDirty();
         }
     }
 
@@ -634,7 +639,15 @@ class CDragDropHandler {
         while (this.dropQueue.length > 0) {
             const drop = this.dropQueue.shift();
             console.log("checkDropQueue: Parsing queued file " + drop.filename)
-            FileManager.parseResult(drop.filename, drop.result, drop.newStaticURL);
+            FileManager.parseResult(drop.filename, drop.result, drop.newStaticURL, {returnMeta: true})
+                .then(({changesSerializedState}) => {
+                    if (changesSerializedState) {
+                        markSitchDirty();
+                    }
+                })
+                .catch((error) => {
+                    console.error("checkDropQueue: Failed to parse dropped file " + drop.filename, error);
+                });
         }
     }
 }

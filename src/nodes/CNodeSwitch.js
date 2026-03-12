@@ -1,7 +1,7 @@
 import {CNode} from "./CNode";
 import {addOptionToGUIMenu, removeOptionFromGUIMenu} from "../lil-gui-extras";
 import {isConsole, isLocal} from "../configUtils.js";
-import {Globals, NodeMan, Sit} from "../Globals";
+import {Globals, markSitchDirty, NodeMan, Sit} from "../Globals";
 import {assert} from "../assert.js";
 import {EventManager} from "../CEventManager";
 
@@ -89,6 +89,7 @@ class CNodeSwitch extends CNode {
                         this.onChangeCallback(this.getObject())
                     }
                     EventManager.dispatchEvent("Switch.onChange."+this.id, this.choice)
+                    markSitchDirty();
 
                 })
 

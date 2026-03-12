@@ -26,6 +26,7 @@ export const Globals = {
     screenshotting: false, // true during batch screenshot generation (skips menu rebuilds)
     disposing: false, // true during disposeEverything() to suppress side-effects
     testUserID: 0, // Admin-only: operate as this user ID when > 1
+    sitchDirty: false, // true when user has made meaningful changes (not just camera/frame)
 
     // Granular render debug flags - shared across ALL views
     renderDebugFlags: {
@@ -121,6 +122,15 @@ export function setGlobalDateTimeNode(i) {GlobalDateTimeNode=i;}
 
 export function setNewSitchObject(object){
     Globals.newSitchObject = object;
+}
+
+export function markSitchDirty() {
+    // Suppress during initialization and deserialization
+    if (Globals.deserializing || Globals.disposing) return;
+    if (!Globals.sitchDirty) {
+        console.log("markSitchDirty: setting dirty=true", new Error().stack);
+    }
+    Globals.sitchDirty = true;
 }
 
 export const guiMenus = {}

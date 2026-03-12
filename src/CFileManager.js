@@ -965,6 +965,7 @@ export class CFileManager extends CManager {
 
         return CustomManager.serialize(sitchName, todayDateTimeFilename, local)
             .then(() => {
+                Globals.sitchDirty = false;
                 // After sitch is saved, upload the screenshot to the same folder
                 if (!local) {
                     return screenshotPromise.then(blob => {
@@ -1663,12 +1664,14 @@ export class CFileManager extends CManager {
      * @param {string} filename - The name of the file (used as both filename and id)
      * @param {ArrayBuffer} result - The raw file data
      * @param {string|null} newStaticURL - Static URL if file was loaded from a permanent location
-     * @returns {Promise<Array<{filename: string, parsed: *, dataType: string}>>} Array of parsed results
+     * @param {{returnMeta?: boolean}} [options] - Optional metadata return toggle.
+     * @returns {Promise<Array<{filename: string, parsed: *, dataType: string}>|{parsedResult: Array<{filename: string, parsed: *, dataType: string}>, changesSerializedState: boolean}>}
      */
-    parseResult(filename, result, newStaticURL) {
+    parseResult(filename, result, newStaticURL, options = {}) {
         console.log("parseResult: Parsing " + filename)
         return this.parseAsset(filename, filename, result)
             .then(async parsedResult => {
+                let changesSerializedState = false;
 
 
                 let isMultiple = false;
@@ -1709,15 +1712,21 @@ export class CFileManager extends CManager {
                     fileManagerEntry.isMultiple = isMultiple;
 
                     const parsedFile = x.parsed;
-                    const filename = x.filename;
+                    const parsedFilename = x.filename;
 
                     NodeMan.suspendRecalculate()
-                    await this.handleParsedFile(filename, parsedFile);
-                    NodeMan.unsuspendRecalculate();
+                    try {
+                        changesSerializedState = await this.handleParsedFile(parsedFilename, parsedFile) || changesSerializedState;
+                    } finally {
+                        NodeMan.unsuspendRecalculate();
+                    }
 
                 }
                 console.log("parseResult: DONE Parse " + filename)
                 setRenderOne(true);
+                if (options.returnMeta) {
+                    return {parsedResult, changesSerializedState};
+                }
                 return parsedResult
             })
     }
@@ -1746,7 +1755,7 @@ export class CFileManager extends CManager {
 
         if (filename.split('.').length === 1) {
 //            console.log("Skipping handleParseFile, as no file extension for " + filename+" assuming it's an ID");
-            return;
+            return false;
         }
 
         const fileManagerEntry = this.list[filename];
@@ -1757,7 +1766,7 @@ export class CFileManager extends CManager {
         // ensure we don't parse the file twice.
         if (fileManagerEntry.handled)   {
             console.warn("handleParsedFile: File already handled for " + filename+", skipping");
-            return;
+            return false;
         }
         fileManagerEntry.handled = true;
 
@@ -1767,13 +1776,13 @@ export class CFileManager extends CManager {
             extractFeaturesFromFile(parsedFile);
             // Mark this file as transient - don't save it during serialization
             fileManagerEntry.skipSerialization = true;
-            return;
+            return true;
         }
 
         // Handle FlightClub JSON files - convert to CSV tracks
         if (fileManagerEntry.dataType === "flightclub") {
             this.handleFlightClubJSON(filename, parsedFile, fileManagerEntry);
-            return;
+            return true;
         }
 
         // Handle image files that were imported as video source
@@ -1784,7 +1793,7 @@ export class CFileManager extends CManager {
                 const videoNode = NodeMan.get("video");
                 if (videoNode.pendingVideoRestore) {
                     console.log(`[CFileManager] Skipping video image restore for "${filename}" - pendingVideoRestore active`);
-                    return;
+                    return false;
                 }
             }
 
@@ -1811,7 +1820,7 @@ export class CFileManager extends CManager {
                 };
                 img.src = blobURL;
             }
-            return;
+            return false;
         }
 
         // Handle image files for ground overlays - just create blobURL
@@ -1829,7 +1838,7 @@ export class CFileManager extends CManager {
                 fileManagerEntry.blobURL = URL.createObjectURL(blob);
                 console.log(`Created blobURL for ground overlay image "${filename}"`);
             }
-            return;
+            return false;
         }
 
         // if it's a CSV, the first check if it contails AZ and EL
@@ -1946,7 +1955,7 @@ export class CFileManager extends CManager {
                     }
 
                     // handled the AZ, EL, ZOOM, FOV, and/or HEADING CSV file, so
-                    return;
+                    return true;
                 }
                 // if we get here, then we don't have az and el columns
 
@@ -1972,6 +1981,7 @@ export class CFileManager extends CManager {
 
             fileManagerEntry.isTLE = true;
             NodeMan.get("NightSkyNode").replaceTLE(parsedFile)
+            return true;
         } else {
             let isATrack = false;
             let isASitch = false;
@@ -1995,7 +2005,7 @@ export class CFileManager extends CManager {
                 if (parsedFile instanceof CTrackFile) {
                     parsedFile.extractObjects()
                 }
-                return
+                return true
             } else if (isASitch) {
                 // parsedFile is a sitch text def
                 // make a copy of the string (as we might be removing all the files)
@@ -2008,7 +2018,7 @@ export class CFileManager extends CManager {
                     copy = textSitchToObject(decodedString);
                 }
                 setNewSitchObject(copy)
-                return;
+                return false;
             } else if (fileExt === "glb") {
                 // it's a model, so we can replace the model used in targetModel
                 // we have filename, and we can just set
@@ -2020,7 +2030,7 @@ export class CFileManager extends CManager {
                     target.rebuild();
                     // woudl also need to add it to the gui
                 }
-                return;
+                return true;
 
 
             }
@@ -2028,7 +2038,7 @@ export class CFileManager extends CManager {
             // Handle CTrackFile types that don't contain tracks but may have other objects
             if (parsedFile instanceof CTrackFile) {
                 parsedFile.extractObjects()
-                return;
+                return true;
             }
 
             // is it a video file (like H.264 streams from TS files)?
@@ -2036,7 +2046,7 @@ export class CFileManager extends CManager {
                 console.log("Video data detected: " + filename);
                 if (!NodeMan.exists("video")) {
                     console.warn("No video node found to load video data");
-                    return;
+                    return false;
                 }
 
                 const videoNode = NodeMan.get("video");
@@ -2067,13 +2077,13 @@ export class CFileManager extends CManager {
                 else {
                     console.warn("Unknown video format for: " + filename);
                 }
-                return;
+                return true;
             }
 
             // is it a KMZ overlay image? Skip video handling - these are for ground overlays
             if (fileManagerEntry.dataType === "kmzImage") {
                 console.log("Skipping video handling for KMZ overlay image: " + filename);
-                return;
+                return false;
             }
 
             // is it an image?
@@ -2086,37 +2096,40 @@ export class CFileManager extends CManager {
                         if (choice === 'video') {
                             if (NodeMan.exists("video")) {
                                 NodeMan.get("video").makeImageVideo(filename, parsedFile, true);
+                                return true;
                             }
                         } else if (choice === 'overlay') {
                             await this.createGroundOverlayFromImage(filename, parsedFile);
+                            return true;
                         }
                     } catch (e) {
                         console.log("Image import cancelled");
                     }
-                    return;
+                    return false;
                 }
                 
                 if (!NodeMan.exists("video")) {
                     console.warn("No video node found to load video file");
-                    return;
+                    return false;
                 }
                 NodeMan.get("video").makeImageVideo(filename, parsedFile, true);
-                return;
+                return true;
             }
 
             // is it a GeoTIFF?
             if (fileManagerEntry.dataType === "geotiff") {
                 const { buffer, bounds } = parsedFile;
-                this.createGroundOverlayFromGeoTIFF(filename, buffer, bounds);
+                await this.createGroundOverlayFromGeoTIFF(filename, buffer, bounds);
                 // Mark the original .tif file to skip serialization
                 // We only want to serialize the converted PNG, not the original GeoTIFF
                 fileManagerEntry.skipSerialization = true;
-                return;
+                return true;
             }
 
             console.warn("Unhandled file type: " + fileExt + " for " + filename);
 
         }
+        return false;
     }
 
     async createGroundOverlayFromGeoTIFF(filename, buffer, bounds) {

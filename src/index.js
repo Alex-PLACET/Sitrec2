@@ -167,6 +167,26 @@ document.addEventListener('touchmove', (event) => {
 
 console.log ("SITREC START " + process.env.BUILD_VERSION_STRING);
 
+// Check for stale cached index.html by comparing built-in version with server version
+if (typeof window !== 'undefined') {
+    fetch('build-version.txt', { cache: 'no-store' })
+        .then(r => r.ok ? r.text() : null)
+        .then(serverVersion => {
+            if (serverVersion && serverVersion.trim() !== process.env.BUILD_VERSION_STRING) {
+                console.warn("Stale build detected! Running: " + process.env.BUILD_VERSION_STRING
+                    + " Server has: " + serverVersion.trim());
+                if (confirm("A newer version of Sitrec is available.\n\n"
+                    + "Running: " + process.env.BUILD_VERSION_STRING + "\n"
+                    + "Available: " + serverVersion.trim() + "\n\n"
+                    + "This may indicate a server caching issue — please report it to the admin.\n\n"
+                    + "Reload to update?")) {
+                    window.location.reload();
+                }
+            }
+        })
+        .catch(() => {}); // silently ignore if file not available
+}
+
 // This is the main entry point for the sitrec web application
 // However note that the imports above might have code that is executed
 // before this code is executed.
@@ -639,6 +659,7 @@ if (isLocal) {
 }
 
 console.log("............... Done with setup, starting animation")
+Globals.sitchDirty = false; // Reset after setup — initialization may have triggered onChange callbacks
 startAnimating(Sit.fps);
 
 // Auto-open sitch browser when no explicit sitch/action is specified
@@ -1071,6 +1092,7 @@ async function checkFornewSitchObject() {
         console.log("New Sitch Text = " + requestedSitchObject)
         try {
             await newSitch(requestedSitchObject, true);
+            Globals.sitchDirty = false;
         } catch (error) {
             console.error("Error loading requested sitch object:", error);
         } finally {
@@ -1158,6 +1180,7 @@ async function newSitch(situation, customSetup = false ) {
 
     legacySetup();
     await setupFunctions();
+    Globals.sitchDirty = false; // Reset after setup — initialization triggers onChange callbacks
     startAnimating(Sit.fps);
     isTransitioning = false;
     setTimeout( checkForTest, Globals.quickTerrain?1:testCheckInterval);
@@ -1173,9 +1196,15 @@ async function initializeOnce() {
     if (urlParams.get("ignoreunload") === null) {
         //
         window.addEventListener('beforeunload', function (e) {
+            console.log("beforeunload: allowUnload=" + Globals.allowUnload + " sitchDirty=" + Globals.sitchDirty);
             // Check if we're in the middle of a download operation
             if (Globals.allowUnload) {
                 return; // Allow the operation without showing the dialog
+            }
+            // Only warn if the user has made meaningful changes
+            // (not just camera position/orientation or frame number)
+            if (!Globals.sitchDirty) {
+                return;
             }
             e.preventDefault();
             e.returnValue = ''; // Standard for most browsers
