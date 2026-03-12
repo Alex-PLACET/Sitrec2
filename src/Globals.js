@@ -127,9 +127,6 @@ export function setNewSitchObject(object){
 export function markSitchDirty() {
     // Suppress during initialization and deserialization
     if (Globals.deserializing || Globals.disposing) return;
-    if (!Globals.sitchDirty) {
-        console.log("markSitchDirty: setting dirty=true", new Error().stack);
-    }
     Globals.sitchDirty = true;
 }
 
