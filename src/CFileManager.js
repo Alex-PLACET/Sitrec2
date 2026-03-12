@@ -212,6 +212,12 @@ export class CFileManager extends CManager {
             if (parseBoolean(process.env.SAVE_TO_LOCAL)) {
                 // Local save/load is always available for the custom sitch, regardless of login status
                 this.guiLocal = this.guiFolder.addFolder("Local").perm().open();
+                this._localStatus = {value: "No folder selected"};
+                this._localStatusController = this.guiLocal.add(this._localStatus, "value")
+                    .name("Status")
+                    .listen()
+                    .disable()
+                    .tooltip("Current local folder/save state");
                 this._saveLocalController = this.guiLocal.add(this, "saveLocal").name("Save Local").perm()
                     .tooltip("Save into the working folder (or prompts for a location if none is set)");
                 this._saveLocalAsController = this.guiLocal.add(this, "saveLocalAs").name("Save Local As...").perm()
@@ -1426,6 +1432,24 @@ export class CFileManager extends CManager {
             const show = !!this._pendingHandle && !this.directoryHandle;
             // Toggle only the reconnect row.
             this._reconnectController.domElement.style.display = show ? "" : "none";
+        }
+
+        if (this._localStatusController && this._localStatus) {
+            const folderName = this.directoryHandle?.name || this._pendingHandle?.name || "None";
+            let state;
+            if (this.directoryHandle) {
+                state = "Ready";
+            } else if (this._pendingHandle) {
+                state = "Needs reconnect";
+            } else {
+                state = "No folder";
+            }
+
+            const targetName = this.localSaveTargetArmed && this.localSitchEntry
+                ? this.localSitchEntry.name
+                : "none";
+            this._localStatus.value = `${state} | Folder: ${folderName} | Target: ${targetName}`;
+            this._localStatusController.updateDisplay();
         }
 
         if (this._openLocalFolderController) {
