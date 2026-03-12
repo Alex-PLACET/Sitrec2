@@ -395,8 +395,11 @@ const hasExplicitStartupRequest = isNewSitchAction
     || !!urlParams.get("test")
     || !!urlParams.get("testAll");
 
+const hasServerBackedSaves = parseBoolean(process.env.SAVE_TO_SERVER)
+    || parseBoolean(process.env.SAVE_TO_S3);
+
 const shouldAutoOpenBrowser = !isConsole
-    && parseBoolean(process.env.SAVE_TO_S3)
+    && hasServerBackedSaves
     && !isServerless
     && !Globals.regression
     && !hasExplicitStartupRequest;

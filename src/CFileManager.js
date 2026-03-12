@@ -138,13 +138,8 @@ export class CFileManager extends CManager {
                     // this.guiFolder.add(this, "rehostFile").name("Rehost File").perm().tooltip("Rehost a file from your local system. DEPRECATED");
                 } else {
                     this.loginButton = this.guiServer.add(this, "loginServer").name("Saving Disabled (click to log in)").setLabelColor("#FF8080");
-                    // Still add Browse button for non-logged-in users (shows Featured sitches)
-                    if (parseBoolean(process.env.SAVE_TO_S3)) {
-                        this.sitchBrowser = new CSitchBrowser(this);
-                        if (Globals.sitchBrowserWillOpen) this.sitchBrowser.pendingOpen = true;
-                        this.guiServer.add(this, "openBrowseDialog").name("Open").perm()
-                            .tooltip("Browse featured sitches");
-                    }
+                    // Still add Browse button for non-logged-in users so featured sitches remain discoverable.
+                    this.ensureBrowseButton("Browse featured sitches");
                     this.guiServer.close();
                 }
             }
@@ -170,6 +165,31 @@ export class CFileManager extends CManager {
             }
 
         }
+    }
+
+    hasServerBackedSaves() {
+        return (parseBoolean(process.env.SAVE_TO_SERVER) || parseBoolean(process.env.SAVE_TO_S3)) && !isServerless;
+    }
+
+    ensureSitchBrowser() {
+        if (!this.hasServerBackedSaves()) return null;
+        if (!this.sitchBrowser) {
+            this.sitchBrowser = new CSitchBrowser(this);
+            if (Globals.sitchBrowserWillOpen) {
+                this.sitchBrowser.pendingOpen = true;
+            }
+        }
+        return this.sitchBrowser;
+    }
+
+    ensureBrowseButton(tooltipText) {
+        const sitchBrowser = this.ensureSitchBrowser();
+        if (!sitchBrowser) return null;
+        if (!this.openBrowseController) {
+            this.openBrowseController = this.guiServer.add(this, "openBrowseDialog").name("Open").perm();
+        }
+        this.openBrowseController.tooltip(tooltipText);
+        return this.openBrowseController;
     }
 
     /**
@@ -280,7 +300,7 @@ export class CFileManager extends CManager {
      * Also fetches and populates the list of user's saved sitches from the server.
      */
     addServerButtons() {
-        if ((! parseBoolean(process.env.SAVE_TO_SERVER) && !parseBoolean(process.env.SAVE_TO_S3)) || isServerless)
+        if (!this.hasServerBackedSaves())
             return;
 
         // During batch screenshotting, skip rebuilding server menus to preserve dropdown order
@@ -293,13 +313,7 @@ export class CFileManager extends CManager {
 
         this.guiServer.open();
 
-        // Add Browse button for S3-backed deployments
-        if (parseBoolean(process.env.SAVE_TO_S3)) {
-            this.sitchBrowser = new CSitchBrowser(this);
-            if (Globals.sitchBrowserWillOpen) this.sitchBrowser.pendingOpen = true;
-            this.guiServer.add(this, "openBrowseDialog").name("Open").perm()
-                .tooltip("Browse all your saved sitches in a searchable, sortable list");
-        }
+        this.ensureBrowseButton("Browse all your saved sitches in a searchable, sortable list");
 
         this.versionsList = ["-"];
         this.versionsData = [];
