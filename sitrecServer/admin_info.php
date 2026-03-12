@@ -72,6 +72,8 @@ function getUserSitches($userId) {
                 if (count($parts) >= 3 && $parts[1] !== '' && $parts[2] !== '') {
                     $sitchName = $parts[1];
                     $version = $parts[2];
+                    // Only consider properly formatted sitch files (YYYYMMDD_HHMMSS.js)
+                    if (!preg_match('/^\d{8}_\d{6}\.js$/', $version)) continue;
                     $url = $s3->getObjectUrl($s3creds['bucket'], $key);
                     if (!isset($sitchVersions[$sitchName]) || $object['LastModified'] > $sitchVersions[$sitchName]['lastModified']) {
                         $sitchVersions[$sitchName] = [
@@ -104,7 +106,8 @@ function getUserSitches($userId) {
                         $latestTime = 0;
                         if ($versions !== false) {
                             foreach ($versions as $v) {
-                                if ($v !== '.' && $v !== '..' && is_file($sitchPath . '/' . $v)) {
+                                // Only consider properly formatted sitch files (YYYYMMDD_HHMMSS.js)
+                                if ($v !== '.' && $v !== '..' && is_file($sitchPath . '/' . $v) && preg_match('/^\d{8}_\d{6}\.js$/', $v)) {
                                     $vTime = @filemtime($sitchPath . '/' . $v);
                                     if ($vTime > $latestTime) {
                                         $latestTime = $vTime;

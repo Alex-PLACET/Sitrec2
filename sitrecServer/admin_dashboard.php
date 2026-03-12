@@ -213,7 +213,13 @@ function getS3Usage() {
         } while ($response['IsTruncated'] ?? false);
         
         usort($objects, fn($a, $b) => $b['LastModified'] <=> $a['LastModified']);
-        $result['recent_files'] = array_slice($objects, 0, 8);
+        // Only include properly formatted sitch files (YYYYMMDD_HHMMSS.js)
+        $sitchFiles = array_filter($objects, function($obj) {
+            $parts = explode('/', $obj['Key']);
+            $filename = end($parts);
+            return preg_match('/^\d{8}_\d{6}\.js$/', $filename);
+        });
+        $result['recent_files'] = array_slice(array_values($sitchFiles), 0, 8);
         $result['bucket'] = $bucket;
         $result['region'] = $s3creds['region'];
         
