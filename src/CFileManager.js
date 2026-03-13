@@ -961,14 +961,106 @@ export class CFileManager extends CManager {
                 sitchName = validSitchName;
 
                 Sit.sitchName = sitchName;
-                // will need to check if the sitch already exists
-                // server side, and if so, ask if they want to overwrite
                 console.log("Sitch name set to " + Sit.sitchName)
                 resolve();
             } else {
                 reject("Sitch Name Cancelled");
             }
         })
+    }
+
+    /**
+     * Fetch user save names from the server for overwrite checks.
+     * Falls back to currently known names if fetch fails.
+     * @returns {Promise<string[]>}
+     */
+    async getServerSaveNamesForOverwriteCheck() {
+        const knownNames = Array.isArray(this.userSaves)
+            ? this.userSaves.filter(name => name && name !== "-")
+            : [];
+        if (knownNames.length > 0) {
+            return knownNames;
+        }
+
+        try {
+            const response = await fetch(withTestUser(SITREC_SERVER + "getsitches.php?get=myfiles"), {mode: "cors"});
+            if (response.status !== 200) {
+                throw new Error(`Server returned status ${response.status}`);
+            }
+            const data = JSON.parse(await response.text());
+            const names = data.map(file => String(file[0]));
+            this.userSaves = ["-", ...names];
+            return names;
+        } catch (error) {
+            console.warn("Could not fetch server save names for overwrite check:", error);
+            return knownNames;
+        }
+    }
+
+    /**
+     * Returns true if `<sitchName>.json` already exists in the target local folder.
+     * @param {FileSystemDirectoryHandle} directoryHandle
+     * @param {string} sitchName
+     * @returns {Promise<boolean>}
+     */
+    async localSitchFileExists(directoryHandle, sitchName) {
+        const fileName = `${sitchName}.json`;
+        try {
+            await directoryHandle.getFileHandle(fileName, {create: false});
+            return true;
+        } catch (error) {
+            if (error?.name === "NotFoundError") {
+                return false;
+            }
+            throw error;
+        }
+    }
+
+    /**
+     * Ask for explicit user confirmation before a named save would overwrite
+     * an existing local file or an existing server sitch name.
+     * @param {Object} options
+     * @param {string} options.sitchName
+     * @param {boolean} [options.local=false]
+     * @param {FileSystemDirectoryHandle|null} [options.directoryHandle=null]
+     * @param {FileSystemFileHandle|null} [options.fileHandle=null]
+     * @returns {Promise<boolean>} True if save should proceed.
+     */
+    async confirmOverwriteForNamedSave({sitchName, local = false, directoryHandle = null, fileHandle = null} = {}) {
+        if (!sitchName) return true;
+
+        if (local) {
+            // If saving to an explicit file handle, the user has already selected that target.
+            if (fileHandle) return true;
+            if (!directoryHandle) return true;
+
+            let exists = false;
+            try {
+                exists = await this.localSitchFileExists(directoryHandle, sitchName);
+            } catch (error) {
+                console.warn("Local overwrite check failed, continuing save:", error);
+                return true;
+            }
+
+            if (!exists) return true;
+
+            const fileName = `${sitchName}.json`;
+            const folderName = directoryHandle.name || "selected folder";
+            return confirm(
+                `"${fileName}" already exists in "${folderName}".\n\n` +
+                "This save will overwrite the existing file.\n\n" +
+                "Continue?"
+            );
+        }
+
+        const names = await this.getServerSaveNamesForOverwriteCheck();
+        if (!names.includes(sitchName)) return true;
+
+        return confirm(
+            `A server sitch named "${sitchName}" already exists.\n\n` +
+            "Saving with this name will create a new version and replace what opens as the latest version.\n\n" +
+            "Continue?"
+        );
     }
 
     /**
@@ -1035,8 +1127,20 @@ export class CFileManager extends CManager {
             this.sourceUserID = null;
         }
         if (Sit.sitchName === undefined) {
-            return this.inputSitchName().then(() => {
-                return this.saveSitchNamed(Sit.sitchName, local, directoryHandle, fileHandle);  // return the Promise here
+            const previousSitchName = Sit.sitchName;
+            return this.inputSitchName().then(async () => {
+                const sitchName = Sit.sitchName;
+                const confirmed = await this.confirmOverwriteForNamedSave({
+                    sitchName,
+                    local,
+                    directoryHandle,
+                    fileHandle
+                });
+                if (!confirmed) {
+                    Sit.sitchName = previousSitchName;
+                    throw "Save Cancelled";
+                }
+                return this.saveSitchNamed(sitchName, local, directoryHandle, fileHandle);  // return the Promise here
             }).then(() => {
                 if (!local) {
                     if (this.guiLoad) addOptionToGUIMenu(this.guiLoad, Sit.sitchName);
