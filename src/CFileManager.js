@@ -242,7 +242,7 @@ export class CFileManager extends CManager {
 
             this.guiFolder.add(this, "importFile").name("Import File").perm().tooltip("Import a file (or files) from your local system. Same as dragging and dropping a file into the browser window");
 
-            this.guiFolder.add(this, "resetOrigin").name("Reset Origin").perm();
+            //this.guiFolder.add(this, "resetOrigin").name("Reset Origin").perm();
 
             if (isLocal) {
                 this.guiFolder.add(NodeMan, "recalculateAllRootFirst").name("debug recalculate all").perm();
