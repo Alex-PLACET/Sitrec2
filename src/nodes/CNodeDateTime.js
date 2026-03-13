@@ -506,6 +506,26 @@ export class CNodeDateTime extends CNode {
         this.syncTrack = timedTrack;
     }
 
+    // Remove a track from the "Sync Time to" dropdown when its underlying data node
+    // is disposed. If the user currently has that option selected, reset the switch
+    // back to "-" so the GUI does not retain a dead reference.
+    removeSyncToTrack(timedTrack) {
+        if (!this.syncSwitch || !timedTrack) {
+            return;
+        }
+
+        removeOptionFromGUIMenu(this.syncSwitch, timedTrack);
+
+        if (this.syncTrack === timedTrack) {
+            this.syncTrack = null;
+        }
+
+        if (this.syncMethod === timedTrack) {
+            this.syncMethod = "-";
+            this.syncSwitch.updateDisplay();
+        }
+    }
+
     // meu callback funtion for the sync button (deprecated)
     syncStartTimeTrack(recalculating = true) {
         this.syncToTrack(this.syncTrack, recalculating)
@@ -768,4 +788,3 @@ export class CNodeDateTime extends CNode {
     //     }
 
 }
-

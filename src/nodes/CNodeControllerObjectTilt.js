@@ -95,7 +95,10 @@ export class CNodeControllerObjectTilt extends CNodeController {
 
     dispose() {
         super.dispose()
-        NodeMan.unlinkDisposeRemove(this.smoothedTrack)
+        // ObjectTilt owns an internal smoothed helper track with a deterministic id.
+        // Tear it down explicitly so recreating the controller cannot collide with a
+        // stale `${controllerId}Smoothed` node left in NodeMan.
+        NodeMan.unlinkDisposeRemove(this.smoothedTrack?.id ?? this.smoothedTrack)
         if (this.tiltTypeGui) {
             this.tiltTypeGui.destroy();
             this.tiltTypeGui = null;

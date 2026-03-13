@@ -78,6 +78,7 @@ import {CNodeVideoInfoUI} from "./nodes/CNodeVideoInfoUI";
 import {CNodeOSDDataSeriesController} from "./nodes/CNodeOSDDataSeriesController";
 import {CNodeGUIValue} from "./nodes/CNodeGUIValue";
 import {meanSeaLevelOffset} from "./EGM96Geoid";
+import {collectActiveTrackSourceFileIDs, shouldSerializeLoadedFileEntry} from "./trackSourceUtils";
 import {encodeShareParam, resolveURLForFetch, toShareableCustomValue} from "./SitrecObjectResolver";
 
 export class CCustomManager {
@@ -116,7 +117,9 @@ export class CCustomManager {
         const node = NodeMan.get(nodeId, false);
         if (!node) return;
 
-        // Dispose all controllers first (they may have their own resources to clean up)
+        // Dispose all controllers first. Several controller types allocate helper
+        // nodes of their own (for example ObjectTilt creates a smoothed helper track),
+        // so they must be unlinked and disposed before the object that owns them.
         const controllerIds = [];
         for (const inputId in node.inputs) {
             const input = node.inputs[inputId];
@@ -127,11 +130,12 @@ export class CCustomManager {
 
         // Dispose controllers
         for (const controllerId of controllerIds) {
-            NodeMan.disposeRemove(controllerId);
+            NodeMan.unlinkDisposeRemove(controllerId);
         }
 
-        // Finally dispose the object itself
-        NodeMan.disposeRemove(nodeId);
+        // Finally unlink and dispose the object itself. Using unlinkDisposeRemove
+        // avoids leaving controller inputs or other graph edges attached.
+        NodeMan.unlinkDisposeRemove(nodeId);
     }
 
     setupSettingsMenu() {
@@ -3567,12 +3571,17 @@ export class CCustomManager {
             // that uses the rehosted file names
             // maybe special case for the video file ?
             let files = {}
+            const activeTrackSourceFileIDs = collectActiveTrackSourceFileIDs(TrackManager);
             for (let id in FileManager.list) {
                 const file = FileManager.list[id]
 
                 // initial check for isMultiple is to skip synthetic files
                 // that are generated from .TS or (TODO) .ZIP  uploads
                 if (!file.isMultiple) {
+                    if (!shouldSerializeLoadedFileEntry(id, file, activeTrackSourceFileIDs)) {
+                        console.log("Skipping orphaned track source file from serialization:", id, file.filename);
+                        continue;
+                    }
                     if (local) {
                         // if we are saving locally, then we don't need to rehost the files
                         // so use localStaticURL if available, otherwise original filename

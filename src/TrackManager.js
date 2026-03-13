@@ -34,6 +34,7 @@ import {CNodeSmoothedPositionTrack} from "./nodes/CNodeSmoothedPositionTrack";
 import {CNodeSplineEditor} from "./nodes/CNodeSplineEdit";
 import {CTrackFile} from "./TrackFiles/CTrackFile";
 import {detectRocketLikeTrack} from "./trackHeuristics";
+import {hasOtherTrackSourceReference} from "./trackSourceUtils";
 
 
 class CMetaTrack {
@@ -44,8 +45,21 @@ class CMetaTrack {
         this.isSynthetic = false; // Flag to identify synthetic tracks
     }
 
-    // TODO - call this when switching levels
+    // Imported tracks build a cluster of helper nodes with deterministic ids
+    // (smoothing controls, LOS helpers, display tracks, object controllers, etc).
+    // This teardown path removes that whole cluster so the same callsign/shortName
+    // can be imported again without colliding with stale node ids.
     dispose() {
+        // Track teardown historically mixed node ids and node objects. Normalizing
+        // everything through this helper keeps the cleanup order readable while
+        // always calling NodeMan with the id shape unlinkDisposeRemove expects.
+        const unlinkManagedNode = (nodeOrId) => {
+            if (!nodeOrId) return;
+            const id = typeof nodeOrId === "object" ? nodeOrId.id : nodeOrId;
+            if (id) {
+                NodeMan.unlinkDisposeRemove(id);
+            }
+        };
 
         // Remove the menu folder
        // guiMenus.contents.removeFolder(this.guiFolder);
@@ -90,30 +104,33 @@ class CMetaTrack {
         // trackNode and centerNode will also have the _unsmoothed versions as input, so need to delete those first
         // they will be in the "source" input object
 
-        NodeMan.unlinkDisposeRemove(this.trackNode.inputs.source);
+        unlinkManagedNode(this.trackNode.inputs.source);
         if (this.centerNode) {
-            NodeMan.unlinkDisposeRemove(this.centerNode.inputs.source);
+            unlinkManagedNode(this.centerNode.inputs.source);
         }
 
         // a bit messy, should keep track of nodes some other way
-        NodeMan.unlinkDisposeRemove(this.trackID + "_smoothValue");
-        NodeMan.unlinkDisposeRemove(this.trackID + "_tensionValue");
-        NodeMan.unlinkDisposeRemove(this.trackID + "_intervalsValue");
+        unlinkManagedNode(this.trackID + "_smoothValue");
+        unlinkManagedNode(this.trackID + "_tensionValue");
+        unlinkManagedNode(this.trackID + "_intervalsValue");
+        unlinkManagedNode(this.trackID + "_polyOrderValue");
+        unlinkManagedNode(this.trackID + "_edgeOrderValue");
+        unlinkManagedNode(this.trackID + "_fitWindowValue");
 
-        NodeMan.unlinkDisposeRemove(this.trackDataNode);
-        NodeMan.unlinkDisposeRemove(this.trackNode);
-        NodeMan.unlinkDisposeRemove(this.centerDataNode);
-        NodeMan.unlinkDisposeRemove(this.centerNode);
-        NodeMan.unlinkDisposeRemove(this.trackDisplayDataNode);
-        NodeMan.unlinkDisposeRemove(this.trackDisplayNode);
-        NodeMan.unlinkDisposeRemove(this.displayCenterDataNode);
-        NodeMan.unlinkDisposeRemove(this.displayCenterNode);
-        NodeMan.unlinkDisposeRemove(this.displayTargetSphere);
-        NodeMan.unlinkDisposeRemove(this.displayCenterSphere);
-        NodeMan.unlinkDisposeRemove(this.gui);
+        unlinkManagedNode(this.trackDataNode);
+        unlinkManagedNode(this.trackNode);
+        unlinkManagedNode(this.centerDataNode);
+        unlinkManagedNode(this.centerNode);
+        unlinkManagedNode(this.trackDisplayDataNode);
+        unlinkManagedNode(this.trackDisplayNode);
+        unlinkManagedNode(this.displayCenterDataNode);
+        unlinkManagedNode(this.displayCenterNode);
+        unlinkManagedNode(this.displayTargetSphere);
+        unlinkManagedNode(this.displayCenterSphere);
+        unlinkManagedNode(this.gui);
 
-        NodeMan.unlinkDisposeRemove(this.anglesNode);
-        NodeMan.unlinkDisposeRemove(this.anglesController);
+        unlinkManagedNode(this.anglesNode);
+        unlinkManagedNode(this.anglesController);
         removeLOSNodeColumnNodes(this.trackID);
 
         // more limited pruning
@@ -393,6 +410,7 @@ class CTrackManager extends CManager {
                 const success = this.makeMISBDataTrack(trackFileName, trackDataID, trackIndex);
 
                 if (success) {
+                    FileManager.getInfo(trackFileName).usedAsTrackSource = true;
 
                     // add to the "Sync Time to" menu
                     GlobalDateTimeNode.addSyncToTrack(trackDataID);
@@ -1079,6 +1097,56 @@ class CTrackManager extends CManager {
         return {shortName: uniqueShortName, moreTracks};
     }
 
+    // Centralized removal for both imported and synthetic tracks.
+    // Besides disposing the track nodes themselves, this also:
+    // - removes the track from the "Sync Time to" menu
+    // - drops the backing FileManager entry when no imported track still uses it
+    // - resets sitchEstablished when the last track goes away, so the next first
+    //   imported track can once again establish time/location automatically
+    disposeRemove(id) {
+        if (id === undefined) {
+            return;
+        }
+
+        const trackID = typeof id === "object" ? id.id : id;
+        if (!this.exists(trackID)) {
+            return;
+        }
+
+        const trackOb = this.get(trackID);
+        const trackFileName = trackOb?.trackFileName;
+        const syncTrackID = trackOb?.trackDataNode?.id;
+
+        if (syncTrackID && GlobalDateTimeNode?.removeSyncToTrack) {
+            GlobalDateTimeNode.removeSyncToTrack(syncTrackID);
+        }
+
+        if (trackOb?.isSynthetic) {
+            this.disposeSyntheticTrack(trackID);
+        } else {
+            super.disposeRemove(trackID);
+        }
+
+        // Remove the source file only when this was the final imported track using it.
+        // Multi-track files like ADS-B Exchange KMLs share one FileManager entry, so
+        // deleting that entry too early would break the remaining tracks from the file.
+        if (trackFileName && !hasOtherTrackSourceReference(this, trackFileName)) {
+            if (FileManager.exists(trackFileName)) {
+                FileManager.disposeRemove(trackFileName);
+            }
+            if (Sit.loadedFiles) {
+                delete Sit.loadedFiles[trackFileName];
+            }
+            if (FileManager.loadedFilesMetadata) {
+                delete FileManager.loadedFilesMetadata[trackFileName];
+            }
+        }
+
+        if (this.size() === 0) {
+            setSitchEstablished(false);
+        }
+    }
+
     /**
      * Add a synthetic (user-created) track to the TrackManager
      * @param {Object} options - Track creation options
@@ -1495,6 +1563,11 @@ class CTrackManager extends CManager {
         
         // Remove smoothing-related nodes and altitude lock
         NodeMan.unlinkDisposeRemove(trackID + "_smoothValue"); // Smoothing window GUI value
+        NodeMan.unlinkDisposeRemove(trackID + "_tensionValue"); // Catmull tension GUI value
+        NodeMan.unlinkDisposeRemove(trackID + "_intervalsValue"); // Catmull intervals GUI value
+        NodeMan.unlinkDisposeRemove(trackID + "_polyOrderValue"); // SavGol polynomial order GUI value
+        NodeMan.unlinkDisposeRemove(trackID + "_edgeOrderValue"); // SavGol edge fit order GUI value
+        NodeMan.unlinkDisposeRemove(trackID + "_fitWindowValue"); // SavGol edge fit window GUI value
         NodeMan.unlinkDisposeRemove(trackID + "_altitudeLock"); // Altitude lock GUI value
         NodeMan.unlinkDisposeRemove(trackID + "_unsmoothed"); // Unsmoothed spline editor
         NodeMan.unlinkDisposeRemove(trackID); // Smoothed track wrapper
