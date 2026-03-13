@@ -420,7 +420,6 @@ export class CFileManager extends CManager {
 
         this.guiServer.add(this, "saveSitchFromMenu").name("Save").perm().tooltip("Save the current sitch to the server");
         this.guiServer.add(this, "saveSitchAs").name("Save As").perm().tooltip("Save the current sitch to the server with a new name");
-        this.guiServer.add(this, "saveWithPermalink").name("Save with Permalink").perm().tooltip("Save the current sitch to the server and get a permalink to share it");
 
         this.guiServer.open();
 
@@ -431,7 +430,7 @@ export class CFileManager extends CManager {
         this.versionName = "-";
         this.guiVersions = this.guiServer.add(this, "versionName", this.versionsList).name("Versions").perm().onChange((value) => {
             this.loadVersion(value);
-        }).moveAfter(this.sitchBrowser ? "Open" : "Save with Permalink")
+        }).moveAfter("Open")
             .tooltip("Load a specific version of the currently selected sitch");
 
         this.refreshUserSaves();
