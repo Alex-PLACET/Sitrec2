@@ -1529,6 +1529,7 @@ export class CNodeView3D extends CNodeViewCanvas {
                 skyOpacity = sunNode.calculateSkyOpacity(this.camera.position);
                 
                 nightSkyNode.planets.updateMoonSkyUniforms(skyColor, skyBrightness);
+                nightSkyNode.planets.updateDaySkyVisibility(skyOpacity);
             }
 
 
@@ -1567,20 +1568,21 @@ export class CNodeView3D extends CNodeViewCanvas {
                     this.renderer.clearDepth();
                 }
                 
-                // Render the day sky scene (which contains the sun) on top of the sky brightness overlay
-                if (GlobalSunSkyScene && Globals.renderDebugFlags.dbg_renderSunSky) {
+            }
 
-                    var tempPos = this.camera.position.clone();
-                    this.camera.position.set(0, 0, 0);
-                    this.camera.updateMatrix();
-                    this.camera.updateMatrixWorld();
+            // Render the visible Sun/Moon pass after the sky background so both bodies share one depth buffer.
+            if (GlobalSunSkyScene && Globals.renderDebugFlags.dbg_renderSunSky) {
 
-                    this.renderer.render(GlobalSunSkyScene, this.camera);
-                    this.renderer.clearDepth();
-                    this.camera.position.copy(tempPos);
-                    this.camera.updateMatrix();
-                    this.camera.updateMatrixWorld();
-                }
+                var tempPos = this.camera.position.clone();
+                this.camera.position.set(0, 0, 0);
+                this.camera.updateMatrix();
+                this.camera.updateMatrixWorld();
+
+                this.renderer.render(GlobalSunSkyScene, this.camera);
+                this.renderer.clearDepth();
+                this.camera.position.copy(tempPos);
+                this.camera.updateMatrix();
+                this.camera.updateMatrixWorld();
             }
 
 

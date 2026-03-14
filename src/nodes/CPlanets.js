@@ -17,9 +17,11 @@
  */
 
 import {
+    CircleGeometry,
     Euler,
     Matrix4,
     Mesh,
+    MeshBasicMaterial,
     ShaderMaterial,
     SphereGeometry,
     Sprite,
@@ -44,6 +46,7 @@ export class CPlanets {
      */
     constructor(config = {}) {
         this.sphereRadius = config.sphereRadius ?? 100;
+        this.sunSphereRadius = this.sphereRadius + 1;
         
         // Planet list and colors
         this.planets = config.planets ?? [
@@ -72,7 +75,6 @@ export class CPlanets {
         this.moonDayMesh = null;
         this.moonMaterial = null;
         this.moonDayMaterial = null;
-        
         this._loadTextures();
     }
 
@@ -116,23 +118,56 @@ export class CPlanets {
                 void main() {
                     vec3 sunDir = normalize(sunDirection);
                     float intensity = dot(vNormal, sunDir);
-                    float blendFactor = smoothstep(-0.1, 0.1, intensity);
+                    float blendFactor = smoothstep(-0.08, 0.08, intensity);
+                    float litFactor = clamp(intensity, 0.0, 1.0);
                     
                     vec2 uv = vUv;
                     uv.x = fract(uv.x + 0.25);
                     vec4 textureColor = texture2D(moonTexture, uv);
                     vec4 dayColor = textureColor;
-                    vec4 nightColor = textureColor * 0.02;
+                    vec4 nightColor = textureColor * 0.03;
                     
                     vec4 moonColor = mix(nightColor, dayColor, blendFactor);
-                    float moonAtten = 1.0 - 0.7 * skyBrightness;
-                    vec3 finalColor = moonColor.rgb * moonAtten + skyColor;
+                    float moonAtten = mix(1.0, 0.82, clamp(skyBrightness, 0.0, 1.0));
+                    float hazeMix = 0.18 * clamp(skyBrightness, 0.0, 1.0) * litFactor;
+                    vec3 finalColor = mix(moonColor.rgb * moonAtten, skyColor, hazeMix);
                     gl_FragColor = vec4(finalColor, 1.0);
                 }
             `,
             depthWrite: true,
             depthTest: true,
         });
+    }
+
+    _createSunMaterial() {
+        return new MeshBasicMaterial({
+            color: 0xfff27a,
+            // Treat the Sun as a sky-background disk so nearer bodies like the Moon
+            // can reliably occult it without precision issues on the sky sphere.
+            depthWrite: false,
+            depthTest: false,
+        });
+    }
+
+    _createSunDisk() {
+        return new Mesh(new CircleGeometry(0.5, 64), this._createSunMaterial());
+    }
+
+    _getTopocentricDistanceMeters(body, date, observer, aberration = true) {
+        const bodyId = typeof body === "string" ? Astronomy.Body[body] : body;
+        const bodyVector = Astronomy.GeoVector(bodyId, date, aberration);
+        const observerVector = Astronomy.ObserverVector(date, observer, false);
+
+        const dx = bodyVector.x - observerVector.x;
+        const dy = bodyVector.y - observerVector.y;
+        const dz = bodyVector.z - observerVector.z;
+
+        return Math.hypot(dx, dy, dz) * Astronomy.KM_PER_AU * 1000;
+    }
+
+    _getAngularDiameterRad(body, date, observer, physicalRadiusMeters, aberration = true) {
+        const distanceMeters = this._getTopocentricDistanceMeters(body, date, observer, aberration);
+        return 2 * Math.atan(physicalRadiusMeters / distanceMeters);
     }
 
     /**
@@ -156,6 +191,9 @@ export class CPlanets {
                 }
                 if (planetData.daySkySprite && dayScene) {
                     dayScene.remove(planetData.daySkySprite);
+                    if (planetData.daySkySprite.isMesh && planetData.daySkySprite.geometry) {
+                        planetData.daySkySprite.geometry.dispose();
+                    }
                     if (planetData.daySkySprite.material) {
                         if (planetData.daySkySprite.material.map) {
                             planetData.daySkySprite.material.map.dispose();
@@ -223,6 +261,7 @@ export class CPlanets {
                 const moonGeometry = new SphereGeometry(1, 32, 32);
                 this.moonMesh = new Mesh(moonGeometry, this.moonMaterial);
                 this.moonMesh.renderOrder = 2;
+                this.moonMesh.visible = !dayScene;
                 scene.add(this.moonMesh);
                 
                 if (dayScene) {
@@ -239,18 +278,24 @@ export class CPlanets {
                     sprite: this.moonMesh, color: color,
                     daySkySprite: this.moonDayMesh, isMesh: true
                 };
+            } else if (planet === "Sun") {
+                const sunDisk = this._createSunDisk();
+                sunDisk.visible = !dayScene;
+                let daySkySprite = null;
+                if (dayScene) {
+                    daySkySprite = this._createSunDisk();
+                    dayScene.add(daySkySprite);
+                }
+
+                this.updatePlanetSprite(planet, sunDisk, params.date, observer, daySkySprite);
+                this.planetSprites[planet].color = color;
+                scene.add(sunDisk);
             } else {
                 const texture = this._getTextureForPlanet(planet);
                 const spriteMaterial = new SpriteMaterial({map: texture, color: color, depthWrite: false});
                 const sprite = new Sprite(spriteMaterial);
 
                 let daySkySprite = null;
-                if (planet === "Sun" && dayScene) {
-                    const daySkyMaterial = new SpriteMaterial({map: texture, color: color, depthWrite: false});
-                    daySkySprite = new Sprite(daySkyMaterial);
-                    dayScene.add(daySkySprite);
-                }
-
                 this.updatePlanetSprite(planet, sprite, params.date, observer, daySkySprite);
                 this.planetSprites[planet].color = color;
                 scene.add(sprite);
@@ -261,9 +306,9 @@ export class CPlanets {
     updateMoonMesh(date, observer) {
         if (!this.moonMesh) return;
         
-        const celestialInfo = Astronomy.Equator("Moon", date, observer, false, false);
+        const celestialInfo = Astronomy.Equator("Moon", date, observer, false, true);
         const geocentricObserver = new Astronomy.Observer(0, 0, 0);
-        const geocentricInfo = Astronomy.Equator("Moon", date, geocentricObserver, false, false);
+        const geocentricInfo = Astronomy.Equator("Moon", date, geocentricObserver, false, true);
         const libration = Astronomy.Libration(date);
         const axisInfo = Astronomy.RotationAxis("Moon", date);
         
@@ -271,9 +316,10 @@ export class CPlanets {
         const dec = radians(celestialInfo.dec);
         const equatorial = raDec2Celestial(ra, dec, this.sphereRadius);
         
-        const moonRadius = Math.tan(radians(libration.diam_deg / 2)) * this.sphereRadius;
+        const moonAngularDiameter = this._getAngularDiameterRad("Moon", date, observer, 1737400);
+        const moonRadius = Math.tan(moonAngularDiameter / 2) * this.sphereRadius;
         
-        const sunInfo = Astronomy.Equator("Sun", date, observer, false, false);
+        const sunInfo = Astronomy.Equator("Sun", date, observer, false, true);
         const sunRa = (sunInfo.ra) / 24 * 2 * Math.PI;
         const sunDec = radians(sunInfo.dec);
         const sunEquatorial = raDec2Celestial(sunRa, sunDec, this.sphereRadius);
@@ -337,6 +383,25 @@ export class CPlanets {
         }
     }
 
+    updateDaySkyVisibility(skyOpacity) {
+        const sunData = this.planetSprites["Sun"];
+        if (sunData?.sprite && sunData.daySkySprite) {
+            sunData.sprite.visible = false;
+            sunData.daySkySprite.visible = skyOpacity > 0;
+        }
+
+        const moonData = this.planetSprites["Moon"];
+        if (moonData?.sprite && moonData.daySkySprite) {
+            moonData.sprite.visible = false;
+            moonData.daySkySprite.visible = true;
+        }
+    }
+
+    _orientDiskTowardOrigin(mesh, position) {
+        mesh.position.copy(position);
+        mesh.quaternion.setFromUnitVectors(new Vector3(0, 0, 1), position.clone().normalize().negate());
+    }
+
     /**
      * Updates a planet sprite's position and scale for the current time
      * Calculates RA/DEC from astronomy library and converts to 3D position
@@ -353,7 +418,7 @@ export class CPlanets {
             return;
         }
         
-        const celestialInfo = Astronomy.Equator(planet, date, observer, false, false);
+        const celestialInfo = Astronomy.Equator(planet, date, observer, false, true);
         const illumination = Astronomy.Illumination(planet, date);
         
         const ra = (celestialInfo.ra) / 24 * 2 * Math.PI;
@@ -366,28 +431,44 @@ export class CPlanets {
             color = this.planetSprites[planet].color;
         }
 
-        sprite.position.set(equatorial.x, equatorial.y, equatorial.z);
-
         var scale = 10 * Math.pow(10, -0.4 * (mag - -5));
         if (scale > 1) scale = 1;
         
-        if (planet === "Sun") scale = 1.9;
+        if (planet === "Sun") {
+            const sunAngularDiameter = this._getAngularDiameterRad("Sun", date, observer, 696000000);
+            scale = 2 * Math.tan(sunAngularDiameter / 2) * this.sunSphereRadius;
+        }
         
         if (planet !== "Sun") {
             scale *= Math.pow(10, 0.4 * Math.log10(Sit.planetScale));
         }
 
-        sprite.scale.set(scale, scale, 1);
-
         if (planet === "Sun") {
+            const sunPosition = equatorial.clone().normalize().multiplyScalar(this.sunSphereRadius);
+            if (sprite.isMesh) {
+                this._orientDiskTowardOrigin(sprite, sunPosition);
+                sprite.scale.set(scale, scale, 1);
+            } else {
+                sprite.position.copy(sunPosition);
+                sprite.scale.set(scale, scale, 1);
+            }
             sprite.renderOrder = 1;
+        } else {
+            sprite.position.set(equatorial.x, equatorial.y, equatorial.z);
+            sprite.scale.set(scale, scale, 1);
         }
 
         if (daySkySprite) {
-            daySkySprite.position.set(equatorial.x, equatorial.y, equatorial.z);
-            daySkySprite.scale.set(scale, scale, 1);
-            if (planet === "Sun") {
+            if (planet === "Sun" && daySkySprite.isMesh) {
+                this._orientDiskTowardOrigin(daySkySprite, sprite.position);
+                daySkySprite.scale.set(scale, scale, 1);
                 daySkySprite.renderOrder = 1;
+            } else {
+                daySkySprite.position.set(equatorial.x, equatorial.y, equatorial.z);
+                daySkySprite.scale.set(scale, scale, 1);
+                if (planet === "Sun") {
+                    daySkySprite.renderOrder = 1;
+                }
             }
         }
 
