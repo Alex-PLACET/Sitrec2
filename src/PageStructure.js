@@ -30,6 +30,14 @@ let rightSidebarVisible = false;
 let leftSidebarMenus = [];
 let rightSidebarMenus = [];
 
+// Center sidebar state
+let centerSidebarVisible = false;
+let centerSidebarMenus = [];
+let centerSidebar = null;
+let centerDividerFraction = 0.5; // fraction of Content width where divider is
+let centerSidebarSuspended = false;
+let suspendedDividerFraction = 0.5;
+
 export function setupPageStructure() {
     if (setupDone) return;
     setupDone = true;
@@ -197,6 +205,34 @@ function createSidebar(id, side) {
     return sidebar;
 }
 
+function createCenterSidebar() {
+    const sidebar = document.createElement('div');
+    sidebar.id = 'CenterSidebar';
+    sidebar.style.position = 'absolute';
+    sidebar.style.width = SIDEBAR_WIDTH + 'px';
+    sidebar.style.backgroundColor = '#1a1a1a';
+    sidebar.style.borderLeft = '1px solid #444';
+    sidebar.style.borderRight = '1px solid #444';
+    sidebar.style.zIndex = '4500';
+    sidebar.style.display = 'none';
+    sidebar.style.overflowY = 'auto';
+    sidebar.style.overflowX = 'hidden';
+
+    let topOffset = MENU_BAR_HEIGHT;
+    if (parseBoolean(process.env.BANNER_ACTIVE)) {
+        topOffset += parseInt(process.env.BANNER_HEIGHT);
+    }
+    sidebar.style.top = topOffset + 'px';
+    sidebar.style.height = `calc(100% - ${topOffset}px)`;
+
+    document.body.appendChild(sidebar);
+
+    // Reposition on window resize
+    window.addEventListener('resize', updateCenterSidebarPosition);
+
+    return sidebar;
+}
+
 let leftSidebar = null;
 let rightSidebar = null;
 
@@ -206,6 +242,9 @@ export function ensureSidebarsCreated() {
     }
     if (!rightSidebar) {
         rightSidebar = createSidebar('RightSidebar', 'right');
+    }
+    if (!centerSidebar) {
+        centerSidebar = createCenterSidebar();
     }
 }
 
@@ -233,7 +272,10 @@ function updateContentWidth() {
         controls.style.right = rightOffset + 'px';
         controls.style.width = `calc(100% - ${leftOffset + rightOffset}px)`;
     }
-    
+
+    // Reposition center sidebar if visible
+    updateCenterSidebarPosition();
+
     window.dispatchEvent(new Event('resize'));
 }
 
@@ -367,4 +409,122 @@ export function getLeftSidebarMenuIndex(menuGui) {
 
 export function getRightSidebarMenuIndex(menuGui) {
     return rightSidebarMenus.indexOf(menuGui);
+}
+
+// ---- Center Sidebar ----
+
+function updateCenterSidebarPosition() {
+    if (!centerSidebar || !centerSidebarVisible) return;
+
+    const content = document.getElementById("Content");
+    if (!content) return;
+
+    // Use offsetLeft/offsetWidth for correct positioning relative to body
+    const contentLeft = content.offsetLeft;
+    const contentWidth = content.offsetWidth;
+    centerSidebar.style.left = (contentLeft + contentWidth * centerDividerFraction - SIDEBAR_WIDTH / 2) + 'px';
+}
+
+export function showCenterSidebar(dividerFraction) {
+    ensureSidebarsCreated();
+    if (dividerFraction !== undefined) {
+        centerDividerFraction = dividerFraction;
+    }
+    if (centerSidebar && !centerSidebarVisible) {
+        centerSidebar.style.display = 'block';
+        centerSidebarVisible = true;
+        updateCenterSidebarPosition();
+        window.dispatchEvent(new Event('resize'));
+    }
+}
+
+export function hideCenterSidebar() {
+    if (centerSidebar && (centerSidebarVisible || centerSidebarSuspended)) {
+        centerSidebar.style.display = 'none';
+        centerSidebarVisible = false;
+        centerSidebarSuspended = false;
+        centerSidebarMenus = [];
+        window.dispatchEvent(new Event('resize'));
+    }
+}
+
+export function addMenuToCenterSidebar(menuGui, dividerFraction) {
+    ensureSidebarsCreated();
+    if (!centerSidebarVisible) {
+        showCenterSidebar(dividerFraction);
+    }
+
+    if (!centerSidebarMenus.includes(menuGui)) {
+        centerSidebarMenus.push(menuGui);
+    }
+
+    centerSidebar.appendChild(menuGui.domElement.parentElement);
+
+    const container = menuGui.domElement.parentElement;
+    container.style.position = 'relative';
+    container.style.left = '0px';
+    container.style.top = '0px';
+    container.style.width = '100%';
+    container.style.height = 'auto';
+    container.style.display = 'block';
+
+    menuGui.domElement.style.position = 'relative';
+    menuGui.domElement.style.width = '100%';
+}
+
+export function removeMenuFromCenterSidebar(menuGui) {
+    const index = centerSidebarMenus.indexOf(menuGui);
+    if (index !== -1) {
+        centerSidebarMenus.splice(index, 1);
+    }
+    if (centerSidebarMenus.length === 0) {
+        hideCenterSidebar();
+    }
+}
+
+export function isInCenterSidebar(menuGui) {
+    return centerSidebarMenus.includes(menuGui);
+}
+
+export function getCenterSidebar() {
+    ensureSidebarsCreated();
+    return centerSidebar;
+}
+
+export function getCenterSidebarMenuIndex(menuGui) {
+    return centerSidebarMenus.indexOf(menuGui);
+}
+
+export function getCenterSidebarAdjustment() {
+    return {
+        visible: centerSidebarVisible,
+        dividerFraction: centerDividerFraction,
+        sidebarWidthPx: SIDEBAR_WIDTH,
+    };
+}
+
+export function suspendCenterSidebar() {
+    if (!centerSidebarVisible) return;
+    centerSidebar.style.display = 'none';
+    centerSidebarVisible = false;
+    centerSidebarSuspended = true;
+    suspendedDividerFraction = centerDividerFraction;
+    // Keep centerSidebarMenus intact for restoration
+    // Defer resize so views that haven't updated yet in this cycle get correct state next frame
+    requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+}
+
+export function resumeCenterSidebar() {
+    if (!centerSidebarSuspended || centerSidebarMenus.length === 0) return;
+    centerSidebarSuspended = false;
+    centerDividerFraction = suspendedDividerFraction;
+    centerSidebar.style.display = 'block';
+    centerSidebarVisible = true;
+    updateCenterSidebarPosition();
+    // Defer resize so views recalculate with restored center sidebar
+    requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+}
+
+export function isCenterSidebarSuspended() {
+    return centerSidebarSuspended;
 }

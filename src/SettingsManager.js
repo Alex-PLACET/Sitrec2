@@ -82,7 +82,11 @@ export function sanitizeSettings(settings) {
             sanitized.chatModel = chatModel;
         }
     }
-    
+
+    if (settings.centerSidebar !== undefined) {
+        sanitized.centerSidebar = Boolean(settings.centerSidebar);
+    }
+
     return sanitized;
 }
 
@@ -283,6 +287,7 @@ export async function initializeSettings() {
             videoMaxSize: "720P", // Video frame max size (None, 1080P, 720P, 480P, 360P)
             lastBuildingRotation: 0, // Last building rotation in radians (persists across sessions)
             chatModel: "", // AI chat model in "provider:model" format (empty = use first available)
+            centerSidebar: false, // Enable center sidebar between split views
         };
     }
 

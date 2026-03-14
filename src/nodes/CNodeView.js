@@ -10,6 +10,12 @@ import {assert} from "../assert.js";
 import {ViewMan} from "../CViewManager";
 import {makeDraggable, makeResizable, removeDraggable, removeResizable} from "../DragResizeUtils";
 import {isKeyHeld} from "../KeyBoardHandler";
+import {
+    getCenterSidebarAdjustment,
+    isCenterSidebarSuspended,
+    resumeCenterSidebar,
+    suspendCenterSidebar
+} from "../PageStructure";
 
 
 const defaultCViewParams = {
@@ -460,6 +466,58 @@ class CNodeView extends CNode {
         else {
             this.widthPx = Math.floor(this.containerWidth() * widthFraction);
             this.heightPx = Math.floor(this.containerHeight() * heightFraction);
+        }
+
+        // Auto-suspend/resume center sidebar when mainView layout changes
+        if (this.id === "mainView" && !this.in.relativeTo && !this.overlayView) {
+            const csState = getCenterSidebarAdjustment();
+            const layoutSupportsSplit = this.width > 0 && this.width < 0.99
+                && this.height >= 0.99 && this.left < 0.01;
+            if (csState.visible && !layoutSupportsSplit) {
+                suspendCenterSidebar();
+            } else if (isCenterSidebarSuspended() && layoutSupportsSplit) {
+                resumeCenterSidebar();
+            }
+        }
+
+        // Apply center sidebar adjustment for top-level (non-relative, non-overlay) views
+        const csAdj = getCenterSidebarAdjustment();
+        if (csAdj.visible && !this.in.relativeTo && !this.overlayView) {
+            const D = csAdj.dividerFraction;
+            const W = this.containerWidth();
+            const halfS = csAdj.sidebarWidthPx / 2;
+            const CL = this.containerLeft();
+
+            if (D > 0.01 && D < 0.99) {
+                const viewLeft = this.left;
+                // Compute actual fractional width from pixels (handles negative width encoding)
+                const actualFracWidth = this.widthPx / W;
+                const viewRight = viewLeft + actualFracWidth;
+
+                if (viewRight <= D + 0.001) {
+                    // View is entirely in the left half of the divider
+                    const leftHalfPx = D * W - halfS;
+                    this.leftPx = Math.floor(CL + (viewLeft / D) * leftHalfPx);
+                    if (widthFraction > 0) {
+                        this.widthPx = Math.floor((widthFraction / D) * leftHalfPx);
+                        if (heightFraction < 0) {
+                            this.heightPx = Math.floor(this.widthPx * -heightFraction);
+                        }
+                    }
+                } else if (viewLeft >= D - 0.001) {
+                    // View is entirely in the right half of the divider
+                    const rightHalfPx = (1 - D) * W - halfS;
+                    const rightStartPx = CL + D * W + halfS;
+                    this.leftPx = Math.floor(rightStartPx + ((viewLeft - D) / (1 - D)) * rightHalfPx);
+                    if (widthFraction > 0) {
+                        this.widthPx = Math.floor((widthFraction / (1 - D)) * rightHalfPx);
+                        if (heightFraction < 0) {
+                            this.heightPx = Math.floor(this.widthPx * -heightFraction);
+                        }
+                    }
+                }
+                // Views straddling the divider: left unchanged
+            }
         }
 
         if (this.div && !this.overlayView) {

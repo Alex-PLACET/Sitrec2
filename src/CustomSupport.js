@@ -213,6 +213,16 @@ export class CCustomManager {
                 this.saveGlobalSettings(true);
             });
 
+        // Add Center Sidebar toggle
+        settingsFolder.add(Globals.settings, "centerSidebar")
+            .name("Center Sidebar")
+            .tooltip("Enable center sidebar between split views (drag menus to the divider line)")
+            .onChange((value) => {
+                Globals.settings.centerSidebar = Boolean(value);
+                this.saveGlobalSettings(true);
+            })
+            .listen();
+
         // Fetch available models from server
         this.fetchAvailableChatModels();
     }

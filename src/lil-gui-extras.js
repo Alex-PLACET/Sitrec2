@@ -8,14 +8,20 @@ import {ViewMan} from "./CViewManager";
 import {parseBoolean} from "./utils";
 import Stats from "stats.js";
 import {
+    addMenuToCenterSidebar,
     addMenuToLeftSidebar,
     addMenuToRightSidebar,
+    getCenterSidebar,
+    getCenterSidebarAdjustment,
+    getCenterSidebarMenuIndex,
     getLeftSidebar,
     getLeftSidebarMenuIndex,
     getRightSidebar,
     getRightSidebarMenuIndex,
+    isInCenterSidebar,
     isInLeftSidebar,
     isInRightSidebar,
+    removeMenuFromCenterSidebar,
     removeMenuFromLeftSidebar,
     removeMenuFromRightSidebar,
     toggleControlsVisibility
@@ -1041,12 +1047,32 @@ export class CGuiMenuBar {
                 this._dropIndicator.style.backgroundColor = 'transparent';
                 this._dropIndicator.style.border = '2px solid rgba(100, 150, 255, 0.8)';
             }
-        } else {
+        } else if (side === 'right') {
             this._dropIndicator.style.right = '0';
             if (rightSidebar && rightSidebar.style.display !== 'none') {
                 this._dropIndicator.style.width = rightSidebar.offsetWidth + 'px';
                 this._dropIndicator.style.backgroundColor = 'transparent';
                 this._dropIndicator.style.border = '2px solid rgba(100, 150, 255, 0.8)';
+            }
+        } else if (side === 'center') {
+            const csAdj = getCenterSidebarAdjustment();
+            const cSidebar = getCenterSidebar();
+            if (csAdj.visible && cSidebar) {
+                const rect = cSidebar.getBoundingClientRect();
+                this._dropIndicator.style.left = rect.left + 'px';
+                this._dropIndicator.style.width = rect.width + 'px';
+                this._dropIndicator.style.backgroundColor = 'transparent';
+                this._dropIndicator.style.border = '2px solid rgba(100, 150, 255, 0.8)';
+            } else {
+                // Show a narrow indicator at the divider line
+                const content = document.getElementById("Content");
+                const mainView = ViewMan.get("mainView", false);
+                if (content && mainView) {
+                    const divFrac = mainView.left + Math.abs(mainView.width);
+                    const dividerScreenX = content.offsetLeft + content.offsetWidth * divFrac;
+                    this._dropIndicator.style.left = (dividerScreenX - 5) + 'px';
+                    this._dropIndicator.style.width = '10px';
+                }
             }
         }
         
@@ -1057,6 +1083,55 @@ export class CGuiMenuBar {
         if (this._dropIndicator) {
             this._dropIndicator.style.display = 'none';
         }
+    }
+
+    // Check if a screen X coordinate is near the center divider line
+    _isNearCenterDivider(clientX) {
+        // Center sidebar must be enabled in settings
+        if (!Globals.settings?.centerSidebar) return false;
+
+        const csAdj = getCenterSidebarAdjustment();
+
+        // If center sidebar is already visible, check if clientX is within it
+        if (csAdj.visible) {
+            const sidebar = getCenterSidebar();
+            if (sidebar) {
+                const rect = sidebar.getBoundingClientRect();
+                return clientX >= rect.left && clientX <= rect.right;
+            }
+        }
+
+        // If not visible, check if we're near the divider line
+        const dividerFrac = this._computeDividerFraction();
+        if (dividerFrac === null) return false;
+
+        const content = document.getElementById("Content");
+        if (!content) return false;
+
+        const dividerScreenX = content.offsetLeft + content.offsetWidth * dividerFrac;
+        const tolerance = 30;
+        return Math.abs(clientX - dividerScreenX) < tolerance;
+    }
+
+    // Compute the divider fraction from the current view layout
+    _computeDividerFraction() {
+        const mainView = ViewMan.get("mainView", false);
+        if (!mainView || !mainView.visible) return null;
+
+        // Only valid when mainView is full height and on the left
+        if (mainView.height < 0.99 || mainView.left > 0.01) return null;
+
+        let dividerFrac;
+        if (mainView.width > 0) {
+            dividerFrac = mainView.left + mainView.width;
+        } else {
+            // Negative width = aspect ratio encoding; compute from pixels
+            dividerFrac = mainView.left + mainView.widthPx / ViewMan.widthPx;
+        }
+
+        // Must have space on both sides
+        if (dividerFrac >= 0.99 || dividerFrac <= 0.01) return null;
+        return dividerFrac;
     }
 
     toggleVisiblity() {
@@ -1422,7 +1497,7 @@ export class CGuiMenuBar {
     applyModeStyles(gui) {
         const titleElement = gui.$title;
 
-        if (gui.mode === "DOCKED" || gui.mode === "SIDEBAR_LEFT" || gui.mode === "SIDEBAR_RIGHT") {
+        if (gui.mode === "DOCKED" || gui.mode === "SIDEBAR_LEFT" || gui.mode === "SIDEBAR_RIGHT" || gui.mode === "SIDEBAR_CENTER") {
             titleElement.style.removeProperty('border-top-left-radius');
             titleElement.style.removeProperty('border-top-right-radius');
             titleElement.style.removeProperty('border-top');
@@ -1455,6 +1530,7 @@ export class CGuiMenuBar {
 
         const wasInLeftSidebar = isInLeftSidebar(newGUI);
         const wasInRightSidebar = isInRightSidebar(newGUI);
+        const wasInCenterSidebar = isInCenterSidebar(newGUI);
         let hasUndockedFromSidebar = false;
 
         const divRect = newDiv.getBoundingClientRect();
@@ -1462,7 +1538,7 @@ export class CGuiMenuBar {
         const dragOffsetX = event.clientX - divRect.left;
         const dragOffsetY = event.clientY - divRect.top;
 
-        if (!(wasInLeftSidebar || wasInRightSidebar)) {
+        if (!(wasInLeftSidebar || wasInRightSidebar || wasInCenterSidebar)) {
             newGUI.mode = "DRAGGING"
             this.applyModeStyles(newGUI)
 
@@ -1481,21 +1557,23 @@ export class CGuiMenuBar {
                 hasDragged = true;
             }
 
-            if ((wasInLeftSidebar || wasInRightSidebar) && !hasUndockedFromSidebar && hasDragged) {
+            if ((wasInLeftSidebar || wasInRightSidebar || wasInCenterSidebar) && !hasUndockedFromSidebar && hasDragged) {
                 this.menuBar.appendChild(newDiv);
                 newDiv.style.position = 'absolute';
                 newDiv.style.left = (event.clientX - dragOffsetX - menuBarRect.left) + 'px';
                 newDiv.style.top = (event.clientY - dragOffsetY - menuBarRect.top) + 'px';
                 newDiv.style.width = '';
                 newDiv.style.height = '1px';
-                
+
                 newGUI.domElement.style.position = '';
                 newGUI.domElement.style.width = '';
-                
+
                 if (wasInLeftSidebar) {
                     removeMenuFromLeftSidebar(newGUI);
-                } else {
+                } else if (wasInRightSidebar) {
                     removeMenuFromRightSidebar(newGUI);
+                } else {
+                    removeMenuFromCenterSidebar(newGUI);
                 }
                 hasUndockedFromSidebar = true;
                 
@@ -1507,7 +1585,7 @@ export class CGuiMenuBar {
                 return;
             }
             
-            if (!hasUndockedFromSidebar && (wasInLeftSidebar || wasInRightSidebar)) {
+            if (!hasUndockedFromSidebar && (wasInLeftSidebar || wasInRightSidebar || wasInCenterSidebar)) {
                 return;
             }
 
@@ -1535,11 +1613,13 @@ export class CGuiMenuBar {
             const viewportWidth = window.innerWidth;
             const menuLeft = parseInt(newDiv.style.left);
             const menuRight = menuLeft + newGUI.domElement.offsetWidth;
-            
+
             if (menuLeft < 0) {
                 this._showDropIndicator('left');
             } else if (menuRight > viewportWidth) {
                 this._showDropIndicator('right');
+            } else if (this._isNearCenterDivider(event.clientX)) {
+                this._showDropIndicator('center');
             } else {
                 this._hideDropIndicators();
             }
@@ -1554,7 +1634,7 @@ export class CGuiMenuBar {
             document.removeEventListener("pointerup", boundHandlePointerUp);
             this._hideDropIndicators();
 
-            if ((wasInLeftSidebar || wasInRightSidebar) && !hasUndockedFromSidebar) {
+            if ((wasInLeftSidebar || wasInRightSidebar || wasInCenterSidebar) && !hasUndockedFromSidebar) {
                 event.preventDefault();
                 return;
             }
@@ -1585,6 +1665,21 @@ export class CGuiMenuBar {
                 this.hideEmpty();
                 event.preventDefault();
                 return;
+            }
+
+            if (hasDragged && this._isNearCenterDivider(event.clientX)) {
+                const dividerFraction = this._computeDividerFraction();
+                if (dividerFraction !== null) {
+                    addMenuToCenterSidebar(newGUI, dividerFraction);
+                    newGUI.mode = "SIDEBAR_CENTER";
+                    newGUI.lockOpenClose = false;
+                    newGUI.open();
+                    newGUI.lockOpenClose = true;
+                    this.applyModeStyles(newGUI);
+                    this.hideEmpty();
+                    event.preventDefault();
+                    return;
+                }
             }
 
             if (this.isMenuOffScreen(newDiv)) {
@@ -1707,6 +1802,8 @@ export class CGuiMenuBar {
                 serialized.sidebarIndex = getLeftSidebarMenuIndex(gui);
             } else if (gui.mode === "SIDEBAR_RIGHT") {
                 serialized.sidebarIndex = getRightSidebarMenuIndex(gui);
+            } else if (gui.mode === "SIDEBAR_CENTER") {
+                serialized.sidebarIndex = getCenterSidebarMenuIndex(gui);
             }
             out[this.getSerialID(i)] = serialized;
         }
@@ -1719,6 +1816,7 @@ export class CGuiMenuBar {
         const guiData = v;
         const leftSidebarMenusToAdd = [];
         const rightSidebarMenusToAdd = [];
+        const centerSidebarMenusToAdd = [];
 
         for (let i = 0; i < this.slots.length; i++) {
             const key = this.getSerialID(i);
@@ -1766,6 +1864,8 @@ export class CGuiMenuBar {
                     leftSidebarMenusToAdd.push({ gui, index: data.sidebarIndex ?? 0 });
                 } else if (data.mode === "SIDEBAR_RIGHT") {
                     rightSidebarMenusToAdd.push({ gui, index: data.sidebarIndex ?? 0 });
+                } else if (data.mode === "SIDEBAR_CENTER") {
+                    centerSidebarMenusToAdd.push({ gui, index: data.sidebarIndex ?? 0 });
                 }
             }
         }
@@ -1779,6 +1879,12 @@ export class CGuiMenuBar {
         }
         for (const { gui } of rightSidebarMenusToAdd) {
             addMenuToRightSidebar(gui);
+        }
+
+        centerSidebarMenusToAdd.sort((a, b) => a.index - b.index);
+        for (const { gui } of centerSidebarMenusToAdd) {
+            const dividerFraction = this._computeDividerFraction() ?? 0.5;
+            addMenuToCenterSidebar(gui, dividerFraction);
         }
 
         this.hideEmpty();
@@ -1865,6 +1971,7 @@ export class CGuiMenuBar {
 
             const wasInLeftSidebar = isInLeftSidebar(gui);
             const wasInRightSidebar = isInRightSidebar(gui);
+            const wasInCenterSidebar = isInCenterSidebar(gui);
             let hasUndockedFromSidebar = false;
 
             const divRect = containerDiv.getBoundingClientRect();
@@ -1872,7 +1979,7 @@ export class CGuiMenuBar {
             const dragOffsetX = event.clientX - divRect.left;
             const dragOffsetY = event.clientY - divRect.top;
 
-            if (!(wasInLeftSidebar || wasInRightSidebar)) {
+            if (!(wasInLeftSidebar || wasInRightSidebar || wasInCenterSidebar)) {
                 gui.mode = "DRAGGING";
                 this.applyModeStyles(gui);
 
@@ -1890,7 +1997,7 @@ export class CGuiMenuBar {
                     hasDragged = true;
                 }
 
-                if ((wasInLeftSidebar || wasInRightSidebar) && !hasUndockedFromSidebar && hasDragged) {
+                if ((wasInLeftSidebar || wasInRightSidebar || wasInCenterSidebar) && !hasUndockedFromSidebar && hasDragged) {
                     this.menuBar.appendChild(containerDiv);
                     containerDiv.style.position = 'absolute';
                     containerDiv.style.left = (event.clientX - dragOffsetX - menuBarRect.left) + 'px';
@@ -1903,8 +2010,10 @@ export class CGuiMenuBar {
 
                     if (wasInLeftSidebar) {
                         removeMenuFromLeftSidebar(gui);
-                    } else {
+                    } else if (wasInRightSidebar) {
                         removeMenuFromRightSidebar(gui);
+                    } else {
+                        removeMenuFromCenterSidebar(gui);
                     }
                     hasUndockedFromSidebar = true;
 
@@ -1916,7 +2025,7 @@ export class CGuiMenuBar {
                     return;
                 }
 
-                if (!hasUndockedFromSidebar && (wasInLeftSidebar || wasInRightSidebar)) {
+                if (!hasUndockedFromSidebar && (wasInLeftSidebar || wasInRightSidebar || wasInCenterSidebar)) {
                     return;
                 }
 
@@ -1942,6 +2051,8 @@ export class CGuiMenuBar {
                     this._showDropIndicator('left');
                 } else if (menuRight > viewportWidth) {
                     this._showDropIndicator('right');
+                } else if (this._isNearCenterDivider(event.clientX)) {
+                    this._showDropIndicator('center');
                 } else {
                     this._hideDropIndicators();
                 }
@@ -1954,7 +2065,7 @@ export class CGuiMenuBar {
                 document.removeEventListener("mouseup", boundHandleMouseUp);
                 this._hideDropIndicators();
 
-                if ((wasInLeftSidebar || wasInRightSidebar) && !hasUndockedFromSidebar) {
+                if ((wasInLeftSidebar || wasInRightSidebar || wasInCenterSidebar) && !hasUndockedFromSidebar) {
                     event.preventDefault();
                     return;
                 }
@@ -1983,6 +2094,20 @@ export class CGuiMenuBar {
                     this.applyModeStyles(gui);
                     event.preventDefault();
                     return;
+                }
+
+                if (hasDragged && this._isNearCenterDivider(event.clientX)) {
+                    const dividerFraction = this._computeDividerFraction();
+                    if (dividerFraction !== null) {
+                        addMenuToCenterSidebar(gui, dividerFraction);
+                        gui.mode = "SIDEBAR_CENTER";
+                        gui.lockOpenClose = false;
+                        gui.open();
+                        gui.lockOpenClose = true;
+                        this.applyModeStyles(gui);
+                        event.preventDefault();
+                        return;
+                    }
                 }
 
                 // Check if menu ended up >80% off-screen - close it

@@ -116,7 +116,11 @@ function sanitizeSettings($settings) {
             $sanitized['chatModel'] = $chatModel;
         }
     }
-    
+
+    if (isset($settings['centerSidebar'])) {
+        $sanitized['centerSidebar'] = boolval($settings['centerSidebar']);
+    }
+
     return $sanitized;
 }
 
