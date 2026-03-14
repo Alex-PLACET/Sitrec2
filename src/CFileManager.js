@@ -507,19 +507,6 @@ export class CFileManager extends CManager {
      * Shows/hides Local and Server save folders accordingly.
      */
     sitchChanged() {
-    // update the UI based on the sitch name
-        if (Sit.isCustom) {
-            if (getEffectiveUserID() > 0) {
-                if ((parseBoolean(process.env.SAVE_TO_SERVER) || parseBoolean(process.env.SAVE_TO_S3)) && !isServerless) {
-                    this.guiServer.show();
-                }
-            }
-        } else {
-            if ((parseBoolean(process.env.SAVE_TO_SERVER) || parseBoolean(process.env.SAVE_TO_S3)) && !isServerless) {
-                this.guiServer.hide();
-            }
-        }
-
     }
 
     /**

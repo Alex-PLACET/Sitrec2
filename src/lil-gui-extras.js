@@ -762,6 +762,7 @@ export class CGuiMenuBar {
         this.menuBar.style.overflowX = "hidden"; // Prevent horizontal scrollbar when dragging menus
 
         this._hidden = false;
+        this._restrictedMenuIds = null;
 
         // add the menuBar to the document body
         document.body.appendChild(this.menuBar);
@@ -1074,10 +1075,22 @@ export class CGuiMenuBar {
     }
 
     reset() {
+        this._restrictedMenuIds = null;
         this.slots.forEach((gui) => {
             this.restoreToBar(gui);
             gui.close();
         })
+        this.hideEmpty();
+    }
+
+    showOnlyMenus(ids) {
+        this._restrictedMenuIds = new Set(ids);
+        this.hideEmpty();
+    }
+
+    showAllMenus() {
+        this._restrictedMenuIds = null;
+        this.hideEmpty();
     }
 
     // Check if a GUI folder has any visible content (recursively)
@@ -1111,7 +1124,9 @@ export class CGuiMenuBar {
                 const inMenuBar = div.parentElement === this.menuBar;
                 // Keep a slot reserved for any visible menu with content, even if detached or sidebar-docked.
                 // Only hidden/empty menus collapse their gap in the top menu bar.
-                const shouldReserveBarSpace = !gui._hidden && hasContent;
+                const isRestricted = this._restrictedMenuIds && gui._menuId
+                    && !this._restrictedMenuIds.has(gui._menuId);
+                const shouldReserveBarSpace = !gui._hidden && hasContent && !isRestricted;
 
                 if (!shouldReserveBarSpace) {
                     // Empty menu - close and hide it

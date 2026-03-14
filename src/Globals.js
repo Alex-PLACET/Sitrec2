@@ -144,6 +144,7 @@ export function setupGUIGlobals(_gui, _show, _tweaks, _showViews, _showGraphs, _
 // add to the menubar
 export function addGUIMenu(id, title) {
     guiMenus[id] = Globals.menuBar.addFolder(title).close().perm();
+    guiMenus[id]._menuId = id;
     return guiMenus[id];
 }
 

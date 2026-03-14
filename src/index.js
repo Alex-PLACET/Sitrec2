@@ -665,6 +665,11 @@ console.log("............... Done with setup, starting animation")
 Globals.sitchDirty = false; // Reset after setup — initialization may have triggered onChange callbacks
 startAnimating(Sit.fps);
 
+// When starting with the empty sitch, restrict the menu bar to essentials
+if (Sit.name === "empty") {
+    Globals.menuBar.showOnlyMenus(["main", "file", "help"]);
+}
+
 // Auto-open sitch browser when no explicit sitch/action is specified
 if (Globals.sitchBrowserWillOpen && FileManager.sitchBrowser) {
     FileManager.sitchBrowser.open({hideCancelButton: Sit.name === "empty"});
@@ -1137,6 +1142,11 @@ async function newSitch(situation, customSetup = false ) {
 
     if (url !== undefined) {
         window.history.pushState({}, null, url);
+    }
+
+    // Close the sitch browser if it's open
+    if (FileManager.sitchBrowser) {
+        FileManager.sitchBrowser.close();
     }
 
     // close all the menus, and reattach them to the bar

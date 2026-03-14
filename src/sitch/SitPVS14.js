@@ -52,6 +52,9 @@ export const SitPVS14 = {
         //       {LL: {lat:50.197944,lon:-5.428180}, width: 1, color:0xffff00},
     ],
 
+    TerrainModel: {kind: "Terrain", lat: 34, lon: -118.3, zoom: 7, nTiles: 3, fullUI: true, dynamic: true},
+
+
     mainCamera: {
         far:    50000000,
         startCameraPositionLLA:[26.187608,-106.783796,556343.519398],

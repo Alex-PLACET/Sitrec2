@@ -360,9 +360,13 @@ export class CSitchBrowser {
 
         const overlay = document.createElement("div");
         this.overlay = overlay;
+        // Position below the menu bar so it stays accessible
+        const menuBarEl = document.getElementById("menuBarBlackBar");
+        const topPx = menuBarEl ? (menuBarEl.offsetTop + menuBarEl.offsetHeight) : 0;
         Object.assign(overlay.style, {
-            position: "fixed", left: "0", top: "0", width: "100%", height: "100%",
-            backgroundColor: "rgba(0,0,0,0.7)", zIndex: "10002", display: "flex",
+            position: "fixed", left: "0", top: topPx + "px",
+            width: "100%", height: `calc(100% - ${topPx}px)`,
+            backgroundColor: "rgba(0,0,0,0.85)", zIndex: "4999", display: "flex",
             fontFamily: "system-ui, -apple-system, sans-serif", color: "#e0e0e0",
         });
 

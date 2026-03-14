@@ -442,24 +442,24 @@ export class CCustomManager {
             cameraLOSController.addOption("Celestial Lock", celestialController);
         }
 
-        if (Sit.canMod) {
-            // we have "SAVE MOD", but "SAVE CUSTOM" is no more, replaced by standard "Save", "Save As", etc.
-            this.buttonText = "SAVE MOD"
-
-            // add a lil-gui button linked ot the serialize function
-            //FileManager.guiFolder.add(this, "serialize").name("Export Custom Sitch")
-
-            const theGUI = guiMenus.file;
-
-            this.buttonColor = "#80ff80"
-
-            if (getEffectiveUserID() > 0)
-                this.serializeButton = theGUI.add(this, "serializeMod").name(this.buttonText).setLabelColor(this.buttonColor)
-            else
-                this.serializeButton = theGUI.add(this, "loginAttempt").name("Export Disabled (click to log in)").setLabelColor("#FF8080");
-
-            this.serializeButton.moveToFirst();
-        }
+        // if (Sit.canMod) {
+        //     // we have "SAVE MOD", but "SAVE CUSTOM" is no more, replaced by standard "Save", "Save As", etc.
+        //     this.buttonText = "SAVE MOD"
+        //
+        //     // add a lil-gui button linked ot the serialize function
+        //     //FileManager.guiFolder.add(this, "serialize").name("Export Custom Sitch")
+        //
+        //     const theGUI = guiMenus.file;
+        //
+        //     this.buttonColor = "#80ff80"
+        //
+        //     if (getEffectiveUserID() > 0)
+        //         this.serializeButton = theGUI.add(this, "serializeMod").name(this.buttonText).setLabelColor(this.buttonColor)
+        //     else
+        //         this.serializeButton = theGUI.add(this, "loginAttempt").name("Export Disabled (click to log in)").setLabelColor("#FF8080");
+        //
+        //     this.serializeButton.moveToFirst();
+        // }
 
         toggler('k', guiMenus.help.add(par, 'showKeyboardShortcuts').listen().name("[K]eyboard Shortcuts").onChange(value => {
             if (value) {
