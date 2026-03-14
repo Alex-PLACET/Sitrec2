@@ -119,18 +119,17 @@ export class CPlanets {
                     vec3 sunDir = normalize(sunDirection);
                     float intensity = dot(vNormal, sunDir);
                     float blendFactor = smoothstep(-0.08, 0.08, intensity);
-                    float litFactor = clamp(intensity, 0.0, 1.0);
+                    float dayBlend = clamp(skyBrightness, 0.0, 1.0);
                     
                     vec2 uv = vUv;
                     uv.x = fract(uv.x + 0.25);
                     vec4 textureColor = texture2D(moonTexture, uv);
                     vec4 dayColor = textureColor;
-                    vec4 nightColor = textureColor * 0.03;
+                    vec4 nightColor = vec4(0.0, 0.0, 0.0, 1.0);
                     
                     vec4 moonColor = mix(nightColor, dayColor, blendFactor);
-                    float moonAtten = mix(1.0, 0.82, clamp(skyBrightness, 0.0, 1.0));
-                    float hazeMix = 0.18 * clamp(skyBrightness, 0.0, 1.0) * litFactor;
-                    vec3 finalColor = mix(moonColor.rgb * moonAtten, skyColor, hazeMix);
+                    float moonAtten = max(0.0, 1.0 - 0.5 * dayBlend);
+                    vec3 finalColor = moonColor.rgb * moonAtten + skyColor;
                     gl_FragColor = vec4(finalColor, 1.0);
                 }
             `,
@@ -387,7 +386,7 @@ export class CPlanets {
         const sunData = this.planetSprites["Sun"];
         if (sunData?.sprite && sunData.daySkySprite) {
             sunData.sprite.visible = false;
-            sunData.daySkySprite.visible = skyOpacity > 0;
+            sunData.daySkySprite.visible = true;
         }
 
         const moonData = this.planetSprites["Moon"];
