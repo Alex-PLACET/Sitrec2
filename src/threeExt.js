@@ -29,6 +29,7 @@ import {altitudeHAE, drop3, earthCenterECEF, pointOnSphereBelow, raisePoint, set
 import {GlobalScene} from "./LocalFrame";
 import * as LAYER from "./LayerMasks";
 import {LLAToECEF} from "./LLA-ECEF-ENU";
+import {getDebugMatrixAxisSegments} from "./DebugMatrixAxesUtils";
 import {LineMaterial} from "three/addons/lines/LineMaterial.js";
 import {LineGeometry} from "three/addons/lines/LineGeometry.js";
 import {Line2} from "three/addons/lines/Line2.js";
@@ -480,14 +481,11 @@ export function DebugAxes(name, position, length) {
 }
 
 export function DebugMatrixAxes(name, position, matrix, length) {
-    // extract the axes from the matrix
-    const x = new Vector3().setFromMatrixColumn(matrix, 0);
-    const y = new Vector3().setFromMatrixColumn(matrix, 1);
-    const z = new Vector3().setFromMatrixColumn(matrix, 2);
+    const [xAxis, yAxis, zAxis] = getDebugMatrixAxisSegments(position, matrix, length);
     // draw the debug arrows
-    DebugArrow(name+"Xaxis",x, position.clone().sub(x.clone().multiplyScalar(length)),length*2,"#FF8080")
-    DebugArrow(name+"Yaxis",y, position.clone().sub(y.clone().multiplyScalar(length)),length*2,"#80FF80")
-    DebugArrow(name+"Zaxis",z, position.clone().sub(z.clone().multiplyScalar(length)),length*2,"#8080FF")
+    DebugArrow(name+"Xaxis",xAxis.direction, xAxis.origin, xAxis.length,"#FF8080")
+    DebugArrow(name+"Yaxis",yAxis.direction, yAxis.origin, yAxis.length,"#80FF80")
+    DebugArrow(name+"Zaxis",zAxis.direction, zAxis.origin, zAxis.length,"#8080FF")
 
 }
 
@@ -909,6 +907,4 @@ export function testColorCube(color, position, size, scene) {
 
 
 }
-
-
 
