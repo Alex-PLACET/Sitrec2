@@ -527,7 +527,10 @@ export function loadModelAsset(filename, onLoad, onError) {
         if (!asset) {
             throw new Error(`No asset data returned for "${filename}"`);
         }
-        return parseModelData(filename, asset.parsed);
+        // Use the actual filename stored in FileManager (with extension) if available,
+        // since the key (e.g. "TargetObjectFile") may not have an extension.
+        const actualFilename = FileManager.list[filename]?.filename ?? filename;
+        return parseModelData(actualFilename, asset.parsed);
     });
 
     return attachCallbacks(promise, onLoad, onError);
