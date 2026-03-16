@@ -745,6 +745,11 @@ export class CNodeView3D extends CNodeViewCanvas {
                 this.renderer.setClearColor("black");
                 skyColor = sunNode.calculateSkyColor(lookCamera.position);
                 skyOpacity = sunNode.calculateSkyOpacity(lookCamera.position);
+                if (nightSkyNode) {
+                    const skyBrightness = sunNode.calculateSkyBrightness(lookCamera.position);
+                    nightSkyNode.planets.updateMoonSkyUniforms(skyColor, skyBrightness);
+                    nightSkyNode.planets.updateDaySkyVisibility(skyOpacity);
+                }
             }
 
             // Render night sky if visible (opacity < 1 means stars are visible)
