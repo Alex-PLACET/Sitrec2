@@ -64,6 +64,7 @@ import {findRootTrack} from "../FindRootTrack";
 import {GlobalScene} from "../LocalFrame";
 import {sharedUniforms} from "../js/map33/material/SharedUniforms";
 import {par} from "../par";
+import {f2m} from "../utils";
 
 // Map old/renamed model file paths to their current equivalents.
 // Used to remap file paths in loadedFiles and model name references in serialized sitches.
@@ -271,14 +272,25 @@ function computeLocalBoundingBox(object) {
         parent.remove(object);
     }
     
-    const originalMatrix = object.matrix.clone();
-    
-    object.matrix.identity();
+    const originalPosition = object.position.clone();
+    const originalQuaternion = object.quaternion.clone();
+    const originalScale = object.scale.clone();
+    const originalMatrixAutoUpdate = object.matrixAutoUpdate;
+
+    object.matrixAutoUpdate = true;
+    object.position.set(0, 0, 0);
+    object.quaternion.identity();
+    object.scale.set(1, 1, 1);
+    object.updateMatrix();
     object.updateMatrixWorld(true);
     
     box.setFromObject(object);
     
-    object.matrix.copy(originalMatrix);
+    object.position.copy(originalPosition);
+    object.quaternion.copy(originalQuaternion);
+    object.scale.copy(originalScale);
+    object.matrixAutoUpdate = originalMatrixAutoUpdate;
+    object.updateMatrix();
     object.updateMatrixWorld(true);
     
     if (parent) {
@@ -311,6 +323,28 @@ function computeGroupBoundingSphere(object) {
 function computeCenterToLowestPoint(object) {
     const box = computeLocalBoundingBox(object);
     return -box.min.y;
+}
+
+function computeLongestDimensionFromBox(box) {
+    const size = new Vector3();
+    box.getSize(size);
+    return Math.max(size.x, size.y, size.z);
+}
+
+function getBoundingBoxCorners(box) {
+    const min = box.min;
+    const max = box.max;
+
+    return [
+        V3(min.x, min.y, min.z),
+        V3(max.x, min.y, min.z),
+        V3(min.x, max.y, min.z),
+        V3(max.x, max.y, min.z),
+        V3(min.x, min.y, max.z),
+        V3(max.x, min.y, max.z),
+        V3(min.x, max.y, max.z),
+        V3(max.x, max.y, max.z),
+    ];
 }
 
 
@@ -827,6 +861,17 @@ export class CNode3DObject extends CNode3DGroup {
         // note we set isCommon to true to flag them as common
         // so they don't get deleted when we rebuild the GUI after object type change
         this.addParams(commonParams, this.common, this.gui, true); // add the common parameters to the GUI
+
+        this.common.targetLength ??= v.targetLength ?? v.length ?? 0;
+        this.gui.add(this.common, "targetLength", 0, 500, 1).name("Length (ft)")
+            .listen()
+            .onChange(() => {
+                this.recalculate();
+                this.rebuildBoundingBox();
+                setRenderOne(true);
+            })
+            .tooltip("Target longest dimension in feet. Set to 0 to disable automatic length scaling.")
+            .isCommon = true;
 
         this.displayBoundingBox = false;
 
@@ -1494,6 +1539,10 @@ export class CNode3DObject extends CNode3DGroup {
             this.common[key] = v.common[key];
         }
 
+        if (this.common.targetLength === undefined && this.common.length !== undefined) {
+            this.common.targetLength = this.common.length;
+        }
+
         if (this.modelOrGeometry === "geometry") {
             // we do an initial rebuild of geometry to set up the parameters
             // with this.common.geometry
@@ -1804,6 +1853,7 @@ export class CNode3DObject extends CNode3DGroup {
 
                         // Cache half extents of the local bounding box for gradient mapping
                         const modelBox = computeLocalBoundingBox(this.model);
+                        this.cachedLongestDimension = computeLongestDimensionFromBox(modelBox);
                         this.cachedHalfHeight = (modelBox.max.y - modelBox.min.y) / 2;
                         this.cachedHalfLength = (modelBox.max.z - modelBox.min.z) / 2;
 
@@ -1925,6 +1975,7 @@ export class CNode3DObject extends CNode3DGroup {
         // For geometry objects, compute it from the geometry's bounding box
         this.geometry.computeBoundingBox();
         const geomBox = this.geometry.boundingBox;
+        this.cachedLongestDimension = computeLongestDimensionFromBox(geomBox);
         const geomCenter = new Vector3();
         geomBox.getCenter(geomCenter);
         this.cachedCenterToLowestPoint = geomCenter.y - geomBox.min.y;
@@ -2019,28 +2070,7 @@ export class CNode3DObject extends CNode3DGroup {
                     // the model might not be loaded yet
                     // so just skip it if it's not
                     if (this.model !== undefined) {
-                        // detach from the group
-                        this.group.remove(this.model);
-
-                        // ensure the matrix is up to date
-                        this.model.updateMatrixWorld(true);
-
-                        // store the original matrix
-                        const matrix = this.model.matrix.clone();
-                        // set the matrix to the identity
-                        this.model.matrix.identity();
-                        // update the world matrix
-                        this.model.updateWorldMatrix(true, true);
-
-
-                        this.boundingBox = new Box3();
-                        this.boundingBox.setFromObject(this.model);
-
-                        // restore the original matrix
-                        this.model.matrix.copy(matrix);
-                        this.model.updateWorldMatrix(true, true);
-                        // re-attach to the group
-                        this.group.add(this.model);
+                        this.boundingBox = computeLocalBoundingBox(this.model);
 
                         if (this.layers) {
                             this.group.layers.mask = this.layers;
@@ -2058,22 +2088,8 @@ export class CNode3DObject extends CNode3DGroup {
                 return;
             }
 
-
-            const min = this.boundingBox.min.clone();
-            const max = this.boundingBox.max.clone();
-
-            // transform them by this.group
-            min.applyMatrix4(this.group.matrixWorld);
-            max.applyMatrix4(this.group.matrixWorld);
-
-            // calculate all the corners of the bounding box
-            const corners = [];
-            for (let i = 0; i < 8; i++) {
-                const x = i & 1 ? max.x : min.x;
-                const y = i & 2 ? max.y : min.y;
-                const z = i & 4 ? max.z : min.z;
-                corners.push(V3(x, y, z));
-            }
+            const corners = getBoundingBoxCorners(this.boundingBox)
+                .map(corner => corner.applyMatrix4(this.group.matrixWorld));
 
             // calculate three edges of the bounding box about
             // the corner which is closest to the camera
@@ -2092,7 +2108,8 @@ export class CNode3DObject extends CNode3DGroup {
 
             // only rebuild it if the closest corner has changed
             // or forced (some external change, like size)
-            if (force || this.lastClosest !== closest) {
+            const needsNewMeasures = !this.measureX || !this.measureY || !this.measureZ || this.lastClosest !== closest;
+            if (needsNewMeasures) {
 
                 this.lastClosest = closest;
 
@@ -2111,29 +2128,55 @@ export class CNode3DObject extends CNode3DGroup {
 
                 this.measureX = new CNodeMeasureAB({
                     id: this.id + "_AX",
+                    groupNode: "LabelsGroupNode",
                     A: AX,
                     B: BX,
                     color: "#ff8080",
                     text: "X",
-                    unitType: "small"
+                    unitType: "small",
+                    layers: this.layers ?? LAYER.MASK_HELPERS,
                 })
                 this.measureY = new CNodeMeasureAB({
                     id: this.id + "_AY",
+                    groupNode: "LabelsGroupNode",
                     A: AY,
                     B: BY,
                     color: "#80ff80",
                     text: "X",
-                    unitType: "small"
+                    unitType: "small",
+                    layers: this.layers ?? LAYER.MASK_HELPERS,
                 })
                 this.measureZ = new CNodeMeasureAB({
                     id: this.id + "_AZ",
+                    groupNode: "LabelsGroupNode",
                     A: AZ,
                     B: BZ,
                     color: "#8080ff",
                     text: "X",
-                    unitType: "small"
+                    unitType: "small",
+                    layers: this.layers ?? LAYER.MASK_HELPERS,
                 })
             }
+
+            const AX = corners[closest];
+            const BX = corners[closest ^ 1];
+            const AY = corners[closest];
+            const BY = corners[closest ^ 2];
+            const AZ = corners[closest];
+            const BZ = corners[closest ^ 4];
+
+            this.lastClosest = closest;
+
+            this.measureX.in.A.value.copy(AX);
+            this.measureX.in.B.value.copy(BX);
+            this.measureY.in.A.value.copy(AY);
+            this.measureY.in.B.value.copy(BY);
+            this.measureZ.in.A.value.copy(AZ);
+            this.measureZ.in.B.value.copy(BZ);
+
+            this.measureX.update(par.frame);
+            this.measureY.update(par.frame);
+            this.measureZ.update(par.frame);
         }
     }
 
@@ -2336,6 +2379,10 @@ export class CNode3DObject extends CNode3DGroup {
             
             target.updateMatrix();
             target.updateMatrixWorld();
+        }
+
+        if (this.displayBoundingBox) {
+            this.rebuildBoundingBox(false);
         }
 
         this.updateEnvMap(view);
@@ -2821,9 +2868,23 @@ export class CNode3DObject extends CNode3DGroup {
         super.dispose();
     }
 
+    getLengthScale() {
+        const targetLengthFeet = Number(this.common.targetLength ?? this.common.length) || 0;
+        if (targetLengthFeet <= 0) {
+            return 1;
+        }
+
+        const longestDimension = this.cachedLongestDimension;
+        if (!(longestDimension > 0)) {
+            return 1;
+        }
+
+        return f2m(targetLengthFeet) / longestDimension;
+    }
+
     recalculate() {
         super.recalculate();
-        const scale = this.in.size.v0 * Globals.objectScale;
+        const scale = this.in.size.v0 * Globals.objectScale * this.getLengthScale();
         this.group.scale.setScalar(scale);
 
         // update the root track if any input changes (which is what triggers a recalculate)

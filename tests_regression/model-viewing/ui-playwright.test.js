@@ -44,6 +44,29 @@ async function setLightingState(page, updates) {
     await page.waitForTimeout(2500);
 }
 
+async function enableBoundingBoxForModel(page, modelName) {
+    await page.evaluate((targetModelName) => {
+        const targets = Object.values(window.NodeMan.list)
+            .map(entry => entry?.data)
+            .filter(node => node?.constructor?.name === 'CNode3DObject' && node.selectModel === targetModelName);
+
+        if (!targets.length) {
+            throw new Error(`Could not find any CNode3DObject using model ${targetModelName}`);
+        }
+
+        window.Globals.showMeasurements = true;
+
+        for (const node of targets) {
+            node.displayBoundingBox = true;
+            node.rebuildBoundingBox(true);
+        }
+
+        window.setRenderOne?.(true);
+    }, modelName);
+
+    await page.waitForTimeout(2500);
+}
+
 async function collectDiagnostics(page) {
     return page.evaluate(() => {
         const camera = window.NodeMan.get('mainView').camera;
@@ -208,6 +231,174 @@ async function collectDiagnostics(page) {
     });
 }
 
+async function collectBoundingBoxDiagnostics(page, modelName) {
+    return page.evaluate((targetModelName) => {
+        const activeView = window.NodeMan.get('mainView');
+        const activeCamera = activeView?.camera ?? null;
+
+        const projectPoint = (pointArray) => {
+            if (!activeCamera || !pointArray) {
+                return null;
+            }
+
+            const point = activeCamera.position.clone().set(...pointArray);
+            const projected = point.project(activeCamera);
+            return {
+                ndc: [projected.x, projected.y, projected.z],
+                screen: [
+                    (projected.x * 0.5 + 0.5) * window.innerWidth,
+                    (-projected.y * 0.5 + 0.5) * window.innerHeight,
+                ],
+            };
+        };
+
+        const summarizeArrow = (arrow) => {
+            if (!arrow) {
+                return null;
+            }
+
+            return {
+                visible: arrow.visible,
+                layers: arrow.layers.mask,
+                parentType: arrow.parent?.constructor?.name ?? null,
+                parentLayers: arrow.parent?.layers?.mask ?? null,
+                lineVisible: arrow.line?.visible ?? null,
+                lineLayers: arrow.line?.layers?.mask ?? null,
+                lineMaterial: arrow.line?.material ? {
+                    depthTest: arrow.line.material.depthTest,
+                    depthWrite: arrow.line.material.depthWrite,
+                    transparent: arrow.line.material.transparent,
+                    opacity: arrow.line.material.opacity,
+                    color: arrow.line.material.color?.getHexString?.() ?? null,
+                } : null,
+                coneVisible: arrow.cone?.visible ?? null,
+                coneLayers: arrow.cone?.layers?.mask ?? null,
+                coneMaterial: arrow.cone?.material ? {
+                    depthTest: arrow.cone.material.depthTest,
+                    depthWrite: arrow.cone.material.depthWrite,
+                    transparent: arrow.cone.material.transparent,
+                    opacity: arrow.cone.material.opacity,
+                    color: arrow.cone.material.color?.getHexString?.() ?? null,
+                } : null,
+                position: arrow.position.toArray(),
+                direction: arrow.direction?.toArray?.() ?? null,
+                length: arrow.length,
+                headLength: arrow.headLength,
+                screenPosition: projectPoint(arrow.position.toArray()),
+            };
+        };
+
+        const summarizeMeasure = (measure) => {
+            if (!measure) {
+                return null;
+            }
+
+            const groupChildren = (measure.group?.children ?? []).map((child) => ({
+                worldPosition: child.getWorldPosition(activeCamera.position.clone()).toArray(),
+                screenWorldPosition: projectPoint(child.getWorldPosition(activeCamera.position.clone()).toArray()),
+                type: child.type ?? child.constructor?.name ?? null,
+                name: child.name ?? '',
+                visible: child.visible,
+                layers: child.layers?.mask ?? null,
+                renderOrder: child.renderOrder ?? null,
+                hasLine: !!child.line,
+                hasCone: !!child.cone,
+                lineLayers: child.line?.layers?.mask ?? null,
+                coneLayers: child.cone?.layers?.mask ?? null,
+                lineScale: child.line?.scale?.toArray?.() ?? null,
+                coneScale: child.cone?.scale?.toArray?.() ?? null,
+                lineWorldPosition: child.line?.getWorldPosition(activeCamera.position.clone())?.toArray?.() ?? null,
+                coneWorldPosition: child.cone?.getWorldPosition(activeCamera.position.clone())?.toArray?.() ?? null,
+                lineScreenWorldPosition: projectPoint(child.line?.getWorldPosition(activeCamera.position.clone())?.toArray?.() ?? null),
+                coneScreenWorldPosition: projectPoint(child.cone?.getWorldPosition(activeCamera.position.clone())?.toArray?.() ?? null),
+                material: child.material ? {
+                    depthTest: child.material.depthTest,
+                    depthWrite: child.material.depthWrite,
+                    transparent: child.material.transparent,
+                    opacity: child.material.opacity,
+                } : null,
+                lineMaterial: child.line?.material ? {
+                    depthTest: child.line.material.depthTest,
+                    depthWrite: child.line.material.depthWrite,
+                    transparent: child.line.material.transparent,
+                    opacity: child.line.material.opacity,
+                } : null,
+                coneMaterial: child.cone?.material ? {
+                    depthTest: child.cone.material.depthTest,
+                    depthWrite: child.cone.material.depthWrite,
+                    transparent: child.cone.material.transparent,
+                    opacity: child.cone.material.opacity,
+                } : null,
+            }));
+
+            return {
+                groupVisible: measure.group?.visible ?? null,
+                groupLayers: measure.group?.layers?.mask ?? null,
+                parentVisible: measure.group?.parent?.visible ?? null,
+                parentLayers: measure.group?.parent?.layers?.mask ?? null,
+                grandparentVisible: measure.group?.parent?.parent?.visible ?? null,
+                grandparentLayers: measure.group?.parent?.parent?.layers?.mask ?? null,
+                groupWorldPosition: measure.group?.getWorldPosition(activeCamera.position.clone())?.toArray?.() ?? null,
+                groupScreenWorldPosition: projectPoint(measure.group?.getWorldPosition(activeCamera.position.clone())?.toArray?.() ?? null),
+                layerMask: measure.layerMask ?? null,
+                text: measure.text,
+                position: measure.position?.toArray?.() ?? null,
+                a: measure.A?.toArray?.() ?? null,
+                b: measure.B?.toArray?.() ?? null,
+                screenPosition: projectPoint(measure.position?.toArray?.() ?? null),
+                screenA: projectPoint(measure.A?.toArray?.() ?? null),
+                screenB: projectPoint(measure.B?.toArray?.() ?? null),
+                screenC: projectPoint(measure.C?.toArray?.() ?? null),
+                screenD: projectPoint(measure.D?.toArray?.() ?? null),
+                childCount: groupChildren.length,
+                children: groupChildren,
+            };
+        };
+
+        const views = {};
+        for (const viewId of ['mainView', 'lookView']) {
+            const view = window.NodeMan.get(viewId, false);
+            if (view) {
+                views[viewId] = {
+                    cameraLayers: view.camera?.layers?.mask ?? null,
+                    visible: view.visible ?? null,
+                    effectivelyVisible: view._effectivelyVisible ?? null,
+                };
+            }
+        }
+
+        const objects = Object.values(window.NodeMan.list)
+            .map(entry => entry?.data)
+            .filter(node => node?.constructor?.name === 'CNode3DObject' && node.selectModel === targetModelName)
+            .map((node) => ({
+                id: node.id,
+                displayBoundingBox: node.displayBoundingBox,
+                objectLayers: node.layers ?? null,
+                groupLayers: node.group?.layers?.mask ?? null,
+                lastClosest: node.lastClosest ?? null,
+                measureX: summarizeMeasure(node.measureX),
+                measureY: summarizeMeasure(node.measureY),
+                measureZ: summarizeMeasure(node.measureZ),
+                arrows: {
+                    xStart: summarizeArrow(window.DebugArrows?.[`${node.id}_AXstart`]),
+                    xEnd: summarizeArrow(window.DebugArrows?.[`${node.id}_AXend`]),
+                    yStart: summarizeArrow(window.DebugArrows?.[`${node.id}_AYstart`]),
+                    yEnd: summarizeArrow(window.DebugArrows?.[`${node.id}_AYend`]),
+                    zStart: summarizeArrow(window.DebugArrows?.[`${node.id}_AZstart`]),
+                    zEnd: summarizeArrow(window.DebugArrows?.[`${node.id}_AZend`]),
+                },
+            }));
+
+        return {
+            globals: {
+                showMeasurements: window.Globals?.showMeasurements ?? null,
+            },
+            views,
+            objects,
+        };
+    }, modelName);
+}
+
 test('model viewing diagnostic captures AI model lighting response', async ({page}) => {
     ensureOutputDir();
 
@@ -221,6 +412,19 @@ test('model viewing diagnostic captures AI model lighting response', async ({pag
 
     await page.screenshot({
         path: path.join(OUTPUT_DIR, 'model-viewing-normal.png'),
+        fullPage: true,
+    });
+
+    await enableBoundingBoxForModel(page, 'Model PA28.glb');
+
+    const bboxDiagnostics = await collectBoundingBoxDiagnostics(page, 'Model PA28.glb');
+    fs.writeFileSync(
+        path.join(OUTPUT_DIR, 'diagnostics-bbox.json'),
+        JSON.stringify(bboxDiagnostics, null, 2),
+    );
+
+    await page.screenshot({
+        path: path.join(OUTPUT_DIR, 'model-viewing-bbox.png'),
         fullPage: true,
     });
 
@@ -262,8 +466,17 @@ test('model viewing diagnostic captures AI model lighting response', async ({pag
     expect(initialDiagnostics.objects.length).toBeGreaterThan(0);
     expect(droppedPA28).toBeTruthy();
     expect(builtInPA28).toBeTruthy();
+    expect(bboxDiagnostics.objects.length).toBeGreaterThan(0);
     expect(droppedPA28.aggregate.metalness.avg).toBeCloseTo(0, 6);
     expect(builtInPA28.aggregate.metalness.avg).toBeCloseTo(0, 6);
+    for (const object of bboxDiagnostics.objects) {
+        expect(object.measureX?.parentVisible).toBe(true);
+        expect(object.measureY?.parentVisible).toBe(true);
+        expect(object.measureZ?.parentVisible).toBe(true);
+        expect(object.measureX?.childCount).toBeGreaterThan(0);
+        expect(object.measureY?.childCount).toBeGreaterThan(0);
+        expect(object.measureZ?.childCount).toBeGreaterThan(0);
+    }
     expect(ambientHighDiagnostics.lighting?.ambientOnly).toBe(true);
     expect(ambientHighDiagnostics.lighting?.ambientIntensity).toBe(2);
 });

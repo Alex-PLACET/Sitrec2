@@ -44,15 +44,26 @@ export function setupMeasurementUI() {
     if (measurementUIDdone) return;
     measurementUIDdone = true;
 
+    // Measurement roots are created during startup before setupFunctions()
+    // initializes Globals.showMeasurements. Default to visible so the roots
+    // don't get stuck hidden until the UI toggle is touched later.
+    Globals.showMeasurements ??= true;
+
     // We create a group node to hold all the measurement arrows
-    measureArrowGroupNode = new CNode3DGroup({id: "MeasurementsGroupNode"});
+    measureArrowGroupNode = new CNode3DGroup({
+        id: "MeasurementsGroupNode",
+        layers: LAYER.MASK_MAINRENDER | LAYER.MASK_LOOKRENDER,
+    });
     measureArrowGroupNode.isMeasurement = true
 
     labelsGroupNode = new CNode3DGroup({id: "LabelsGroupNode"});
 
     featuresGroupNode = new CNode3DGroup({id: "FeaturesGroupNode"});
 
-    measureDistanceGroupNode = new CNode3DGroup({id: "MeasureDistanceGroupNode"});
+    measureDistanceGroupNode = new CNode3DGroup({
+        id: "MeasureDistanceGroupNode",
+        layers: LAYER.MASK_MAINRENDER | LAYER.MASK_LOOKRENDER,
+    });
     measureDistanceGroupNode.isMeasurement = true;
 
 
@@ -60,10 +71,11 @@ export function setupMeasurementUI() {
 //    console.warn("%%%%%%% setupMeasurementUI: Globals.showMeasurements = " + Globals.showMeasurements)
 
     function refreshMeasurementVisibility() {
+        const showMeasurements = Globals.showMeasurements ?? true;
         NodeMan.iterate((key, node) => {
             if (node.isMeasurement) {
 //                console.log ("Setting visibility of " + key + " to " + Globals.showMeasurements)
-                node.group.visible = Globals.showMeasurements;
+                node.group.visible = showMeasurements;
             }
         })
     }
@@ -315,8 +327,8 @@ export class CNodeMeasureAB extends CNodeLabel3D {
         // add an arrow from A to C and B to D
         // Use this.group instead of this.groupNode.group so arrows are children of this measurement
         // and will be hidden/shown along with the text label
-        DebugArrowAB(this.id + "start", this.C, this.A, color, true, this.group);
-        DebugArrowAB(this.id + "end", this.D, this.B, color, true, this.group);
+        DebugArrowAB(this.id + "start", this.C, this.A, color, true, this.group, 20, this.layerMask);
+        DebugArrowAB(this.id + "end", this.D, this.B, color, true, this.group, 20, this.layerMask);
 
         let length
 
@@ -383,7 +395,7 @@ export class CNodeLabeledArrow extends CNodeLabel3D {
 
         const color = this.in.color.v(f)
         // add an arrow from A to C and B to D
-        DebugArrowAB(this.id+"arrow", this.start, this.end, color, true, this.groupNode.group);
+        DebugArrowAB(this.id+"arrow", this.start, this.end, color, true, this.groupNode.group, 20, this.layerMask);
 
 
         this.changeText(this.label);
@@ -427,7 +439,7 @@ export class CNodeLabeledArrow extends CNodeLabel3D {
             const lengthMeters = view.pixelsToMeters(this.start, lengthPixels);
             const color = this.in.color.v(0)
             this.end = this.start.clone().add(this.direction.clone().multiplyScalar(lengthMeters));
-            DebugArrowAB(this.id+"arrow", this.start, this.end, color, true, this.groupNode.group);
+            DebugArrowAB(this.id+"arrow", this.start, this.end, color, true, this.groupNode.group, 20, this.layerMask);
         }
         this.position.copy(this.end);
         this.textPosition.copy(this.end);
