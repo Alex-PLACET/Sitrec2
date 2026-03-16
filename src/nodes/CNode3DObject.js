@@ -325,12 +325,6 @@ function computeCenterToLowestPoint(object) {
     return -box.min.y;
 }
 
-function computeLongestDimensionFromBox(box) {
-    const size = new Vector3();
-    box.getSize(size);
-    return Math.max(size.x, size.y, size.z);
-}
-
 function getBoundingBoxCorners(box) {
     const min = box.min;
     const max = box.max;
@@ -862,16 +856,16 @@ export class CNode3DObject extends CNode3DGroup {
         // so they don't get deleted when we rebuild the GUI after object type change
         this.addParams(commonParams, this.common, this.gui, true); // add the common parameters to the GUI
 
-        this.common.longestSide ??= v.longestSide ?? v.targetLength ?? v.length ?? 0;
-        this.longestSideController = this.gui.add(this.common, "longestSide", 0, 500, 1).name("Longest Side (ft)")
+        this.common.modelLength ??= v.modelLength ?? v.longestSide ?? v.targetLength ?? v.length ?? 0;
+        this.modelLengthController = this.gui.add(this.common, "modelLength", 0, 500, 1).name("Model Length (ft)")
             .listen()
             .onChange(() => {
                 this.recalculate();
                 this.rebuildBoundingBox();
                 setRenderOne(true);
             })
-            .tooltip("Target longest side in feet. Set to 0 to disable automatic longest-side scaling.");
-        this.longestSideController.isCommon = true;
+            .tooltip("Model length along the local Z axis in feet. Set to 0 to disable automatic Z-length scaling.");
+        this.modelLengthController.isCommon = true;
 
         this.displayBoundingBox = false;
 
@@ -1539,11 +1533,12 @@ export class CNode3DObject extends CNode3DGroup {
             this.common[key] = v.common[key];
         }
 
-        this.common.longestSide ??= this.common.targetLength ?? this.common.length;
+        this.common.modelLength ??= this.common.longestSide ?? this.common.targetLength ?? this.common.length;
+        delete this.common.longestSide;
         delete this.common.targetLength;
         delete this.common.length;
-        if (typeof this.longestSideController?.updateDisplay === "function") {
-            this.longestSideController.updateDisplay();
+        if (typeof this.modelLengthController?.updateDisplay === "function") {
+            this.modelLengthController.updateDisplay();
         }
 
         if (this.modelOrGeometry === "geometry") {
@@ -1861,7 +1856,7 @@ export class CNode3DObject extends CNode3DGroup {
 
                         // Cache half extents of the local bounding box for gradient mapping
                         const modelBox = computeLocalBoundingBox(this.model);
-                        this.cachedLongestDimension = computeLongestDimensionFromBox(modelBox);
+                        this.cachedModelLength = modelBox.max.z - modelBox.min.z;
                         this.cachedHalfHeight = (modelBox.max.y - modelBox.min.y) / 2;
                         this.cachedHalfLength = (modelBox.max.z - modelBox.min.z) / 2;
 
@@ -1983,7 +1978,7 @@ export class CNode3DObject extends CNode3DGroup {
         // For geometry objects, compute it from the geometry's bounding box
         this.geometry.computeBoundingBox();
         const geomBox = this.geometry.boundingBox;
-        this.cachedLongestDimension = computeLongestDimensionFromBox(geomBox);
+        this.cachedModelLength = geomBox.max.z - geomBox.min.z;
         const geomCenter = new Vector3();
         geomBox.getCenter(geomCenter);
         this.cachedCenterToLowestPoint = geomCenter.y - geomBox.min.y;
@@ -2890,34 +2885,36 @@ export class CNode3DObject extends CNode3DGroup {
     }
 
     applyModelFilenameParameters(modelAsset) {
-        const longestSideFeet = Number(modelAsset?.filenameParameters?.longestSide ?? modelAsset?.filenameParameters?.length);
-        if (!(longestSideFeet > 0)) {
+        const modelLengthFeet = Number(modelAsset?.filenameParameters?.modelLength
+            ?? modelAsset?.filenameParameters?.longestSide
+            ?? modelAsset?.filenameParameters?.length);
+        if (!(modelLengthFeet > 0)) {
             return;
         }
 
-        this.common.longestSide = longestSideFeet;
-        if (typeof this.longestSideController?.updateDisplay === "function") {
-            this.longestSideController.updateDisplay();
+        this.common.modelLength = modelLengthFeet;
+        if (typeof this.modelLengthController?.updateDisplay === "function") {
+            this.modelLengthController.updateDisplay();
         }
     }
 
-    getLongestSideScale() {
-        const longestSideFeet = Number(this.common.longestSide ?? this.common.targetLength ?? this.common.length) || 0;
-        if (longestSideFeet <= 0) {
+    getModelLengthScale() {
+        const modelLengthFeet = Number(this.common.modelLength ?? this.common.longestSide ?? this.common.targetLength ?? this.common.length) || 0;
+        if (modelLengthFeet <= 0) {
             return 1;
         }
 
-        const longestDimension = this.cachedLongestDimension;
-        if (!(longestDimension > 0)) {
+        const modelLength = Number(this.cachedModelLength);
+        if (!(modelLength > 0)) {
             return 1;
         }
 
-        return f2m(longestSideFeet) / longestDimension;
+        return f2m(modelLengthFeet) / modelLength;
     }
 
     recalculate() {
         super.recalculate();
-        const scale = this.in.size.v0 * Globals.objectScale * this.getLongestSideScale();
+        const scale = this.in.size.v0 * Globals.objectScale * this.getModelLengthScale();
         this.group.scale.setScalar(scale);
 
         // update the root track if any input changes (which is what triggers a recalculate)

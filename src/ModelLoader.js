@@ -39,14 +39,14 @@ function getDisplayModelName(filename) {
 
 const filenameParameterHandlers = Object.freeze({
     L: (parameters, value, units) => {
-        const longestSideFeet = parseFilenameLongestSideToFeet(value, units);
-        if (longestSideFeet !== null) {
-            parameters.longestSide = longestSideFeet;
+        const modelLengthFeet = parseFilenameModelLengthToFeet(value, units);
+        if (modelLengthFeet !== null) {
+            parameters.modelLength = modelLengthFeet;
         }
     },
 });
 
-function parseFilenameLongestSideToFeet(value, units) {
+function parseFilenameModelLengthToFeet(value, units) {
     const normalizedUnits = units?.toLowerCase() ?? "";
 
     switch (normalizedUnits) {
