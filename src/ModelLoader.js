@@ -1,5 +1,5 @@
 import {FileManager} from "./Globals";
-import {getFileExtension} from "./utils";
+import {getFileExtension, m2f, stripURLSuffixPreservingHashParameters} from "./utils";
 import {sharedUniforms} from "./js/map33/material/SharedUniforms";
 import {DRACOLoader} from "three/addons/loaders/DRACOLoader.js";
 import {GLTFLoader} from "three/addons/loaders/GLTFLoader.js";
@@ -33,7 +33,69 @@ function coerceArrayBuffer(data, filename) {
 }
 
 function getDisplayModelName(filename) {
-    return String(filename).replace(/\\/g, "/").split("/").pop() || String(filename);
+    const cleanFilename = stripURLSuffixPreservingHashParameters(filename);
+    return cleanFilename.replace(/\\/g, "/").split("/").pop() || cleanFilename;
+}
+
+const filenameParameterHandlers = Object.freeze({
+    L: (parameters, value, units) => {
+        const longestSideFeet = parseFilenameLongestSideToFeet(value, units);
+        if (longestSideFeet !== null) {
+            parameters.longestSide = longestSideFeet;
+        }
+    },
+});
+
+function parseFilenameLongestSideToFeet(value, units) {
+    const normalizedUnits = units?.toLowerCase() ?? "";
+
+    switch (normalizedUnits) {
+        case "":
+        case "f":
+        case "ft":
+        case "feet":
+            return value;
+
+        case "m":
+        case "meter":
+        case "meters":
+            return m2f(value);
+
+        default:
+            return null;
+    }
+}
+
+export function extractModelFilenameParameters(filename) {
+    const parameters = {};
+    const displayName = getDisplayModelName(filename);
+
+    for (const block of displayName.matchAll(/#([^#]+)#/g)) {
+        const blockText = block[1];
+        for (const match of blockText.matchAll(/([A-Za-z])\s*(-?(?:\d+(?:\.\d+)?|\.\d+))\s*([A-Za-z]+)?/g)) {
+            const key = match[1].toUpperCase();
+            const value = Number.parseFloat(match[2]);
+            const units = match[3];
+            if (!Number.isFinite(value)) {
+                continue;
+            }
+
+            const handler = filenameParameterHandlers[key];
+            if (handler) {
+                handler(parameters, value, units);
+            }
+        }
+    }
+
+    return parameters;
+}
+
+function attachFilenameParameters(modelAsset, filename) {
+    const filenameParameters = extractModelFilenameParameters(filename);
+    modelAsset.filenameParameters = filenameParameters;
+    modelAsset.scene.userData ??= {};
+    modelAsset.scene.userData.sitrecFilenameParameters = filenameParameters;
+    return modelAsset;
 }
 
 function createDRACOLoader() {
@@ -454,7 +516,7 @@ export function parseModelData(filename, data, onLoad, onError) {
     const parser = modelParsers[extension];
 
     const promise = parser
-        ? parser(data, filename)
+        ? parser(data, filename).then((modelAsset) => attachFilenameParameters(modelAsset, filename))
         : Promise.reject(new Error(`Unsupported model format "${extension}" for "${filename}"`));
 
     return attachCallbacks(promise, onLoad, onError);

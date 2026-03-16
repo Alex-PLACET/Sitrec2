@@ -1,4 +1,4 @@
-import {cleanFloat, f2m, metersFromNM, scaleF2M, unitsToMeters} from "../src/utils.js";
+import {cleanFloat, f2m, getFileExtension, metersFromNM, scaleF2M, unitsToMeters} from "../src/utils.js";
 
 describe('unitsToMeters', () => {
     
@@ -362,5 +362,15 @@ describe('cleanFloat', () => {
             expect(cleanedArray[2]).toBe(1.5);
             expect(cleanedArray[3]).toBe(0.6);
         });
+    });
+});
+
+describe("getFileExtension", () => {
+    test("preserves paired hash filename parameters before the extension", () => {
+        expect(getFileExtension("shahad_#L24.5#_.glb")).toBe("glb");
+    });
+
+    test("strips trailing URL fragments that come after the extension", () => {
+        expect(getFileExtension("https://example.com/model.PLY#cache")).toBe("ply");
     });
 });

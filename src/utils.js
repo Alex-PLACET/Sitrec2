@@ -471,9 +471,23 @@ export function isHttpOrHttps(url) {
     return pattern.test(url);
 }
 
+export function stripURLSuffixPreservingHashParameters(filename) {
+    let stripped = String(filename).split("?")[0];
+
+    // Preserve paired hash sections used as in-filename metadata (for example #L24.5#),
+    // while still trimming a trailing URL fragment like "model.glb#cache".
+    const lastDotIndex = stripped.lastIndexOf(".");
+    const hashAfterExtensionIndex = lastDotIndex >= 0 ? stripped.indexOf("#", lastDotIndex) : -1;
+    if (hashAfterExtensionIndex !== -1) {
+        stripped = stripped.slice(0, hashAfterExtensionIndex);
+    }
+
+    return stripped;
+}
+
 export function getFileExtension(filename) {
     // Strip URL query/hash so presigned/cached URLs still map to the underlying file extension.
-    filename = filename.split('#')[0].split('?')[0];
+    filename = stripURLSuffixPreservingHashParameters(filename);
     let splitDot = filename.toLowerCase().split('.')
     let fileExt = splitDot.pop();
     // if the extension ends in a / then we are probably trying to load an attachment

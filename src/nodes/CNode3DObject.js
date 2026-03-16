@@ -862,16 +862,16 @@ export class CNode3DObject extends CNode3DGroup {
         // so they don't get deleted when we rebuild the GUI after object type change
         this.addParams(commonParams, this.common, this.gui, true); // add the common parameters to the GUI
 
-        this.common.targetLength ??= v.targetLength ?? v.length ?? 0;
-        this.gui.add(this.common, "targetLength", 0, 500, 1).name("Length (ft)")
+        this.common.longestSide ??= v.longestSide ?? v.targetLength ?? v.length ?? 0;
+        this.longestSideController = this.gui.add(this.common, "longestSide", 0, 500, 1).name("Longest Side (ft)")
             .listen()
             .onChange(() => {
                 this.recalculate();
                 this.rebuildBoundingBox();
                 setRenderOne(true);
             })
-            .tooltip("Target longest dimension in feet. Set to 0 to disable automatic length scaling.")
-            .isCommon = true;
+            .tooltip("Target longest side in feet. Set to 0 to disable automatic longest-side scaling.");
+        this.longestSideController.isCommon = true;
 
         this.displayBoundingBox = false;
 
@@ -1539,8 +1539,11 @@ export class CNode3DObject extends CNode3DGroup {
             this.common[key] = v.common[key];
         }
 
-        if (this.common.targetLength === undefined && this.common.length !== undefined) {
-            this.common.targetLength = this.common.length;
+        this.common.longestSide ??= this.common.targetLength ?? this.common.length;
+        delete this.common.targetLength;
+        delete this.common.length;
+        if (typeof this.longestSideController?.updateDisplay === "function") {
+            this.longestSideController.updateDisplay();
         }
 
         if (this.modelOrGeometry === "geometry") {
@@ -1837,6 +1840,7 @@ export class CNode3DObject extends CNode3DGroup {
                         this.destroyLights();
 
                         this.model = modelAsset.scene;
+                        this.applyModelFilenameParameters(modelAsset);
 
                         if (Globals.shadowsEnabled) {
                             this.model.traverse((child) => {
@@ -2885,9 +2889,21 @@ export class CNode3DObject extends CNode3DGroup {
         super.dispose();
     }
 
-    getLengthScale() {
-        const targetLengthFeet = Number(this.common.targetLength ?? this.common.length) || 0;
-        if (targetLengthFeet <= 0) {
+    applyModelFilenameParameters(modelAsset) {
+        const longestSideFeet = Number(modelAsset?.filenameParameters?.longestSide ?? modelAsset?.filenameParameters?.length);
+        if (!(longestSideFeet > 0)) {
+            return;
+        }
+
+        this.common.longestSide = longestSideFeet;
+        if (typeof this.longestSideController?.updateDisplay === "function") {
+            this.longestSideController.updateDisplay();
+        }
+    }
+
+    getLongestSideScale() {
+        const longestSideFeet = Number(this.common.longestSide ?? this.common.targetLength ?? this.common.length) || 0;
+        if (longestSideFeet <= 0) {
             return 1;
         }
 
@@ -2896,12 +2912,12 @@ export class CNode3DObject extends CNode3DGroup {
             return 1;
         }
 
-        return f2m(targetLengthFeet) / longestDimension;
+        return f2m(longestSideFeet) / longestDimension;
     }
 
     recalculate() {
         super.recalculate();
-        const scale = this.in.size.v0 * Globals.objectScale * this.getLengthScale();
+        const scale = this.in.size.v0 * Globals.objectScale * this.getLongestSideScale();
         this.group.scale.setScalar(scale);
 
         // update the root track if any input changes (which is what triggers a recalculate)

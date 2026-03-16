@@ -112,7 +112,7 @@ jest.mock("three/addons/loaders/PLYLoader.js", () => {
     };
 });
 
-import {isSupportedModelFile, parseModelData} from "../src/ModelLoader";
+import {extractModelFilenameParameters, isSupportedModelFile, parseModelData} from "../src/ModelLoader";
 
 function toArrayBuffer(text) {
     return new TextEncoder().encode(text).buffer;
@@ -123,7 +123,17 @@ describe("ModelLoader", () => {
         expect(isSupportedModelFile("model.glb")).toBe(true);
         expect(isSupportedModelFile("model.ply")).toBe(true);
         expect(isSupportedModelFile("model.PLY?cache=1")).toBe(true);
+        expect(isSupportedModelFile("shahad_#L24.5#_.glb")).toBe(true);
         expect(isSupportedModelFile("model.obj")).toBe(false);
+    });
+
+    test("extracts longest-side metadata from filename parameters", () => {
+        expect(extractModelFilenameParameters("shahad_#L24.5#_.glb")).toEqual({longestSide: 24.5});
+        expect(extractModelFilenameParameters("shahad#L24.5ft#.glb")).toEqual({longestSide: 24.5});
+        expect(extractModelFilenameParameters("shahad#L24.5FEET#.glb")).toEqual({longestSide: 24.5});
+        expect(extractModelFilenameParameters("shahad#L3.5m#.glb").longestSide).toBeCloseTo(11.4829396325);
+        expect(extractModelFilenameParameters("shahad#L3.5MeTeRs#.glb").longestSide).toBeCloseTo(11.4829396325);
+        expect(extractModelFilenameParameters("plain-model.glb")).toEqual({});
     });
 
     test("parses mesh PLY files into mesh scene graphs", async () => {
@@ -147,9 +157,24 @@ describe("ModelLoader", () => {
 
         expect(modelAsset.format).toBe("ply");
         expect(modelAsset.scene.userData.sitrecPlyHasFaces).toBe(true);
+        expect(modelAsset.filenameParameters).toEqual({});
         expect(modelAsset.scene.children).toHaveLength(1);
         expect(modelAsset.scene.children[0].isMesh).toBe(true);
         expect(modelAsset.scene.children[0].rotation.x).toBeCloseTo(-Math.PI / 2);
+    });
+
+    test("attaches filename parameters to loaded model assets", async () => {
+        const modelAsset = await parseModelData("shahad_#L24.5#_.glb", new ArrayBuffer(0));
+
+        expect(modelAsset.filenameParameters).toEqual({longestSide: 24.5});
+        expect(modelAsset.scene.userData.sitrecFilenameParameters).toEqual({longestSide: 24.5});
+    });
+
+    test("converts meter filename suffixes to feet for longest-side scaling", async () => {
+        const modelAsset = await parseModelData("shahad#L3.5m#.glb", new ArrayBuffer(0));
+
+        expect(modelAsset.filenameParameters.longestSide).toBeCloseTo(11.4829396325);
+        expect(modelAsset.scene.userData.sitrecFilenameParameters.longestSide).toBeCloseTo(11.4829396325);
     });
 
     test("parses point-cloud PLY files into points scene graphs", async () => {
