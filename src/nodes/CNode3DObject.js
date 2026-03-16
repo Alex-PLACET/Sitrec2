@@ -2360,6 +2360,19 @@ export class CNode3DObject extends CNode3DGroup {
     preRender(view) {
         const common = this.common;
         if (!common) return;
+
+        if (this.model) {
+            this.model.traverse((child) => {
+                const material = child.material;
+                if (!material?.userData?.sitrecPLYPointCloud) {
+                    return;
+                }
+
+                if (material.uniforms?.viewportHeight) {
+                    material.uniforms.viewportHeight.value = view.heightPx ?? 1080;
+                }
+            });
+        }
         
         const target = this.group;
         if (target && (common.rotateX || common.rotateY || common.rotateZ)) {

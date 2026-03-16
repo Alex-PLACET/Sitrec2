@@ -1,12 +1,24 @@
 import {FileManager} from "./Globals";
 import {getFileExtension} from "./utils";
+import {sharedUniforms} from "./js/map33/material/SharedUniforms";
 import {DRACOLoader} from "three/addons/loaders/DRACOLoader.js";
 import {GLTFLoader} from "three/addons/loaders/GLTFLoader.js";
 import {PLYLoader} from "three/addons/loaders/PLYLoader.js";
-import {Group, Mesh, MeshStandardMaterial, Points, PointsMaterial} from "three";
+import {
+    BufferAttribute,
+    Color,
+    Group,
+    Mesh,
+    MeshStandardMaterial,
+    NormalBlending,
+    Points,
+    PointsMaterial,
+    ShaderMaterial,
+} from "three";
 
 const SUPPORTED_MODEL_EXTENSIONS = Object.freeze(["glb", "ply"]);
 const supportedModelExtensions = new Set(SUPPORTED_MODEL_EXTENSIONS);
+const SH_C0 = 0.28209479177387814;
 
 function coerceArrayBuffer(data, filename) {
     if (data instanceof ArrayBuffer) {
@@ -137,6 +149,203 @@ function plyHasFaces(data) {
     return faceMatch ? Number(faceMatch[1]) > 0 : false;
 }
 
+function setPLYCustomPropertyMappings(loader) {
+    loader.setCustomPropertyNameMapping({
+        splatColorDc: ["f_dc_0", "f_dc_1", "f_dc_2"],
+        splatScale: ["scale_0", "scale_1", "scale_2"],
+        splatRotation: ["rot_0", "rot_1", "rot_2", "rot_3"],
+        splatOpacity: ["opacity"],
+    });
+}
+
+function clamp01(value) {
+    return Math.min(1, Math.max(0, value));
+}
+
+function sigmoid(value) {
+    return 1 / (1 + Math.exp(-value));
+}
+
+function ensurePLYPointColors(geometry) {
+    if (geometry.getAttribute("color")) {
+        return geometry.getAttribute("color");
+    }
+
+    const splatColorDc = geometry.getAttribute("splatColorDc");
+    if (!splatColorDc) {
+        return null;
+    }
+
+    const colors = new Float32Array(splatColorDc.count * 3);
+    for (let i = 0; i < splatColorDc.count; i++) {
+        const base = i * 3;
+        colors[base] = clamp01(0.5 + SH_C0 * splatColorDc.array[base]);
+        colors[base + 1] = clamp01(0.5 + SH_C0 * splatColorDc.array[base + 1]);
+        colors[base + 2] = clamp01(0.5 + SH_C0 * splatColorDc.array[base + 2]);
+    }
+
+    const colorAttribute = new BufferAttribute(colors, 3);
+    geometry.setAttribute("color", colorAttribute);
+    return colorAttribute;
+}
+
+function ensurePLYPointOpacity(geometry) {
+    const existing = geometry.getAttribute("splatOpacity");
+    if (existing) {
+        const normalized = new Float32Array(existing.count);
+        for (let i = 0; i < existing.count; i++) {
+            normalized[i] = clamp01(sigmoid(existing.array[i]));
+        }
+        const opacityAttribute = new BufferAttribute(normalized, 1);
+        geometry.setAttribute("splatOpacity", opacityAttribute);
+        return opacityAttribute;
+    }
+
+    const opacity = new Float32Array(geometry.getAttribute("position").count);
+    opacity.fill(1);
+    const opacityAttribute = new BufferAttribute(opacity, 1);
+    geometry.setAttribute("splatOpacity", opacityAttribute);
+    return opacityAttribute;
+}
+
+function ensurePLYPointSize(geometry) {
+    const existing = geometry.getAttribute("splatSize");
+    if (existing) {
+        return existing;
+    }
+
+    const splatScale = geometry.getAttribute("splatScale");
+    const sizes = new Float32Array(geometry.getAttribute("position").count);
+
+    if (splatScale) {
+        for (let i = 0; i < splatScale.count; i++) {
+            const base = i * 3;
+            const sx = Math.exp(splatScale.array[base]);
+            const sy = Math.exp(splatScale.array[base + 1]);
+            const sz = Math.exp(splatScale.array[base + 2]);
+            sizes[i] = Math.max(sx, sy, sz) * 2.0;
+        }
+    } else {
+        sizes.fill(1);
+    }
+
+    const sizeAttribute = new BufferAttribute(sizes, 1);
+    geometry.setAttribute("splatSize", sizeAttribute);
+    return sizeAttribute;
+}
+
+function createPLYPointCloudMaterial(geometry, filename) {
+    const usesSplatAttributes = geometry.getAttribute("splatColorDc") !== undefined
+        || geometry.getAttribute("splatScale") !== undefined
+        || geometry.getAttribute("splatOpacity") !== undefined;
+    const colorAttribute = ensurePLYPointColors(geometry);
+    const opacityAttribute = ensurePLYPointOpacity(geometry);
+    const sizeAttribute = ensurePLYPointSize(geometry);
+
+    if (!usesSplatAttributes && !colorAttribute) {
+        return new PointsMaterial({
+            color: 0xbfbfbf,
+            size: 2,
+            sizeAttenuation: true,
+        });
+    }
+
+    const fallbackColor = new Color(0xbfbfbf);
+    const opaqueCutout = usesSplatAttributes;
+    const vertexShader = `
+        attribute float splatOpacity;
+        attribute float splatSize;
+        ${colorAttribute ? "attribute vec3 color;" : ""}
+
+        uniform float viewportHeight;
+        uniform float minPointSize;
+        uniform float maxPointSize;
+        uniform float sizeMultiplier;
+        uniform vec3 fallbackColor;
+
+        varying vec3 vColor;
+        varying float vOpacity;
+        varying float vDepth;
+
+        void main() {
+            vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+
+            float modelScaleX = length(modelMatrix[0].xyz);
+            float modelScaleY = length(modelMatrix[1].xyz);
+            float modelScaleZ = length(modelMatrix[2].xyz);
+            float modelScale = max(modelScaleX, max(modelScaleY, modelScaleZ));
+            float worldSize = max(0.0001, splatSize * modelScale * sizeMultiplier);
+            float projectedSize = worldSize * viewportHeight * projectionMatrix[1][1] / max(-mvPosition.z, 0.0001);
+
+            gl_PointSize = clamp(projectedSize, minPointSize, maxPointSize);
+            gl_Position = projectionMatrix * mvPosition;
+            vDepth = gl_Position.w;
+
+            vOpacity = splatOpacity;
+            ${colorAttribute ? "vColor = color;" : "vColor = fallbackColor;"}
+        }
+    `;
+
+    const fragmentShader = `
+        uniform float nearPlane;
+        uniform float farPlane;
+
+        varying vec3 vColor;
+        varying float vOpacity;
+        varying float vDepth;
+
+        void main() {
+            vec2 centered = gl_PointCoord * 2.0 - 1.0;
+            float radiusSquared = dot(centered, centered);
+            if (radiusSquared > 1.0) {
+                discard;
+            }
+
+            ${opaqueCutout ? `
+            if (vOpacity < 0.02) {
+                discard;
+            }
+            gl_FragColor = vec4(vColor, 1.0);
+            ` : `
+            float alpha = exp(-radiusSquared * 4.0) * vOpacity;
+            if (alpha < 0.08) {
+                discard;
+            }
+            gl_FragColor = vec4(vColor, alpha);
+            `}
+
+            float z = (log2(max(nearPlane, 1.0 + vDepth)) / log2(1.0 + farPlane)) * 2.0 - 1.0;
+            gl_FragDepthEXT = z * 0.5 + 0.5;
+        }
+    `;
+
+    const material = new ShaderMaterial({
+        name: `${getDisplayModelName(filename)} PLY Point Cloud`,
+        vertexShader,
+        fragmentShader,
+        uniforms: {
+            viewportHeight: {value: 1080},
+            minPointSize: {value: 2.0},
+            maxPointSize: {value: usesSplatAttributes ? 96.0 : 24.0},
+            sizeMultiplier: {value: usesSplatAttributes ? 1.5 : 1.0},
+            fallbackColor: {value: fallbackColor},
+            ...sharedUniforms,
+        },
+        transparent: !opaqueCutout,
+        depthTest: true,
+        depthWrite: true,
+        blending: NormalBlending,
+    });
+
+    material.userData ??= {};
+    material.userData.sitrecPLYPointCloud = true;
+    material.userData.sitrecUsesSplatAttributes = usesSplatAttributes;
+    material.userData.sitrecPointCount = opacityAttribute.count;
+    sizeAttribute.needsUpdate = true;
+
+    return material;
+}
+
 function createPLYModel(geometry, filename, sourceData) {
     geometry.computeBoundingSphere();
     geometry.computeBoundingBox();
@@ -166,16 +375,12 @@ function createPLYModel(geometry, filename, sourceData) {
         mesh.updateMatrix();
         root.add(mesh);
     } else {
-        const material = new PointsMaterial({
-            color: usesVertexColors ? 0xffffff : 0xbfbfbf,
-            size: 1,
-            sizeAttenuation: true,
-            vertexColors: usesVertexColors,
-        });
+        const material = createPLYPointCloudMaterial(geometry, filename);
         const points = new Points(geometry, material);
         points.name = root.name;
         points.rotateX(-Math.PI / 2);
         points.updateMatrix();
+        points.userData.sitrecPLYPointCloud = material.userData?.sitrecPLYPointCloud === true;
         root.add(points);
     }
 
@@ -206,6 +411,7 @@ function parseGLBModel(data, filename) {
 
 function parsePLYModel(data, filename) {
     const loader = new PLYLoader();
+    setPLYCustomPropertyMappings(loader);
     const geometry = loader.parse(coerceArrayBuffer(data, filename));
     return Promise.resolve(createPLYModel(geometry, filename, data));
 }
