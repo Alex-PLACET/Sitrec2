@@ -36,13 +36,38 @@ The geometry specification are in meters. You can see the dimensions of the boun
 
 ![Model Viewer dimensions.jpg](docimages/Model-Viewer-dimensions.jpg)
 
+## Supported Model Formats
+
+Sitrec supports two model file formats:
+
+- **GLB** (.glb) — Binary glTF format. Includes geometry, materials, and textures in a single file. This is the primary format for authored models (aircraft, drones, etc.). Created via Blender or other 3D tools.
+- **PLY** (.ply) — Polygon File Format. Sitrec handles three types of PLY content:
+  - **Mesh PLY** (contains faces): Rendered as a standard lit mesh. Vertex colors are used if present.
+  - **Gaussian Splat PLY** (contains `splatScale` and `splatRotation` attributes): Rendered using instanced elliptical Gaussian splatting with back-to-front sorting. This is the format produced by 3D Gaussian Splatting tools.
+  - **Point Cloud PLY** (vertices only, no faces or splat attributes): Rendered as a point cloud with size attenuation.
+
+Both formats can be dragged and dropped into the Model Inspector or any moddable sitch.
+
+### Filename Length Parameter
+
+You can embed the real-world length of a model directly in its filename using the format `#L<value><units>#`. When Sitrec loads the model, it reads this parameter and automatically sets the model scale so the longest dimension matches the specified length.
+
+**Format:** `modelname#L<number><units>#.glb` (or `.ply`)
+
+**Supported units:**
+- Meters: `m`, `meter`, `meters` — e.g. `shahed#L3.5m#.glb` (3.5 meters)
+- Feet: `f`, `ft`, `feet` — e.g. `drone#L24.5ft#.glb` (24.5 feet)
+- No unit defaults to feet — e.g. `thing#L100#.glb` (100 feet)
+
+This is particularly useful for models that don't have a consistent internal scale, or when you want to quickly try different sizes without editing the model. The length parameter is applied when the model loads — you can still adjust the "Model Length" slider in the Objects menu afterward.
+
 ## Custom Models using Blender
 
-The geometries are only intended for simple tests. For more flexibility you can create or import a custom model.  
+The geometries are only intended for simple tests. For more flexibility you can create or import a custom model.
 
-Model are in OpenGL .glb format only. You don't need to use Blender to make them, but that's the only documented pipeline. Other tools should be similar.
+Models are typically authored in GLB format. You don't need to use Blender to make them, but that's the only documented pipeline. Other tools should be similar.
 
-Internally, Sitrec used the metric system. So you need to set this in Blender if you want your models to be consistently sized.  
+Internally, Sitrec uses the metric system. So you need to set this in Blender if you want your models to be consistently sized.
 ![blender-units.jpg](docimages/blender-units.jpg)
 
 ### Blender Orientation and scale
@@ -66,12 +91,22 @@ If you import a model from a format like FBX, Collada, or Wavefront/OBJ, you mig
 
 ### Blender Exporting
 
-You will edit the model in Blender and save to a .blend file. But Sitrec requires .glb files, which are binary versions of glTF, including both geometry and materials in single file. 
+You will edit the model in Blender and save to a .blend file. For Sitrec, export as .glb, which is the binary version of glTF, including both geometry and materials in a single file.
 To export a file, use File->Export-> glTF 2.0 (.glb/.gltf).
 
 Click on "Remember Export Settings" and then ensure the following are set:
 ![Blender-glb-export.jpg](docimages/Blender-glb-export.jpg)
 
+Then export the file. If you want to embed a known real-world length, rename the file to include a length parameter (e.g. `my-drone#L3.5m#.glb`). You should now be able to drag and drop this into the Sitrec model inspector, or any moddable sitch that supports it (e.g. FLIR1).
 
-Then export the file. You should now be able to drag and drop this into the Sitrec model inspector, or any moddable sitch that supports it (e.g. FLIR1)
+### PLY Files
+
+PLY files don't go through the Blender export pipeline. They are typically produced by:
+- **3D scanning** software (mesh or point cloud output)
+- **Gaussian Splatting** training tools (e.g. from COLMAP → 3DGS training)
+- **Point cloud** capture tools (LiDAR, photogrammetry)
+
+Sitrec auto-detects which type of PLY it is by inspecting the file header. If the PLY has face elements, it's loaded as a mesh. If it has `scale_0`/`rot_0` attributes, it's treated as a Gaussian splat. Otherwise it's rendered as a point cloud.
+
+Gaussian splat PLY files are rendered with proper elliptical splatting and per-frame back-to-front sorting for correct transparency. The filename length parameter (`#L...#`) works with PLY files too.
 
