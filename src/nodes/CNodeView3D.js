@@ -57,6 +57,7 @@ import {
 import {CNodeViewCanvas} from "./CNodeViewCanvas";
 import {CNode} from "./CNode";
 import {getCameraNode} from "./CNodeCamera";
+import {CNode3DObject} from "./CNode3DObject";
 import {CNodeEffect} from "./CNodeEffect";
 import {assert} from "../assert.js";
 import {V3} from "../threeUtils";
@@ -2726,6 +2727,9 @@ export class CNodeView3D extends CNodeViewCanvas {
 
                             // Set up dynamic mirroring for the object's GUI folder
                             CustomManager.setupDynamicMirroring(guiToMirror, standaloneMenu);
+                            if (node instanceof CNode3DObject) {
+                                CustomManager.setEditingObject(node, standaloneMenu);
+                            }
                             
                             // Add a method to manually refresh the mirror
                             standaloneMenu.refreshMirror = () => {

@@ -93,6 +93,8 @@ export class CCustomManager {
 
         // Settings saver with intelligent debouncing (5 second delay)
         this.settingsSaver = new SettingsSaver(5000);
+        this.editingObjectNodeId = null;
+        this.editingObjectMenu = null;
     }
 
     async initializeSettings() {
@@ -106,6 +108,77 @@ export class CCustomManager {
      */
     async saveGlobalSettings(immediate = false) {
         await this.settingsSaver.save(immediate);
+    }
+
+    setEditingObject(nodeOrId, menu = null) {
+        const nodeId = typeof nodeOrId === "string" ? nodeOrId : nodeOrId?.id;
+        if (!nodeId) {
+            return;
+        }
+
+        this.editingObjectNodeId = nodeId;
+        this.editingObjectMenu = menu ?? null;
+
+        if (menu && !menu._clearsEditingObjectOnDestroy) {
+            const originalDestroy = menu.destroy.bind(menu);
+            menu.destroy = (...args) => {
+                if (this.editingObjectMenu === menu) {
+                    this.editingObjectMenu = null;
+                    if (this.editingObjectNodeId === nodeId) {
+                        this.editingObjectNodeId = null;
+                    }
+                }
+                return originalDestroy(...args);
+            };
+            menu._clearsEditingObjectOnDestroy = true;
+        }
+    }
+
+    clearEditingObject(nodeOrId = null, menu = null) {
+        const nodeId = typeof nodeOrId === "string" ? nodeOrId : nodeOrId?.id;
+
+        if (menu && this.editingObjectMenu !== menu) {
+            return;
+        }
+        if (nodeId && this.editingObjectNodeId !== nodeId) {
+            return;
+        }
+
+        if (!menu || this.editingObjectMenu === menu) {
+            this.editingObjectMenu = null;
+        }
+        if (!nodeId || this.editingObjectNodeId === nodeId) {
+            this.editingObjectNodeId = null;
+        }
+    }
+
+    getEditingObjectNode() {
+        if (!this.editingObjectNodeId) {
+            return null;
+        }
+
+        const node = NodeMan.get(this.editingObjectNodeId, false);
+        if (!(node instanceof CNode3DObject)) {
+            this.clearEditingObject();
+            return null;
+        }
+
+        return node;
+    }
+
+    refreshEditingObjectMenu(nodeOrId = null) {
+        const nodeId = typeof nodeOrId === "string" ? nodeOrId : nodeOrId?.id;
+        if (nodeId && this.editingObjectNodeId && nodeId !== this.editingObjectNodeId) {
+            return;
+        }
+
+        const menu = this.editingObjectMenu;
+        if (!menu?._mirrorSource) {
+            return;
+        }
+
+        this.rebuildMirror(menu._mirrorSource, menu);
+        menu._lastMirrorState = this.createGUISignature(menu._mirrorSource);
     }
 
     /**

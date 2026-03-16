@@ -77,7 +77,7 @@ import {projectedBoundsToWGS84} from "./proj4Loader";
 import {isAudioOnlyFormat} from "./AudioFormats";
 import {extractFeaturesFromFile, isFeaturesCSV} from "./ParseFeaturesCSV";
 import {createImageFromArrayBuffer} from "./FileUtils";
-import {ModelFiles} from "./nodes/CNode3DObject";
+import {CNode3DObject, ModelFiles} from "./nodes/CNode3DObject";
 import {LoadingManager} from "./CLoadingManager";
 import {convertTiffBufferToPngImage} from "./TIFFUtils";
 import {extractFlightClubInfo, flightClubToCSVStrings, isFlightClubJSON} from "./ParseFlightClubJSON";
@@ -2513,6 +2513,45 @@ export class CFileManager extends CManager {
             })
     }
 
+    registerDroppedModel(modelID) {
+        // Replace the entry so selecting the same filename again forces a reload.
+        ModelFiles[modelID] = {file: modelID};
+
+        NodeMan.iterate((id, node) => {
+            if (node instanceof CNode3DObject && node.modelMenu) {
+                addOptionToGUIMenu(node.modelMenu, modelID, modelID);
+            }
+        });
+
+        return ModelFiles[modelID];
+    }
+
+    getPreferredDroppedModelTarget() {
+        const editingObject = CustomManager?.getEditingObjectNode?.();
+        if (editingObject instanceof CNode3DObject) {
+            return editingObject;
+        }
+
+        const targetObject = NodeMan.get("targetObject", false) || NodeMan.get("traverseObject", false);
+        return targetObject instanceof CNode3DObject ? targetObject : null;
+    }
+
+    applyDroppedModelToObject(objectNode, modelID) {
+        if (!(objectNode instanceof CNode3DObject)) {
+            return false;
+        }
+
+        objectNode.selectModel = modelID;
+        objectNode.modelOrGeometry = "model";
+        objectNode.modelMenu?.updateDisplay();
+        objectNode.modelOrGeometryMenu?.updateDisplay();
+        objectNode.rebuild();
+        setRenderOne(true);
+
+        CustomManager?.refreshEditingObjectMenu?.(objectNode.id);
+        return true;
+    }
+
     /**
      * Routes a parsed file to the appropriate subsystem based on file type and dataType.
      * Called by parseResult after parsing. Handles:
@@ -2802,16 +2841,13 @@ export class CFileManager extends CManager {
                 setNewSitchObject(copy)
                 return false;
             } else if (fileExt === "glb") {
-                // it's a model, so we can replace the model used in targetModel
-                // we have filename, and we can just set
-                ModelFiles[filename] = {file: filename};
-                if (NodeMan.exists("targetObject")) {
-                    const target = NodeMan.get("targetObject");
-                    target.modelOrGeometry = "model"
-                    target.selectModel = filename;
-                    target.rebuild();
-                    // woudl also need to add it to the gui
+                this.registerDroppedModel(filename);
+
+                const targetObject = this.getPreferredDroppedModelTarget();
+                if (targetObject) {
+                    this.applyDroppedModelToObject(targetObject, filename);
                 }
+
                 return true;
 
 

@@ -5,7 +5,6 @@ import {FileManager} from "../Globals";
 import {GLTFLoader} from "three/addons/loaders/GLTFLoader.js";
 import {DRACOLoader} from "three/addons/loaders/DRACOLoader.js";
 import {disposeScene} from "../threeExt";
-import {NoColorSpace} from "three";
 
 // Create and configure a DRACO loader
 function createDRACOLoader() {
@@ -67,6 +66,52 @@ function checkModelHierarchy(gltf, filename) {
     }
 }
 
+function isDroppedModelFile(file) {
+    return !String(file).startsWith("data/models/");
+}
+
+function shouldNormalizeDroppedModelMaterial(file, material) {
+    if (!isDroppedModelFile(file)) {
+        return false;
+    }
+
+    if (!(material?.isMeshStandardMaterial || material?.isMeshPhysicalMaterial)) {
+        return false;
+    }
+
+    if (material.userData?.gltfExtensions?.KHR_materials_unlit) {
+        return false;
+    }
+
+    // Fully metallic textured imports without IBL tend to render as black silhouettes
+    // under ambient-only lighting, which is common with some AI-generated GLBs.
+    if (!material.map || material.envMap || material.metalnessMap) {
+        return false;
+    }
+
+    return (material.metalness ?? 0) >= 0.95;
+}
+
+function normalizeDroppedModelMaterials(scene, file) {
+    scene.traverse((child) => {
+        if (!child.isMesh) {
+            return;
+        }
+
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        for (const material of materials) {
+            if (!shouldNormalizeDroppedModelMaterial(file, material)) {
+                continue;
+            }
+
+            material.metalness = 0;
+            material.needsUpdate = true;
+            material.userData ??= {};
+            material.userData.sitrecDroppedModelMaterialFix = "demetalized-for-ambient";
+        }
+    });
+}
+
 export function loadGLTFModel(file, callback, errorCallback) {
 
     console.log("Async Loading asset for", file);
@@ -74,15 +119,10 @@ export function loadGLTFModel(file, callback, errorCallback) {
         const loader = createGLTFLoader()
         loader.parse(asset.parsed, "", gltf => {
             console.log("(after async) Parsed asset for", file, " now traversing...");
-            gltf.scene.traverse((child) => {
-                if (child.isMesh) {
-                    if (child.material.map) child.material.map.colorSpace = NoColorSpace;
-                    if (child.material.emissiveMap) child.material.emissiveMap.colorSpace = NoColorSpace;
-                }
-            });
-            
+
             // Check for hierarchy issues
             checkModelHierarchy(gltf, file);
+            normalizeDroppedModelMaterials(gltf.scene, file);
             
             callback(gltf);
         }, (error) => {
@@ -106,6 +146,7 @@ export class CNode3DModel extends CNode3DGroup {
         loader.parse(data, "", (gltf2) => {
             // Check for hierarchy issues
             checkModelHierarchy(gltf2, filename);
+            normalizeDroppedModelMaterials(gltf2.scene, filename);
             
             this.model = gltf2.scene //.getObjectByName('FA-18F')
             this.model.scale.setScalar(1);
