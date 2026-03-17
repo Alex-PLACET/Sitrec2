@@ -1,91 +1,146 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
-const path = require('path');
-const fs = require('fs');
+const { app, BrowserWindow, dialog, session } = require("electron");
+const fs = require("fs");
+const path = require("path");
+const { createDesktopServer } = require("./server");
 
-let mainWindow;
-let pendingFilePath = null;
+let desktopServer = null;
+let mainWindow = null;
+let serverBaseUrl = null;
 
-function getResourcePath() {
+function getResourcePaths() {
     if (app.isPackaged) {
-        return path.join(process.resourcesPath, 'app_build', 'video-viewer');
+        return {
+            distDir: path.join(process.resourcesPath, "dist-serverless"),
+            terrainDir: path.join(process.resourcesPath, "sitrec-terrain"),
+        };
     }
-    return path.join(__dirname, '..', '..', 'app_build', 'video-viewer');
+
+    return {
+        distDir: path.join(__dirname, "..", "..", "dist-serverless"),
+        terrainDir: path.join(__dirname, "..", "..", "..", "sitrec-terrain"),
+    };
+}
+
+function isAllowedNavigation(url) {
+    if (url === "about:blank") {
+        return true;
+    }
+
+    if (url.startsWith("devtools://") || url.startsWith("chrome-devtools://")) {
+        return true;
+    }
+
+    return Boolean(serverBaseUrl && url.startsWith(serverBaseUrl));
+}
+
+function installOfflineNetworkGuard() {
+    const filter = { urls: ["*://*/*"] };
+
+    session.defaultSession.webRequest.onBeforeRequest(filter, (details, callback) => {
+        callback({ cancel: !isAllowedNavigation(details.url) });
+    });
 }
 
 function createWindow() {
     mainWindow = new BrowserWindow({
-        width: 1280,
-        height: 720,
+        backgroundColor: "#111827",
+        height: 1000,
+        title: "Sitrec",
+        width: 1600,
         webPreferences: {
-            preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
             nodeIntegration: false,
+            preload: path.join(__dirname, "preload.js"),
         },
-        title: 'Sitrec Video Viewer',
     });
 
-    mainWindow.loadFile(path.join(getResourcePath(), 'index.html'));
+    mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+        return { action: isAllowedNavigation(url) ? "allow" : "deny" };
+    });
 
-    mainWindow.on('closed', () => {
+    mainWindow.webContents.on("will-navigate", (event, url) => {
+        if (!isAllowedNavigation(url)) {
+            event.preventDefault();
+        }
+    });
+
+    mainWindow.on("closed", () => {
         mainWindow = null;
+    });
+
+    return mainWindow.loadURL(`${serverBaseUrl}/sitrec/`);
+}
+
+async function startDesktopServer() {
+    const { distDir, terrainDir } = getResourcePaths();
+
+    if (!fs.existsSync(distDir)) {
+        throw new Error(`Missing serverless build at ${distDir}. Run: npm run build-serverless`);
+    }
+
+    if (!fs.existsSync(terrainDir)) {
+        throw new Error(`Missing terrain bundle at ${terrainDir}.`);
+    }
+
+    desktopServer = createDesktopServer({ distDir, terrainDir });
+    const serverInfo = await desktopServer.start();
+    serverBaseUrl = serverInfo.baseUrl;
+}
+
+async function stopDesktopServer() {
+    if (!desktopServer) {
+        return;
+    }
+
+    const serverToStop = desktopServer;
+    desktopServer = null;
+    serverBaseUrl = null;
+
+    try {
+        await serverToStop.stop();
+    } catch (error) {
+        console.error("[desktop-app] Failed to stop internal server", error);
+    }
+}
+
+async function showStartupError(error) {
+    console.error("[desktop-app] Startup failed", error);
+
+    await dialog.showMessageBox({
+        buttons: ["Quit"],
+        detail: error.stack || String(error),
+        message: "Sitrec could not start the offline desktop app resources.",
+        noLink: true,
+        title: "Sitrec Startup Error",
+        type: "error",
     });
 }
 
-app.whenReady().then(() => {
-    createWindow();
+app.whenReady().then(async () => {
+    try {
+        await startDesktopServer();
+        installOfflineNetworkGuard();
+        await createWindow();
+    } catch (error) {
+        await showStartupError(error);
+        await stopDesktopServer();
+        app.quit();
+        return;
+    }
 
-    app.on('activate', () => {
-        if (BrowserWindow.getAllWindows().length === 0) {
-            createWindow();
+    app.on("activate", async () => {
+        if (BrowserWindow.getAllWindows().length === 0 && serverBaseUrl) {
+            await createWindow();
         }
     });
 });
 
-app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
+app.on("window-all-closed", () => {
+    if (process.platform !== "darwin") {
         app.quit();
     }
 });
 
-app.on('open-file', (event, filePath) => {
-    event.preventDefault();
-    if (mainWindow && mainWindow.webContents) {
-        mainWindow.webContents.send('open-video', filePath);
-    } else {
-        pendingFilePath = filePath;
-    }
-});
-
-app.on('ready', () => {
-    if (pendingFilePath) {
-        setTimeout(() => {
-            if (mainWindow && mainWindow.webContents) {
-                mainWindow.webContents.send('open-video', pendingFilePath);
-                pendingFilePath = null;
-            }
-        }, 1000);
-    }
-});
-
-ipcMain.handle('read-video-file', async (event, filePath) => {
-    try {
-        const buffer = await fs.promises.readFile(filePath);
-        return { data: buffer, name: path.basename(filePath) };
-    } catch (err) {
-        return { error: err.message };
-    }
-});
-
-ipcMain.handle('open-file-dialog', async () => {
-    const result = await dialog.showOpenDialog(mainWindow, {
-        properties: ['openFile'],
-        filters: [
-            { name: 'Videos', extensions: ['mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v'] },
-            { name: 'All Files', extensions: ['*'] }
-        ]
-    });
-    if (!result.canceled && result.filePaths.length > 0) {
-        return result.filePaths[0];
-    }
-    return null;
+app.on("before-quit", async () => {
+    await stopDesktopServer();
 });

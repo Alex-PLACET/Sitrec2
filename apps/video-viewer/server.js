@@ -307,8 +307,9 @@ async function handleRequest(req, res, options) {
         }
 
         if (!relativePath || !STATIC_EXTENSION_RE.test(pathname)) {
-            await tryServeFile(res, path.join(options.distDir, "index.html"), method);
-            return;
+            if (await tryServeFile(res, path.join(options.distDir, "index.html"), method)) {
+                return;
+            }
         }
     }
 
@@ -321,6 +322,10 @@ async function handleRequest(req, res, options) {
         error: "Not Found",
         path: pathname,
     });
+}
+
+function createDesktopRequestHandler(options) {
+    return (req, res) => handleRequest(req, res, options);
 }
 
 function createDesktopServer({
@@ -343,11 +348,11 @@ function createDesktopServer({
             }
 
             activeServer = http.createServer((req, res) => {
-                handleRequest(req, res, {
+                createDesktopRequestHandler({
                     baseUrl: activeBaseUrl,
                     distDir,
                     terrainDir,
-                }).catch((error) => {
+                })(req, res).catch((error) => {
                     console.error("[desktop-server] request failed", error);
                     jsonResponse(res, 500, {
                         error: "Internal Server Error",
@@ -401,5 +406,6 @@ function createDesktopServer({
 }
 
 module.exports = {
+    createDesktopRequestHandler,
     createDesktopServer,
 };

@@ -1,34 +1,50 @@
 {
   "name": "sitrec-video-viewer",
   "version": "1.0.0",
-  "description": "Sitrec Video Viewer - Standalone video analysis app",
+  "description": "Sitrec Desktop - Offline serverless Electron app",
   "main": "main.js",
   "author": "Metabunk",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder --mac --arm64",
-    "build-universal": "electron-builder --mac --universal"
+    "build": "electron-builder --mac --arm64 -c.directories.output=${SITREC_DESKTOP_OUTPUT_DIR:-/tmp/sitrec-desktop-builds}",
+    "build-direct": "electron-builder --mac --arm64",
+    "build-universal": "electron-builder --mac --universal",
+    "build-local": "npm run build",
+    "build-local-nosign": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --arm64 -c.mac.identity=null -c.directories.output=${SITREC_DESKTOP_OUTPUT_DIR:-/tmp/sitrec-desktop-builds}",
+    "build-dir-local-nosign": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --dir --mac --arm64 -c.mac.identity=null -c.directories.output=${SITREC_DESKTOP_OUTPUT_DIR:-/tmp/sitrec-desktop-builds}"
   },
   "devDependencies": {
     "electron": "^35.7.5",
     "electron-builder": "^26.8.1"
   },
   "build": {
-    "appId": "com.metabunk.sitrec-video-viewer",
-    "productName": "Sitrec Video Viewer",
+    "appId": "com.metabunk.sitrec-desktop",
+    "productName": "Sitrec",
     "directories": {
       "output": "../../apps_dist"
     },
     "files": [
       "main.js",
-      "preload.js"
+      "preload.js",
+      "server.js"
     ],
     "extraResources": [
       {
-        "from": "../../app_build/video-viewer",
-        "to": "app_build/video-viewer",
-        "filter": ["**/*"]
+        "from": "../../dist-serverless",
+        "to": "dist-serverless",
+        "filter": [
+          "**/*",
+          "!**/.DS_Store"
+        ]
+      },
+      {
+        "from": "../../../sitrec-terrain",
+        "to": "sitrec-terrain",
+        "filter": [
+          "**/*",
+          "!**/.DS_Store"
+        ]
       }
     ],
     "mac": {
@@ -38,16 +54,16 @@
           "arch": ["arm64"]
         }
       ],
-      "category": "public.app-category.video",
-      "fileAssociations": [
-        {
-          "ext": ["mp4", "mov", "avi", "mkv", "webm", "m4v"],
-          "name": "Video Files",
-          "role": "Viewer"
-        }
+      "category": "public.app-category.utilities",
+      "signIgnore": [
+        "/Contents/Resources/sitrec-terrain($|/)",
+        "/Contents/Resources/dist-serverless/docs($|/)",
+        "/Contents/Resources/dist-serverless/tools($|/)",
+        "/Contents/Resources/dist-serverless/.*\\.(?:md|html|txt|json)$"
       ]
     },
     "dmg": {
+      "size": "4g",
       "contents": [
         {
           "x": 130,

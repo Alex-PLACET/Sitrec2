@@ -6,6 +6,32 @@ const repoRoot = path.resolve(__dirname, "..");
 const stagingDir = path.resolve(process.env.SITREC_DESKTOP_OUTPUT_DIR || "/tmp/sitrec-desktop-builds");
 const finalDir = path.resolve(process.env.SITREC_DESKTOP_FINAL_OUTPUT_DIR || path.join(repoRoot, "apps_dist"));
 
+function removePathIfPresent(targetPath) {
+    fs.rmSync(targetPath, {
+        force: true,
+        maxRetries: 5,
+        recursive: true,
+        retryDelay: 200,
+    });
+}
+
+function prepareTargetPath(targetPath, sourcePath) {
+    if (!fs.existsSync(targetPath)) {
+        return null;
+    }
+
+    const sourceStats = fs.statSync(sourcePath);
+    if (!sourceStats.isDirectory()) {
+        removePathIfPresent(targetPath);
+        return null;
+    }
+
+    const backupPath = `${targetPath}.previous`;
+    removePathIfPresent(backupPath);
+    fs.renameSync(targetPath, backupPath);
+    return backupPath;
+}
+
 if (!fs.existsSync(stagingDir)) {
     throw new Error(`Desktop staging directory does not exist: ${stagingDir}`);
 }
@@ -22,9 +48,16 @@ fs.mkdirSync(finalDir, {recursive: true});
 for (const entry of entries) {
     const sourcePath = path.join(stagingDir, entry.name);
     const targetPath = path.join(finalDir, entry.name);
+    const backupPath = prepareTargetPath(targetPath, sourcePath);
 
-    fs.rmSync(targetPath, {recursive: true, force: true});
     execFileSync("ditto", [sourcePath, targetPath], {stdio: "inherit"});
+    if (backupPath) {
+        try {
+            removePathIfPresent(backupPath);
+        } catch (error) {
+            console.warn(`Could not remove previous desktop artifact backup at ${backupPath}:`, error);
+        }
+    }
     console.log(`Promoted ${sourcePath} -> ${targetPath}`);
 }
 
