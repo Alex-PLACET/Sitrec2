@@ -1,5 +1,10 @@
-import {clampTerrainElevationHAE} from "../../src/nodes/trackElevationUtils";
+import {
+    clampTerrainElevationHAE,
+    conformControlPointsToAltitudeLock,
+    terrainCacheMatchesLocation
+} from "../../src/nodes/trackElevationUtils";
 import {meanSeaLevelOffset} from "../../src/EGM96Geoid";
+import {Vector3} from "three";
 
 describe("clampTerrainElevationHAE", () => {
     test("preserves negative HAE sea-level terrain for cached 0 AGL reconstruction", () => {
@@ -17,5 +22,32 @@ describe("clampTerrainElevationHAE", () => {
         const elevation = meanSeaLevelOffset(lat, lon) + 42;
 
         expect(clampTerrainElevationHAE(lat, lon, elevation)).toBeCloseTo(elevation, 10);
+    });
+});
+
+describe("terrainCacheMatchesLocation", () => {
+    test("rejects cache entries from a different lat/lon", () => {
+        const cached = {lat: 25.2048, lon: 55.2708};
+
+        expect(terrainCacheMatchesLocation(cached, 25.2048, 55.2708)).toBe(true);
+        expect(terrainCacheMatchesLocation(cached, 25.2052, 55.2708)).toBe(false);
+        expect(terrainCacheMatchesLocation(cached, 25.2048, 55.2712)).toBe(false);
+    });
+});
+
+describe("conformControlPointsToAltitudeLock", () => {
+    test("updates control points in place using frame-aware altitude locking", () => {
+        const positions = [new Vector3(1, 2, 3), new Vector3(4, 5, 6)];
+        const frames = [10, 20];
+
+        const changed = conformControlPointsToAltitudeLock(
+            positions,
+            frames,
+            (position, frame) => new Vector3(position.x, position.y, frame)
+        );
+
+        expect(changed).toBe(true);
+        expect(positions[0].toArray()).toEqual([1, 2, 10]);
+        expect(positions[1].toArray()).toEqual([4, 5, 20]);
     });
 });

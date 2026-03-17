@@ -1452,8 +1452,7 @@ class CTrackManager extends CManager {
 
         trackOb.altitudeLockAGL = true;
         guiFolder.add(trackOb, 'altitudeLockAGL').name('Alt Lock AGL').listen().onChange((value) => {
-            splineEditorNode.altitudeLockAGL = value;
-            splineEditorNode.recalculateCascade();
+            splineEditorNode.setAltitudeLockAGL(value);
         });
         
         // Set initial edit mode state

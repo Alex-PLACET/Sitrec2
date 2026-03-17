@@ -7,6 +7,7 @@ import {CNodeTrack} from "./CNodeTrack";
 import {ECEFToLLAVD_radii, LLAVToECEF} from "../LLA-ECEF-ENU";
 import {adjustHeightAboveGround, adjustHeightHAE, pointAbove} from "../threeExt";
 import {EventManager} from "../CEventManager";
+import {conformControlPointsToAltitudeLock} from "./trackElevationUtils";
 
 // a node wrapper for varioius spline editors
 export class CNodeSplineEditor extends CNodeTrack {
@@ -39,11 +40,16 @@ export class CNodeSplineEditor extends CNodeTrack {
         this._earthModelSignature = this.getEarthModelSignature();
         this._controlPointsLLA = null;
 
+        const handleSplineEditorChange = () => {
+            this.elevationCache = null;
+            this.recalculateCascade();
+        };
+
         if (v.initialPointsLLA === undefined) {
-            this.splineEditor = new SplineEditor(v.scene, camera, renderer, controls, () => this.recalculateCascade(),
+            this.splineEditor = new SplineEditor(v.scene, camera, renderer, controls, handleSplineEditorChange,
                 v.initialPoints, false, v.type.toLowerCase(), legacyEUS)
         } else {
-            this.splineEditor = new SplineEditor(v.scene, camera, renderer, controls, () => this.recalculateCascade(),
+            this.splineEditor = new SplineEditor(v.scene, camera, renderer, controls, handleSplineEditorChange,
                 v.initialPointsLLA, true, v.type.toLowerCase())
         }
         
@@ -70,10 +76,7 @@ export class CNodeSplineEditor extends CNodeTrack {
 
         EventManager.addEventListener("elevationChanged", () => {
             if (this.altitudeLock !== undefined && this.altitudeLock >= 0) {
-                const terrainNode = NodeMan.get("TerrainModel", false);
-                if (terrainNode) {
-                    this.refreshElevationCache(terrainNode, this.altitudeLock);
-                }
+                this.syncControlPointsToAltitudeLock();
                 this.recalculateCascade();
             }
         });
@@ -209,11 +212,44 @@ export class CNodeSplineEditor extends CNodeTrack {
         this.updateAltitudeLock();
         this.recalculateCascade();
     }
+
+    setAltitudeLockAGL(value) {
+        this.altitudeLockAGL = value;
+        this.updateAltitudeLock();
+        this.recalculateCascade();
+    }
     
     updateAltitudeLock() {
         if (this.splineEditor && this.splineEditor.transformControl) {
             this.splineEditor.transformControl.setAltitudeLocked(this.altitudeLock >= 0, this.altitudeLock);
         }
+        this.syncControlPointsToAltitudeLock();
+    }
+
+    syncControlPointsToAltitudeLock() {
+        if (!this.splineEditor || this.altitudeLock === undefined || this.altitudeLock < 0) {
+            return false;
+        }
+
+        // Any change in altitude lock should recompute terrain samples from the current
+        // control-point lat/lon, not reuse possibly stale per-frame cache entries.
+        this.elevationCache = null;
+
+        const changed = conformControlPointsToAltitudeLock(
+            this.splineEditor.positions,
+            this.splineEditor.frameNumbers,
+            (position, frame) => this.applyAltitudeLock(position, frame)
+        );
+
+        if (changed) {
+            this.splineEditor.updatePointEditorGraphics();
+            if (this.reprojectOnEarthModelChange) {
+                this._controlPointsLLA = this.captureControlPointsLLA();
+                this._earthModelSignature = this.getEarthModelSignature();
+            }
+        }
+
+        return changed;
     }
     
     applyAltitudeLock(position, frame) {
@@ -410,6 +446,7 @@ export class CNodeSplineEditor extends CNodeTrack {
 
     insertPoint(frame, point) {
         this.splineEditor.insertPoint(frame, point)
+        this.elevationCache = null;
         this.recalculateCascade()
     }
 

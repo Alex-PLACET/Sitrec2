@@ -8,7 +8,7 @@ import {MISB} from "../MISBUtils";
 import {saveAs} from "file-saver";
 import {degrees} from "../utils";
 import {meanSeaLevelOffset} from "../EGM96Geoid";
-import {clampTerrainElevationHAE} from "./trackElevationUtils";
+import {clampTerrainElevationHAE, terrainCacheMatchesLocation} from "./trackElevationUtils";
 
 export class CNodeTrack extends CNodeEmptyArray {
     constructor(v) {
@@ -28,14 +28,16 @@ export class CNodeTrack extends CNodeEmptyArray {
             this.elevationCache = new Array(this.frames).fill(null);
         }
 
+        const LLA = ECEFToLLAVD_radii(pos);
         const cached = this.elevationCache[frame];
         if (cached) {
-            if (cached.tileZ >= 0 && !terrainNode.elevationTileHasHigherZoom(cached.tileZ, cached.tileX, cached.tileY)) {
+            if (terrainCacheMatchesLocation(cached, LLA.x, LLA.y)
+                && cached.tileZ >= 0
+                && !terrainNode.elevationTileHasHigherZoom(cached.tileZ, cached.tileX, cached.tileY)) {
                 return this._pointFromElevation(cached.lat, cached.lon, cached.elevation, agl);
             }
         }
 
-        const LLA = ECEFToLLAVD_radii(pos);
         const info = terrainNode.getPointBelowWithTileInfo(pos, agl);
         this.elevationCache[frame] = {
             lat: LLA.x,
@@ -453,6 +455,5 @@ export class CNodeTrackFromLLAArray extends CNodeTrack {
     //     return {position: eus}
     // }
 }
-
 
 
