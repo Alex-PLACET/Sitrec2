@@ -7,12 +7,14 @@
   "license": "MIT",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder --mac --arm64 -c.directories.output=${SITREC_DESKTOP_OUTPUT_DIR:-/tmp/sitrec-desktop-builds}",
-    "build-direct": "electron-builder --mac --arm64",
-    "build-universal": "electron-builder --mac --universal",
+    "build": "node ../../scripts/runDesktopBuilder.js --platform mac --target dmg --arch arm64 --output staging",
+    "build-direct": "node ../../scripts/runDesktopBuilder.js --platform mac --target dmg --arch arm64 --output final",
+    "build-universal": "node ../../scripts/runDesktopBuilder.js --platform mac --target dmg --arch universal --output final",
     "build-local": "npm run build",
-    "build-local-nosign": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --arm64 -c.mac.identity=null -c.directories.output=${SITREC_DESKTOP_OUTPUT_DIR:-/tmp/sitrec-desktop-builds}",
-    "build-dir-local-nosign": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --dir --mac --arm64 -c.mac.identity=null -c.directories.output=${SITREC_DESKTOP_OUTPUT_DIR:-/tmp/sitrec-desktop-builds}"
+    "build-local-nosign": "node ../../scripts/runDesktopBuilder.js --platform mac --target dmg --arch arm64 --output staging --no-sign",
+    "build-dir-local-nosign": "node ../../scripts/runDesktopBuilder.js --platform mac --target dir --arch arm64 --output staging --no-sign",
+    "build-win": "node ../../scripts/runDesktopBuilder.js --platform win --target nsis --arch x64 --output staging",
+    "build-win-direct": "node ../../scripts/runDesktopBuilder.js --platform win --target nsis --arch x64 --output final"
   },
   "devDependencies": {
     "electron": "^35.7.5",
@@ -62,6 +64,20 @@
         "/Contents/Resources/dist-serverless/tools($|/)",
         "/Contents/Resources/dist-serverless/.*\\.(?:md|html|txt|json)$"
       ]
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false,
+      "oneClick": false,
+      "perMachine": false
     },
     "dmg": {
       "size": "4g",

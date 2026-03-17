@@ -1,9 +1,12 @@
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
-const {execFileSync} = require("node:child_process");
 
 const repoRoot = path.resolve(__dirname, "..");
-const stagingDir = path.resolve(process.env.SITREC_DESKTOP_OUTPUT_DIR || "/tmp/sitrec-desktop-builds");
+const defaultStagingDir = process.platform === "win32"
+    ? path.join(os.tmpdir(), "sitrec-desktop-builds")
+    : "/tmp/sitrec-desktop-builds";
+const stagingDir = path.resolve(process.env.SITREC_DESKTOP_OUTPUT_DIR || defaultStagingDir);
 const finalDir = path.resolve(process.env.SITREC_DESKTOP_FINAL_OUTPUT_DIR || path.join(repoRoot, "apps_dist"));
 
 function removePathIfPresent(targetPath) {
@@ -12,6 +15,15 @@ function removePathIfPresent(targetPath) {
         maxRetries: 5,
         recursive: true,
         retryDelay: 200,
+    });
+}
+
+function copyEntry(sourcePath, targetPath) {
+    fs.cpSync(sourcePath, targetPath, {
+        dereference: false,
+        errorOnExist: false,
+        force: true,
+        recursive: true,
     });
 }
 
@@ -50,7 +62,7 @@ for (const entry of entries) {
     const targetPath = path.join(finalDir, entry.name);
     const backupPath = prepareTargetPath(targetPath, sourcePath);
 
-    execFileSync("ditto", [sourcePath, targetPath], {stdio: "inherit"});
+    copyEntry(sourcePath, targetPath);
     if (backupPath) {
         try {
             removePathIfPresent(backupPath);

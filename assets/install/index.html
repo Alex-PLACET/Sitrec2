@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Install Sitrec Desktop</title>
+    <link rel="stylesheet" href="./install.css">
+</head>
+<body>
+<main class="shell">
+    <section class="hero">
+        <div class="hero-copy">
+            <p class="eyebrow">Sitrec Desktop</p>
+            <h1>Install the offline desktop build</h1>
+            <p class="lede">
+                Sitrec Desktop runs locally with bundled terrain and no network dependency. Download the installer for
+                your platform, then open local sitches like a normal desktop app.
+            </p>
+            <div class="detected-platform" id="detected-platform">Detecting your platform…</div>
+            <a class="primary-download disabled" id="primary-download" href="#downloads" aria-disabled="true">
+                Looking for installers…
+            </a>
+            <p class="hero-note" id="hero-note">
+                The current macOS build targets Apple Silicon. All available installers are listed below.
+            </p>
+        </div>
+        <aside class="hero-panel">
+            <div class="panel-card">
+                <p class="panel-label">What you get</p>
+                <ul class="feature-list">
+                    <li>Offline serverless Sitrec desktop app</li>
+                    <li>Direct local filesystem open and save</li>
+                    <li>Bundled terrain data for laptop installs</li>
+                </ul>
+            </div>
+            <div class="panel-card">
+                <p class="panel-label">Install notes</p>
+                <p class="panel-text">macOS: open the DMG, drag Sitrec to Applications, then launch from Applications.</p>
+                <p class="panel-text">Windows: run the Setup installer and follow the prompts.</p>
+            </div>
+        </aside>
+    </section>
+
+    <section class="instructions">
+        <article class="instruction-card">
+            <h2>macOS</h2>
+            <p>Download the DMG, open it, drag <strong>Sitrec</strong> into Applications, then launch it from Applications.</p>
+            <p>If macOS warns before first launch, Control-click the app in Applications and choose <strong>Open</strong>.</p>
+        </article>
+        <article class="instruction-card">
+            <h2>Windows</h2>
+            <p>Download the Setup installer, run it, choose an install location if needed, and finish the installer.</p>
+            <p>After installation, launch Sitrec from the Start menu or the desktop shortcut.</p>
+        </article>
+    </section>
+
+    <section class="downloads" id="downloads">
+        <div class="section-header">
+            <div>
+                <p class="eyebrow">Downloads</p>
+                <h2>All available installers</h2>
+            </div>
+            <p class="section-meta" id="release-meta">Loading release metadata…</p>
+        </div>
+        <div class="download-grid" id="download-grid">
+            <article class="download-card loading-card">
+                <p>Loading installer list…</p>
+            </article>
+        </div>
+    </section>
+</main>
+<script src="./install.js" defer></script>
+</body>
+</html>

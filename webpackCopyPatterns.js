@@ -30,6 +30,7 @@ patterns.push({ from: "./src/PixelFilters.js", to:"./src" });
 
 // Copy tools directory
 patterns.push({ from: "tools", to: "./tools" });
+patterns.push({ from: "assets/install", to: "./install" });
 
 // Copy tests directory (for browser-based benchmarks/tests) - dev only
 // DOCKER_BUILD is set in Dockerfile for production builds
