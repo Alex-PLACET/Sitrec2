@@ -85,6 +85,7 @@ import {CSitchBrowser} from "./CSitchBrowser";
 import {ViewMan} from "./CViewManager";
 import {isResolvableSitrecReference, resolveURLForFetch, toCanonicalSitrecRef} from "./SitrecObjectResolver";
 import {isSupportedModelFile} from "./ModelLoader";
+import {promptForText} from "./TextPrompt";
 
 const trackFileClasses = [
     CTrackFileKML,
@@ -139,6 +140,17 @@ function isAbortLikeError(error) {
     if (error.name === "AbortError") return true;
     if (typeof error === "string" && error.includes("Cancelled")) return true;
     return false;
+}
+
+function sanitizeSitchName(rawName) {
+    if (typeof rawName !== "string") {
+        return "";
+    }
+
+    let validSitchName = rawName.replace(/[\/\\<>\x00-\x1f]+/g, "_");
+    validSitchName = validSitchName.trim();
+    validSitchName = validSitchName.replace(/^[\.\s]+|[\.\s]+$/g, "");
+    return validSitchName;
 }
 
 function supportsDirectoryPicker() {
@@ -1063,33 +1075,22 @@ export class CFileManager extends CManager {
      * @returns {Promise<void>} Resolves when user enters a valid name (sets Sit.sitchName), rejects if cancelled
      */
     inputSitchName() {
-        return new Promise((resolve, reject) => {
-            let sitchName = prompt("Enter a name for the sitch", Sit.sitchName);
-            if (sitchName !== null && sitchName !== "") {
-                // the server validates the name with: /^[^\/\\<>\x00-\x1f]+$/u
-                // so we remove: / \ < > and control characters (0x00-0x1f)
-                let validSitchName = sitchName.replace(/[\/\\<>\x00-\x1f]+/g, "_");
-
-                // strip leading and trailing whitespace
-                validSitchName = validSitchName.trim();
-                // strip off any leading or trailing . or whitespace
-                validSitchName = validSitchName.replace(/^[\.\s]+|[\.\s]+$/g, "");
-
-
-                // if the name is empty, then  error
-                if (validSitchName === "") {
-                    alert("Invalid sitch name, please try again");
-                    reject("Sitch Name Cancelled");
-                }
-                sitchName = validSitchName;
-
-                Sit.sitchName = sitchName;
-                console.log("Sitch name set to " + Sit.sitchName)
-                resolve();
-            } else {
-                reject("Sitch Name Cancelled");
+        return promptForText({
+            confirmLabel: "Save",
+            defaultValue: Sit.sitchName ?? "",
+            message: "Enter a name for the sitch",
+            title: "Save Sitch",
+            validate: (rawName) => sanitizeSitchName(rawName) === ""
+                ? "Enter a valid sitch name."
+                : "",
+        }).then((sitchName) => {
+            if (sitchName === null) {
+                throw "Sitch Name Cancelled";
             }
-        })
+
+            Sit.sitchName = sanitizeSitchName(sitchName);
+            console.log("Sitch name set to " + Sit.sitchName);
+        });
     }
 
     /**
