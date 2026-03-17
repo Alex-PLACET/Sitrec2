@@ -27,10 +27,10 @@ import {
     LinearFilter,
     LineCurve3,
     LineSegments,
+    Matrix3,
     Mesh,
     MeshBasicMaterial,
     MeshLambertMaterial,
-    Matrix3,
     MeshPhongMaterial,
     MeshPhysicalMaterial,
     OctahedronGeometry,
@@ -2152,6 +2152,10 @@ export class CNode3DObject extends CNode3DGroup {
                 NodeMan.disposeRemove(this.measureY, true);
                 NodeMan.disposeRemove(this.measureZ, true);
 
+                // Bounding-box dimensions are editing helpers and should stay
+                // out of the recreated/look camera view.
+                const boundingBoxLayerMask = LAYER.MASK_HELPERS;
+
                 this.measureX = new CNodeMeasureAB({
                     id: this.id + "_AX",
                     groupNode: "LabelsGroupNode",
@@ -2160,7 +2164,7 @@ export class CNode3DObject extends CNode3DGroup {
                     color: "#ff8080",
                     text: "X",
                     unitType: "small",
-                    layers: this.layers ?? LAYER.MASK_HELPERS,
+                    layers: boundingBoxLayerMask,
                 })
                 this.measureY = new CNodeMeasureAB({
                     id: this.id + "_AY",
@@ -2170,7 +2174,7 @@ export class CNode3DObject extends CNode3DGroup {
                     color: "#80ff80",
                     text: "X",
                     unitType: "small",
-                    layers: this.layers ?? LAYER.MASK_HELPERS,
+                    layers: boundingBoxLayerMask,
                 })
                 this.measureZ = new CNodeMeasureAB({
                     id: this.id + "_AZ",
@@ -2180,7 +2184,7 @@ export class CNode3DObject extends CNode3DGroup {
                     color: "#8080ff",
                     text: "X",
                     unitType: "small",
-                    layers: this.layers ?? LAYER.MASK_HELPERS,
+                    layers: boundingBoxLayerMask,
                 })
             }
 
