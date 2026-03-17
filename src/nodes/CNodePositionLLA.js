@@ -18,7 +18,7 @@ import {getCursorPositionFromTopView} from "../mouseMoveView";
 import {EventManager} from "../CEventManager";
 import {guiMenus, markSitchDirty, NodeMan, setSitchEstablished, Sit, UndoManager} from "../Globals";
 import {getApproximateLocationFromIP} from "../GeoLocation";
-import {customAltitudeFunction, customLocationFunction} from "../../config/config";
+import {customAltitudeFunction, customLocationFunction} from "../runtimeConfig";
 import {showError} from "../showError";
 import {f2m} from "../utils";
 import {parseLatLonPair, parseSingleCoordinate} from "../CoordinateParser";

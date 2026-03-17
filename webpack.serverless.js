@@ -7,6 +7,8 @@ const commonFn = require('./webpack.common.js');
 const path = require('path');
 const fs = require('fs');
 const CopyPlugin = require("copy-webpack-plugin");
+const webpack = require('webpack');
+const { buildServerlessClientEnv, buildWebpackDefineEnv } = require('./scripts/serverlessClientEnv');
 
 const copyPatterns = require('./webpackCopyPatterns');
 
@@ -92,8 +94,13 @@ class CreateDirectoriesPlugin {
 module.exports = (env, argv) => {
     const isDevelopment = argv.mode !== 'production';
     const commonConfig = commonFn({ includeIWER: false });
+    const serverlessClientEnv = buildServerlessClientEnv();
+    const filteredCommonPlugins = commonConfig.plugins.filter(plugin =>
+        plugin.constructor.name !== 'CopyPlugin' &&
+        plugin.constructor.name !== 'Dotenv'
+    );
     
-    return merge(commonConfig, {
+    const config = merge(commonConfig, {
         mode: argv.mode || 'development',
         devtool: isDevelopment ? 'eval-source-map' : false,
         optimization: {
@@ -106,15 +113,19 @@ module.exports = (env, argv) => {
             clean: true,
             devtoolModuleFilenameTemplate: isDevelopment ? 'webpack://[namespace]/[resource-path]?[loaders]' : undefined,
         },
-    plugins: [
-        // Filter out the original CopyPlugin and DefinePlugin to override them
-        ...commonConfig.plugins.filter(plugin => 
-            plugin.constructor.name !== 'CopyPlugin' && 
-            plugin.constructor.name !== 'DefinePlugin'
-        ),
-        // Override DefinePlugin to set IS_SERVERLESS_BUILD flag
-        new (require('webpack')).DefinePlugin({
-            'process.env.IS_SERVERLESS_BUILD': JSON.stringify('true'),
+    });
+
+    config.plugins = [
+        ...filteredCommonPlugins,
+        new webpack.ProvidePlugin({
+            process: path.resolve(__dirname, "src", "shims", "browserProcess.js"),
+        }),
+        new webpack.DefinePlugin({
+            __SITREC_BROWSER_PROCESS_ENV__: JSON.stringify(serverlessClientEnv),
+            ...buildWebpackDefineEnv(serverlessClientEnv),
+        }),
+        new webpack.NormalModuleReplacementPlugin(/runtimeConfig$/, resource => {
+            resource.request = resource.request.replace(/runtimeConfig$/, 'runtimeConfig.serverless');
         }),
         new CopyPlugin({
             patterns: copyPatterns,  // Use copyPatterns which respects !isServerlessBuild conditions
@@ -125,7 +136,7 @@ module.exports = (env, argv) => {
         (() => {
             let hasStarted = false;
             let hasEnded = false;
-            
+
             return new (require('circular-dependency-plugin'))({
                 exclude: /node_modules/,
                 include: /src/,
@@ -140,7 +151,7 @@ module.exports = (env, argv) => {
                     if (paths.some(path => ignoreModules.some(ignoreModule => path.includes(ignoreModule)))) {
                         return;
                     }
-                    compilation.errors.push(new Error(paths.join(' -> ')))
+                    compilation.errors.push(new Error(paths.join(' -> ')));
                 },
                 onEnd({ compilation }) {
                     if (!hasEnded) {
@@ -150,6 +161,7 @@ module.exports = (env, argv) => {
                 },
             });
         })(),
-    ]
-    });
+    ];
+
+    return config;
 };

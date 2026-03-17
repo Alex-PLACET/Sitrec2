@@ -74,7 +74,7 @@ import {CSitchFactory} from "./CSitchFactory";
 import {CNodeDateTime} from "./nodes/CNodeDateTime";
 import {addAlignedGlobe} from "./Globe";
 import JSURL from "jsurl";
-import {localSituation} from "../config/config";
+import {configParams, localSituation} from "./runtimeConfig";
 import {
     checkServerlessMode,
     isConsole,
@@ -88,7 +88,7 @@ import {SituationSetup, startLoadingInlineAssets} from "./SituationSetup";
 import {CUnits} from "./CUnits";
 import {updateLockTrack} from "./updateLockTrack";
 import {updateFrame} from "./updateFrame";
-import {checkLogin, configParams} from "./login";
+import {checkLogin} from "./login";
 import {CFileManager, waitForParsingToComplete} from "./CFileManager";
 import {disposeDebugArrows, disposeDebugSpheres, disposeScene} from "./threeExt";
 import {removeMeasurementUI, setupMeasurementUI} from "./nodes/CNodeLabels3D";
@@ -1516,7 +1516,7 @@ async function initializeOnce() {
     addHelpLink("How to Investigate Starlink Flares", "docs/Starlink")
     addHelpLink("Objects and 3D Models (Planes)", "docs/CustomModels")
 
-    if (configParams.extraHelpLinks !== undefined) {
+    if (configParams?.extraHelpLinks !== undefined) {
 
         const external = addGUIFolder("external", "External Links", "help")
             .tooltip("External help links"

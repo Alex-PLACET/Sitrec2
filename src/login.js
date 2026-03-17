@@ -5,10 +5,8 @@
 // so we don't show the rehost button
 
 import {Globals, withTestUser} from "./Globals";
-import {_configParams} from "../config/config";
+import {configParams} from "./runtimeConfig";
 import {isServerless, SITREC_SERVER} from "./configUtils";
-
-export const configParams = _configParams;
 
 export async function checkLogin()  {
     await asyncCheckLogin();

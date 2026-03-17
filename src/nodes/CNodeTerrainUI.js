@@ -1,8 +1,8 @@
 import {CNode} from "./CNode";
 import {Globals, guiMenus, NodeMan, setRenderOne, Sit} from "../Globals";
 import {assert} from "../assert";
-import {configParams} from "../login";
-import {isLocal, SITREC_APP, SITREC_TERRAIN} from "../configUtils";
+import {configParams} from "../runtimeConfig";
+import {isLocal, isServerless, SITREC_APP, SITREC_TERRAIN} from "../configUtils";
 import {CNodeSwitch} from "./CNodeSwitch";
 import {ECEFToLLAVD_radii, LLAToECEF, updateEarthRadii} from "../LLA-ECEF-ENU";
 import {CNodeTerrain} from "./CNodeTerrain";
@@ -14,6 +14,7 @@ import {showHider} from "../KeyBoardHandler";
 import {meanSeaLevelOffset} from "../EGM96Geoid";
 import * as LAYER from "../LayerMasks";
 import {BufferGeometry, DoubleSide, Float32BufferAttribute, Group, Mesh, MeshPhongMaterial} from "three";
+import {filterSourcesForServerless, pickAvailableSourceType} from "../terrainSourceUtils";
 
 const OCEAN_SURFACE_OFFSET_METERS = 0;
 const OCEAN_SURFACE_TILE_GRID = 17;
@@ -61,7 +62,7 @@ export class CNodeTerrainUI extends CNode {
         this.refresh = false;
 
 
-        if (configParams.customMapSources !== undefined) {
+        if (configParams?.customMapSources !== undefined) {
             // start with the custom map sources
             this.mapSources = configParams.customMapSources;
         } else {
@@ -72,6 +73,7 @@ export class CNodeTerrainUI extends CNode {
         this.mapSources = {
             ...this.mapSources,
             wireframe: {
+                allowInServerless: true,
                 name: "Wireframe",
                 mapURL: (z, x, y) => {
                     return null;
@@ -79,6 +81,7 @@ export class CNodeTerrainUI extends CNode {
                 maxZoom: 15,
             },
             FlatShading: {
+                allowInServerless: true,
                 name: "Flat Shading",
                 mapURL: (z, x, y) => {
                     return SITREC_APP + "data/images/grey-256x256.png?v=1";
@@ -86,6 +89,7 @@ export class CNodeTerrainUI extends CNode {
                 maxZoom: 15,
             },
             OceanSurface: {
+                allowInServerless: true,
                 name: "Ocean Surface",
                 mapURL: (z, x, y) => {
                     return SITREC_APP + "data/images/28_sea water texture-seamless.jpg";
@@ -94,6 +98,7 @@ export class CNodeTerrainUI extends CNode {
                 generateMipmaps: true,
             },
             ElevationColor: {
+                allowInServerless: true,
                 name: "Elevation Pseudo-Color",
                 isElevationColor: true,
                 maxZoom: 18,   // for ocean tiles to work, this should be the same as for Ocean Surface
@@ -116,6 +121,7 @@ export class CNodeTerrainUI extends CNode {
             this.mapSources = {
                 ...this.mapSources,
                 RGBTest: {
+                    allowInServerless: true,
                     name: "RGB Test",
                     mapURL: (z, x, y) => {
                         return SITREC_APP + "data/images/colour_bars_srgb-255-128-64.png?v=1";
@@ -137,12 +143,14 @@ export class CNodeTerrainUI extends CNode {
                 },
 
                 Debug: {
+                    allowInServerless: true,
                     name: "Debug Info",
                     isDebug: true,
                     maxZoom: 20,
                 },
 
                 Local: {
+                    allowInServerless: true,
                     name: "Local",
                     mapURL: (z,x,y) => {
                         return `${SITREC_TERRAIN}imagery/esri/${z}/${y}/${x}.jpg`
@@ -241,6 +249,10 @@ export class CNodeTerrainUI extends CNode {
             }
         }
 
+        if (isServerless) {
+            this.mapSources = filterSourcesForServerless(this.mapSources);
+        }
+
         // extract a K/V pair from the mapSources
         // for use in the GUI.
         // key is the name, value is the id
@@ -255,9 +267,11 @@ export class CNodeTerrainUI extends CNode {
 
         // This is the default map type if none specificed in the Sit file
         // Use DOCKER_MAP_TYPE if building for Docker, otherwise use DEFAULT_MAP_TYPE
-        const defaultMapType =  process.env.DOCKER_BUILD
-            ? (process.env.DOCKER_MAP_TYPE ?? "Debug")
-            : (process.env.DEFAULT_MAP_TYPE ?? "Debug");
+        const defaultMapType = isServerless
+            ? "Local"
+            : (process.env.DOCKER_BUILD
+                ? (process.env.DOCKER_MAP_TYPE ?? "Debug")
+                : (process.env.DEFAULT_MAP_TYPE ?? "Debug"));
 
         // map type from the terrain object in a saved sitch, or default to configured default.
         // quickTerrain mode (testAll=2) always forces Debug terrain for speed.
@@ -267,11 +281,14 @@ export class CNodeTerrainUI extends CNode {
             Globals.regression
             && typeof window !== "undefined"
             && new URLSearchParams(window.location.search).get("regressionLocalTerrain") === "1";
-        this.mapType = Globals.quickTerrain
+        const requestedMapType = Globals.quickTerrain
             ? "Debug"
-            : (regressionForceLocalTerrain
-                ? "Local"
-                : (v.mapType ?? defaultMapType ?? Object.keys(this.mapSources)[0]));
+            : (regressionForceLocalTerrain ? "Local" : v.mapType);
+        this.mapType = pickAvailableSourceType({
+            sources: this.mapSources,
+            requestedType: requestedMapType,
+            defaultType: defaultMapType,
+        });
 
         this.gui = guiMenus.terrain;
         this.mapTypeMenu = this.gui.add(this, "mapType", this.mapTypesKV).listen().name("Map Type")
@@ -279,7 +296,7 @@ export class CNodeTerrainUI extends CNode {
 
 //////////////////////////////////////////////////////////////////////////////////////////
         // same for elevation sources
-        if (configParams.customElevationSources !== undefined) {
+        if (configParams?.customElevationSources !== undefined) {
             this.elevationSources = configParams.customElevationSources;
         } else {
             this.elevationSources = {};
@@ -289,6 +306,7 @@ export class CNodeTerrainUI extends CNode {
             ...this.elevationSources,
             // and some defaults
             Flat: {
+                allowInServerless: true,
                 name: "Flat",
                 url: "",
                 maxZoom: 20,
@@ -297,6 +315,7 @@ export class CNodeTerrainUI extends CNode {
                 attribution: "",
             },
             Local: {
+                allowInServerless: true,
                 name: "Local",
                 // Tiles stored in sitrec-terrain/elevation/z/x/y.png
                 mapURL: (z,x,y) => {
@@ -309,6 +328,9 @@ export class CNodeTerrainUI extends CNode {
                 attribution: "",
             }
         }
+        if (isServerless) {
+            this.elevationSources = filterSourcesForServerless(this.elevationSources);
+        }
         // and the KV pair for the GUI
         this.elevationTypesKV = {}
         for (const elevationType in this.elevationSources) {
@@ -316,18 +338,23 @@ export class CNodeTerrainUI extends CNode {
             this.elevationTypesKV[elevationDef.name] = elevationType
         }
 
-        const defaultElevationType =  process.env.DOCKER_BUILD
-            ? (process.env.DOCKER_ELEVATION_TYPE ?? "Flat")
-            : (process.env.DEFAULT_ELEVATION_TYPE ?? "Flat");
+        const defaultElevationType = isServerless
+            ? "Local"
+            : (process.env.DOCKER_BUILD
+                ? (process.env.DOCKER_ELEVATION_TYPE ?? "Flat")
+                : (process.env.DEFAULT_ELEVATION_TYPE ?? "Flat"));
 
         // quickTerrain mode (testAll=2) always forces Flat elevation for speed.
         // Regression mode no longer forces Local globally; tests that need Local should pass
         // elevationType=Local explicitly in the URL.
-        this.elevationType = Globals.quickTerrain
+        const requestedElevationType = Globals.quickTerrain
             ? "Flat"
-            : (regressionForceLocalTerrain
-                ? "Local"
-                : (v.elevationType ?? defaultElevationType ?? Object.keys(this.elevationSources)[0]))
+            : (regressionForceLocalTerrain ? "Local" : v.elevationType);
+        this.elevationType = pickAvailableSourceType({
+            sources: this.elevationSources,
+            requestedType: requestedElevationType,
+            defaultType: defaultElevationType,
+        })
         // add the menu
         this.elevationTypeMenu = this.gui.add(this, "elevationType", this.elevationTypesKV).listen().name("Elevation Type")
             .tooltip("Elevation data source for terrain height data")

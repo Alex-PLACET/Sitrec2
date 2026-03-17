@@ -57,7 +57,7 @@ export function isAdmin() {
 }
 
 export function checkLocal() {
-    const localPatterns = [process.env.LOCALHOST, 'localhost', '192\\.168'];
+    const localPatterns = [process.env.LOCALHOST, 'localhost', '127\\.0\\.0\\.1', '::1', '192\\.168'];
     const regex = new RegExp(`^(${localPatterns.join('|')})`);
 
     isLocal =
@@ -171,7 +171,6 @@ export async function setupConfigPaths() {
         SITREC_CUSTOM_TLE_MENU_NAME: process.env.SITREC_CUSTOM_TLE_MENU_NAME,
         SITREC_CUSTOM_TLE_TOOLTIP: process.env.SITREC_CUSTOM_TLE_TOOLTIP,
         SITREC_ENABLE_DEFAULT_TLE_SOURCES: process.env.SITREC_ENABLE_DEFAULT_TLE_SOURCES,
-        MAPBOX_TOKEN: process.env.MAPBOX_TOKEN,
     };
     
     // log all the exported variables in serverless mode

@@ -59,7 +59,7 @@ import {DebugArrowAB, elevationAtLL} from "./threeExt";
 import {FeatureManager} from "./CFeatureManager";
 import {CNodeTrackGUI} from "./nodes/CNodeControllerTrackGUI";
 import {forceUpdateUIText} from "./nodes/CNodeViewUI";
-import {configParams} from "./login";
+import {configParams} from "./runtimeConfig";
 import {showError} from "./showError";
 import {textSitchToObject} from "./RegisterSitches";
 import {waitForExportFrameSettled} from "./ExportFrameSettler";
@@ -605,7 +605,7 @@ export class CCustomManager {
             });
 
         // configParmas.extraHelpFunctions has and object keyed on function name
-        if (configParams.extraHelpFunctions) {
+        if (configParams?.extraHelpFunctions) {
             // iterate over k, value of configParmas.extraHelpFunctions
             for (const funcName in configParams.extraHelpFunctions) {
                 const funcVars = configParams.extraHelpFunctions[funcName];
@@ -2712,7 +2712,7 @@ export class CCustomManager {
         }
 
         // Add Google Maps link if extraHelpLinks is enabled
-        if (configParams.extraHelpLinks) {
+        if (configParams?.extraHelpLinks) {
             menu.add(menuData, "googleMapsHere").name("Google Maps Here");
             menu.add(menuData, "googleEarthHere").name("Google Earth Here");
         }

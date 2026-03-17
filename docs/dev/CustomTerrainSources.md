@@ -34,7 +34,7 @@ To access a map source directly you can include a request token that is specific
         maptiler: {
             name: "MapTiler",
             mapURL: (z,x,y, layerName, layerType) => {
-                return(`https://api.maptiler.com/tiles/${layerName}/${z}/${x}/${y}.${layerType}?key=cnVJFChj7wZSQz7jBJvR`); // key is metabunk specific - replace with your own
+                return(`https://api.maptiler.com/tiles/${layerName}/${z}/${x}/${y}.${layerType}?key=YOUR_MAPTILER_KEY`); // replace with your own key
             },
         },
 ```
@@ -195,7 +195,6 @@ The decoding of the GeoTIFF is done in the Terrain.js file. This is a bit more c
 When testing elevation sources, adjust the elevationScale in the Terrain menu to 10 to make the terrain more visible.
 
 ![elevationScale-demo.jpg](docimages%2Fterrain%2FelevationScale-demo.jpg)
-
 
 
 
