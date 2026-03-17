@@ -79,6 +79,10 @@ contextBridge.exposeInMainWorld("sitrecDesktop", Object.freeze({
             return ipcRenderer.invoke("sitrec-desktop-fs-resolve-path", { basePath, relativePath });
         },
 
+        async saveFile(options = {}) {
+            return ipcRenderer.invoke("sitrec-desktop-fs-save-file", options);
+        },
+
         async setLocalState(localState) {
             return ipcRenderer.invoke("sitrec-desktop-fs-set-local-state", localState);
         },

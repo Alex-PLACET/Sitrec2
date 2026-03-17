@@ -141,6 +141,28 @@ function registerDesktopFsHandlers() {
         return serializePathEntry(toFsPath(result.filePaths[0], "selected file"), "file");
     });
 
+    ipcMain.handle("sitrec-desktop-fs-save-file", async (event, options = {}) => {
+        const ownerWindow = BrowserWindow.fromWebContents(event.sender);
+        let defaultPath;
+        if (options.defaultPath) {
+            defaultPath = toFsPath(options.defaultPath, "defaultPath");
+        } else if (typeof options.suggestedName === "string" && options.suggestedName.trim() !== "") {
+            defaultPath = path.join(app.getPath("documents"), path.basename(options.suggestedName.trim()));
+        }
+
+        const result = await dialog.showSaveDialog(ownerWindow, {
+            defaultPath,
+            filters: Array.isArray(options.filters) ? options.filters : undefined,
+            title: typeof options.title === "string" && options.title.trim() !== "" ? options.title : undefined,
+        });
+
+        if (result.canceled || !result.filePath) {
+            return null;
+        }
+
+        return serializePathEntry(toFsPath(result.filePath, "selected file"), "file");
+    });
+
     ipcMain.handle("sitrec-desktop-fs-choose-folder", async (event, options = {}) => {
         const ownerWindow = BrowserWindow.fromWebContents(event.sender);
         const result = await dialog.showOpenDialog(ownerWindow, {

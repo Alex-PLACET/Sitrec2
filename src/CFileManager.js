@@ -239,30 +239,42 @@ export class CFileManager extends CManager {
             }
 
             if (parseBoolean(process.env.SAVE_TO_LOCAL)) {
+                const useDesktopLocalUi = this.isDesktopLocalFsAvailable();
                 // Local save/load is always available for the custom sitch, regardless of login status
                 this.guiLocal = this.guiFolder.addFolder("Local").perm().open();
-                this._localStatus = {value: "No folder selected"};
+                this._localStatus = {value: useDesktopLocalUi ? "No local file selected" : "No folder selected"};
                 this._localStatusController = this.guiLocal.add(this._localStatus, "value")
                     .name("Status")
                     .listen()
                     .disable()
-                    .tooltip("Current local folder/save state");
+                    .tooltip(useDesktopLocalUi
+                        ? "Current local desktop file/save state"
+                        : "Current local folder/save state");
                 this._saveLocalController = this.guiLocal.add(this, "saveLocal").name("Save Local").perm()
-                    .tooltip("Save into the working folder (or prompts for a location if none is set)");
+                    .tooltip(useDesktopLocalUi
+                        ? "Save to the current local file, or prompt for a filename if needed"
+                        : "Save into the working folder (or prompts for a location if none is set)");
                 this._saveLocalAsController = this.guiLocal.add(this, "saveLocalAs").name("Save Local As...").perm()
-                    .tooltip("Save a local sitch file, choosing the location");
+                    .tooltip(useDesktopLocalUi
+                        ? "Save a local sitch file to a new path"
+                        : "Save a local sitch file, choosing the location");
                 this._openLocalSitchController = this.guiLocal.add(this, "openLocalSitch").name("Open Local Sitch").perm()
-                    .tooltip("Open a sitch file from the current working folder");
-                this._openLocalFolderController = this.guiLocal.add(this, "openDirectory").name("Select Local Sitch Folder").perm()
-                    .tooltip("Select a working folder for local save/load operations");
-                this._reconnectController = this.guiLocal.add(this, "reconnectWorkingFolder")
-                    .name("Reconnect Folder").perm()
-                    .tooltip("Re-grant access to the previously used working folder");
-                // Hide only this controller row (not the shared folder children container).
-                this._saveLocalController.domElement.style.display = "none";
-                this._saveLocalAsController.domElement.style.display = "none";
-                this._openLocalSitchController.domElement.style.display = "none";
-                this._reconnectController.domElement.style.display = "none";
+                    .tooltip(useDesktopLocalUi
+                        ? "Open a local sitch file from disk"
+                        : "Open a sitch file from the current working folder");
+
+                if (!useDesktopLocalUi) {
+                    this._openLocalFolderController = this.guiLocal.add(this, "openDirectory").name("Select Local Sitch Folder").perm()
+                        .tooltip("Select a working folder for local save/load operations");
+                    this._reconnectController = this.guiLocal.add(this, "reconnectWorkingFolder")
+                        .name("Reconnect Folder").perm()
+                        .tooltip("Re-grant access to the previously used working folder");
+                    // Hide only this controller row (not the shared folder children container).
+                    this._saveLocalController.domElement.style.display = "none";
+                    this._saveLocalAsController.domElement.style.display = "none";
+                    this._openLocalSitchController.domElement.style.display = "none";
+                    this._reconnectController.domElement.style.display = "none";
+                }
 
                 // Try to restore a previously saved working folder
                 this.restoreWorkingFolder();
@@ -295,9 +307,12 @@ export class CFileManager extends CManager {
         const errorCode = error?.code;
         const errorMessage = error?.message || String(error);
         let message = `${actionLabel} failed:\n${errorName}${errorCode !== undefined ? ` (code: ${errorCode})` : ""}: ${errorMessage}`;
+        const isDesktopLocalFs = this.isDesktopLocalFsAvailable();
 
         if (errorName === "NotFoundError") {
-            message += "\n\nThe selected local folder or file is no longer available.\nSelect Local Sitch Folder again, then retry.";
+            message += isDesktopLocalFs
+                ? "\n\nThe current local file or its parent folder is no longer available.\nUse Open Local Sitch or Save Local As, then retry."
+                : "\n\nThe selected local folder or file is no longer available.\nSelect Local Sitch Folder again, then retry.";
             // Folder handle is no longer usable (e.g. folder deleted/moved). Clear local target state.
             this.directoryHandle = null;
             this._pendingHandle = null;
@@ -308,7 +323,9 @@ export class CFileManager extends CManager {
             this.updateLocalGUI();
             this.persistWorkingFolder();
         } else if (errorName === "NotAllowedError" || errorName === "SecurityError") {
-            message += "\n\nLocal folder permission may have changed.\nUse Reconnect Folder or Select Local Sitch Folder.";
+            message += isDesktopLocalFs
+                ? "\n\nLocal file access may have changed.\nUse Open Local Sitch or Save Local As."
+                : "\n\nLocal folder permission may have changed.\nUse Reconnect Folder or Select Local Sitch Folder.";
         }
 
         showError(message, error);
@@ -354,6 +371,81 @@ export class CFileManager extends CManager {
         return true;
     }
 
+    getLocalSitchNameFromFilename(filename) {
+        if (typeof filename !== "string" || filename.trim() === "") {
+            return "Local";
+        }
+
+        return filename.replace(/\.json$/i, "") || "Local";
+    }
+
+    getSuggestedLocalSitchFilename() {
+        const currentLocalName = this.localSitchEntry?.name
+            ? this.getLocalSitchNameFromFilename(this.localSitchEntry.name)
+            : null;
+        const baseName = sanitizeSitchName(Sit.sitchName || currentLocalName || "Local") || "Local";
+        return `${baseName}.json`;
+    }
+
+    async getDesktopLocalSaveTarget(defaultFileName = this.getSuggestedLocalSitchFilename()) {
+        const desktopFs = getDesktopFileSystemBridge();
+        if (!desktopFs) {
+            return null;
+        }
+
+        let defaultPath;
+        if (this.localSitchEntry?.path) {
+            const currentDirectoryPath = await desktopFs.dirname(this.localSitchEntry.path);
+            defaultPath = await desktopFs.resolvePath(currentDirectoryPath, defaultFileName);
+        } else if (this.directoryHandle?.path) {
+            defaultPath = await desktopFs.resolvePath(this.directoryHandle.path, defaultFileName);
+        }
+
+        const selection = await desktopFs.saveFile({
+            defaultPath,
+            filters: [
+                {
+                    name: "Sitrec Files",
+                    extensions: ["json"],
+                },
+            ],
+            suggestedName: defaultFileName,
+            title: "Save Sitrec Sitch",
+        });
+
+        if (!selection) {
+            return null;
+        }
+
+        const directoryPath = await desktopFs.dirname(selection.path);
+        return {
+            directoryHandle: createDesktopDirectoryHandle(directoryPath),
+            fileHandle: createDesktopFileHandle(selection.path),
+        };
+    }
+
+    async saveLocalDesktopToTarget(targetFileHandle, targetDirectoryHandle, {recordAction = true, actionName = "local"} = {}) {
+        const previousSitchName = Sit.sitchName;
+        const nextSitchName = this.getLocalSitchNameFromFilename(targetFileHandle?.name);
+        Sit.sitchName = nextSitchName;
+
+        try {
+            await this.saveSitchNamed(nextSitchName, true, targetDirectoryHandle, targetFileHandle);
+            if (recordAction) {
+                this.lastSaveAction = actionName;
+            }
+            this.updateLocalGUI();
+            return true;
+        } catch (error) {
+            Sit.sitchName = previousSitchName;
+            if (!isAbortLikeError(error)) {
+                console.warn(`${actionName === "localAs" ? "Save Local As" : "Save Local"} failed:`, error);
+                this.showLocalSaveError(actionName === "localAs" ? "Save Local As" : "Save Local", error);
+            }
+            return false;
+        }
+    }
+
     /**
      * True when a path looks like a local-working-folder reference embedded in a local sitch.
      * This detection is independent of whether a working folder is currently selected.
@@ -378,6 +470,15 @@ export class CFileManager extends CManager {
      */
     showLocalFolderRequiredForImportedAsset(assetPath) {
         const normalized = this.normalizeWorkingFolderRelativePath(assetPath) || assetPath;
+        if (this.isDesktopLocalFsAvailable()) {
+            this.showLocalImportError(
+                "local-file-required",
+                `This sitch references a local file path:\n${normalized}\n\n` +
+                "Open the sitch directly from the folder that contains its local assets, or choose that folder when prompted."
+            );
+            return;
+        }
+
         this.showLocalImportError(
             "local-folder-required",
             `This sitch references a local file path:\n${normalized}\n\n` +
@@ -394,6 +495,17 @@ export class CFileManager extends CManager {
     showMissingLocalAssetInSelectedFolder(assetPath, error = null) {
         const normalized = this.normalizeWorkingFolderRelativePath(assetPath) || assetPath;
         const folderName = this.directoryHandle?.name || this._pendingHandle?.name || "selected folder";
+        if (this.isDesktopLocalFsAvailable()) {
+            this.showLocalImportError(
+                "missing-local-asset",
+                `Could not find local asset:\n${normalized}\n\n` +
+                `The folder containing the current local sitch file ("${folderName}") does not contain this file.\n` +
+                "Open the original sitch file from the correct folder and try again.",
+                error
+            );
+            return;
+        }
+
         this.showLocalImportError(
             "missing-local-asset",
             `Could not find local asset:\n${normalized}\n\n` +
@@ -1440,6 +1552,9 @@ export class CFileManager extends CManager {
         return CustomManager.serialize(sitchName, todayDateTimeFilename, local, directoryHandle, fileHandle)
             .then(async (serializeResult) => {
                 if (local) {
+                    if (directoryHandle) {
+                        this.directoryHandle = directoryHandle;
+                    }
                     if (serializeResult?.fileHandle) {
                         this.localSitchEntry = serializeResult.fileHandle;
                     } else if (directoryHandle) {
@@ -1502,6 +1617,28 @@ export class CFileManager extends CManager {
      * @returns {Promise<boolean>}
      */
     async saveLocal({recordAction = true} = {}) {
+        if (this.isDesktopLocalFsAvailable()) {
+            if (!this.localSaveTargetArmed || !this.localSitchEntry) {
+                const ok = await this.saveLocalAs({recordAction: false});
+                if (ok && recordAction) {
+                    this.lastSaveAction = "local";
+                }
+                return ok;
+            }
+
+            let targetDirectoryHandle = this.directoryHandle;
+            if (!targetDirectoryHandle && this.localSitchEntry?.path) {
+                const desktopFs = getDesktopFileSystemBridge();
+                const directoryPath = await desktopFs.dirname(this.localSitchEntry.path);
+                targetDirectoryHandle = createDesktopDirectoryHandle(directoryPath);
+            }
+
+            return this.saveLocalDesktopToTarget(this.localSitchEntry, targetDirectoryHandle, {
+                actionName: "local",
+                recordAction,
+            });
+        }
+
         if (!this.directoryHandle && this._pendingHandle) {
             await this.reconnectWorkingFolder({loadSitch: false});
             if (!this.directoryHandle) {
@@ -1569,6 +1706,18 @@ export class CFileManager extends CManager {
      * @returns {Promise<boolean>}
      */
     async saveLocalAs({recordAction = true} = {}) {
+        if (this.isDesktopLocalFsAvailable()) {
+            const selection = await this.getDesktopLocalSaveTarget();
+            if (!selection) {
+                return false;
+            }
+
+            return this.saveLocalDesktopToTarget(selection.fileHandle, selection.directoryHandle, {
+                actionName: "localAs",
+                recordAction,
+            });
+        }
+
         const previousSitchName = Sit.sitchName;
         if (!this.directoryHandle) {
             if (!(await this.pickWorkingFolderForLocalSave())) {
@@ -1838,6 +1987,41 @@ export class CFileManager extends CManager {
      */
     updateLocalGUI() {
         if (!this.guiLocal) return;
+        if (this.isDesktopLocalFsAvailable()) {
+            this.guiLocal.title("Local");
+
+            if (this._localStatusController && this._localStatus) {
+                this._localStatus.value = this.localSitchEntry
+                    ? `Current file: ${this.localSitchEntry.name}`
+                    : "No local file selected";
+                this._localStatusController.updateDisplay();
+            }
+
+            if (this._openLocalSitchController) {
+                this._openLocalSitchController
+                    .name("Open Local...")
+                    .tooltip(this.localSitchEntry
+                        ? `Open a different local sitch file (current: ${this.localSitchEntry.name})`
+                        : "Open a local sitch file from disk");
+            }
+
+            if (this._saveLocalController) {
+                this._saveLocalController
+                    .name("Save Local")
+                    .tooltip(this.localSaveTargetArmed && this.localSitchEntry
+                        ? `Save back to ${this.localSitchEntry.name}`
+                        : "Save the current sitch to a local file");
+            }
+
+            if (this._saveLocalAsController) {
+                this._saveLocalAsController
+                    .name("Save Local As...")
+                    .tooltip("Save the current sitch to a new local file path");
+            }
+
+            return;
+        }
+
         const hasWorkingFolder = !!this.directoryHandle;
 
         // Update folder title to show working folder name
