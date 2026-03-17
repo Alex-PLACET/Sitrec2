@@ -85,6 +85,12 @@ import {CSitchBrowser} from "./CSitchBrowser";
 import {ViewMan} from "./CViewManager";
 import {isResolvableSitrecReference, resolveURLForFetch, toCanonicalSitrecRef} from "./SitrecObjectResolver";
 import {isSupportedModelFile} from "./ModelLoader";
+import {
+    createDesktopDirectoryHandle,
+    createDesktopFileHandle,
+    getDesktopFileSystemBridge,
+    isDesktopFileSystemAvailable,
+} from "./DesktopFileSystem";
 import {promptForText} from "./TextPrompt";
 
 const trackFileClasses = [
@@ -184,6 +190,11 @@ export class CFileManager extends CManager {
         super()
         this.rawFiles = [];
         this.rehostedStarlink = false;
+        this.directoryHandle = null;
+        this.localSitchEntry = null;
+        this._pendingHandle = null;
+        this._pendingSitchFilename = null;
+        this._localSitchContextActive = false;
         // Only true when the currently active sitch has a valid local overwrite target.
         this.localSaveTargetArmed = false;
         // Last successful save intent. Used by Cmd/Ctrl+S to repeat expected behavior.
@@ -292,6 +303,7 @@ export class CFileManager extends CManager {
             this._pendingHandle = null;
             this._pendingSitchFilename = null;
             this.localSitchEntry = null;
+            this.clearLocalSitchContext();
             this.localSaveTargetArmed = false;
             this.updateLocalGUI();
             this.persistWorkingFolder();
@@ -300,6 +312,46 @@ export class CFileManager extends CManager {
         }
 
         showError(message, error);
+    }
+
+    isDesktopLocalFsAvailable() {
+        return isDesktopFileSystemAvailable();
+    }
+
+    clearLocalSitchContext() {
+        this._localSitchContextActive = false;
+    }
+
+    markLocalSitchContextActive() {
+        this._localSitchContextActive = true;
+    }
+
+    async hydrateDesktopWorkingFolder(directoryPath, sitchPath = null) {
+        const desktopFs = getDesktopFileSystemBridge();
+        if (!desktopFs) return false;
+
+        const workingDirectoryPath = directoryPath || (sitchPath ? await desktopFs.dirname(sitchPath) : null);
+        if (!workingDirectoryPath) return false;
+
+        const directoryInfo = await desktopFs.stat(workingDirectoryPath);
+        if (!directoryInfo.exists || directoryInfo.kind !== "directory") {
+            return false;
+        }
+
+        this.directoryHandle = createDesktopDirectoryHandle(workingDirectoryPath);
+        this._pendingHandle = null;
+        this._pendingSitchFilename = null;
+
+        if (sitchPath) {
+            const sitchInfo = await desktopFs.stat(sitchPath);
+            if (sitchInfo.exists && sitchInfo.kind === "file") {
+                this.localSitchEntry = createDesktopFileHandle(sitchPath);
+            } else {
+                this.localSitchEntry = null;
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -400,6 +452,25 @@ export class CFileManager extends CManager {
                 } catch (error) {
                     console.warn("Failed to auto-reconnect pending working folder:", error);
                 }
+            }
+
+            if (this.isDesktopLocalFsAvailable()) {
+                const normalized = this.normalizeWorkingFolderRelativePath(assetPath) || assetPath;
+                const wantsSelection = confirm(
+                    `This imported sitch references local file "${normalized}", but no Local Sitch Folder is selected.\n\n` +
+                    "Select that folder now?"
+                );
+                if (!wantsSelection) {
+                    this.showLocalFolderRequiredForImportedAsset(normalized);
+                    return false;
+                }
+
+                if (await this.pickWorkingFolderForLocalSave()) {
+                    return true;
+                }
+
+                this.showLocalFolderRequiredForImportedAsset(normalized);
+                return false;
             }
 
             if (!supportsDirectoryPicker()) {
@@ -829,6 +900,7 @@ export class CFileManager extends CManager {
      * Reloads the page with ?action=new to create a fresh sitch.
      */
     newSitch() {
+        this.clearLocalSitchContext();
         this.localSaveTargetArmed = false;
         // we just jump to the "custom" sitch, which is a blank sitch
         // that the user can modify and save
@@ -927,6 +999,7 @@ export class CFileManager extends CManager {
      * If provided, version listing and latest-resolution are performed against that owner's folder.
      */
     loadSavedFile(name, sourceUserID = null) {
+        this.clearLocalSitchContext();
         this.localSaveTargetArmed = false;
         this.loadName = name;
         // If a sourceUserID is provided (e.g. loading a featured sitch), use it;
@@ -1044,6 +1117,7 @@ export class CFileManager extends CManager {
      */
     loadVersion(displayName) {
         if (displayName === "-" || !this.versionsData.length) return;
+        this.clearLocalSitchContext();
         this.localSaveTargetArmed = false;
         
         const index = this.versionsList.indexOf(displayName);
@@ -1524,6 +1598,20 @@ export class CFileManager extends CManager {
      * Persist the working folder handle and sitch filename to IndexedDB.
      */
     async persistWorkingFolder() {
+        if (this.isDesktopLocalFsAvailable()) {
+            try {
+                const desktopFs = getDesktopFileSystemBridge();
+                await desktopFs.setLocalState({
+                    sitchPath: this.localSitchEntry?.path ?? null,
+                    workingDirectoryPath: this.directoryHandle?.path ?? null,
+                });
+                console.log("Working folder persisted to desktop app state");
+            } catch (err) {
+                console.warn("Failed to persist desktop local state:", err);
+            }
+            return;
+        }
+
         try {
             await saveToIDB('workingFolderHandle', this.directoryHandle || null);
             await saveToIDB('workingFolderSitchFile', this.localSitchEntry ? this.localSitchEntry.name : null);
@@ -1538,6 +1626,36 @@ export class CFileManager extends CManager {
      * Uses queryPermission (no prompt). Shows reconnect button if permission needs re-granting.
      */
     async restoreWorkingFolder() {
+        if (this.isDesktopLocalFsAvailable()) {
+            try {
+                const desktopFs = getDesktopFileSystemBridge();
+                const localState = await desktopFs.getLocalState();
+                const sitchPath = localState?.sitchPath ?? null;
+                const workingDirectoryPath = localState?.workingDirectoryPath
+                    ?? (sitchPath ? await desktopFs.dirname(sitchPath) : null);
+
+                if (!workingDirectoryPath) {
+                    this.updateLocalGUI();
+                    return;
+                }
+
+                const restored = await this.hydrateDesktopWorkingFolder(workingDirectoryPath, sitchPath);
+                if (!restored) {
+                    await desktopFs.setLocalState({ sitchPath: null, workingDirectoryPath: null });
+                    this.directoryHandle = null;
+                    this.localSitchEntry = null;
+                    this.updateLocalGUI();
+                    return;
+                }
+
+                console.log("Desktop working folder restored:", this.directoryHandle.name);
+                this.updateLocalGUI();
+            } catch (err) {
+                console.warn("Failed to restore desktop local state:", err);
+            }
+            return;
+        }
+
         try {
             const handle = await loadFromIDB('workingFolderHandle');
             if (!handle) return;
@@ -1572,6 +1690,14 @@ export class CFileManager extends CManager {
      * @returns {Promise<boolean>} True if reconnect succeeded.
      */
     async reconnectWorkingFolder({loadSitch = true} = {}) {
+        if (this.isDesktopLocalFsAvailable()) {
+            await this.restoreWorkingFolder();
+            if (loadSitch && this.localSitchEntry) {
+                await this.checkForNewLocalSitch();
+            }
+            return !!this.directoryHandle;
+        }
+
         if (!this._pendingHandle) return false;
         try {
             const permission = await this._pendingHandle.requestPermission({ mode: 'readwrite' });
@@ -1620,6 +1746,25 @@ export class CFileManager extends CManager {
             return true;
         }
 
+        if (this.isDesktopLocalFsAvailable()) {
+            try {
+                const desktopFs = getDesktopFileSystemBridge();
+                const info = await desktopFs.stat(this.directoryHandle.path);
+                if (info.exists && info.kind === "directory") {
+                    return true;
+                }
+            } catch (err) {
+                console.warn("Desktop working folder check failed:", err);
+            }
+
+            this.directoryHandle = null;
+            this.localSitchEntry = null;
+            this.localSaveTargetArmed = false;
+            this.updateLocalGUI();
+            await this.persistWorkingFolder();
+            return false;
+        }
+
         try {
             let permission = await this.directoryHandle.queryPermission({ mode: 'readwrite' });
             if (permission !== 'granted') {
@@ -1645,6 +1790,30 @@ export class CFileManager extends CManager {
      * @returns {Promise<boolean>} True if a folder was selected.
      */
     async pickWorkingFolderForLocalSave() {
+        if (this.isDesktopLocalFsAvailable()) {
+            try {
+                const desktopFs = getDesktopFileSystemBridge();
+                const selection = await desktopFs.chooseFolder({
+                    defaultPath: this.directoryHandle?.path || this.localSitchEntry?.path || undefined,
+                });
+                if (!selection) {
+                    return false;
+                }
+
+                this.directoryHandle = createDesktopDirectoryHandle(selection.path);
+                this._pendingHandle = null;
+                this._pendingSitchFilename = null;
+                await this.persistWorkingFolder();
+                this.updateLocalGUI();
+                return true;
+            } catch (err) {
+                if (!isAbortLikeError(err)) {
+                    console.warn("pickWorkingFolderForLocalSave() desktop error", err.name, err.message);
+                }
+                return false;
+            }
+        }
+
         if (!supportsDirectoryPicker()) {
             showLocalFolderAccessUnsupportedMessage();
             return false;
@@ -1912,6 +2081,36 @@ export class CFileManager extends CManager {
      * @async
      */
     async openDirectory() {
+        if (this.isDesktopLocalFsAvailable()) {
+            try {
+                const desktopFs = getDesktopFileSystemBridge();
+                const selection = await desktopFs.chooseFolder({
+                    defaultPath: this.directoryHandle?.path || undefined,
+                });
+                if (!selection) {
+                    return;
+                }
+
+                this.directoryHandle = createDesktopDirectoryHandle(selection.path);
+                this._pendingHandle = null;
+                this._pendingSitchFilename = null;
+                this.localSitchEntry = null;
+                this.localSaveTargetArmed = false;
+                this.clearLocalSitchContext();
+                this.lastLocalSitchBuffer = undefined;
+                this.localSitchBuffer = undefined;
+
+                await this.persistWorkingFolder();
+                this.updateLocalGUI();
+                return;
+            } catch (err) {
+                if (!isAbortLikeError(err)) {
+                    console.warn("openDirectory() desktop error", err.name, err.message);
+                }
+                return;
+            }
+        }
+
         if (!supportsDirectoryPicker()) {
             showLocalFolderAccessUnsupportedMessage();
             return;
@@ -1944,6 +2143,36 @@ export class CFileManager extends CManager {
      * @async
      */
     async openLocalSitch() {
+        if (this.isDesktopLocalFsAvailable()) {
+            try {
+                const desktopFs = getDesktopFileSystemBridge();
+                const selection = await desktopFs.openFile({
+                    defaultPath: this.directoryHandle?.path || this.localSitchEntry?.path || undefined,
+                    filters: [
+                        {
+                            name: "Sitrec Files",
+                            extensions: ["json", "js"],
+                        },
+                    ],
+                });
+
+                if (!selection) {
+                    return;
+                }
+
+                await this.hydrateDesktopWorkingFolder(null, selection.path);
+                console.log("User selected desktop local sitch:", this.localSitchEntry?.name);
+                await this.persistWorkingFolder();
+                this.updateLocalGUI();
+                await this.checkForNewLocalSitch();
+            } catch (err) {
+                if (!isAbortLikeError(err)) {
+                    console.warn("openLocalSitch() desktop error", err.name, err.message);
+                }
+            }
+            return;
+        }
+
         if (!supportsOpenFilePicker()) {
             showLocalFolderAccessUnsupportedMessage();
             return;
@@ -1998,6 +2227,9 @@ export class CFileManager extends CManager {
      * @async
      */
     async checkForNewLocalSitch() {
+        if (!this.localSitchEntry) {
+            return;
+        }
 
         // load the local sitch and see if it has changed
         const file = await this.localSitchEntry.getFile();
@@ -2007,6 +2239,7 @@ export class CFileManager extends CManager {
         if (this.lastLocalSitchBuffer === undefined ||
             !areArrayBuffersEqual(this.lastLocalSitchBuffer, this.localSitchBuffer)) {
             this.localSaveTargetArmed = true;
+            this.markLocalSitchContextActive();
             this.lastLocalSitchBuffer = this.localSitchBuffer;
             this.parseResult(file.name, this.localSitchBuffer);
             this.updateLocalGUI();
@@ -2195,52 +2428,24 @@ export class CFileManager extends CManager {
         const loadingId = `asset-${id}-${Date.now()}`;
         LoadingManager.registerLoading(loadingId, filename, "Asset");
 
-        const isImportedLocalPath = this.isLikelyImportedLocalAssetPath(filename);
-        const isWorkingFolderPath = this.isLikelyWorkingFolderAssetPath(filename);
+        const loadViaDefaultAssetResolution = (sourceFilename) => {
+            let resolvedFilename = sourceFilename;
 
-        if (isWorkingFolderPath || isImportedLocalPath) {
-            const localReadPromise = (isWorkingFolderPath
-                ? Promise.resolve(true)
-                : this.ensureWorkingFolderForImportedLocalAsset(filename))
-                .then(canReadLocalAsset => {
-                    if (!canReadLocalAsset) {
-                        throw new Error(`Local folder not selected for "${filename}"`);
-                    }
-                    return this.readWorkingFolderFile(filename);
-                })
-                .catch(error => {
-                    if (error?.name === "NotFoundError") {
-                        this.showMissingLocalAssetInSelectedFolder(filename, error);
-                    } else if (!this.directoryHandle && isImportedLocalPath) {
-                        this.showLocalFolderRequiredForImportedAsset(filename);
-                    }
-                    throw error;
-                });
-
-            loadingPromise = localReadPromise.then(arrayBuffer => {
-                LoadingManager.completeLoading(loadingId);
-                return this.parseResult(filename, arrayBuffer, null);
-            }).catch(error => {
-                LoadingManager.completeLoading(loadingId);
-                throw error;
-            });
-        } else {
             // if not a local file, then it's a URL
             // either a dynamic link (like to the current Starlink TLE) or a static link
             // so fetch it and parse it
 
             // Sitrec references (sitrec://, raw object key, legacy S3 URL) are resolved via object.php.
-            const isResolvableRef = isResolvableSitrecReference(filename);
-            var isUrl = isHttpOrHttps(filename);
+            const isResolvableRef = isResolvableSitrecReference(resolvedFilename);
+            var isUrl = isHttpOrHttps(resolvedFilename);
             if (!isUrl && !isResolvableRef) {
                 // legacy sitches have videos specified as: "../sitrec-videos/public/2 - Gimbal-WMV2PRORES-CROP-428x428.mp4"
                 // and in that case it's relative to SITREC_APP wihtout the data folder
-                if (filename.startsWith("../sitrec-videos/")) {
-                    filename = SITREC_APP + filename;
+                if (resolvedFilename.startsWith("../sitrec-videos/")) {
+                    resolvedFilename = SITREC_APP + resolvedFilename;
                 } else {
                     // if it's not a url, then redirect to the data folder
-                    //filename = "./data/" + filename;
-                    filename = SITREC_APP + "data/" + filename;
+                    resolvedFilename = SITREC_APP + "data/" + resolvedFilename;
                 }
             } else if (isUrl) {
                 // if it's a URL, we need to check if it's got a "localhost" in it
@@ -2248,21 +2453,21 @@ export class CFileManager extends CManager {
                 // add the SITREC_DOMAIN to the start of the URL
                 // this is a patch to keep older localhost files compatible with the deployed
                 // and with the new local.metabunk.org
-                if (filename.startsWith("https://localhost/")) {
-                    filename = SITREC_DOMAIN + '/' + filename.slice(18);
-                    console.log("Redirecting debug local URL to " + filename);
+                if (resolvedFilename.startsWith("https://localhost/")) {
+                    resolvedFilename = SITREC_DOMAIN + "/" + resolvedFilename.slice(18);
+                    console.log("Redirecting debug local URL to " + resolvedFilename);
                 }
 
                 // same for https://local.metabunk.org/
-                if (!isLocal && filename.startsWith("https://local.metabunk.org/")) {
-                    filename = SITREC_DOMAIN + '/' + filename.slice(27);
-                    console.log("Redirecting debug local URL to " + filename);
+                if (!isLocal && resolvedFilename.startsWith("https://local.metabunk.org/")) {
+                    resolvedFilename = SITREC_DOMAIN + "/" + resolvedFilename.slice(27);
+                    console.log("Redirecting debug local URL to " + resolvedFilename);
                 }
 
                 // and the specified process.env.LOCALHOST
-                if (!isLocal && filename.startsWith(process.env.LOCALHOST)) {
-                    filename = SITREC_DOMAIN + '/' + filename.slice(process.env.LOCALHOST.length);
-                    console.log("Redirecting debug local URL to " + filename);
+                if (!isLocal && resolvedFilename.startsWith(process.env.LOCALHOST)) {
+                    resolvedFilename = SITREC_DOMAIN + "/" + resolvedFilename.slice(process.env.LOCALHOST.length);
+                    console.log("Redirecting debug local URL to " + resolvedFilename);
                 }
             }
 
@@ -2270,12 +2475,12 @@ export class CFileManager extends CManager {
 
             var bufferPromise = null;
             let fetchOperationId = null; // Track for cleanup
-            if(!isUrl && !isResolvableRef && isConsole) {
+            if (!isUrl && !isResolvableRef && isConsole) {
                 // read the asset from the local filesystem if this is not running inside a browser
-                bufferPromise = import('node:fs')
-                .then(fs => {
-                    return fs.promises.readFile(filename);
-                });
+                bufferPromise = import("node:fs")
+                    .then(fs => {
+                        return fs.promises.readFile(resolvedFilename);
+                    });
             } else {
                 // URL-encode the path components (especially filenames with spaces)
                 // Split URL into base and query string if present
@@ -2283,12 +2488,12 @@ export class CFileManager extends CManager {
                 const fetchController = new AbortController();
                 fetchOperationId = asyncOperationRegistry.registerAbortable(
                     fetchController,
-                    'fetch',
-                    `loadAsset: ${filename}`
+                    "fetch",
+                    `loadAsset: ${resolvedFilename}`
                 );
-                const originalFetchSource = filename;
+                const originalFetchSource = resolvedFilename;
 
-                bufferPromise = Promise.resolve(filename)
+                bufferPromise = Promise.resolve(resolvedFilename)
                     .then(fetchSource => {
                         if (isResolvableSitrecReference(fetchSource)) {
                             return resolveURLForFetch(fetchSource);
@@ -2296,7 +2501,7 @@ export class CFileManager extends CManager {
                         return fetchSource;
                     })
                     .then(fetchSource => {
-                        const [urlBase, queryString] = fetchSource.split('?');
+                        const [urlBase, queryString] = fetchSource.split("?");
                         const encodedUrlBase = urlBase;
                         const encodedFilename = queryString ? `${encodedUrlBase}?${queryString}` : encodedUrlBase;
                         const versionExtension = (encodedFilename.includes("?") ? "&" : "?") + "v=1" + versionString;
@@ -2310,7 +2515,7 @@ export class CFileManager extends CManager {
                         return fileSystemFetch(fetchUrl, {signal: fetchController.signal})
                             .then(response => {
                                 if (!response.ok) {
-                                    throw new Error('Network response was not ok');
+                                    throw new Error("Network response was not ok");
                                 }
                                 return response.arrayBuffer();
                             });
@@ -2320,92 +2525,131 @@ export class CFileManager extends CManager {
                         if (fetchOperationId !== null) {
                             asyncOperationRegistry.unregister(fetchOperationId);
                         }
-                    })
+                    });
             }
 
             Globals.pendingActions++;
 
-            if (filename.toLowerCase().endsWith('.ts')) {
-                loadingPromise = bufferPromise
+            if (resolvedFilename.toLowerCase().endsWith(".ts")) {
+                return bufferPromise
                     .then(arrayBuffer => {
-                        console.log(`Special handling for .TS file load: ${filename} (id: ${id})`);
+                        console.log(`Special handling for .TS file load: ${resolvedFilename} (id: ${id})`);
                         Globals.parsing--;
                         Globals.pendingActions--;
                         LoadingManager.completeLoading(loadingId);
-                        return this.parseResult(id, arrayBuffer, filename);
+                        return this.parseResult(id, arrayBuffer, resolvedFilename);
                     })
                     .catch(error => {
                         Globals.parsing--;
-                        console.log(`There was a problem loading .TS file ${filename}: ${error.message}`);
+                        console.log(`There was a problem loading .TS file ${resolvedFilename}: ${error.message}`);
                         Globals.pendingActions--;
                         LoadingManager.completeLoading(loadingId);
-                        this.#loadingPromises.delete(loadingKey);
-                        throw error;
-                    });
-            } else {
-
-                var original = null;
-                loadingPromise = bufferPromise
-                    .then(arrayBuffer => {
-                        // parseAsset always returns a promise
-//                        console.log(`<<< loadAsset() Loading Finished: ${filename} (id: ${id})`);
-
-                        // always store the original
-                        original = arrayBuffer;
-
-                        const assetPromise = this.parseAsset(filename, id, arrayBuffer);
-                        return assetPromise;
-                    })
-                    .then(parsedAsset => {
-                        // if an array is returned, we just assume it's the first one
-                        // because we are adding by id here, not by filename
-                        // so if it's a zipped asset, it should only be one
-                        if (Array.isArray(parsedAsset)) {
-                            assert(parsedAsset.length === 1, "Zipped IDed asset contains multiple files")
-                            parsedAsset = parsedAsset[0]
-                        }
-
-                        // Skip files that failed to parse (e.g. corrupt KLV)
-                        if (parsedAsset.parsed === null) {
-                            Globals.parsing--;
-                            Globals.pendingActions--;
-                            LoadingManager.completeLoading(loadingId);
-                            return null;
-                        }
-
-                        // We now have a full parsed asset in a {filename: filename, parsed: parsed} structure
-                        this.add(id, parsedAsset.parsed, original); // Add the loaded and parsed asset to the manager
-                        this.list[id].dynamicLink = dynamicLink;
-                        this.list[id].staticURL = null; // indicates it has not been rehosted
-                        this.list[id].dataType = parsedAsset.dataType; // Store the data type of the asset
-                        if (isHttpOrHttps(filename) && !dynamicLink) {
-                            // if it's a URL, and it's not a dynamic link, then we can store the URL as the static URL
-                            // indicating we don't want to rehost this later.
-                            this.list[id].staticURL = filename;
-                        }
-                        this.list[id].filename = filename;
-                        if (id === "starLink") {
-                            console.log("Flagging initial starlink file");
-                            this.list[id].isTLE = true;
-                        }
-
-                        Globals.parsing--;
-                        Globals.pendingActions--;
-                        LoadingManager.completeLoading(loadingId);
-
-                        parsedAsset.id = id;
-                        return parsedAsset;
-                    })
-                    .catch(error => {
-                        Globals.parsing--;
-                        console.log(`There was a problem loading ${filename}: ${error.message}`);
-                        Globals.pendingActions--;
-                        LoadingManager.completeLoading(loadingId);
-
                         this.#loadingPromises.delete(loadingKey);
                         throw error;
                     });
             }
+
+            let original = null;
+            return bufferPromise
+                .then(arrayBuffer => {
+                    // always store the original
+                    original = arrayBuffer;
+                    return this.parseAsset(resolvedFilename, id, arrayBuffer);
+                })
+                .then(parsedAsset => {
+                    // if an array is returned, we just assume it's the first one
+                    // because we are adding by id here, not by filename
+                    // so if it's a zipped asset, it should only be one
+                    if (Array.isArray(parsedAsset)) {
+                        assert(parsedAsset.length === 1, "Zipped IDed asset contains multiple files");
+                        parsedAsset = parsedAsset[0];
+                    }
+
+                    // Skip files that failed to parse (e.g. corrupt KLV)
+                    if (parsedAsset.parsed === null) {
+                        Globals.parsing--;
+                        Globals.pendingActions--;
+                        LoadingManager.completeLoading(loadingId);
+                        return null;
+                    }
+
+                    // We now have a full parsed asset in a {filename: filename, parsed: parsed} structure
+                    this.add(id, parsedAsset.parsed, original);
+                    this.list[id].dynamicLink = dynamicLink;
+                    this.list[id].staticURL = null;
+                    this.list[id].dataType = parsedAsset.dataType;
+                    if (isHttpOrHttps(resolvedFilename) && !dynamicLink) {
+                        // if it's a URL, and it's not a dynamic link, then we can store the URL as the static URL
+                        // indicating we don't want to rehost this later.
+                        this.list[id].staticURL = resolvedFilename;
+                    }
+                    this.list[id].filename = resolvedFilename;
+                    if (id === "starLink") {
+                        console.log("Flagging initial starlink file");
+                        this.list[id].isTLE = true;
+                    }
+
+                    Globals.parsing--;
+                    Globals.pendingActions--;
+                    LoadingManager.completeLoading(loadingId);
+
+                    parsedAsset.id = id;
+                    return parsedAsset;
+                })
+                .catch(error => {
+                    Globals.parsing--;
+                    console.log(`There was a problem loading ${resolvedFilename}: ${error.message}`);
+                    Globals.pendingActions--;
+                    LoadingManager.completeLoading(loadingId);
+
+                    this.#loadingPromises.delete(loadingKey);
+                    throw error;
+                });
+        };
+
+        const isImportedLocalPath = this.isLikelyImportedLocalAssetPath(filename);
+        const isWorkingFolderPath = this.isLikelyWorkingFolderAssetPath(filename);
+        const normalizedWorkingFolderPath = this.normalizeWorkingFolderRelativePath(filename);
+        const canFallbackToBundledAsset = Boolean(
+            isWorkingFolderPath &&
+            normalizedWorkingFolderPath &&
+            !isImportedLocalPath &&
+            !normalizedWorkingFolderPath.startsWith("local/")
+        );
+
+        if (isWorkingFolderPath || isImportedLocalPath) {
+            const localReadPromise = (isWorkingFolderPath
+                ? Promise.resolve(true)
+                : this.ensureWorkingFolderForImportedLocalAsset(filename))
+                .then(canReadLocalAsset => {
+                    if (!canReadLocalAsset) {
+                        throw new Error(`Local folder not selected for "${filename}"`);
+                    }
+                    return this.readWorkingFolderFile(filename);
+                });
+
+            loadingPromise = localReadPromise
+                .then(arrayBuffer => {
+                    LoadingManager.completeLoading(loadingId);
+                    return this.parseResult(filename, arrayBuffer, null);
+                })
+                .catch(error => {
+                    if (error?.name === "NotFoundError" && canFallbackToBundledAsset) {
+                        console.log(`Local asset ${filename} not found in working folder, falling back to bundled asset resolution`);
+                        return loadViaDefaultAssetResolution(filename);
+                    }
+
+                    if (error?.name === "NotFoundError") {
+                        this.showMissingLocalAssetInSelectedFolder(filename, error);
+                    } else if (!this.directoryHandle && isImportedLocalPath) {
+                        this.showLocalFolderRequiredForImportedAsset(filename);
+                    }
+
+                    LoadingManager.completeLoading(loadingId);
+                    throw error;
+                });
+        } else {
+            loadingPromise = loadViaDefaultAssetResolution(filename);
         }
 
         // Register the loading promise with the async operation registry
@@ -3608,7 +3852,7 @@ export class CFileManager extends CManager {
         if (!normalized) return false;
         if (!normalized.includes("/")) return true;
         // Nested local assets are stored under a dedicated local folder prefix.
-        return normalized.startsWith("local/");
+        return normalized.startsWith("local/") || this._localSitchContextActive;
     }
 
     /**

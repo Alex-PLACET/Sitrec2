@@ -25,6 +25,7 @@
       "output": "../../apps_dist"
     },
     "files": [
+      "desktopStateStore.js",
       "main.js",
       "preload.js",
       "server.js"
