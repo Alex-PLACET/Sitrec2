@@ -8,6 +8,7 @@ import {MISB} from "../MISBUtils";
 import {saveAs} from "file-saver";
 import {degrees} from "../utils";
 import {meanSeaLevelOffset} from "../EGM96Geoid";
+import {clampTerrainElevationHAE} from "./trackElevationUtils";
 
 export class CNodeTrack extends CNodeEmptyArray {
     constructor(v) {
@@ -78,7 +79,7 @@ export class CNodeTrack extends CNodeEmptyArray {
     }
 
     _pointFromElevation(lat, lon, elevation, agl) {
-        return LLAToECEF(lat, lon, Math.max(0, elevation) + agl);
+        return LLAToECEF(lat, lon, clampTerrainElevationHAE(lat, lon, elevation) + agl);
     }
 
     serializeElevationCache() {
@@ -105,7 +106,9 @@ export class CNodeTrack extends CNodeEmptyArray {
             } else if (entry.length === 6) {
                 const [f, lat, lon, tileZ, tileX, tileY] = entry;
                 if (f < this.frames) {
-                    this.elevationCache[f] = {lat, lon, elevation: 0, tileZ, tileX, tileY};
+                    // Legacy cache entries did not store elevation, so force a fresh terrain lookup
+                    // instead of reconstructing an incorrect HAE=0 ground point.
+                    this.elevationCache[f] = {lat, lon, elevation: meanSeaLevelOffset(lat, lon), tileZ: -1, tileX, tileY};
                 }
             }
         }
