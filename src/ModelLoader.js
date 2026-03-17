@@ -6,6 +6,7 @@ import {GLTFLoader} from "three/addons/loaders/GLTFLoader.js";
 import {PLYLoader} from "three/addons/loaders/PLYLoader.js";
 import {
     AddEquation,
+    Box3,
     BufferAttribute,
     Color,
     CustomBlending,
@@ -23,7 +24,9 @@ import {
     PlaneGeometry,
     Points,
     PointsMaterial,
+    Quaternion,
     ShaderMaterial,
+    Sphere,
     Vector3,
 } from "three";
 
@@ -428,6 +431,65 @@ function isGaussianSplatPLY(geometry) {
         && geometry.getAttribute("splatRotation") !== undefined;
 }
 
+function setGaussianSplatBounds(instancedGeometry, centers, scales, rotations, opacities) {
+    const bounds = new Box3();
+    const rotation = new Quaternion();
+    const rotationMatrix = new Matrix4();
+    const minPoint = new Vector3();
+    const maxPoint = new Vector3();
+    let hasVisibleSplats = false;
+
+    // Box3.expandByObject() cannot derive per-instance bounds from our custom
+    // InstancedBufferGeometry, so explicitly aggregate the oriented 3-sigma
+    // ellipsoids here. Without this, the object falls back to the base quad's
+    // 2x2x0 plane bounds and the displayed box/length are wildly wrong.
+    for (let i = 0; i < opacities.length; i++) {
+        if (opacities[i] <= 1 / 255) {
+            continue;
+        }
+
+        const i3 = i * 3;
+        const i4 = i * 4;
+        const radiusX = scales[i3] * 3;
+        const radiusY = scales[i3 + 1] * 3;
+        const radiusZ = scales[i3 + 2] * 3;
+
+        rotation.set(
+            rotations[i4 + 1],
+            rotations[i4 + 2],
+            rotations[i4 + 3],
+            rotations[i4],
+        ).normalize();
+        rotationMatrix.makeRotationFromQuaternion(rotation);
+        const e = rotationMatrix.elements;
+
+        const extentX = Math.hypot(e[0] * radiusX, e[4] * radiusY, e[8] * radiusZ);
+        const extentY = Math.hypot(e[1] * radiusX, e[5] * radiusY, e[9] * radiusZ);
+        const extentZ = Math.hypot(e[2] * radiusX, e[6] * radiusY, e[10] * radiusZ);
+
+        minPoint.set(
+            centers[i3] - extentX,
+            centers[i3 + 1] - extentY,
+            centers[i3 + 2] - extentZ,
+        );
+        maxPoint.set(
+            centers[i3] + extentX,
+            centers[i3 + 1] + extentY,
+            centers[i3 + 2] + extentZ,
+        );
+        bounds.expandByPoint(minPoint);
+        bounds.expandByPoint(maxPoint);
+        hasVisibleSplats = true;
+    }
+
+    if (!hasVisibleSplats) {
+        bounds.setFromArray(centers);
+    }
+
+    instancedGeometry.boundingBox = bounds;
+    instancedGeometry.boundingSphere = bounds.getBoundingSphere(new Sphere());
+}
+
 function createGaussianSplatGeometry(geometry) {
     const posAttr = geometry.getAttribute("position");
     const splatCount = posAttr.count;
@@ -467,6 +529,7 @@ function createGaussianSplatGeometry(geometry) {
     instancedGeometry.setAttribute("splatScale", new InstancedBufferAttribute(scales, 3));
     instancedGeometry.setAttribute("splatRotation", new InstancedBufferAttribute(rotations, 4));
     instancedGeometry.instanceCount = splatCount;
+    setGaussianSplatBounds(instancedGeometry, centers, scales, rotations, opacities);
 
     return instancedGeometry;
 }

@@ -112,7 +112,7 @@ jest.mock("three/addons/loaders/PLYLoader.js", () => {
     };
 });
 
-import {PerspectiveCamera} from "three";
+import {Box3, PerspectiveCamera, Vector3} from "three";
 import {extractModelFilenameParameters, isSupportedModelFile, parseModelData} from "../src/ModelLoader";
 
 function toArrayBuffer(text) {
@@ -246,6 +246,54 @@ describe("ModelLoader", () => {
         expect(geometry.getAttribute("splatRotation")).toBeDefined();
         expect(splatMesh.userData.splatSortState).toBeDefined();
         expect(splatMesh.rotation.x).toBeCloseTo(-Math.PI / 2);
+    });
+
+    test("computes gaussian splat bounding boxes from splat ellipsoids instead of the billboard quad", async () => {
+        const splatPLY = [
+            "ply",
+            "format ascii 1.0",
+            "element vertex 2",
+            "property float x",
+            "property float y",
+            "property float z",
+            "property float f_dc_0",
+            "property float f_dc_1",
+            "property float f_dc_2",
+            "property float opacity",
+            "property float scale_0",
+            "property float scale_1",
+            "property float scale_2",
+            "property float rot_0",
+            "property float rot_1",
+            "property float rot_2",
+            "property float rot_3",
+            "end_header",
+            "1 2 3 1 0 0 2 -0.69314718056 -2.302585093 -1.609437912 0.70710678 0 0 0.70710678",
+            "-2 -1 4 0 1 0 2 -1.609437912 -1.203972804 -0.916290732 1 0 0 0",
+        ].join("\n");
+
+        const modelAsset = await parseModelData("splat-bounds.ply", toArrayBuffer(splatPLY));
+        const splatMesh = modelAsset.scene.children[0];
+        const geometry = splatMesh.geometry;
+
+        expect(geometry.boundingBox.min.toArray()).toEqual([
+            expect.closeTo(-2.6, 5),
+            expect.closeTo(-1.9, 5),
+            expect.closeTo(2.4, 5),
+        ]);
+        expect(geometry.boundingBox.max.toArray()).toEqual([
+            expect.closeTo(1.3, 5),
+            expect.closeTo(3.5, 5),
+            expect.closeTo(5.2, 5),
+        ]);
+        expect(geometry.boundingSphere.radius).toBeGreaterThan(3);
+
+        const sceneBounds = new Box3().setFromObject(modelAsset.scene);
+        const sceneSize = sceneBounds.getSize(new Vector3());
+        expect(sceneSize.x).toBeCloseTo(3.9, 5);
+        expect(sceneSize.y).toBeCloseTo(2.8, 5);
+        expect(sceneSize.z).toBeCloseTo(5.4, 5);
+        expect(sceneSize.y).toBeGreaterThan(0.1);
     });
 
     test("sorts gaussian splats by exact view-space depth without binning artifacts", async () => {
