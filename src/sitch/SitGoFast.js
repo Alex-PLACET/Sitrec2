@@ -1,4 +1,4 @@
-import {AlwaysDepth, Color, MeshStandardMaterial, TextureLoader,} from "three";
+import {AlwaysDepth, Color, MeshStandardMaterial, SRGBColorSpace, TextureLoader,} from "three";
 import {EarthRadiusMiles, FileManager, gui, NodeFactory, NodeMan, Sit} from "../Globals";
 import {ExpandKeyframes, f2m, metersFromNM, NMFromMeters, scaleF2M} from "../utils";
 import {RollingAverage} from "../smoothing";
@@ -442,6 +442,7 @@ export const SitGoFast = {
 
         // ocean
         const waterTexture = new TextureLoader().load(SITREC_APP+'data/images/28_sea water texture-seamless-dark.jpg?v=1');
+        waterTexture.colorSpace = SRGBColorSpace;
         const waterMaterial = new MeshStandardMaterial({
             map: waterTexture,
             transparent: true,

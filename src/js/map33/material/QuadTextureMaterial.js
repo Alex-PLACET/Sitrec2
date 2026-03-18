@@ -144,6 +144,8 @@ const QuadTextureMaterial = (urls) => {
     ctx.drawImage(maps[3].image, maps[0].image.width, maps[0].image.height)  // NE - top right
     
     const texture = new CanvasTexture(canvas)
+    // NOTE: NOT setting SRGBColorSpace here — terrain shader does lighting
+    // in sRGB space (Phase 4 will convert it to linear workflow)
     texture.needsUpdate = true
     
     // Clean up temporary resources

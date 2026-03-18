@@ -15,6 +15,7 @@ import {
     Ray,
     Raycaster,
     Sphere,
+    SRGBColorSpace,
     Vector3
 } from "three";
 import {earthCenterECEF, getLocalUpVector} from "../SphericalMath";
@@ -189,6 +190,7 @@ export class CNodeDisplayCameraFrustum extends CNode3DGroup {
         this.groundVideoCtx = this.groundVideoCanvas.getContext('2d');
         this.groundVideoTexture = new CanvasTexture(this.groundVideoCanvas);
         this.groundVideoTexture.flipY = false;
+        this.groundVideoTexture.colorSpace = SRGBColorSpace;
 
         this.groundVideoOverlay = new CNodeGroundOverlay({
             id: this.id + "_groundVideoOverlay",
@@ -278,6 +280,7 @@ export class CNodeDisplayCameraFrustum extends CNode3DGroup {
         this.videoCtx = this.videoCanvas.getContext('2d');
 
         this.videoTexture = new CanvasTexture(this.videoCanvas);
+        this.videoTexture.colorSpace = SRGBColorSpace;
 
         this.videoQuadMaterial = new MeshBasicMaterial({
             map: this.videoTexture,

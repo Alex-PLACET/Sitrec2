@@ -1574,6 +1574,8 @@ export class QuadTreeTile {
 
         // Create texture from canvas
         const texture = new CanvasTexture(canvas);
+        // NOTE: NOT setting SRGBColorSpace here — terrain shader does lighting
+        // in sRGB space (Phase 4 will convert it to linear workflow)
         texture.needsUpdate = true;
 
         // Create and return material
@@ -1644,6 +1646,8 @@ export class QuadTreeTile {
 
         // Create texture from canvas
         const texture = new CanvasTexture(canvas);
+        // NOTE: NOT setting SRGBColorSpace here — terrain shader does lighting
+        // in sRGB space (Phase 4 will convert it to linear workflow)
         texture.needsUpdate = true;
 
         // Create and return material

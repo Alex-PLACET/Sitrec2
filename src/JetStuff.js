@@ -65,6 +65,7 @@ import {
     Plane,
     Sprite,
     SpriteMaterial,
+    SRGBColorSpace,
     TextureLoader,
     Vector3
 } from "three";
@@ -120,6 +121,7 @@ export function initJetVariables() {
 
     if (Sit.showGlare) {
         const mapt = new TextureLoader().load(SITREC_APP+'data/images/GlareSprite.png?v=1');
+        mapt.colorSpace = SRGBColorSpace;
         const spriteMaterial = new SpriteMaterial({map: mapt, color: 0xffffff, sizeAttenuation: false});
 
         setGlareSprite(new Sprite(spriteMaterial));

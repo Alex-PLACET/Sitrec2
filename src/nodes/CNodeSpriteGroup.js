@@ -1,4 +1,4 @@
-import {BufferAttribute, BufferGeometry, Color, Points, ShaderMaterial, TextureLoader} from "three";
+import {BufferAttribute, BufferGeometry, Color, Points, ShaderMaterial, SRGBColorSpace, TextureLoader} from "three";
 import {CNode3DGroup} from "./CNode3DGroup";
 import {guiMenus, NodeMan} from "../Globals";
 import * as LAYER from "../LayerMasks";
@@ -15,6 +15,7 @@ constructor(v) {
     this.mainSizeMultiplier = 1;
 
     this.texture = new TextureLoader().load(SITREC_APP+'data/images/WhiteDiskWithAlpha128px.png');
+    this.texture.colorSpace = SRGBColorSpace;
 //    this.texture = new TextureLoader().load(SITREC_APP+'data/images/FX_CloudAlpha03.png');
 
     // Define the vertex and fragment shaders

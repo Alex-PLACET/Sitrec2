@@ -17,6 +17,7 @@ import {
     Raycaster,
     ShaderMaterial,
     SphereGeometry,
+    SRGBColorSpace,
     TextureLoader,
     Vector3
 } from "three";
@@ -188,6 +189,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         loader.load(textureURL, (texture) => {
             LoadingManager.completeLoading(loadingId);
             texture.flipY = false;
+            texture.colorSpace = SRGBColorSpace;
             this.originalTexture = texture;
             this.applyCloudExtraction();
         }, (progress) => {
@@ -261,6 +263,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         
         const processedTexture = new CanvasTexture(canvas);
         processedTexture.flipY = false;
+        processedTexture.colorSpace = SRGBColorSpace;
         
         if (this.texture && this.texture !== this.originalTexture) {
             this.texture.dispose();
@@ -294,6 +297,9 @@ export class CNodeGroundOverlay extends CNode3DGroup {
 
         const texture = new CanvasTexture(canvas);
         texture.flipY = false;
+        // Canvas fill/stroke colors are authored in sRGB; tag so sampling is
+        // linearized like normal overlay textures before the final screen encode.
+        texture.colorSpace = SRGBColorSpace;
         return texture;
     }
 

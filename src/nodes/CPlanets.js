@@ -25,6 +25,7 @@ import {
     SphereGeometry,
     Sprite,
     SpriteMaterial,
+    SRGBColorSpace,
     TextureLoader,
     Vector3
 } from "three";
@@ -84,9 +85,13 @@ export class CPlanets {
     _loadTextures() {
         const textureLoader = new TextureLoader();
         this.textures.star = textureLoader.load(SITREC_APP + 'data/images/nightsky/MickStar.png');
+        this.textures.star.colorSpace = SRGBColorSpace;
         this.textures.sun = textureLoader.load(SITREC_APP + 'data/images/nightsky/MickSun.png');
+        this.textures.sun.colorSpace = SRGBColorSpace;
         this.textures.moon = textureLoader.load(SITREC_APP + 'data/images/nightsky/MickMoon.png');
+        this.textures.moon.colorSpace = SRGBColorSpace;
         this.textures.moonSurface = textureLoader.load(SITREC_APP + 'data/images/nightsky/lroc_color_1k.jpg');
+        this.textures.moonSurface.colorSpace = SRGBColorSpace;
     }
     
     _createMoonMaterial(isDay = false) {
@@ -115,7 +120,7 @@ export class CPlanets {
                 uniform float skyBrightness;
                 varying vec3 vNormal;
                 varying vec2 vUv;
-                
+
                 void main() {
                     vec3 sunDir = normalize(sunDirection);
                     vec3 viewDir = normalize(observerDirection);
@@ -128,17 +133,31 @@ export class CPlanets {
                     if (mu0 > 0.0 && mu > 0.0) {
                         reflectance = min(1.0, (2.0 * mu0) / max(mu0 + mu, 1e-4));
                     }
-                    float dayBlend = clamp(skyBrightness, 0.0, 1.0);
-                    
+
                     vec2 uv = vUv;
                     uv.x = fract(uv.x + 0.25);
                     vec4 textureColor = texture2D(moonTexture, uv);
-                    vec4 dayColor = textureColor * reflectance;
-                    vec4 nightColor = vec4(0.0, 0.0, 0.0, 1.0);
-                    
-                    vec4 moonColor = mix(nightColor, dayColor, step(1e-5, reflectance));
+                    vec3 moonLit = textureColor.rgb * reflectance;
+
+                    // skyColor uniform is in sRGB space; linearize to match
+                    // the linear moon color and the linear render target.
+                    vec3 linearSky = sRGBTransferEOTF(vec4(skyColor, 1.0)).rgb;
+
+                    // skyOpacity = min(1, skyBrightness * 2) — matches the JS calculation
+                    // in CNodeSunlight.calculateSkyOpacity(). This is what the sky
+                    // fullscreen quad uses for its alpha blend.
+                    float skyOpacity = clamp(skyBrightness * 2.0, 0.0, 1.0);
+
+                    // Attenuate the moon in daylight to simulate shorter camera exposure.
+                    // 1.0 at night, 0.5 at full day.
+                    float dayBlend = clamp(skyBrightness, 0.0, 1.0);
                     float moonAtten = max(0.0, 1.0 - 0.5 * dayBlend);
-                    vec3 finalColor = moonColor.rgb * moonAtten + skyColor;
+
+                    // Use linearSky * skyOpacity to exactly match the sky background
+                    // rendered by the fullscreen sky quad. On the dark side moonLit is 0,
+                    // so the output equals the sky — no visible dark disc.
+                    vec3 finalColor = moonLit * moonAtten + linearSky * skyOpacity;
+
                     gl_FragColor = vec4(finalColor, 1.0);
                 }
             `,
