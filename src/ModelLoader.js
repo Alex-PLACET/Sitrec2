@@ -400,17 +400,20 @@ function createPLYPointCloudMaterial(geometry, filename) {
                 discard;
             }
 
+            // PLY vertex colors are in sRGB space; convert to linear for
+            // consistent linear render target output.
+            vec3 linearColor = sRGBTransferEOTF(vec4(vColor, 1.0)).rgb;
             ${opaqueCutout ? `
             if (vOpacity < 0.02) {
                 discard;
             }
-            gl_FragColor = vec4(vColor, 1.0);
+            gl_FragColor = vec4(linearColor, 1.0);
             ` : `
             float alpha = exp(-radiusSquared * 4.0) * vOpacity;
             if (alpha < 0.08) {
                 discard;
             }
-            gl_FragColor = vec4(vColor, alpha);
+            gl_FragColor = vec4(linearColor, alpha);
             `}
 
             float z = (log2(max(nearPlane, 1.0 + vDepth)) / log2(1.0 + farPlane)) * 2.0 - 1.0;
@@ -689,8 +692,12 @@ function createGaussianSplatMaterial(filename) {
             float alpha = min(0.99, vOpacity * exp(-4.5 * A));
             if (alpha < 1.0 / 255.0) discard;
 
-            // Premultiplied alpha output for front-to-back under-operator compositing
-            gl_FragColor = vec4(vColor * alpha, alpha);
+            // Premultiplied alpha output for front-to-back under-operator compositing.
+            // Splat colors are in sRGB space (from SH DC coefficients); convert to
+            // linear so the render target is consistently linear and the copy shader's
+            // sRGB encoding produces the correct final result.
+            vec3 linearColor = sRGBTransferEOTF(vec4(vColor, 1.0)).rgb;
+            gl_FragColor = vec4(linearColor * alpha, alpha);
 
             float z = (log2(max(nearPlane, 1.0 + vDepth)) / log2(1.0 + farPlane)) * 2.0 - 1.0;
             gl_FragDepthEXT = z * 0.5 + 0.5;

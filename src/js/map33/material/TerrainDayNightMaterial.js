@@ -116,7 +116,10 @@ export function createTerrainDayNightMaterial(texture, terrainShadingStrength = 
                 // Set alpha based on transparency parameter
                 finalColor.a = transparency;
                 
-                gl_FragColor = finalColor;
+                // Convert sRGB-space output to linear to match standard materials.
+                // The copy-to-screen shader applies sRGB encoding, so this round-trips
+                // back to the original sRGB values while keeping the RT consistently linear.
+                gl_FragColor = sRGBTransferEOTF(finalColor);
                 #include <fog_fragment>
                 
                 // Logarithmic depth calculation (same as globe shader)

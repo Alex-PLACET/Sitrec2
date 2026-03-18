@@ -11,6 +11,7 @@ import {
     Raycaster,
     ShaderMaterial,
     SphereGeometry,
+    SRGBColorSpace,
     TextureLoader,
     Vector3
 } from "three";
@@ -283,7 +284,10 @@ export class CNodeSynthClouds extends CNode3DGroup {
                     float lighting = mix(sunAmbientIntensity, 1.0, dayFactor);
                     vec3 litColor = texColor.rgb * color * lighting + emissive;
                     gl_FragColor = vec4(litColor, alpha);
-                    
+
+                    // Convert sRGB-space output to linear for the render target.
+                    gl_FragColor = sRGBTransferEOTF(gl_FragColor);
+
                     float z = (log2(max(nearPlane, 1.0 + vDepth)) / log2(1.0 + farPlane)) * 2.0 - 1.0;
                     gl_FragDepthEXT = z * 0.5 + 0.5;
                 }

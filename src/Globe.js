@@ -5,6 +5,7 @@ import {
     MeshPhongMaterial,
     ShaderMaterial,
     SphereGeometry,
+    SRGBColorSpace,
     Texture,
     TextureLoader,
     Vector3
@@ -18,10 +19,12 @@ import {sharedUniforms} from "./js/map33/material/SharedUniforms";
 import {showError} from "./showError";
 
 export function createSphere(radius, radius1, segments) {
+    const dayMap = new TextureLoader().load(SITREC_APP+'data/images/2_no_clouds_4k.jpg');
+    dayMap.colorSpace = SRGBColorSpace;
     const sphere = new Mesh(
         new SphereGeometry(radius, segments, segments),
         new MeshPhongMaterial({
-            map: new TextureLoader().load(SITREC_APP+'data/images/2_no_clouds_4k.jpg'),
+            map: dayMap,
      //       map: new TextureLoader().load(SITREC_APP+'data/images/Earthlights_2002.jpg'),
             bumpMap: new TextureLoader().load(SITREC_APP+'data/images/elev_bump_4k.jpg'),
             bumpScale: 0.005,
@@ -79,7 +82,8 @@ export function updateNightTexture(noNightLights) {
         .then((texture) => {
             nightTexture = texture;
             // Set the color space to SRGB to avoid gamma correction
-            //nightTexture.colorSpace = THREE.SRGBColorSpace;
+            // NOTE: NOT setting SRGBColorSpace — globe shader does lighting
+            // in sRGB space (Phase 4 will convert it to linear workflow)
             // Set the texture to be used in the globe material
             if (globeMaterial) {
                 globeMaterial.uniforms.nightTexture.value = nightTexture;
@@ -102,6 +106,8 @@ export function createSphereDayNight(radius, radius1, segments) {
 
     const loader = new TextureLoader();
     const dayTexture = loader.load('data/images/2_no_clouds_4k.jpg');
+    // NOTE: NOT setting SRGBColorSpace — globe shader does lighting
+    // in sRGB space (Phase 4 will convert it to linear workflow)
 
     // const nightTexture = loader.load('data/images/Earthlights_2002.jpg');
     // make a dummy night texture, just a black texture with a slight blue tint
@@ -175,8 +181,10 @@ export function createSphereDayNight(radius, radius1, segments) {
             } else {
                 gl_FragColor = dayColor;
             }
-            
-            
+
+            // Convert sRGB-space output to linear to match standard materials.
+            gl_FragColor = sRGBTransferEOTF(gl_FragColor);
+
             // Logarithmic depth calculation
             float w = vPosition.w;
             float z = (log2(max(nearPlane, 1.0 + w)) / log2(1.0 + farPlane)) * 2.0 - 1.0;
