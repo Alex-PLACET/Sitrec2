@@ -2,7 +2,10 @@ import {DayNightStandardMaterial} from "./js/map33/material/DayNightStandardMate
 
 // Symbol used to stash original materials on meshes for clean restore
 const ORIGINAL_MATERIAL = Symbol("TilesDayNight_originalMaterial");
-const DEFAULT_GOOGLE_TILE_OUTPUT_GAMMA = 0.50;
+// Prior to the linear-workflow fix (copy shader sRGB encoding), Google tiles
+// needed manual gamma correction (0.50 = sqrt). With proper output encoding
+// in the copy shader this is no longer needed.
+const DEFAULT_GOOGLE_TILE_OUTPUT_GAMMA = 1.0;
 
 // Plugin for 3d-tiles-renderer that replaces tile materials with
 // DayNightStandardMaterial instances, giving the same sun-based day/night
