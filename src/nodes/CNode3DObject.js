@@ -54,7 +54,13 @@ import {
 } from "three";
 import {FileManager, Globals, guiMenus, NodeMan, setRenderOne, Sit} from "../Globals";
 import {assert} from "../assert";
-import {DebugArrowAB, disposeScene, patchMaterialForLinearOutput, propagateLayerMaskObject, removeDebugArrow} from "../threeExt";
+import {
+    DebugArrowAB,
+    disposeScene,
+    patchMaterialForLinearOutput,
+    propagateLayerMaskObject,
+    removeDebugArrow
+} from "../threeExt";
 import {CNodeViewText} from "./CNodeViewText.js";
 import {loadModelAsset} from "../ModelLoader";
 import {V3} from "../threeUtils";
@@ -601,16 +607,25 @@ function createGradientTexture(paletteName) {
 }
 
 const gradientVertexShader = `
-    varying vec3 vWorldPosition;
+    uniform vec3 gradientCenter;
+    uniform vec3 gradientDir;
+
+    varying float vGradientD;
     varying vec3 vWorldNormal;
     varying vec4 vPosition;
 
     void main() {
-        // All gradient modes use world-space positions so the gradient is
-        // consistent across model hierarchies with varying internal transforms.
+        // Compute world-space position so the gradient is consistent across
+        // model hierarchies with varying internal transforms.
         vec4 worldPos = modelMatrix * vec4(position, 1.0);
-        vWorldPosition = worldPos.xyz;
         vWorldNormal = normalize(mat3(modelMatrix) * normal);
+
+        // Compute the position-based gradient dot product per-vertex to avoid
+        // precision loss from interpolating large ECEF coordinates as varyings.
+        // The subtraction of two large ECEF values still happens in 32-bit, but
+        // the small result interpolates cleanly across the triangle.
+        vGradientD = dot(worldPos.xyz - gradientCenter, gradientDir);
+
         vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
         vPosition = projectionMatrix * mvPosition;
         gl_Position = vPosition;
@@ -619,7 +634,6 @@ const gradientVertexShader = `
 
 const gradientFragmentShader = `
     uniform sampler2D gradientMap;
-    uniform vec3 gradientCenter;
     uniform vec3 gradientDir;
     uniform float gradientHalfHeight;
     uniform float gradientScale;
@@ -631,7 +645,7 @@ const gradientFragmentShader = `
     uniform float nearPlane;
     uniform float farPlane;
 
-    varying vec3 vWorldPosition;
+    varying float vGradientD;
     varying vec3 vWorldNormal;
     varying vec4 vPosition;
 
@@ -648,10 +662,10 @@ const gradientFragmentShader = `
             float extent = 0.5 * (gradientScale / 100.0);
             t = d / (2.0 * extent) + 0.5;
         } else {
-            // Position-based gradient: project onto direction vector
-            float d = dot(vWorldPosition - gradientCenter, gradientDir);
+            // Position-based gradient: use per-vertex dot product from vertex shader
+            // to avoid precision loss from interpolating large ECEF positions.
             float extent = gradientHalfHeight * (gradientScale / 100.0);
-            t = d / (2.0 * extent) + 0.5;
+            t = vGradientD / (2.0 * extent) + 0.5;
         }
 
         if (reverseGradient > 0.5) {
