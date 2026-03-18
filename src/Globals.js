@@ -43,7 +43,8 @@ export const Globals = {
         dbg_updateSatelliteScales: true,
         dbg_renderNightSky: true,
         dbg_renderFullscreenQuad: true,
-        dbg_renderSunSky: true
+        dbg_renderSunSky: true,
+        dbg_sRGBOutputEncoding: true,
     }
 }
 

@@ -28,6 +28,7 @@ import {
     Group,
     HalfFloatType,
     LinearFilter,
+    LinearSRGBColorSpace,
     Mesh,
     NearestFilter,
     NormalBlending,
@@ -156,9 +157,11 @@ export class CNodeView3D extends CNodeViewCanvas {
         this.syncPixelZoomWithVideo = v.syncPixelZoomWithVideo ?? false;
         this.background = v.background ?? new Color(0x000000);
 
-        // check if this.background is an array, and if so, convert to a color
+        // Ensure background is always a Color object (may be string, array, hex, or Color)
         if (this.background instanceof Array) {
             this.background = new Color(this.background[0], this.background[1], this.background[2])
+        } else if (!this.background.isColor) {
+            this.background = new Color(this.background);
         }
 
         this._lookViewFog = new FogExp2(new Color(this.background), 0);
@@ -193,6 +196,7 @@ export class CNodeView3D extends CNodeViewCanvas {
             debugFolder.add(Globals.renderDebugFlags, "dbg_copyToScreen").name("Copy To Screen").onChange(() => setRenderOne(true));
             debugFolder.add(Globals.renderDebugFlags, "dbg_updateCameraMatrices").name("Update Camera Matrices").onChange(() => setRenderOne(true));
             debugFolder.add(Globals.renderDebugFlags, "dbg_mainViewUseLookLayers").name("Main Use Look Layers").onChange(() => setRenderOne(true));
+            debugFolder.add(Globals.renderDebugFlags, "dbg_sRGBOutputEncoding").name("sRGB Output Encoding").onChange(() => setRenderOne(true));
             
             debugFolder.add(Globals, "tileDelay", 0, 5, 0.01).name("Tile Load Delay (s)").onChange(() => setRenderOne(true));
             
@@ -953,7 +957,7 @@ export class CNodeView3D extends CNodeViewCanvas {
 
         this.renderer.setPixelRatio(this.in.canvasWidth ? 1 : window.devicePixelRatio);
         this.renderer.setSize(this.widthDiv, this.heightDiv, false);
-        this.renderer.colorSpace = SRGBColorSpace;
+        this.renderer.outputColorSpace = SRGBColorSpace;
         
         // Initialize GPU Memory Monitor on the first renderer created (only in local/dev mode)
         if (isLocal) {
@@ -996,7 +1000,7 @@ export class CNodeView3D extends CNodeViewCanvas {
         this.renderTargetAntiAliased = new WebGLRenderTarget(256, 256, {
             format: RGBAFormat,
             type: renderTargetType,
-            colorSpace: SRGBColorSpace,
+            colorSpace: LinearSRGBColorSpace,
             minFilter: NearestFilter,
             magFilter: NearestFilter,
             samples: aaSamples, // Number of samples for MSAA
@@ -1007,7 +1011,7 @@ export class CNodeView3D extends CNodeViewCanvas {
             magFilter: NearestFilter,
             format: RGBAFormat,
             type: renderTargetType,
-            colorSpace: SRGBColorSpace,
+            colorSpace: LinearSRGBColorSpace,
         });
 
         this.renderTargetB = new WebGLRenderTarget(256, 256, {
@@ -1015,7 +1019,7 @@ export class CNodeView3D extends CNodeViewCanvas {
             magFilter: NearestFilter,
             format: RGBAFormat,
             type: renderTargetType,
-            colorSpace: SRGBColorSpace,
+            colorSpace: LinearSRGBColorSpace,
         });
 
         // Track last dimensions to avoid redundant setSize() calls
@@ -1028,10 +1032,14 @@ export class CNodeView3D extends CNodeViewCanvas {
             return;
         }
 
-        // Shader material for copying texture
+        // Shader material for copying render target to screen.
+        // Render targets store linear data; the sRGBOutput uniform enables
+        // linear→sRGB encoding for correct display (debug toggle in Render Debug menu).
+        // https://discourse.threejs.org/t/different-color-output-when-rendering-to-webglrendertarget/57494
         this.copyMaterial = new ShaderMaterial({
             uniforms: {
-                'tDiffuse': {value: null}
+                'tDiffuse': {value: null},
+                'sRGBOutput': {value: false},
             },
             vertexShader: /* glsl */`
             varying vec2 vUv;
@@ -1042,13 +1050,13 @@ export class CNodeView3D extends CNodeViewCanvas {
         `,
             fragmentShader: /* glsl */`
             uniform sampler2D tDiffuse;
+            uniform bool sRGBOutput;
             varying vec2 vUv;
             void main() {
                 gl_FragColor = texture2D(tDiffuse, vUv);
-
-                // Apply gamma correction to match sRGB encoding
-                // https://discourse.threejs.org/t/different-color-output-when-rendering-to-webglrendertarget/57494
-                // gl_FragColor = sRGBTransferOETF( gl_FragColor );
+                if (sRGBOutput) {
+                    gl_FragColor = linearToOutputTexel( gl_FragColor );
+                }
             }
         `
         });
@@ -1431,6 +1439,7 @@ export class CNodeView3D extends CNodeViewCanvas {
                     }
 
                     this.copyMaterial.uniforms['tDiffuse'].value = currentRenderTarget.texture;
+                    this.copyMaterial.uniforms['sRGBOutput'].value = Globals.renderDebugFlags.dbg_sRGBOutputEncoding;
                     this.fullscreenQuad.material = this.copyMaterial;  // Set the material to the copy material
                     this.renderer.setRenderTarget(null);
                     this.renderer.render(this.fullscreenQuad, this.fullscreenQuadCamera);
@@ -1461,7 +1470,9 @@ export class CNodeView3D extends CNodeViewCanvas {
             uniform float opacity;
             varying vec2 vUv;
             void main() {
-                gl_FragColor = vec4(color, opacity);
+                // Sky color uniform is in sRGB space; convert to linear
+                // for consistent linear render target output.
+                gl_FragColor = sRGBTransferEOTF(vec4(color, opacity));
             }
         `,
             transparent: true,
@@ -1617,7 +1628,7 @@ export class CNodeView3D extends CNodeViewCanvas {
         assert(this.scene, "CNodeView3D needs global GlobalScene")
 
         const spriteCrosshairMaterial = new SpriteMaterial({
-            map: new TextureLoader().load(SITREC_APP + 'data/images/crosshairs.png'),
+            map: (() => { const t = new TextureLoader().load(SITREC_APP + 'data/images/crosshairs.png'); t.colorSpace = SRGBColorSpace; return t; })(),
             color: 0xffffff, sizeAttenuation: false,
             depthTest: false, // no depth buffer, so it's always on top
             depthWrite: false,
