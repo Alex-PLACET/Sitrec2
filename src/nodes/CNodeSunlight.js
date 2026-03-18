@@ -80,28 +80,28 @@ export class CNodeSunlight extends CNode {
     }
 
 
-    // the brightness of the sky is different to the brightness of the sun at a point
-    // as the sun is illuminating a body of atmosphere above the viewer
-    // so we use a different ad-hoc model to calculate the sky brightness
-    // just interpolating from 0 at -8 degrees to 1.0 at +5 degrees
-    // this is a simple model, and does not take into account the actual scattering of light
+    // Sky brightness model for star visibility and sky overlay opacity.
+    // Uses the full twilight range (0° to -18°) with a smoothstep curve
+    // that matches observed twilight behavior: sky stays bright through
+    // civil twilight (-6°), stars emerge mid-nautical (~-9°), and reach
+    // full visibility at astronomical twilight end (-18°).
     calculateSkyBrightness(position, date) {
         if (!this.atmosphere) {
             return 0;
         }
         const sun = this.calculateSunAt(position, date)
-        const skyDarkAngle = -8;
-        const skyBrightAngle = 5;
-        // use result.sunAngle, and go from 0 at skyDarkAngle to 1.0 at skyBrightAngle
-        // and return the result
+        const skyDarkAngle = -18;  // astronomical twilight end
+        const skyBrightAngle = 0;  // geometric sunset
         let skyBrightness = 0;
         if (sun.sunAngle < skyDarkAngle) {
             skyBrightness = 0; // night
         } else if (sun.sunAngle > skyBrightAngle) {
             skyBrightness = 1; // full daylight
         } else {
-            // linear interpolation between the two angles
-            skyBrightness = (sun.sunAngle - skyDarkAngle) / (skyBrightAngle - skyDarkAngle);
+            // smoothstep — stays brighter longer during civil twilight,
+            // then drops through nautical/astronomical twilight
+            const t = (sun.sunAngle - skyDarkAngle) / (skyBrightAngle - skyDarkAngle);
+            skyBrightness = t * t * (3 - 2 * t);
         }
         // infoDiv.innerHTML+=`<br>Sky Brightness: ${skyBrightness.toFixed(2)} (angle: ${sun.sunAngle.toFixed(2)})`
         // return the sky brightness
