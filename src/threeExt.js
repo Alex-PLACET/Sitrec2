@@ -16,6 +16,7 @@ import {
     Ray,
     Sphere,
     SphereGeometry,
+    SRGBColorSpace,
     TextureLoader,
     Vector3,
     WireframeGeometry
@@ -35,6 +36,23 @@ import {LineGeometry} from "three/addons/lines/LineGeometry.js";
 import {Line2} from "three/addons/lines/Line2.js";
 import {assert} from "./assert.js";
 import {intersectSphere2, makeMatrix4PointYAt, V3} from "./threeUtils";
+
+// When ColorManagement is disabled, standard materials operate in sRGB space.
+// Since the copy-to-screen shader applies sRGB encoding, we inject
+// sRGBTransferEOTF at the end of the fragment shader so the round-trip
+// (sRGB output → linearize here → copy shader encodes) preserves the original colors.
+export function patchMaterialForLinearOutput(material) {
+    const origOBC = material.onBeforeCompile;
+    material.onBeforeCompile = function(shader, renderer) {
+        if (origOBC) origOBC.call(this, shader, renderer);
+        shader.fragmentShader = shader.fragmentShader.replace(
+            '#include <dithering_fragment>',
+            `#include <dithering_fragment>
+gl_FragColor = sRGBTransferEOTF(gl_FragColor);`
+        );
+    };
+    return material;
+}
 
 Material.prototype.getMap = function() {
     return this.uniforms?.map?.value ?? this.map;
@@ -847,7 +865,7 @@ export function testTextureCube(url, position, size, scene) {
     // first load the texture
     const loader = new TextureLoader();
     const texture = loader.load(url);
-//    texture.encoding = sRGBEncoding;
+    texture.colorSpace = SRGBColorSpace;
 
     // create a basic material with that texture
     const material = new MeshBasicMaterial({map: texture});
