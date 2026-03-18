@@ -197,17 +197,36 @@ function normalizeDroppedModelMaterials(scene, file) {
             return;
         }
 
-        const materials = Array.isArray(child.material) ? child.material : [child.material];
-        for (const material of materials) {
+        const materialList = Array.isArray(child.material) ? child.material : [child.material];
+        const normalizedMaterials = materialList.map((material) => {
             if (!shouldNormalizeDroppedModelMaterial(file, material)) {
-                continue;
+                return material;
             }
 
             material.metalness = 0;
             material.needsUpdate = true;
             material.userData ??= {};
             material.userData.sitrecDroppedModelMaterialFix = "demetalized-for-ambient";
+            return material;
+        });
+
+        child.material = Array.isArray(child.material) ? normalizedMaterials : normalizedMaterials[0];
+    });
+}
+
+function ensureGLTFMeshNormals(scene) {
+    scene.traverse((child) => {
+        if (!child.isMesh) {
+            return;
         }
+
+        const geometry = child.geometry;
+        if (!geometry?.getAttribute("position") || geometry.getAttribute("normal")) {
+            return;
+        }
+
+        geometry.computeVertexNormals();
+        geometry.normalizeNormals();
     });
 }
 
@@ -864,7 +883,10 @@ function parseGLBModel(data, filename) {
         const loader = createGLTFLoader();
         loader.parse(coerceArrayBuffer(data, filename), "", (gltf) => {
             checkModelHierarchy(gltf, filename);
+            ensureGLTFMeshNormals(gltf.scene);
             normalizeDroppedModelMaterials(gltf.scene, filename);
+            gltf.scene.userData ??= {};
+            gltf.scene.userData.sitrecModelFormat = "glb";
 
             resolve({
                 scene: gltf.scene,

@@ -1045,7 +1045,7 @@ export class CNodeView3D extends CNodeViewCanvas {
             varying vec2 vUv;
             void main() {
                 gl_FragColor = texture2D(tDiffuse, vUv);
-                
+
                 // Apply gamma correction to match sRGB encoding
                 // https://discourse.threejs.org/t/different-color-output-when-rendering-to-webglrendertarget/57494
                 // gl_FragColor = sRGBTransferOETF( gl_FragColor );

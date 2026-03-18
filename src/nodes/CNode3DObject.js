@@ -33,6 +33,8 @@ import {
     MeshLambertMaterial,
     MeshPhongMaterial,
     MeshPhysicalMaterial,
+    MeshStandardMaterial,
+    NearestFilter,
     OctahedronGeometry,
     QuadraticBezierCurve3,
     Raycaster,
@@ -41,7 +43,9 @@ import {
     ShaderMaterial,
     Sphere,
     SphereGeometry,
+    SRGBColorSpace,
     TetrahedronGeometry,
+    TextureLoader,
     TorusGeometry,
     TorusKnotGeometry,
     TubeGeometry,
@@ -668,6 +672,29 @@ const gradientFragmentShader = `
     }
 `;
 
+// Create an 8x8 checkerboard DataTexture
+function createCheckerboardTexture(color1, color2) {
+    const size = 8;
+    const data = new Uint8Array(size * size * 4);
+    const c1 = new Color(color1);
+    const c2 = new Color(color2);
+    for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+            const c = (x + y) % 2 === 0 ? c1 : c2;
+            const idx = (y * size + x) * 4;
+            data[idx]     = Math.round(c.r * 255);
+            data[idx + 1] = Math.round(c.g * 255);
+            data[idx + 2] = Math.round(c.b * 255);
+            data[idx + 3] = 255;
+        }
+    }
+    const texture = new DataTexture(data, size, size, RGBAFormat, UnsignedByteType);
+    texture.minFilter = NearestFilter;
+    texture.magFilter = NearestFilter;
+    texture.needsUpdate = true;
+    return texture;
+}
+
 // material types for meshes
 const materialTypes = {
     basic: {
@@ -750,12 +777,35 @@ const materialTypes = {
             scale: [[100, 1, 1000, 1], "Scale the gradient extent as a percentage of the object height (100% = full height)"],
             shift: [[0, -100, 100, 1], "Offset the gradient center along its direction (% of bounding diameter)"],
         }
-    }
+    },
+
+    checkerboard: {
+        m: MeshLambertMaterial,
+        params: {
+            color1: ["white", "First checker color"],
+            color2: ["#808080", "Second checker color"],
+            emissive: ["black", "Emissive color"],
+            emissiveIntensity: [[1, 0, 1, 0.01], "Intensity of self-illuminated color"],
+            flatShading: [false, "Enable flat shading"],
+            fog: [true, "Enable Fog"],
+        }
+    },
+
+    f35atlas: {
+        m: MeshStandardMaterial,
+        params: {
+            roughness: [[0.5, 0, 1, 0.01], "Roughness"],
+            metalness: [[0, 0, 1, 0.01], "Metalness"],
+            emissive: ["black", "Emissive color"],
+            emissiveIntensity: [[1, 0, 1, 0.01], "Intensity of self-illuminated color"],
+            fog: [true, "Enable Fog"],
+        }
+    },
 
 }
 
 const commonMaterialParams = {
-    material: [["basic", "lambert", "phong", "physical", "envMap", "gradient"],"Type of Material lighting"],
+    material: [["basic", "lambert", "phong", "physical", "envMap", "gradient", "checkerboard", "F35Atlas"],"Type of Material lighting"],
     wireframe: [false, "Display geometry object as a wireframe"],
     edges: [false, "Display geometry object as edges"],
     depthTest: [true, "Enable depth testing"],
@@ -784,6 +834,7 @@ const commonParams = {
     rotateY: [[0, -180, 180, 1], "Rotation about the Y-axis"],
     rotateZ: [[0, -180, 180, 1], "Rotation about the Z-axis"],
     applyMaterial: [false, "Apply Material to the 3D model, overriding the loaded materials"],
+    modelDisplayMode: [["normal", "rawTexture", "rawTextureMipped", "lightingOnly", "lambert"], "Choose whether the model uses normal lit shading, exact texel raw texture, filtered+mipped raw texture, lighting-only grayscale, or lambert with source textures"],
    // color: "white",
 }
 
@@ -1731,6 +1782,7 @@ export class CNode3DObject extends CNode3DGroup {
         // Each entry: [controllerProperty, showInModelMode, customLogic]
         const controllerVisibilityRules = [
             ['applyMaterial', true, null], // Show in model mode, hide in geometry mode
+            ['modelDisplayMode', true, null], // Show in model mode, hide in geometry mode
             ['selectModel', true, null], // Show in model mode, hide in geometry mode
             ['geometry', false, null], // Hide in model mode, show in geometry mode
             ['exportToKML', false, null], // Hide in model mode, show in geometry mode
@@ -1859,6 +1911,7 @@ export class CNode3DObject extends CNode3DGroup {
 
                         this.model = modelAsset.scene;
                         this.applyModelFilenameParameters(modelAsset);
+                        this.captureModelSourceMaterials();
 
                         if (Globals.shadowsEnabled) {
                             this.model.traverse((child) => {
@@ -1902,20 +1955,7 @@ export class CNode3DObject extends CNode3DGroup {
                 });
             }
 
-
-            if (this.common.applyMaterial) {
-                this.applyMaterialToModel();
-            } else {
-                // restore the original materials
-                if (this.model) {
-                    this.model.traverse((child) => {
-                        if (child.isMesh && child.originalMaterial) {
-                            child.material = child.originalMaterial;
-                            child.originalMaterial = undefined;
-                        }
-                    });
-                }
-            }
+            this.applyMaterialToModel();
             this.rebuildBoundingBox();
             return;
         }
@@ -2257,6 +2297,22 @@ export class CNode3DObject extends CNode3DGroup {
                 fragmentShader: gradientFragmentShader,
                 fog: false,
             });
+        } else if (materialType === "checkerboard") {
+            this.disposeCubeCamera();
+            const checkerTexture = createCheckerboardTexture(
+                this.materialParams.color1 ?? "white",
+                this.materialParams.color2 ?? "#808080",
+            );
+            delete params.color1;
+            delete params.color2;
+            params.map = checkerTexture;
+            this.material = new materialDef.m(params);
+        } else if (materialType === "f35atlas") {
+            this.disposeCubeCamera();
+            const texture = new TextureLoader().load("data/images/F35TextureAtlas.jpg");
+            texture.colorSpace = SRGBColorSpace;
+            params.map = texture;
+            this.material = new materialDef.m(params);
         } else if (isEnvMap) {
             delete params.envMapResolution;
             this.setupCubeCamera();
@@ -2301,31 +2357,279 @@ export class CNode3DObject extends CNode3DGroup {
     }
 
     applyMaterialToModel() {
-        // iterate over all the meshes in the model
-        // and apply this.material to them
-
-        if (this.model === undefined || !this.common.applyMaterial) {
+        if (this.model === undefined) {
             return;
         }
-        const isShader = this.material && this.material.isShaderMaterial;
+
         this.model.traverse((child) => {
             if (child.isMesh && !child.userData?.sitrecGaussianSplat) {
-                if (child.originalMaterial === undefined) {
-                    // save the original material so we can restore it later
-                    child.originalMaterial = child.material;
-                }
-                // ShaderMaterial is shared (not cloned) to avoid texture/uniform issues
-                child.material = isShader ? this.material : this.material.clone();
-                // // if the material has a map, then set the colorSpace to NoColorSpace
-                // if (child.material.map) {
-                //     child.material.map.colorSpace = NoColorSpace;
-                // }
-                // if (child.material.emissiveMap) {
-                //     child.material.emissiveMap.colorSpace = NoColorSpace;
-                // }
+                const sourceMaterial = this.getModelSourceMaterial(child);
+                const overrideMaterial = this.buildModelOverrideMaterial(sourceMaterial);
+                this.setModelMeshMaterial(child, overrideMaterial);
             }
         });
 
+    }
+
+    captureModelSourceMaterials() {
+        if (!this.model) {
+            return;
+        }
+
+        this.model.traverse((child) => {
+            if (!child.isMesh || child.userData?.sitrecGaussianSplat) {
+                return;
+            }
+
+            child.userData ??= {};
+            if (child.userData.sitrecSourceMaterial === undefined) {
+                child.userData.sitrecSourceMaterial = child.originalMaterial ?? child.material;
+            }
+            child.originalMaterial = undefined;
+        });
+    }
+
+    getModelSourceMaterial(child) {
+        child.userData ??= {};
+        if (child.userData.sitrecSourceMaterial === undefined) {
+            child.userData.sitrecSourceMaterial = child.originalMaterial ?? child.material;
+            child.originalMaterial = undefined;
+        }
+        return child.userData.sitrecSourceMaterial;
+    }
+
+    buildModelOverrideMaterial(sourceMaterial) {
+        const sourceList = Array.isArray(sourceMaterial) ? sourceMaterial : [sourceMaterial];
+        const displayMode = this.getModelDisplayMode();
+
+        if (displayMode === "rawTexture") {
+            const debugMaterials = sourceList.map((material) => this.createDebugTextureMaterial(material, {
+                disableMipmaps: true,
+                nearestSampling: true,
+            }));
+            return Array.isArray(sourceMaterial) ? debugMaterials : debugMaterials[0];
+        }
+
+        if (displayMode === "rawTextureMipped") {
+            const debugMaterials = sourceList.map((material) => this.createDebugTextureMaterial(material, {
+                disableMipmaps: false,
+                nearestSampling: false,
+            }));
+            return Array.isArray(sourceMaterial) ? debugMaterials : debugMaterials[0];
+        }
+
+        if (displayMode === "lightingOnly") {
+            const lightingMaterials = sourceList.map((material) => this.createLightingOnlyMaterial(material));
+            return Array.isArray(sourceMaterial) ? lightingMaterials : lightingMaterials[0];
+        }
+
+        if (displayMode === "lambert") {
+            const lambertMaterials = sourceList.map((material) => this.createLambertMaterial(material));
+            return Array.isArray(sourceMaterial) ? lambertMaterials : lambertMaterials[0];
+        }
+
+        if (!this.common.applyMaterial) {
+            return sourceMaterial;
+        }
+
+        if (this.material?.isShaderMaterial) {
+            const sharedMaterials = sourceList.map(() => this.material);
+            return Array.isArray(sourceMaterial) ? sharedMaterials : this.material;
+        }
+
+        const overrideMaterials = sourceList.map(() => {
+            const clone = this.material.clone();
+            clone.userData ??= {};
+            clone.userData.sitrecOwnedModelOverride = true;
+            return clone;
+        });
+        return Array.isArray(sourceMaterial) ? overrideMaterials : overrideMaterials[0];
+    }
+
+    createDebugTextureMaterial(sourceMaterial, options = {}) {
+        const disableMipmaps = options.disableMipmaps ?? true;
+        const nearestSampling = options.nearestSampling ?? true;
+        const sourceDebugMap = sourceMaterial?.map ?? sourceMaterial?.emissiveMap ?? null;
+        let debugMap = null;
+
+        if (sourceDebugMap) {
+            debugMap = sourceDebugMap.clone();
+            debugMap.image = sourceDebugMap.image;
+            debugMap.source = sourceDebugMap.source;
+            debugMap.colorSpace = "";  // NoColorSpace: bypass color management for raw texel display
+            debugMap.flipY = sourceDebugMap.flipY;
+            debugMap.wrapS = sourceDebugMap.wrapS;
+            debugMap.wrapT = sourceDebugMap.wrapT;
+            debugMap.offset.copy(sourceDebugMap.offset);
+            debugMap.repeat.copy(sourceDebugMap.repeat);
+            debugMap.center.copy(sourceDebugMap.center);
+            debugMap.rotation = sourceDebugMap.rotation;
+            debugMap.matrixAutoUpdate = sourceDebugMap.matrixAutoUpdate;
+            debugMap.matrix.copy(sourceDebugMap.matrix);
+
+            if (nearestSampling) {
+                debugMap.minFilter = NearestFilter;
+                debugMap.magFilter = NearestFilter;
+            } else {
+                debugMap.minFilter = sourceDebugMap.minFilter;
+                debugMap.magFilter = sourceDebugMap.magFilter;
+            }
+
+            debugMap.generateMipmaps = disableMipmaps ? false : sourceDebugMap.generateMipmaps;
+            debugMap.anisotropy = disableMipmaps ? 1 : sourceDebugMap.anisotropy;
+            debugMap.needsUpdate = true;
+        }
+
+        const debugColor = debugMap
+            ? new Color(0xffffff)
+            : (sourceMaterial?.color?.clone?.() ?? new Color(0xffffff));
+
+        const material = new MeshBasicMaterial({
+            color: debugColor,
+            map: debugMap,
+            alphaMap: sourceMaterial?.alphaMap ?? null,
+            side: sourceMaterial?.side,
+            transparent: sourceMaterial?.transparent ?? false,
+            opacity: sourceMaterial?.opacity ?? 1,
+            alphaTest: sourceMaterial?.alphaTest ?? 0,
+            depthTest: sourceMaterial?.depthTest ?? true,
+            depthWrite: sourceMaterial?.depthWrite ?? true,
+            fog: false,
+        });
+
+        material.vertexColors = false;
+        material.toneMapped = false;
+        material.name = `${sourceMaterial?.name ?? "material"}_sitrecRawTexture`;
+        material.userData ??= {};
+        material.userData.sitrecOwnedModelOverride = true;
+        material.userData.sitrecDebugTextureOnly = true;
+        material.userData.sitrecDebugTextureMode = disableMipmaps ? "rawTexture" : "rawTextureMipped";
+        material.userData.sitrecOwnedTextures = debugMap ? [debugMap] : [];
+        return material;
+    }
+
+    createLightingOnlyMaterial(sourceMaterial) {
+        const material = new MeshLambertMaterial({
+            // Dark neutral albedo avoids clipping to white under high ambient light.
+            color: 0x101010,
+            side: sourceMaterial?.side,
+            transparent: sourceMaterial?.transparent ?? false,
+            opacity: sourceMaterial?.opacity ?? 1,
+            alphaMap: sourceMaterial?.alphaMap ?? null,
+            alphaTest: sourceMaterial?.alphaTest ?? 0,
+            depthTest: sourceMaterial?.depthTest ?? true,
+            depthWrite: sourceMaterial?.depthWrite ?? true,
+            fog: false,
+        });
+
+        material.vertexColors = false;
+        material.toneMapped = false;
+        material.name = `${sourceMaterial?.name ?? "material"}_sitrecLightingOnly`;
+        material.userData ??= {};
+        material.userData.sitrecOwnedModelOverride = true;
+        material.userData.sitrecLightingOnly = true;
+        return material;
+    }
+
+    createLambertMaterial(sourceMaterial) {
+        const material = new MeshLambertMaterial({
+            color: sourceMaterial?.color?.clone?.() ?? new Color(0xffffff),
+            map: sourceMaterial?.map ?? null,
+            emissive: sourceMaterial?.emissive?.clone?.() ?? new Color(0x000000),
+            emissiveMap: sourceMaterial?.emissiveMap ?? null,
+            emissiveIntensity: sourceMaterial?.emissiveIntensity ?? 1,
+            alphaMap: sourceMaterial?.alphaMap ?? null,
+            side: sourceMaterial?.side,
+            transparent: sourceMaterial?.transparent ?? false,
+            opacity: sourceMaterial?.opacity ?? 1,
+            alphaTest: sourceMaterial?.alphaTest ?? 0,
+            depthTest: sourceMaterial?.depthTest ?? true,
+            depthWrite: sourceMaterial?.depthWrite ?? true,
+            fog: sourceMaterial?.fog ?? true,
+        });
+
+        material.name = `${sourceMaterial?.name ?? "material"}_sitrecLambert`;
+        material.userData ??= {};
+        material.userData.sitrecOwnedModelOverride = true;
+        return material;
+    }
+
+    getModelDisplayMode() {
+        if (this.common.modelDisplayMode) {
+            return this.common.modelDisplayMode;
+        }
+
+        return this.common.debugTextureOnly ? "rawTexture" : "normal";
+    }
+
+    setModelMeshMaterial(child, nextMaterial) {
+        const currentMaterial = child.material;
+        if (this.materialsMatch(currentMaterial, nextMaterial)) {
+            return;
+        }
+
+        this.disposeOwnedOverrideMaterials(currentMaterial);
+        child.material = nextMaterial;
+
+        const materialList = Array.isArray(child.material) ? child.material : [child.material];
+        for (const material of materialList) {
+            if (material) {
+                material.needsUpdate = true;
+            }
+        }
+    }
+
+    materialsMatch(a, b) {
+        if (a === b) {
+            return true;
+        }
+
+        if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
+            return false;
+        }
+
+        return a.every((material, index) => material === b[index]);
+    }
+
+    disposeOwnedOverrideMaterials(materialOrList) {
+        const materialList = Array.isArray(materialOrList) ? materialOrList : [materialOrList];
+        const disposed = new Set();
+        const disposedTextures = new Set();
+
+        for (const material of materialList) {
+            if (!material || disposed.has(material) || material.userData?.sitrecOwnedModelOverride !== true) {
+                continue;
+            }
+            disposed.add(material);
+            const ownedTextures = Array.isArray(material.userData?.sitrecOwnedTextures)
+                ? material.userData.sitrecOwnedTextures
+                : [];
+            for (const texture of ownedTextures) {
+                if (!texture || disposedTextures.has(texture)) {
+                    continue;
+                }
+                disposedTextures.add(texture);
+                texture.dispose?.();
+            }
+            material.dispose?.();
+        }
+    }
+
+    restoreModelSourceMaterials() {
+        if (!this.model) {
+            return;
+        }
+
+        this.model.traverse((child) => {
+            if (!child.isMesh || child.userData?.sitrecGaussianSplat) {
+                return;
+            }
+
+            const sourceMaterial = child.userData?.sitrecSourceMaterial;
+            if (sourceMaterial !== undefined) {
+                this.setModelMeshMaterial(child, sourceMaterial);
+            }
+        });
     }
 
 
@@ -2361,6 +2665,7 @@ export class CNode3DObject extends CNode3DGroup {
 
         if (this.model) {
             this.group.remove(this.model);
+            this.restoreModelSourceMaterials();
             disposeScene(this.model)
             this.model = undefined
         }

@@ -1,3 +1,5 @@
+let mockGLTFSceneFactory = null;
+
 jest.mock("three/addons/loaders/DRACOLoader.js", () => ({
     DRACOLoader: class DRACOLoader {
         setDecoderPath() {}
@@ -12,7 +14,8 @@ jest.mock("three/addons/loaders/GLTFLoader.js", () => {
             setDRACOLoader() {}
 
             parse(_data, _path, onLoad) {
-                onLoad({scene: new Group()});
+                const scene = mockGLTFSceneFactory ? mockGLTFSceneFactory() : new Group();
+                onLoad({scene});
             }
         },
     };
@@ -112,7 +115,16 @@ jest.mock("three/addons/loaders/PLYLoader.js", () => {
     };
 });
 
-import {Box3, PerspectiveCamera, Vector3} from "three";
+import {
+    Box3,
+    BufferGeometry,
+    Float32BufferAttribute,
+    Mesh,
+    MeshStandardMaterial,
+    PerspectiveCamera,
+    Texture,
+    Vector3
+} from "three";
 import {extractModelFilenameParameters, isSupportedModelFile, parseModelData} from "../src/ModelLoader";
 
 function toArrayBuffer(text) {
@@ -120,6 +132,10 @@ function toArrayBuffer(text) {
 }
 
 describe("ModelLoader", () => {
+    afterEach(() => {
+        mockGLTFSceneFactory = null;
+    });
+
     test("detects supported model extensions", () => {
         expect(isSupportedModelFile("model.glb")).toBe(true);
         expect(isSupportedModelFile("model.ply")).toBe(true);
@@ -176,6 +192,59 @@ describe("ModelLoader", () => {
 
         expect(modelAsset.filenameParameters.modelLength).toBeCloseTo(11.4829396325);
         expect(modelAsset.scene.userData.sitrecFilenameParameters.modelLength).toBeCloseTo(11.4829396325);
+    });
+
+    test("computes missing normals for lit GLB meshes", async () => {
+        mockGLTFSceneFactory = () => {
+            const geometry = new BufferGeometry();
+            geometry.setAttribute("position", new Float32BufferAttribute([
+                0, 0, 0,
+                1, 0, 0,
+                0, 1, 0,
+            ], 3));
+            geometry.setAttribute("uv", new Float32BufferAttribute([
+                0, 0,
+                1, 0,
+                0, 1,
+            ], 2));
+
+            const scene = new Mesh(geometry, new MeshStandardMaterial());
+            scene.isMesh = true;
+            return scene;
+        };
+
+        const modelAsset = await parseModelData("missing-normals.glb", new ArrayBuffer(0));
+        const normalAttribute = modelAsset.scene.geometry.getAttribute("normal");
+
+        expect(modelAsset.scene.userData.sitrecModelFormat).toBe("glb");
+        expect(normalAttribute).toBeDefined();
+        expect(normalAttribute.count).toBe(3);
+    });
+
+    test("demetalizes dropped photogrammetry-like GLB materials while keeping them lit", async () => {
+        mockGLTFSceneFactory = () => {
+            const geometry = new BufferGeometry();
+            geometry.setAttribute("position", new Float32BufferAttribute([
+                0, 0, 0,
+                1, 0, 0,
+                0, 1, 0,
+            ], 3));
+
+            const material = new MeshStandardMaterial({
+                map: new Texture(),
+                roughness: 1,
+                metalness: 1,
+            });
+
+            return new Mesh(geometry, material);
+        };
+
+        const modelAsset = await parseModelData("sam3d-drop.glb", new ArrayBuffer(0));
+
+        expect(modelAsset.scene.material.type).toBe("MeshStandardMaterial");
+        expect(modelAsset.scene.material.metalness).toBe(0);
+        expect(modelAsset.scene.material.userData.sitrecDroppedModelMaterialFix)
+            .toBe("demetalized-for-ambient");
     });
 
     test("parses point-cloud PLY files into points scene graphs", async () => {
