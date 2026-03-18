@@ -5,6 +5,7 @@ import * as LAYER from "./LayerMasks";
 import {CNodeLOSHorizonTrack} from "./nodes/CNodeLOSHorizonTrack";
 import {CNodeDisplayTrack} from "./nodes/CNodeDisplayTrack";
 import {MeshStandardMaterial, TextureLoader} from "three";
+import {patchMaterialForLinearOutput} from "./threeExt";
 
 import {SITREC_APP} from "./configUtils";
 import {Sit} from "./Globals";
@@ -24,10 +25,13 @@ export function SetupCloudNodes() {
     })
 
     const cloudTexture = new TextureLoader().load(SITREC_APP+'data/images/cloud-sprite-flatter.png?v=2');
-    const cloudMaterial = new MeshStandardMaterial({
+    // NOTE: NOT setting SRGBColorSpace — with ColorManagement disabled, standard
+    // materials operate in sRGB space. patchMaterialForLinearOutput handles the
+    // round-trip (sRGB output → linearize → copy shader encodes → original colors).
+    const cloudMaterial = patchMaterialForLinearOutput(new MeshStandardMaterial({
         map: cloudTexture,
         transparent: true,
-    });
+    }));
 
     console.log("+++ CloudDisplay Node")
     new CNodeDisplayClouds({

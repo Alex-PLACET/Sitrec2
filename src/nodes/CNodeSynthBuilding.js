@@ -28,7 +28,7 @@ import {screenToNDC} from "../mouseMoveView";
 import {ViewMan} from "../CViewManager";
 import {CustomManager, Globals, guiMenus, setRenderOne, Synth3DManager, UndoManager} from "../Globals";
 import {mouseInViewOnly} from "../ViewUtils";
-import {getPointBelow, pointAbove} from "../threeExt";
+import {getPointBelow, patchMaterialForLinearOutput, pointAbove} from "../threeExt";
 import {EventManager} from "../CEventManager";
 import {isInLeftSidebar, isInRightSidebar} from "../PageStructure";
 
@@ -1025,18 +1025,20 @@ export class CNodeSynthBuilding extends CNode3DGroup {
             flatShading: true  // Use face normals for flat surfaces
         };
         
+        let mat;
         switch (this.materialType) {
             case 'basic':
-                return new MeshBasicMaterial(materialConfig);
+                mat = new MeshBasicMaterial(materialConfig); break;
             case 'lambert':
-                return new MeshLambertMaterial(materialConfig);
+                mat = new MeshLambertMaterial(materialConfig); break;
             case 'phong':
-                return new MeshPhongMaterial(materialConfig);
+                mat = new MeshPhongMaterial(materialConfig); break;
             case 'physical':
-                return new MeshStandardMaterial(materialConfig);
+                mat = new MeshStandardMaterial(materialConfig); break;
             default:
-                return new MeshLambertMaterial(materialConfig);
+                mat = new MeshLambertMaterial(materialConfig); break;
         }
+        return patchMaterialForLinearOutput(mat);
     }
     
     /**

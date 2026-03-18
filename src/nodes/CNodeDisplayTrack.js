@@ -1,6 +1,6 @@
 //
 import {Globals, guiMenus, NodeMan, setRenderOne, Sit} from "../Globals";
-import {dispose} from "../threeExt";
+import {dispose, patchMaterialForLinearOutput} from "../threeExt";
 import {LineGeometry} from "three/addons/lines/LineGeometry.js";
 import {LineMaterial} from "three/addons/lines/LineMaterial.js";
 
@@ -853,7 +853,7 @@ export class CNodeDisplayTrack extends CNode3DGroup {
         geometry.computeBoundingSphere();
 
         // Make a material for the semi-transparent fill
-        const mat = new THREE.MeshPhongMaterial({
+        const mat = patchMaterialForLinearOutput(new THREE.MeshPhongMaterial({
             color: polyColor,
             transparent: true,
             opacity: polyOpacity,  // TODO - make this a parameter
@@ -861,7 +861,7 @@ export class CNodeDisplayTrack extends CNode3DGroup {
             depthFunc: this.depthFunc,
             // don't write to depth buffer
             depthWrite: this.depthWrite,
-        });
+        }));
 
         this.trackWall = new THREE.Mesh(geometry, mat);
         // Shift by midpoint

@@ -33,7 +33,6 @@ import {
     MeshLambertMaterial,
     MeshPhongMaterial,
     MeshPhysicalMaterial,
-    MeshStandardMaterial,
     NearestFilter,
     OctahedronGeometry,
     QuadraticBezierCurve3,
@@ -43,9 +42,7 @@ import {
     ShaderMaterial,
     Sphere,
     SphereGeometry,
-    SRGBColorSpace,
     TetrahedronGeometry,
-    TextureLoader,
     TorusGeometry,
     TorusKnotGeometry,
     TubeGeometry,
@@ -57,7 +54,7 @@ import {
 } from "three";
 import {FileManager, Globals, guiMenus, NodeMan, setRenderOne, Sit} from "../Globals";
 import {assert} from "../assert";
-import {DebugArrowAB, disposeScene, propagateLayerMaskObject, removeDebugArrow} from "../threeExt";
+import {DebugArrowAB, disposeScene, patchMaterialForLinearOutput, propagateLayerMaskObject, removeDebugArrow} from "../threeExt";
 import {CNodeViewText} from "./CNodeViewText.js";
 import {loadModelAsset} from "../ModelLoader";
 import {V3} from "../threeUtils";
@@ -791,21 +788,11 @@ const materialTypes = {
         }
     },
 
-    f35atlas: {
-        m: MeshStandardMaterial,
-        params: {
-            roughness: [[0.5, 0, 1, 0.01], "Roughness"],
-            metalness: [[0, 0, 1, 0.01], "Metalness"],
-            emissive: ["black", "Emissive color"],
-            emissiveIntensity: [[1, 0, 1, 0.01], "Intensity of self-illuminated color"],
-            fog: [true, "Enable Fog"],
-        }
-    },
 
 }
 
 const commonMaterialParams = {
-    material: [["basic", "lambert", "phong", "physical", "envMap", "gradient", "checkerboard", "F35Atlas"],"Type of Material lighting"],
+    material: [["basic", "lambert", "phong", "physical", "envMap", "gradient", "checkerboard"],"Type of Material lighting"],
     wireframe: [false, "Display geometry object as a wireframe"],
     edges: [false, "Display geometry object as edges"],
     depthTest: [true, "Enable depth testing"],
@@ -2307,12 +2294,6 @@ export class CNode3DObject extends CNode3DGroup {
             delete params.color2;
             params.map = checkerTexture;
             this.material = new materialDef.m(params);
-        } else if (materialType === "f35atlas") {
-            this.disposeCubeCamera();
-            const texture = new TextureLoader().load("data/images/F35TextureAtlas.jpg");
-            texture.colorSpace = SRGBColorSpace;
-            params.map = texture;
-            this.material = new materialDef.m(params);
         } else if (isEnvMap) {
             delete params.envMapResolution;
             this.setupCubeCamera();
@@ -2320,6 +2301,13 @@ export class CNode3DObject extends CNode3DGroup {
         } else {
             this.disposeCubeCamera();
             this.material = new materialDef.m(params);
+        }
+
+        // Standard materials (basic, lambert, phong, physical, envMap, checkerboard)
+        // operate in sRGB space when ColorManagement is disabled.
+        // Patch them to linearize output for the linear render target.
+        if (!this.material.isShaderMaterial) {
+            patchMaterialForLinearOutput(this.material);
         }
     }
 
@@ -2456,7 +2444,7 @@ export class CNode3DObject extends CNode3DGroup {
             debugMap = sourceDebugMap.clone();
             debugMap.image = sourceDebugMap.image;
             debugMap.source = sourceDebugMap.source;
-            debugMap.colorSpace = "";  // NoColorSpace: bypass color management for raw texel display
+            debugMap.colorSpace = sourceDebugMap.colorSpace;
             debugMap.flipY = sourceDebugMap.flipY;
             debugMap.wrapS = sourceDebugMap.wrapS;
             debugMap.wrapT = sourceDebugMap.wrapT;
