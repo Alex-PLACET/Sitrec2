@@ -45,7 +45,8 @@ export const NVGShader = {
         //			gl_FragColor.a *= opacity;
         //gl_FragColor.g = 0.0;
         
-        vec3 c = vec3(texture2D( tDiffuse, vUv ));
+        // Convert linear RT data to sRGB for effect math
+        vec3 c = sRGBTransferOETF(texture2D( tDiffuse, vUv )).rgb;
         //      vec3 c = texture2D(tDiffuse, gl_TexCoord[0].st + (n.xy*0.005)).rgb;
         float lum = dot(vec3(0.30, 0.59, 0.11), c);
         if (lum < luminanceThreshold)
@@ -56,6 +57,8 @@ export const NVGShader = {
         
         gl_FragColor.rgb = finalColor.rgb;
         gl_FragColor.a = 1.0;
+        // Convert sRGB output back to linear for the render target
+        gl_FragColor = sRGBTransferEOTF(gl_FragColor);
 
 		}`
 

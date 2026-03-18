@@ -38,7 +38,8 @@ export const FLIRShader = {
 		void main() {
         vec4 finalColor;
 
-        vec3 c = vec3(texture2D( tDiffuse, vUv ));
+        // Convert linear RT data to sRGB for effect math (calibrated for sRGB values)
+        vec3 c = sRGBTransferOETF(texture2D( tDiffuse, vUv )).rgb;
 
 
 // Simple horizontal blur. 
@@ -91,6 +92,10 @@ export const FLIRShader = {
         
         gl_FragColor.rgb = mono.rgb;
         gl_FragColor.a = 1.0;
+
+        // FLIR output is in sRGB-visual space; linearize for the linear
+        // render target so the copy shader's sRGB encoding round-trips it.
+        gl_FragColor = sRGBTransferEOTF(gl_FragColor);
 
 		}`
 

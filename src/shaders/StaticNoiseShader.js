@@ -72,11 +72,14 @@ fragmentShader: `
     
     void main() {
         vec2 p = vUv;
-        vec4 color = texture2D(tDiffuse, p);
+        // Convert linear RT data to sRGB for perceptually uniform noise
+        vec4 color = sRGBTransferOETF(texture2D(tDiffuse, p));
         float xs = gl_FragCoord.x;
         float ys = gl_FragCoord.y;
         vec4 snow = vec4(rand2(vec2(xs * time, ys * time) - 0.5) * amount);
         gl_FragColor = color + snow; // additive
+        // Convert back to linear for the render target
+        gl_FragColor = sRGBTransferEOTF(gl_FragColor);
     }
 
        `,

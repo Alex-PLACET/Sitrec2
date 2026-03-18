@@ -31,12 +31,14 @@ export const InvertShader = {
 
 		void main() {
 
-			gl_FragColor = texture2D( tDiffuse, vUv );
-            // invert it
+            // Convert linear RT data to sRGB for perceptual inversion
+			gl_FragColor = sRGBTransferOETF(texture2D( tDiffuse, vUv ));
             gl_FragColor.r = 1.0 - gl_FragColor.r;
             gl_FragColor.g = 1.0 - gl_FragColor.g;
             gl_FragColor.b = 1.0 - gl_FragColor.b;
-            
+
+            // Convert back to linear for the render target
+            gl_FragColor = sRGBTransferEOTF(gl_FragColor);
 
 		}`
 

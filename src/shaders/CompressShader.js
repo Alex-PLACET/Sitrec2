@@ -37,15 +37,15 @@ export const CompressShader = {
 
 		void main() {
 
-			gl_FragColor = texture2D( tDiffuse, vUv );
-            // compress the color range from 0.0 to 1.10
-            // to lower to upper
+            // Convert linear RT data to sRGB for range compression
+			gl_FragColor = sRGBTransferOETF(texture2D( tDiffuse, vUv ));
                 float span = upper - lower;
-                // since they are already in the range 0.0 to 1.0
-                // we just need to multiply by the span and add the lower
                 gl_FragColor.r = lower + span * gl_FragColor.r;
                 gl_FragColor.g = lower + span * gl_FragColor.g;
                 gl_FragColor.b = lower + span * gl_FragColor.b;
+
+            // Convert back to linear for the render target
+            gl_FragColor = sRGBTransferEOTF(gl_FragColor);
 
 		}`
 

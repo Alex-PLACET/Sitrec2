@@ -42,7 +42,8 @@ export const LevelsShader = {
 
         void main() {
 
-            vec4 color = texture2D( tDiffuse, vUv );
+            // Convert linear RT data to sRGB for levels math (calibrated for sRGB values)
+            vec4 color = sRGBTransferOETF(texture2D( tDiffuse, vUv ));
 
             // Normalize input levels
             color.rgb = (color.rgb - inputBlack) / (inputWhite - inputBlack);
@@ -54,6 +55,9 @@ export const LevelsShader = {
             color.rgb = outputBlack + (color.rgb * (outputWhite - outputBlack));
 
             gl_FragColor = vec4(color.rgb, opacity);
+
+            // Convert sRGB-space output back to linear for the render target
+            gl_FragColor = sRGBTransferEOTF(gl_FragColor);
 
         }`
 
