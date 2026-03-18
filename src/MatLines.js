@@ -2,12 +2,22 @@
 import {LineMaterial} from "three/addons/lines/LineMaterial.js";
 import {Color} from "three";
 
+// LineMaterial is a ShaderMaterial — Three.js does not apply color management
+// to its uniforms. Since the copy-to-screen shader applies sRGB encoding, we
+// must pre-linearize colors so the round-trip (linearize here + encode in copy
+// shader) produces the original intended sRGB color on screen.
+function linearizeColor(srgb) {
+    const c = srgb.clone();
+    c.convertSRGBToLinear();
+    return c;
+}
+
 const matLines = {} // collection of line materials that need updating on resize
 // we make one entry per unique material
 function makeMatLine(color, linewidth = 2, dashed = false) {
     if(typeof window === 'undefined')
         return null;
-    
+
     // if it's not a color object, then make it one
     if (!color.isColor) {
         color = new Color(color);
@@ -23,7 +33,7 @@ function makeMatLine(color, linewidth = 2, dashed = false) {
     if (!matLines[key]) {
 //        console.warn("LEAK?: Creating new line material for key: ", key)
         const lineMaterial = new LineMaterial({
-            color: color,
+            color: linearizeColor(color),
             linewidth: linewidth,
             dashed: dashed,
         })
