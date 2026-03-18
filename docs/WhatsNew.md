@@ -45,6 +45,130 @@ Example entry format:
 
 ---
 
+## Version 2.35.0 (2026-03-18)
+
+### New Features
+- **Electron Desktop App**: Build and run Sitrec as an offline Electron desktop application with local filesystem support and native file dialogs
+- **Color Space Management Overhaul**: Comprehensive fix to the render pipeline color space — proper sRGB tagging, linear output for custom shaders, and correct color management across terrain, globe, clouds, splats, 3D objects, tracks, and effects
+
+### Improvements
+- Document title now shows the current sitch name
+- Isolated serverless runtime config for cleaner builds
+
+### Bug Fixes
+- Fixed "World Down" gradient texture direction
+- Fixed gradient texture loss of accuracy from EUS→ECEF transition (now uses local dot product across triangles)
+- Removed unnecessary manual gamma correction from Google 3D Tiles
+- Fixed elevation caching causing tracks to get stuck
+- Fixed cached AGL track altitude lock
+- Removed bounding box arrows in look view
+
+---
+
+## Version 2.34.7 (2026-03-16)
+
+### Improvements
+- Proper Gaussian splat rendering for PLY files with improved stability
+- Updated custom model documentation
+
+### Bug Fixes
+- Fixed Gaussian splat PLY bounding box and scale
+
+---
+
+## Version 2.34.6 (2026-03-16)
+
+### New Features
+- **Shahed Drone Model**: Added Shahed drone as a built-in 3D model
+- **VR Sky Rendering**: Sky now renders correctly in VR mode
+
+### Bug Fixes
+- Fixed units label not updating correctly on deserialization
+
+---
+
+## Version 2.34.5 (2026-03-16)
+
+### Bug Fixes
+- Fixed model extension detection for legacy sitches using "TargetObjectFile"
+
+---
+
+## Version 2.34.4 (2026-03-16)
+
+### New Features
+- **PLY File Support**: Basic PLY file loading and Gaussian splat rendering for PLY files
+
+### Improvements
+- Model length now uses units (m/ft) with mirror GUI updates when units change
+- Simplified model length setting to always assume Z axis
+- Support passing length in filename
+- DAG view improvements: invisible nodes (or those with no visible descendants) shown in red
+- Reduced range of traverse start distance from 300 to 30
+
+### Bug Fixes
+- Fixed assert when loading the same model twice
+- Corrected debug axes for scaled models
+- Fixed teardown of synthetic tracks when disposing all
+- Guard against "Camera + Object Track" being selected with no video
+
+---
+
+## Version 2.34.3 (2026-03-15)
+
+### New Features
+- **Lommel-Seeliger Reflectance Model**: Physically-based reflectance model for the moon, with regression test
+
+### Improvements
+- Improved dropped GLB import flow and custom model lighting
+
+### Bug Fixes
+- Fixed model-view bounding box helpers
+- Fixed sun and moon rendering position in main view vs. look view
+
+---
+
+## Version 2.34.2 (2026-03-14)
+
+### New Features
+- **Direct .h264 and .dad File Support**: Load raw video files directly (e.g., into the video viewer)
+- **Center Sidebar**: Optional center "sidebar" for menu docking between views
+
+### Improvements
+- More accurate moon position and orientation
+- Improved moon blending
+- Sun rendered as a 3D mesh with correct size, positioned behind the moon
+
+---
+
+## Version 2.34.1 (2026-03-13)
+
+### New Features
+- **Sitch Browser in Main Container**: Sitch browser now displays in the main container with restricted menus for empty sitches and save/load available on all sitches
+
+### Improvements
+- Error handling and reporting for missing local file folders
+- Guard against overwriting existing files with user confirmation prompt
+- Added saving and loading documentation
+- Hardened track cleanup
+
+### Removed
+- Removed "Save with Permalink" option (redundant)
+- Removed old "Reset Origin" (leftover from EUS coordinates, meaningless in ECEF)
+
+---
+
+## Version 2.34.0 (2026-03-12)
+
+### Improvements
+- Improved local folder save/rehost UX with status bar feedback
+- Refined local folder save flow and save shortcut behavior
+
+### Bug Fixes
+- Fixed S3 object-ref video loading
+
+---
+
 ## Version 2.33.3 (2026-03-12)
 
 ### New Features
