@@ -17,6 +17,7 @@ import {
     getFileExtension,
     isHttpOrHttps,
     parseBoolean,
+    updateDocumentTitle,
     versionString
 } from "./utils";
 import {CNodeArray} from "./nodes/CNodeArray";
@@ -1575,6 +1576,7 @@ export class CFileManager extends CManager {
                 }
                 saveSucceeded = true;
                 Globals.sitchDirty = false;
+                updateDocumentTitle();
                 // After sitch is saved, upload the screenshot to the same folder
                 if (!local) {
                     return screenshotPromise.then(blob => {

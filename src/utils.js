@@ -1041,6 +1041,15 @@ export class ExportProgressWidget {
     }
 }
 
+export function updateDocumentTitle() {
+    const newTitle = Sit.name === "empty"
+        ? "Sitrec"
+        : "Sitrec: " + (Sit.sitchName || Sit.menuName || Sit.name);
+    if (document.title !== newTitle) {
+        document.title = newTitle;
+    }
+}
+
 export function getExportPrefix() {
     const name = Sit.sitchName || Sit.menuName || "";
     if (!name) return "Sitrec";

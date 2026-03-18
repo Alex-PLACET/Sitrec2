@@ -45,7 +45,7 @@ import {
     SitchMan,
     TrackManager,
 } from "./Globals";
-import {disableScroll, f2m, parseBoolean, stripComments} from './utils.js'
+import {disableScroll, f2m, parseBoolean, stripComments, updateDocumentTitle} from './utils.js'
 import {CSituation} from "./CSituation";
 import {par, resetPar} from "./par";
 
@@ -1770,11 +1770,7 @@ function legacySetup() {
     assert(Sit.name.slice().toLowerCase() === Sit.name, "Sit.name ("+Sit.name+") is not all lower case")
 
 
-    const newTitle = "Sitrec "+Sit.name
-
-    if (document.title !== newTitle) {
-        document.title = newTitle;
-    }
+    updateDocumentTitle();
 }
 
 async function setupFunctions() {
