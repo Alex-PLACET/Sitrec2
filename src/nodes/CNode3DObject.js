@@ -67,6 +67,7 @@ import {V3} from "../threeUtils";
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 import {CNodeLabel3D, CNodeMeasureAB} from "./CNodeLabels3D";
 import {ECEFToLLAVD_radii} from "../LLA-ECEF-ENU";
+import {getLocalUpVector} from "../SphericalMath";
 
 import {findRootTrack} from "../FindRootTrack";
 import {GlobalScene} from "../LocalFrame";
@@ -2801,7 +2802,8 @@ export class CNode3DObject extends CNode3DGroup {
                 if (usesMotion) {
                     dir = this.getMotionForwardVector();
                 } else if (direction === "World Down") {
-                    dir = new Vector3(0, -1, 0);
+                    // In ECEF, "down" is toward Earth's center: negate the geodetic up vector
+                    dir = getLocalUpVector(center).negate();
                 } else {
                     // Model Down: extract the object's local -Y axis in world space
                     // from the group's world matrix. This accounts for any internal
