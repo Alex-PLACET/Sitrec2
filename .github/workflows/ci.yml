@@ -5,6 +5,10 @@ name: CI
 
 on:   # when this workflow should be triggered
   push:
+    tags-ignore:
+      - '**'           # don't run CI on tag pushes (Docker workflow handles those)
+    branches:
+      - '**'           # still run on all branch pushes
   pull_request:
   workflow_dispatch:    # allows triggering a more exhaustive battery of tests manually
 
