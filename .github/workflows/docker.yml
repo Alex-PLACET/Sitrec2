@@ -1,0 +1,69 @@
+name: Docker Image
+
+# Build and publish multi-arch Docker images to GitHub Container Registry.
+# Triggers on version tags (e.g. 12.19.0) and can be run manually.
+
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'    # matches tags like 12.19.0
+  workflow_dispatch:               # manual trigger for testing
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}   # e.g. mickwest/sitrec2
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # full clone so git describe works for version string
+
+      - name: Copy example configs for clean build
+        run: |
+          cp config/config.js.example config/config.js
+          cp config/config-install.js.example config/config-install.js
+          cp config/shared.env.example config/shared.env
+          cp config/config.php.example config/config.php
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            # For tagged releases: use the tag as-is (e.g. 12.19.0)
+            type=semver,pattern={{version}}
+            # Also tag as "latest"
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
