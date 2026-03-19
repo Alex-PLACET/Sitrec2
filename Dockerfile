@@ -79,6 +79,9 @@ RUN mkdir ./sitrec-cache && chmod 777 ./sitrec-cache \
 
 # Install the entrypoint script that converts Docker env vars
 # into shared.env.php (for PHP) and window.__SITREC_ENV__ (for JS)
+# Suppress Apache ServerName warning
+RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf
+
 COPY docker/entrypoint.sh /usr/local/bin/sitrec-entrypoint.sh
 RUN chmod +x /usr/local/bin/sitrec-entrypoint.sh
 

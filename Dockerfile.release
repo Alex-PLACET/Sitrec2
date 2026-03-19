@@ -14,6 +14,9 @@ WORKDIR /var/www/html
 RUN mkdir ./sitrec-cache && chmod 777 ./sitrec-cache \
     && mkdir ./sitrec-upload && chmod 777 ./sitrec-upload
 
+# Suppress Apache ServerName warning
+RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf
+
 COPY docker/entrypoint.sh /usr/local/bin/sitrec-entrypoint.sh
 RUN chmod +x /usr/local/bin/sitrec-entrypoint.sh
 
