@@ -9,11 +9,11 @@ HTML_FILE="/var/www/html/index.html"
 ENV_PHP_FILE="/var/www/html/shared.env.php"
 
 # ---------------------------------------------------------------------------
-# List of environment variable names that Sitrec understands.
-# The entrypoint only forwards variables that are explicitly listed here,
-# so random container env vars (PATH, HOSTNAME, …) don't leak in.
+# CLIENT_VARS: safe to expose in the browser (injected into both PHP and JS).
+# These are the same variables that dotenv-webpack already bakes into the
+# JS bundle at build time, so exposing them at runtime is not a new risk.
 # ---------------------------------------------------------------------------
-KNOWN_VARS="
+CLIENT_VARS="
 NO_TERRAIN
 LOCAL_DOCS
 LOCALHOST
@@ -30,23 +30,14 @@ DEFAULT_MAP_TYPE
 DOCKER_MAP_TYPE
 DEFAULT_ELEVATION_TYPE
 DOCKER_ELEVATION_TYPE
-XENFORO_PATH
-SITREC_FORUM_ORIGIN
 SAVE_TO_SERVER
 SAVE_TO_S3
 USE_S3_PRESIGNED_URLS
 S3_MULTIPART_THRESHOLD_MB
 S3_CHUNK_SIZE_MB
 S3_PARALLEL_UPLOADS
-S3_PRESIGNED_GET_EXPIRY_SECONDS
-S3_PRESIGNED_PUT_EXPIRY_SECONDS
-S3_PRESIGNED_MULTIPART_EXPIRY_SECONDS
-S3_DEFAULT_VISIBILITY
-S3_PRIVATE_PREFIXES
-S3_PUBLIC_PREFIXES
-S3_PUBLIC_BASE_URL
-S3_PUBLIC_OBJECT_ACL
-S3_PRIVATE_OBJECT_ACL
+S3_BUCKET
+S3_REGION
 SAVE_TO_LOCAL
 MAX_FILE_SIZE_MB
 CHATBOT_ENABLED
@@ -59,24 +50,40 @@ SITREC_USE_CUSTOM_TLE
 SITREC_CUSTOM_TLE_MENU_NAME
 SITREC_CUSTOM_TLE_TOOLTIP
 SITREC_ENABLE_DEFAULT_TLE_SOURCES
-CUSTOM_TLE
-CACHE_CUSTOM_TLE
 CURRENT_STARLINK
 CURRENT_ACTIVE
-TLE_ZIP_ENABLED
 SITREC_TRACK_STATS
-SITREC_DISABLE_SSL_VERIFY
 MAPBOX_TOKEN
 MAPTILER_KEY
 CESIUM_ION_TOKEN
 GOOGLE_MAPS_API_KEY
-SPACEDATA_USERNAME
-SPACEDATA_PASSWORD
+"
+
+# ---------------------------------------------------------------------------
+# SERVER_VARS: secrets and server-only config. Written to shared.env.php
+# for PHP but NEVER injected into index.html.
+# ---------------------------------------------------------------------------
+SERVER_VARS="
+XENFORO_PATH
+SITREC_FORUM_ORIGIN
 S3_ACCESS_KEY_ID
 S3_SECRET_ACCESS_KEY
-S3_REGION
-S3_BUCKET
 S3_ACL
+S3_DEFAULT_VISIBILITY
+S3_PRIVATE_PREFIXES
+S3_PUBLIC_PREFIXES
+S3_PUBLIC_BASE_URL
+S3_PUBLIC_OBJECT_ACL
+S3_PRIVATE_OBJECT_ACL
+S3_PRESIGNED_GET_EXPIRY_SECONDS
+S3_PRESIGNED_PUT_EXPIRY_SECONDS
+S3_PRESIGNED_MULTIPART_EXPIRY_SECONDS
+CUSTOM_TLE
+CACHE_CUSTOM_TLE
+TLE_ZIP_ENABLED
+SITREC_DISABLE_SSL_VERIFY
+SPACEDATA_USERNAME
+SPACEDATA_PASSWORD
 OPENAI_API
 ANTHROPIC_API
 GROQ_API
@@ -84,13 +91,13 @@ GROK_API
 "
 
 # ---------------------------------------------------------------------------
-# 1. Generate shared.env.php from environment variables
+# 1. Generate shared.env.php from ALL environment variables (client + server)
 #    PHP's injectEnv.php reads this file via putenv().
 #    We wrap it in a PHP comment so it can't be served as plain text.
 # ---------------------------------------------------------------------------
 echo "<?php /*;" > "$ENV_PHP_FILE"
 
-for var in $KNOWN_VARS; do
+for var in $CLIENT_VARS $SERVER_VARS; do
     val="${!var}"
     if [ -n "$val" ]; then
         echo "${var}=${val}" >> "$ENV_PHP_FILE"
@@ -103,14 +110,13 @@ echo "[entrypoint] Wrote $ENV_PHP_FILE"
 
 # ---------------------------------------------------------------------------
 # 2. Inject window.__SITREC_ENV__ into index.html
-#    The frontend's getEnv() helper reads this object, falling back to
-#    the build-time process.env values baked in by dotenv-webpack.
+#    Only CLIENT_VARS are injected — server secrets stay out of the browser.
 # ---------------------------------------------------------------------------
 if [ -f "$HTML_FILE" ]; then
-    # Build a JSON object from set env vars
+    # Build a JSON object from set client env vars only
     JSON="{"
     FIRST=true
-    for var in $KNOWN_VARS; do
+    for var in $CLIENT_VARS; do
         val="${!var}"
         if [ -n "$val" ]; then
             # Escape double quotes and backslashes in the value
