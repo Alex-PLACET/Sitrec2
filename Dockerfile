@@ -9,6 +9,7 @@ FROM node:22 AS build
 # in build/dist
 WORKDIR /build
 
+COPY assets ./assets
 COPY data ./data
 COPY src ./src
 COPY docs ./docs
@@ -20,6 +21,11 @@ COPY webpack.*.js .
 COPY webpackCopyPatterns.js .
 COPY config ./config
 COPY docker/docker-config-install.js ./config/config-install.js
+# For fresh clones: copy .example templates to live names if missing
+RUN cp -n config/shared.env.example config/shared.env; \
+    cp -n config/config.js.example config/config.js; \
+    cp -n config/config.php.example config/config.php; \
+    true
 COPY .git .git
 COPY apple-touch-icon.png .
 COPY favicon-512.png .
@@ -57,9 +63,6 @@ FROM php:8.4-apache
 
 RUN apt-get update && apt-get install -y libzip-dev && docker-php-ext-install zip && rm -rf /var/lib/apt/lists/*
 
-
-USER www-data
-
 COPY --from=build /build/dist /var/www/html
 
 WORKDIR /var/www/html
@@ -71,12 +74,17 @@ WORKDIR /var/www/html
 # So it's highly recommended you use S3 with docker
 # or mount a volume to /var/www/html/sitrec-upload
 
-RUN mkdir ./sitrec-cache
-RUN chmod 777 ./sitrec-cache
-RUN mkdir ./sitrec-upload
-RUN chmod 777 ./sitrec-upload
+RUN mkdir ./sitrec-cache && chmod 777 ./sitrec-cache \
+    && mkdir ./sitrec-upload && chmod 777 ./sitrec-upload
 
+# Install the entrypoint script that converts Docker env vars
+# into shared.env.php (for PHP) and window.__SITREC_ENV__ (for JS)
+COPY docker/entrypoint.sh /usr/local/bin/sitrec-entrypoint.sh
+RUN chmod +x /usr/local/bin/sitrec-entrypoint.sh
 
 VOLUME /var/www/html/sitrec-videos
 
 EXPOSE 80
+
+ENTRYPOINT ["sitrec-entrypoint.sh"]
+CMD ["apache2-foreground"]
