@@ -1,9 +1,9 @@
 name: Docker Image
 
 # Build and publish multi-arch Docker images to GitHub Container Registry.
-# Triggers on version tags (e.g. 12.19.0) and can be run manually.
+# Triggers on version tags (e.g. 2.36.4) and can be run manually.
 #
-# Architecture: two-stage pipeline
+# Architecture: three-stage pipeline
 #   1. "build-js" runs once on x86 — webpack produces identical output
 #      regardless of CPU architecture, so no need to build twice.
 #   2. "package" runs natively on both amd64 and arm64 runners,
@@ -142,15 +142,17 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}
           tags: |
             type=semver,pattern={{version}}
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest
 
       - name: Create and push multi-arch manifest
         run: |
           SOURCE_AMD64="${REGISTRY}/${IMAGE_NAME_LC}:build-amd64-${GITHUB_SHA}"
           SOURCE_ARM64="${REGISTRY}/${IMAGE_NAME_LC}:build-arm64-${GITHUB_SHA}"
 
-          # Create a manifest for each target tag (e.g. 12.20.0, latest)
-          for tag in ${{ steps.meta.outputs.tags }}; do
+          # Create a manifest for each target tag (e.g. 2.36.4, latest)
+          echo '${{ steps.meta.outputs.tags }}' | while IFS= read -r tag; do
+            [ -z "$tag" ] && continue
+            echo "Creating manifest for: $tag"
             docker buildx imagetools create \
               --tag "${tag}" \
               "${SOURCE_AMD64}" \
