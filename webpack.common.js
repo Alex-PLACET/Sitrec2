@@ -171,7 +171,12 @@ module.exports = (env = {}) => ({
                                 await convertMarkdownFiles(fullPath);
                             } else if (file.name.endsWith('.md')) {
                                 let markdownContent = await fs.promises.readFile(fullPath, 'utf-8');
-                                markdownContent = markdownContent.replace(/<!--[\s\S]*?-->/g, '');
+                                // Strip HTML comments repeatedly to handle nested comments
+                                let prevContent;
+                                do {
+                                    prevContent = markdownContent;
+                                    markdownContent = markdownContent.replace(/<!--[\s\S]*?-->/g, '');
+                                } while (markdownContent !== prevContent);
                                 markdownContent = markdownContent.replace(/(\[.*?\]\((?:\.\/)?(?:docs\/)?)(.*?)(\.md\))/g, '$1$2.html)');
                                 const bodyContent = md.render(markdownContent);
                                 
