@@ -1,12 +1,14 @@
-# Sitrec Installation Methods
+# Installing Sitrec
 
-Sitrec can be installed and run in several ways, from a zero-config one-liner to a full local development environment:
+**Just want to run Sitrec?** Follow the [Zero-Config Docker Image](#zero-config-docker-image-recommended) instructions below — it takes about 30 seconds and requires no programming knowledge.
+
+For developers, there are additional options:
 
 | Method | Best For | Requirements | Setup Time |
 |--------|----------|--------------|------------|
-| **Docker Image** | Quickest setup, client deployments | Docker Desktop only | ~30 seconds |
-| Docker Build | Testing from source with Docker | Docker Desktop + Git | ~2 minutes |
-| Serverless (PHPless) | Offline/portable use | Node.js (or just a browser) | ~30 seconds |
+| **Docker Image** | Running Sitrec, no setup needed | Docker Desktop only | ~30 seconds |
+| Docker Build | Testing from source | Docker Desktop + Git | ~2 minutes |
+| Serverless | Offline/portable use | Node.js (or just a browser) | ~30 seconds |
 | Standalone | Development without web server | Node.js + PHP | ~30 seconds |
 | Local Server | Full development environment | Node.js + Nginx/Apache + PHP | ~5 minutes |
 
@@ -14,11 +16,13 @@ Sitrec can be installed and run in several ways, from a zero-config one-liner to
 
 ## Zero-Config Docker Image (Recommended)
 
-The fastest way to run Sitrec. No source code, no build tools, no configuration required. A pre-built multi-architecture image (amd64 + arm64) is published to GitHub Container Registry on each release.
+The fastest way to run Sitrec. No source code, no build tools, no configuration required. A pre-built image is published on each release and works on Windows, Mac (Intel and Apple Silicon), and Linux.
 
-**Prerequisites:** [Docker Desktop](https://www.docker.com/) installed and running.
+**Prerequisites:** Install and run [Docker Desktop](https://www.docker.com/).
 
 ### One-liner Install
+
+Open a terminal and paste the command for your platform. This downloads a small install script that sets everything up automatically.
 
 **Mac / Linux / WSL:**
 ```bash
@@ -30,13 +34,13 @@ curl -sL https://raw.githubusercontent.com/MickWest/Sitrec2/main/install.sh | ba
 irm https://raw.githubusercontent.com/MickWest/Sitrec2/main/install.ps1 | iex
 ```
 
-This creates a `sitrec/` directory, pulls the image, and starts the app at **http://localhost:8080**.
+This creates a `sitrec/` folder in your current directory, downloads Sitrec, and starts it. Once you see "resuming normal operations" in the output, open **http://localhost:8080** in your browser.
 
 ### Manual Install
 
-If you prefer not to pipe scripts from the internet:
+If you prefer to set things up yourself instead of using the install script:
 
-1. Create a directory and add a `docker-compose.yml`:
+1. Create a new folder (e.g. `sitrec`), and inside it create a text file named `docker-compose.yml` with this content:
 
 ```yaml
 services:
@@ -51,26 +55,21 @@ services:
       - ./sitrec-videos:/var/www/html/sitrec-videos
 ```
 
-2. Run:
+2. Open a terminal in that folder and run:
 ```bash
 docker compose up
 ```
 
-3. Open **http://localhost:8080**
+3. Once you see "resuming normal operations", open **http://localhost:8080** in your browser.
 
-### Configuration via Environment Variables
+### Configuration (Optional)
 
-Create a `.env` file in the same directory as `docker-compose.yml`. All settings are optional — the app works with zero configuration using free public map and elevation sources (ESRI, AWS Terrarium).
+Sitrec works out of the box with no configuration. To customize it, create a text file named `.env` in the same folder as `docker-compose.yml`. To enable a setting, remove the `#` at the start of the line and fill in your value.
+
+The example below shows some commonly used settings. For the full list of available configuration variables, see [config/shared.env.example](../../config/shared.env.example).
 
 ```env
-# === UI Banners (optional) ===
-#BANNER_ACTIVE=true
-#BANNER_TOP_TEXT=Welcome to Sitrec
-#BANNER_BOTTOM_TEXT=
-#BANNER_COLOR=#FFFFFF
-#BANNER_BACKGROUND_COLOR=#377e22
-
-# === Maps (optional — enables higher quality imagery) ===
+# === Maps (optional — enables higher quality satellite imagery) ===
 #MAPBOX_TOKEN=pk.your_token_here
 #MAPTILER_KEY=your_key_here
 
@@ -95,20 +94,43 @@ After editing `.env`, restart the container:
 docker compose down && docker compose up
 ```
 
-Map sources that require an API token (e.g. MapBox, MapTiler) only appear in the dropdown when the corresponding token is provided. Without any tokens, the app uses ESRI World Imagery and AWS Terrarium elevation, which require no keys.
+Map sources that require an API token (e.g. MapBox, MapTiler) only appear in the terrain menu when the corresponding token is provided. Without any tokens, the app uses ESRI World Imagery and AWS Terrarium elevation, which require no keys.
 
-### Updating
+### Videos for Legacy Sitches (Optional)
 
+Sitrec works fully without any video files — you can create and view custom sitches, load tracks, and explore 3D terrain. Video files are only needed to view legacy analysis sitches (Gimbal, GoFast, Aguadilla, etc.). These sitches can also be viewed online at [metabunk.org/sitrec](https://www.metabunk.org/sitrec).
+
+If you want to run legacy sitches locally, download the public video files into a `sitrec-videos` folder next to your `docker-compose.yml`:
+
+**Mac / Linux / WSL:**
+```bash
+curl -sL https://raw.githubusercontent.com/MickWest/Sitrec2/main/download-videos.sh | bash
+```
+
+**Windows PowerShell:**
+```powershell
+irm https://raw.githubusercontent.com/MickWest/Sitrec2/main/download-videos.ps1 | iex
+```
+
+Or download manually from [this Dropbox folder](https://www.dropbox.com/scl/fo/biko4zk689lgh5m5ojgzw/h?rlkey=stuaqfig0f369jzujgizsicyn&dl=0) and place the files in `sitrec-videos/public/`. Then restart the container.
+
+### Updating to the Latest Version
+
+To get the newest release, run:
 ```bash
 docker compose pull && docker compose up
 ```
 
-### Pinning a Version
+### Pinning a Specific Version
 
-To use a specific version instead of `latest`, edit `docker-compose.yml`:
+By default Sitrec uses the latest release. To lock to a specific version, edit the `image:` line in `docker-compose.yml`:
 ```yaml
 image: ghcr.io/mickwest/sitrec2:2.36.0
 ```
+
+---
+
+*The sections below are for developers. If you just want to run Sitrec, the Docker Image method above is all you need.*
 
 ---
 
@@ -118,21 +140,13 @@ Build the Docker image locally from the source code. Useful for testing changes 
 
 **Prerequisites:** Docker Desktop, Git
 
-**Mac / Linux:**
 ```bash
 git clone https://github.com/MickWest/sitrec2 sitrec-test-dev
 cd sitrec-test-dev
 docker compose up --build
 ```
 
-**Windows:**
-```bat
-git clone https://github.com/mickwest/sitrec2 sitrec-test-dev
-cd sitrec-test-dev
-docker compose up --build
-```
-
-The app will be at **http://localhost:6425**. The Dockerfile automatically copies `.example` config files if the live versions don't exist, so no manual config setup is needed.
+The app will be at **http://localhost:8080**. The Dockerfile automatically copies `.example` config files if the live versions don't exist, so no manual config setup is needed.
 
 ### Docker Development Build (Hot Reload)
 
@@ -146,7 +160,7 @@ docker-compose -f docker-compose.dev.yml up --build
 |---------|----------------|-------------------|
 | Purpose | Production-like | Active development |
 | File Changes | Requires rebuild | Auto-recompile |
-| Ports | 6425 | 8080 (webpack), 8081 (Apache) |
+| Ports | 8080 | 8080 (webpack), 8081 (Apache) |
 | Hot Reload | No | Yes |
 
 ---
@@ -314,9 +328,8 @@ After building, verify with these URL tests (adjust the path if not at `/sitrec/
 | Dev server | 3000 | `SITREC_PORT` |
 | Dev backend proxy | 8081 | `SITREC_BACKEND_PORT` |
 | Standalone PHP | 8000 | `SITREC_PHP_PORT` |
-| Docker | 6425 | (docker-compose.yml) |
+| Docker / Docker Image | 8080 | (docker-compose.yml) |
 | Docker Dev | 8080/8081 | (docker-compose.dev.yml) |
-| Docker Image | 8080 | (docker-compose.yml) |
 
 ---
 

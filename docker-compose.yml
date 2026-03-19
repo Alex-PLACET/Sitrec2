@@ -3,7 +3,7 @@ services:
   sitrec:
     build: .
     ports:
-      - '6425:80'
+      - '8080:80'
     env_file:
       - path: .env
         required: false
