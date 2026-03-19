@@ -118,11 +118,14 @@ class QuadTreeMapTexture extends QuadTreeMap {
         }
         this.radius = radius
         // Fire off all tile normal calculations in background (non-blocking)
-        const promises = this.getAllTiles().map(tile => 
-            tile.recalculateCurve(radius).catch(error => {
+        // Update tile mesh positions first so they match the current earth model,
+        // then recalculate vertex positions relative to the new tile center.
+        const promises = this.getAllTiles().map(tile => {
+            tile.setPosition();
+            return tile.recalculateCurve(radius).catch(error => {
                 console.warn(`Failed to recalculate curve for tile ${tile.key()}:`, error);
-            })
-        );
+            });
+        });
         setRenderOne(true);
     }
 

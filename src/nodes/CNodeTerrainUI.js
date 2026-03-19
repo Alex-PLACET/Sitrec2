@@ -531,15 +531,24 @@ export class CNodeTerrainUI extends CNode {
         Globals.dynamicSubdivision = this.dynamic;
         
         this.dynamicController = this.gui.add(this, "dynamic").name("Dynamic Subdivision").onChange(v => {
+            // 3D building tiles require dynamic subdivision.
+            // Prevent disabling while buildings are active.
+            if (!v && this.showBuildings) {
+                this.dynamic = true;
+                Globals.dynamicSubdivision = true;
+                if (this.dynamicController) this.dynamicController.updateDisplay();
+                return;
+            }
+
             // Update the global mirror
             Globals.dynamicSubdivision = v;
-            
+
             this.updateUIVisibility();
             this.terrainNode.reloadMap(this.mapType);
-            
+
             // Update globe visibility based on new state
             this.updateGlobeVisibility();
-            
+
             // Update grey sphere visibility based on new state
             this.terrainNode.updateGreySphereVisibility();
         });
@@ -739,6 +748,18 @@ export class CNodeTerrainUI extends CNode {
         }
     }
 
+    forceDynamicForBuildings() {
+        if (!this.dynamic) {
+            this.dynamic = true;
+            Globals.dynamicSubdivision = true;
+            this.updateUIVisibility();
+            this.terrainNode.reloadMap(this.mapType);
+            this.updateGlobeVisibility();
+            this.terrainNode.updateGreySphereVisibility();
+            if (this.dynamicController) this.dynamicController.updateDisplay();
+        }
+    }
+
     toggleBuildings(show) {
         if (show && !this.canUse3DBuildings) {
             console.warn("CNodeTerrainUI: 3D Buildings not enabled for this user.");
@@ -748,6 +769,7 @@ export class CNodeTerrainUI extends CNode {
 
         if (show) {
             this.forceEllipsoidForBuildings();
+            this.forceDynamicForBuildings();
         }
 
         if (show && !this.buildingsNode) {

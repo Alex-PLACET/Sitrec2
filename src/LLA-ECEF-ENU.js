@@ -96,7 +96,15 @@ export function updateEarthRadii(useEllipsoid) {
     if (NodeMan?.recalculateAllRootFirst) {
         NodeMan.recalculateAllRootFirst();
         if (NodeMan.exists("terrainUI")) {
-            NodeMan.get("terrainUI").doRefresh();
+            const terrainUI = NodeMan.get("terrainUI");
+            terrainUI.doRefresh();
+            // doRefresh() handles dynamic terrain (reloadMap), but for non-dynamic
+            // (old-style grid) terrain it only flags for recalculation — which bails
+            // because lat/lon/zoom/nTiles haven't changed. Directly recalculate
+            // the terrain node to update tile vertices for the new earth model.
+            if (terrainUI.terrainNode) {
+                terrainUI.terrainNode.recalculate();
+            }
         }
         setRenderOne(true);
     }
