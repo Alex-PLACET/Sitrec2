@@ -15,7 +15,20 @@ import {meanSeaLevelOffset} from "../EGM96Geoid";
 import * as LAYER from "../LayerMasks";
 import {BufferGeometry, DoubleSide, Float32BufferAttribute, Group, Mesh, MeshPhongMaterial} from "three";
 import {filterSourcesForServerless, pickAvailableSourceType} from "../terrainSourceUtils";
-import {getEnv, getEnvBool} from "../envUtils";
+import {getEnv} from "../envUtils";
+
+/**
+ * Static map of token names to their build-time values.
+ * Webpack's dotenv-webpack only replaces literal process.env.X references,
+ * so dynamic access like process.env[variable] always yields undefined.
+ * This object gives us a runtime-indexable lookup that webpack can still populate.
+ */
+const BUILD_TIME_TOKENS = {
+    MAPBOX_TOKEN: process.env.MAPBOX_TOKEN,
+    MAPTILER_KEY: process.env.MAPTILER_KEY,
+    CESIUM_ION_TOKEN: process.env.CESIUM_ION_TOKEN,
+    GOOGLE_MAPS_API_KEY: process.env.GOOGLE_MAPS_API_KEY,
+};
 
 /**
  * Check if a source's required API token is available.
@@ -24,7 +37,7 @@ import {getEnv, getEnvBool} from "../envUtils";
  */
 function hasRequiredToken(sourceDef) {
     if (!sourceDef.requiredToken) return true;
-    const token = getEnv(sourceDef.requiredToken, process.env[sourceDef.requiredToken]);
+    const token = getEnv(sourceDef.requiredToken, BUILD_TIME_TOKENS[sourceDef.requiredToken]);
     return token && token !== "EXAMPLEKEY";
 }
 
