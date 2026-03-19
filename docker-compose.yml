@@ -2,10 +2,11 @@
 services:
   sitrec:
     build: .
-    ports: 
+    ports:
       - '6425:80'
-#    environment:
-#      - MAPBOX_TOKEN=${MAPBOX_TOKEN}
+    env_file:
+      - path: .env
+        required: false
     volumes:
 # We mount the videos as a volume to avoid having to include them in the docker image      -
       - ./sitrec-videos:/var/www/html/sitrec-videos
