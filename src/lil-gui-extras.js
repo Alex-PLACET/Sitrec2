@@ -52,7 +52,7 @@ export function addOptionToGUIMenu(controller, optionName, optionValue = optionN
 
     // Create a new option element
     const $option = document.createElement('option');
-    $option.innerHTML = optionName;
+    $option.textContent = optionName;
     $option.value = optionValue;
 
     // Append the new option to the select element

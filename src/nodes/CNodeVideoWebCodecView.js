@@ -94,7 +94,14 @@ export class CNodeVideoWebCodecView extends CNodeVideoView {
                 // Only encode if it contains unencoded spaces or special characters
                 // Check if URL is already encoded by looking for % followed by hex digits
                 const isAlreadyEncoded = /%[0-9A-Fa-f]{2}/.test(url);
-                link.href = isAlreadyEncoded ? url : encodeURI(url);
+                const sanitizedUrl = isAlreadyEncoded ? url : encodeURI(url);
+                // Resolve relative URLs, then block dangerous schemes like javascript:
+                const resolved = new URL(sanitizedUrl, window.location.href);
+                if (!/^(https?:|blob:|data:)$/i.test(resolved.protocol)) {
+                    console.warn('Blocked download with unsupported URL scheme:', sanitizedUrl);
+                    return;
+                }
+                link.href = resolved.href;
 
                 link.download = this.videos?.[this.currentVideoIndex]?.fileName || this.fileName;
 

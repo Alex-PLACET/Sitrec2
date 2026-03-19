@@ -251,6 +251,12 @@
     <div id="resultsContainer"></div>
 
     <script>
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
         // Test Registry
         class TestRegistry {
             constructor() {
@@ -669,17 +675,17 @@ self.onmessage = async (event) => {
             const statusEl = document.getElementById('status');
             statusEl.style.display = 'block';
             statusEl.className = `status ${type}`;
-            statusEl.innerHTML = message;
+            statusEl.textContent = message;
 
             if (progress !== null) {
-                const progressHtml = `
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: ${progress}%">
-                            ${Math.round(progress)}%
-                        </div>
-                    </div>
-                `;
-                statusEl.innerHTML += progressHtml;
+                const progressBar = document.createElement('div');
+                progressBar.className = 'progress-bar';
+                const progressFill = document.createElement('div');
+                progressFill.className = 'progress-fill';
+                progressFill.style.width = `${progress}%`;
+                progressFill.textContent = `${Math.round(progress)}%`;
+                progressBar.appendChild(progressFill);
+                statusEl.appendChild(progressBar);
             }
         }
 

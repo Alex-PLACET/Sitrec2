@@ -248,6 +248,12 @@
     </div>
 
     <script>
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
         const fileInput = document.getElementById('fileInput');
         const fileList = document.getElementById('fileList');
         const processBtn = document.getElementById('processBtn');
@@ -320,7 +326,7 @@
                 selectedFiles.forEach((file, index) => {
                     const item = document.createElement('div');
                     item.className = 'file-item';
-                    item.innerHTML = `<span>${index + 1}. ${file.name}</span>`;
+                    item.innerHTML = `<span>${index + 1}. ${escapeHtml(file.name)}</span>`;
                     fileList.appendChild(item);
                 });
                 
@@ -506,33 +512,35 @@
             return csv;
         }
         
+        function createDownloadItem(blobUrl, filename) {
+            const item = document.createElement('div');
+            item.className = 'download-item';
+
+            const label = document.createElement('span');
+            label.className = 'download-link';
+            label.textContent = '📊 ' + filename;
+            item.appendChild(label);
+
+            const btn = document.createElement('button');
+            btn.className = 'btn-download';
+            btn.textContent = 'Download';
+            btn.addEventListener('click', () => downloadFile(blobUrl, filename));
+            item.appendChild(btn);
+
+            return item;
+        }
+
         function generateDownloads(format1CSV, format1Filename, format2CSV, format2Filename) {
             downloads.innerHTML = '';
-            
-            // Format 1 download
+
             const blob1 = new Blob([format1CSV], { type: 'text/csv' });
             const url1 = URL.createObjectURL(blob1);
-            
-            const item1 = document.createElement('div');
-            item1.className = 'download-item';
-            item1.innerHTML = `
-                <span class="download-link">📊 ${format1Filename}</span>
-                <button class="btn-download" onclick="downloadFile('${url1}', '${format1Filename}')">Download</button>
-            `;
-            downloads.appendChild(item1);
-            
-            // Format 2 download
+            downloads.appendChild(createDownloadItem(url1, format1Filename));
+
             const blob2 = new Blob([format2CSV], { type: 'text/csv' });
             const url2 = URL.createObjectURL(blob2);
-            
-            const item2 = document.createElement('div');
-            item2.className = 'download-item';
-            item2.innerHTML = `
-                <span class="download-link">📊 ${format2Filename}</span>
-                <button class="btn-download" onclick="downloadFile('${url2}', '${format2Filename}')">Download</button>
-            `;
-            downloads.appendChild(item2);
-            
+            downloads.appendChild(createDownloadItem(url2, format2Filename));
+
             downloads.classList.add('show');
         }
         

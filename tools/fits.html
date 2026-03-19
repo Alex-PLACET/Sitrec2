@@ -531,6 +531,12 @@
     </div>
 
     <script>
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
         const fileInput = document.getElementById('fileInput');
         const fileList = document.getElementById('fileList');
         const fileItems = document.getElementById('fileItems');
@@ -1934,7 +1940,7 @@
             fileItems.innerHTML = selectedFiles.map((file, index) => `
                 <div class="file-item">
                     <div>
-                        <div class="file-name">${file.name}</div>
+                        <div class="file-name">${escapeHtml(file.name)}</div>
                         <div class="file-status">${(file.size / 1024 / 1024).toFixed(2)} MB</div>
                     </div>
                 </div>
@@ -2036,8 +2042,8 @@
             if (result.error) {
                 resultDiv.className = 'error-item';
                 resultDiv.innerHTML = `
-                    <div class="error-title">❌ ${result.fileName}</div>
-                    <div class="error-message">${result.error}</div>
+                    <div class="error-title">❌ ${escapeHtml(result.fileName)}</div>
+                    <div class="error-message">${escapeHtml(result.error)}</div>
                 `;
             } else {
                 const data = result.data;
@@ -2081,7 +2087,7 @@
 
                 resultDiv.innerHTML = `
                     <div class="result-header" onclick="this.parentElement.querySelector('.result-content').classList.toggle('open'); this.querySelector('.result-toggle').classList.toggle('open')">
-                        <span class="result-title">✅ ${result.fileName} (${data.hdus.length} HDU${data.hdus.length !== 1 ? 's' : ''})</span>
+                        <span class="result-title">✅ ${escapeHtml(result.fileName)} (${data.hdus.length} HDU${data.hdus.length !== 1 ? 's' : ''})</span>
                         <span class="result-toggle">▼</span>
                     </div>
                     <div class="result-content">
