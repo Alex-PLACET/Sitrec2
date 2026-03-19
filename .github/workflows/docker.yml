@@ -25,6 +25,8 @@ jobs:
   # ── Stage 1: Build JS artifacts (runs once on x86) ─────────────
   build-js:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:

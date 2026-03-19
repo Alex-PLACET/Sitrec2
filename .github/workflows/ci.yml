@@ -19,6 +19,8 @@ defaults:
 jobs:
   build_web:
     if: true  # the job can be disabled from here
+    permissions:
+      contents: read
     strategy:
       matrix:   # run a separate jub for all combinations of the following variables
         node-version: [22.4]
@@ -70,6 +72,8 @@ jobs:
     # Run Playwright tests on PRs to validate before merge
     # Disabled by default for regular pushes (use workflow_dispatch for full test)
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
     needs: build_web  # Run after build succeeds
     strategy:
       matrix:
@@ -119,6 +123,8 @@ jobs:
   build_console:
     # MICK: this job is disabled as console mode is no longer supported
     if: false  # the job can be disabled from here
+    permissions:
+      contents: read
     strategy:
       matrix:   # run a separate jub for all combinations of the following variables
         # it should typically be enough to run the console tests on macOS
