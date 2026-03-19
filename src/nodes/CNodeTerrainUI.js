@@ -17,22 +17,15 @@ import {BufferGeometry, DoubleSide, Float32BufferAttribute, Group, Mesh, MeshPho
 import {filterSourcesForServerless, pickAvailableSourceType} from "../terrainSourceUtils";
 import {getEnv, getEnvBool} from "../envUtils";
 
-// Known placeholder values that indicate a token hasn't been configured
-const PLACEHOLDER_TOKENS = new Set([
-    '', 'undefined', 'null', 'false',
-    'your_mapbox_token_here', 'your_maptiler_key_here',
-    'your_cesium_ion_token_here', 'your_google_maps_api_key_here',
-    'INSERT_TOKEN_HERE',
-]);
-
 /**
  * Check if a source's required API token is available.
  * Returns true if no token is required, or if the token is set to a real value.
+ * Tokens that are missing, empty, or set to "EXAMPLEKEY" are treated as absent.
  */
 function hasRequiredToken(sourceDef) {
     if (!sourceDef.requiredToken) return true;
     const token = getEnv(sourceDef.requiredToken, process.env[sourceDef.requiredToken]);
-    return token && !PLACEHOLDER_TOKENS.has(token);
+    return token && token !== "EXAMPLEKEY";
 }
 
 const OCEAN_SURFACE_OFFSET_METERS = 0;
