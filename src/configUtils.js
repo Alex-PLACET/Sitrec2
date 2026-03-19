@@ -58,12 +58,12 @@ export function isAdmin() {
 }
 
 export function checkLocal() {
-    const localPatterns = [getEnv("LOCALHOST", process.env.LOCALHOST), 'localhost', '127\\.0\\.0\\.1', '::1', '192\\.168'];
-    const regex = new RegExp(`^(${localPatterns.join('|')})`);
+    const exactHosts = [getEnv("LOCALHOST", process.env.LOCALHOST), 'localhost', '127.0.0.1', '::1'].filter(Boolean);
+    const hostname = window.location.hostname;
 
     isLocal =
         !isConsole &&
-        regex.test(window.location.hostname);
+        (exactHosts.includes(hostname) || hostname.startsWith('192.168.'));
 //    console.log("isLocal: " + isLocal);
 }
 

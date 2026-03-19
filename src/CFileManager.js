@@ -2695,7 +2695,13 @@ export class CFileManager extends CManager {
 
                         // Sitrec object refs and S3 URLs are already immutable/versioned.
                         const isDirectObjectFetch = isResolvableSitrecReference(originalFetchSource);
-                        const isS3Url = encodedFilename.includes("s3.amazonaws.com") || encodedFilename.includes(".s3.");
+                        let isS3Url = false;
+                        try {
+                            const parsedUrl = new URL(encodedFilename);
+                            isS3Url = parsedUrl.hostname.endsWith('.amazonaws.com');
+                        } catch (e) {
+                            // relative URL or invalid — not S3
+                        }
                         const fetchUrl = (isDirectObjectFetch || isS3Url) ? encodedFilename : encodedFilename + versionExtension;
 
                         // Use custom fetch wrapper that supports File System Access API
