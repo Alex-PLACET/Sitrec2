@@ -127,6 +127,7 @@ import {undoManager} from "./UndoManager";
 import {arModeManager} from "./ARMode";
 import {TileUsageTracker} from "./TileUsageTracker";
 import {debugLog} from "./DebugLog";
+import {getEnvBool} from "./envUtils";
 import {FeatureManager} from "./CFeatureManager";
 import {
     encodeShareParam,
@@ -395,8 +396,8 @@ const hasExplicitStartupRequest = isNewSitchAction
     || !!urlParams.get("test")
     || !!urlParams.get("testAll");
 
-const hasServerBackedSaves = parseBoolean(process.env.SAVE_TO_SERVER)
-    || parseBoolean(process.env.SAVE_TO_S3);
+const hasServerBackedSaves = getEnvBool("SAVE_TO_SERVER", process.env.SAVE_TO_SERVER)
+    || getEnvBool("SAVE_TO_S3", process.env.SAVE_TO_S3);
 
 const shouldAutoOpenBrowser = !isConsole
     && hasServerBackedSaves
@@ -1161,7 +1162,7 @@ async function newSitch(situation, customSetup = false ) {
     console.log("%%%%% BEFORE the two AWAITS %%%%%%%%")
     await waitForParsingToComplete();
 
-    if (!parseBoolean(process.env.NO_TERRAIN)) {
+    if (!getEnvBool("NO_TERRAIN", process.env.NO_TERRAIN)) {
         await waitForTerrainToLoad();
     }
     console.log("%%%%% AFTER the two AWAITS %%%%%%%%")
@@ -1265,7 +1266,7 @@ async function initializeOnce() {
     TileUsageTracker.init();
 
     // Record visit for admin stats (non-blocking)
-    if (!isServerless && parseBoolean(process.env.SITREC_TRACK_STATS)) {
+    if (!isServerless && getEnvBool("SITREC_TRACK_STATS", process.env.SITREC_TRACK_STATS)) {
         const sitchParam = new URLSearchParams(window.location.search).get('sitch') || '';
         fetch(SITREC_SERVER + 'record_visit.php' + (sitchParam ? '?sitch=' + encodeURIComponent(sitchParam) : ''), {
             credentials: 'include',
@@ -1494,14 +1495,14 @@ async function initializeOnce() {
     addGUIMenu("debug", "Debug").tooltip("Debug tools and monitoring\nGPU memory usage, performance metrics, and other debugging information");
 
     const docs = addGUIFolder("doumentation", "Documentation", "help")
-        .tooltip(parseBoolean(process.env.LOCAL_DOCS) ?
+        .tooltip(getEnvBool("LOCAL_DOCS", process.env.LOCAL_DOCS) ?
             "Links to the documentation (local)" :
             "Links to the documentation on Github"
         ).perm();
 
 
     function addHelpLink(name, file) {
-        if (parseBoolean(process.env.LOCAL_DOCS) ) {
+        if (getEnvBool("LOCAL_DOCS", process.env.LOCAL_DOCS) ) {
             return docs.addExternalLink(name, "./"+file+".html").perm().tooltip(name);
         } else {
             return docs.addExternalLink(name+ " (Github)", "https://github.com/MickWest/sitrec2/blob/main/"+file+".md").perm();

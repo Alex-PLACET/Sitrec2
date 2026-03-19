@@ -80,6 +80,7 @@ import {CNodeGUIValue} from "./nodes/CNodeGUIValue";
 import {meanSeaLevelOffset} from "./EGM96Geoid";
 import {collectActiveTrackSourceFileIDs, shouldSerializeLoadedFileEntry} from "./trackSourceUtils";
 import {encodeShareParam, resolveURLForFetch, toShareableCustomValue} from "./SitrecObjectResolver";
+import {getEnvBool} from "./envUtils";
 
 export class CCustomManager {
     constructor() {
@@ -627,7 +628,7 @@ export class CCustomManager {
             adminFolder.add(this, "validateAllSitches").name("Validate All Sitches").tooltip("Load all saved sitches with local terrain to check for errors");
             adminFolder.add(Globals, "testUserID", 0, 99999999, 1).noSlider().name("Test User ID").tooltip("Operate as this user ID (0 = disabled, must be > 1)")
                 .onFinishChange(() => { FileManager.refreshUserSaves(); });
-            if (parseBoolean(process.env.SAVE_TO_S3)) {
+            if (getEnvBool("SAVE_TO_S3", process.env.SAVE_TO_S3)) {
                 adminFolder.add(this, "addMissingScreenshots").name("Add Missing Screenshots").tooltip("Load each sitch that has no screenshot, render it, and upload a screenshot");
             }
             this._featureButton = adminFolder.add(this, "toggleFeatureSitch").name("Feature")

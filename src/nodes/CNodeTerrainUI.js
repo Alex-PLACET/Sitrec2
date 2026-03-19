@@ -15,6 +15,7 @@ import {meanSeaLevelOffset} from "../EGM96Geoid";
 import * as LAYER from "../LayerMasks";
 import {BufferGeometry, DoubleSide, Float32BufferAttribute, Group, Mesh, MeshPhongMaterial} from "three";
 import {filterSourcesForServerless, pickAvailableSourceType} from "../terrainSourceUtils";
+import {getEnv} from "../envUtils";
 
 const OCEAN_SURFACE_OFFSET_METERS = 0;
 const OCEAN_SURFACE_TILE_GRID = 17;
@@ -270,8 +271,8 @@ export class CNodeTerrainUI extends CNode {
         const defaultMapType = isServerless
             ? "Local"
             : (process.env.DOCKER_BUILD
-                ? (process.env.DOCKER_MAP_TYPE ?? "Debug")
-                : (process.env.DEFAULT_MAP_TYPE ?? "Debug"));
+                ? (getEnv("DOCKER_MAP_TYPE", process.env.DOCKER_MAP_TYPE) ?? "Debug")
+                : (getEnv("DEFAULT_MAP_TYPE", process.env.DEFAULT_MAP_TYPE) ?? "Debug"));
 
         // map type from the terrain object in a saved sitch, or default to configured default.
         // quickTerrain mode (testAll=2) always forces Debug terrain for speed.
@@ -341,8 +342,8 @@ export class CNodeTerrainUI extends CNode {
         const defaultElevationType = isServerless
             ? "Local"
             : (process.env.DOCKER_BUILD
-                ? (process.env.DOCKER_ELEVATION_TYPE ?? "Flat")
-                : (process.env.DEFAULT_ELEVATION_TYPE ?? "Flat"));
+                ? (getEnv("DOCKER_ELEVATION_TYPE", process.env.DOCKER_ELEVATION_TYPE) ?? "Flat")
+                : (getEnv("DEFAULT_ELEVATION_TYPE", process.env.DEFAULT_ELEVATION_TYPE) ?? "Flat"));
 
         // quickTerrain mode (testAll=2) always forces Flat elevation for speed.
         // Regression mode no longer forces Local globally; tests that need Local should pass

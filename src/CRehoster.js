@@ -12,6 +12,7 @@ import {SITREC_SERVER} from "./configUtils";
 import {withTestUser} from "./Globals";
 import {showError} from "./showError";
 import {initUploadProgress, parseBoolean, updateUploadProgress} from "./utils";
+import {getEnv, getEnvBool, getEnvNumber} from "./envUtils";
 
 async function computeContentHash(data) {
     let buffer;
@@ -137,10 +138,10 @@ export class CRehoster {
     async rehostFilePromise(filename, data, version, {skipHash = false} = {}) {
         assert(filename !== undefined, "rehostFile needs a filename")
 
-        if (parseBoolean(process.env.SAVE_TO_S3) && parseBoolean(process.env.USE_S3_PRESIGNED_URLS)) {
-            const MULTIPART_THRESHOLD = (parseInt(process.env.S3_MULTIPART_THRESHOLD_MB) || 100) * 1024 * 1024;
-            const CHUNK_SIZE = (parseInt(process.env.S3_CHUNK_SIZE_MB) || 16) * 1024 * 1024;
-            const PARALLEL_UPLOADS = parseInt(process.env.S3_PARALLEL_UPLOADS) || 8;
+        if (getEnvBool("SAVE_TO_S3", process.env.SAVE_TO_S3) && getEnvBool("USE_S3_PRESIGNED_URLS", process.env.USE_S3_PRESIGNED_URLS)) {
+            const MULTIPART_THRESHOLD = getEnvNumber("S3_MULTIPART_THRESHOLD_MB", process.env.S3_MULTIPART_THRESHOLD_MB, 100) * 1024 * 1024;
+            const CHUNK_SIZE = getEnvNumber("S3_CHUNK_SIZE_MB", process.env.S3_CHUNK_SIZE_MB, 16) * 1024 * 1024;
+            const PARALLEL_UPLOADS = getEnvNumber("S3_PARALLEL_UPLOADS", process.env.S3_PARALLEL_UPLOADS, 8);
 
             if (data.byteLength > MULTIPART_THRESHOLD) {
                 console.log(`[Multipart Upload] Starting upload for ${filename} (${(data.byteLength / 1024 / 1024).toFixed(2)} MB)`);
@@ -429,7 +430,7 @@ export class CRehoster {
 
     rehostFile(filename, data, version, options) {
 
-        let limit = process.env.MAX_FILE_SIZE_MB || 99; // default to 99MB if not set
+        let limit = getEnvNumber("MAX_FILE_SIZE_MB", process.env.MAX_FILE_SIZE_MB, 99);
 
         // if data is bigger than 99MB then do not rehost it
         if (data.byteLength > limit * 1024 * 1024) {

@@ -85,6 +85,7 @@ import {extractFlightClubInfo, flightClubToCSVStrings, isFlightClubJSON} from ".
 import {CSitchBrowser} from "./CSitchBrowser";
 import {ViewMan} from "./CViewManager";
 import {isResolvableSitrecReference, resolveURLForFetch, toCanonicalSitrecRef} from "./SitrecObjectResolver";
+import {getEnv, getEnvBool} from "./envUtils";
 import {isSupportedModelFile} from "./ModelLoader";
 import {
     createDesktopDirectoryHandle,
@@ -216,11 +217,11 @@ export class CFileManager extends CManager {
             // the Save and Load buttons should only be available for the custom sitch
 
 
-            if ((parseBoolean(process.env.SAVE_TO_SERVER) || parseBoolean(process.env.SAVE_TO_S3)) && !isServerless) {
+            if ((getEnvBool("SAVE_TO_SERVER", process.env.SAVE_TO_SERVER) || getEnvBool("SAVE_TO_S3", process.env.SAVE_TO_S3)) && !isServerless) {
 
                 let serverName = SITREC_DOMAIN;
-                if (parseBoolean(process.env.SAVE_TO_S3)) {
-                    serverName = process.env.S3_BUCKET + ".s3"
+                if (getEnvBool("SAVE_TO_S3", process.env.SAVE_TO_S3)) {
+                    serverName = getEnv("S3_BUCKET", process.env.S3_BUCKET) + ".s3"
                 }
 
                 this.guiServer = this.guiFolder.addFolder("Server (" + serverName + ") "+getEffectiveUserID()).perm().open();
@@ -239,7 +240,7 @@ export class CFileManager extends CManager {
                 }
             }
 
-            if (parseBoolean(process.env.SAVE_TO_LOCAL)) {
+            if (getEnvBool("SAVE_TO_LOCAL", process.env.SAVE_TO_LOCAL)) {
                 const useDesktopLocalUi = this.isDesktopLocalFsAvailable();
                 // Local save/load is always available for the custom sitch, regardless of login status
                 this.guiLocal = this.guiFolder.addFolder("Local").perm().open();
@@ -617,7 +618,7 @@ export class CFileManager extends CManager {
     }
 
     hasServerBackedSaves() {
-        return (parseBoolean(process.env.SAVE_TO_SERVER) || parseBoolean(process.env.SAVE_TO_S3)) && !isServerless;
+        return (getEnvBool("SAVE_TO_SERVER", process.env.SAVE_TO_SERVER) || getEnvBool("SAVE_TO_S3", process.env.SAVE_TO_S3)) && !isServerless;
     }
 
     ensureSitchBrowser() {
@@ -1398,7 +1399,7 @@ export class CFileManager extends CManager {
      */
     async handleSaveShortcut() {
         const canServerSave = this.hasServerBackedSaves();
-        const canLocalSave = parseBoolean(process.env.SAVE_TO_LOCAL);
+        const canLocalSave = getEnvBool("SAVE_TO_LOCAL", process.env.SAVE_TO_LOCAL);
 
         if (this.lastSaveAction === "local" && canLocalSave) {
             return this.saveLocal({recordAction: true});
@@ -1545,7 +1546,7 @@ export class CFileManager extends CManager {
         disableAllInput("SAVING");
 
         // Capture the screenshot before serialization starts (viewport is still rendered)
-        const screenshotPromise = (!local && parseBoolean(process.env.SAVE_TO_S3))
+        const screenshotPromise = (!local && getEnvBool("SAVE_TO_S3", process.env.SAVE_TO_S3))
             ? this.captureViewportScreenshot()
             : Promise.resolve(null);
 
@@ -2650,9 +2651,9 @@ export class CFileManager extends CManager {
                     console.log("Redirecting debug local URL to " + resolvedFilename);
                 }
 
-                // and the specified process.env.LOCALHOST
-                if (!isLocal && resolvedFilename.startsWith(process.env.LOCALHOST)) {
-                    resolvedFilename = SITREC_DOMAIN + "/" + resolvedFilename.slice(process.env.LOCALHOST.length);
+                // and the specified LOCALHOST env var
+                if (!isLocal && resolvedFilename.startsWith(getEnv("LOCALHOST", process.env.LOCALHOST))) {
+                    resolvedFilename = SITREC_DOMAIN + "/" + resolvedFilename.slice(getEnv("LOCALHOST", process.env.LOCALHOST).length);
                     console.log("Redirecting debug local URL to " + resolvedFilename);
                 }
             }

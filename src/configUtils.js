@@ -1,4 +1,5 @@
 import {Globals} from "./Globals.js";
+import {getEnv} from "./envUtils";
 
 export const isConsole = (typeof window === 'undefined');
 
@@ -57,7 +58,7 @@ export function isAdmin() {
 }
 
 export function checkLocal() {
-    const localPatterns = [process.env.LOCALHOST, 'localhost', '127\\.0\\.0\\.1', '::1', '192\\.168'];
+    const localPatterns = [getEnv("LOCALHOST", process.env.LOCALHOST), 'localhost', '127\\.0\\.0\\.1', '::1', '192\\.168'];
     const regex = new RegExp(`^(${localPatterns.join('|')})`);
 
     isLocal =
@@ -167,10 +168,10 @@ export async function setupConfigPaths() {
     
     // Populate Globals.env from compile-time process.env values (injected by dotenv-webpack)
     Globals.env = {
-        SITREC_USE_CUSTOM_TLE: process.env.SITREC_USE_CUSTOM_TLE,
-        SITREC_CUSTOM_TLE_MENU_NAME: process.env.SITREC_CUSTOM_TLE_MENU_NAME,
-        SITREC_CUSTOM_TLE_TOOLTIP: process.env.SITREC_CUSTOM_TLE_TOOLTIP,
-        SITREC_ENABLE_DEFAULT_TLE_SOURCES: process.env.SITREC_ENABLE_DEFAULT_TLE_SOURCES,
+        SITREC_USE_CUSTOM_TLE: getEnv("SITREC_USE_CUSTOM_TLE", process.env.SITREC_USE_CUSTOM_TLE),
+        SITREC_CUSTOM_TLE_MENU_NAME: getEnv("SITREC_CUSTOM_TLE_MENU_NAME", process.env.SITREC_CUSTOM_TLE_MENU_NAME),
+        SITREC_CUSTOM_TLE_TOOLTIP: getEnv("SITREC_CUSTOM_TLE_TOOLTIP", process.env.SITREC_CUSTOM_TLE_TOOLTIP),
+        SITREC_ENABLE_DEFAULT_TLE_SOURCES: getEnv("SITREC_ENABLE_DEFAULT_TLE_SOURCES", process.env.SITREC_ENABLE_DEFAULT_TLE_SOURCES),
     };
     
     // log all the exported variables in serverless mode

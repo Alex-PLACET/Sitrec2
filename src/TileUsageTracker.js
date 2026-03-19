@@ -1,6 +1,7 @@
 import {isServerless, SITREC_SERVER} from "./configUtils";
 import {withTestUser} from "./Globals";
 import {parseBoolean} from "./utils";
+import {getEnvBool} from "./envUtils";
 
 export const TILE_USAGE_SERVICES = Object.freeze({
     GOOGLE_3D_ROOT: "google_3d_root",
@@ -37,7 +38,7 @@ class TileUsageTrackerClass {
 
     async init() {
         if (this.initialized || isServerless) return;
-        if (!parseBoolean(process.env.SITREC_TRACK_STATS)) return;
+        if (!getEnvBool("SITREC_TRACK_STATS", process.env.SITREC_TRACK_STATS)) return;
         
         try {
             await this.fetchLimits();

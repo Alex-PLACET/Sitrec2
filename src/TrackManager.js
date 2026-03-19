@@ -6,6 +6,7 @@ import {CNodeConstant} from "./nodes/CNode";
 import * as LAYER from "./LayerMasks";
 import {Color, Vector3} from "three";
 import {getFileExtension, scaleF2M} from "./utils";
+import {getEnv} from "./envUtils";
 import {
     FileManager,
     GlobalDateTimeNode,
@@ -668,13 +669,13 @@ class CTrackManager extends CManager {
         const sphereId = trackOb.menuText ?? shortName;
 
 
-        if (process.env.DEFAULT_PLATFORM_MODEL && trackOb.trackFileName.endsWith(".klv")) {
+        if (getEnv("DEFAULT_PLATFORM_MODEL", process.env.DEFAULT_PLATFORM_MODEL) && trackOb.trackFileName.endsWith(".klv")) {
 
             // check if in the ModelFiles object, and use it if available
-            if (ModelFiles[process.env.DEFAULT_PLATFORM_MODEL]) {
+            if (ModelFiles[getEnv("DEFAULT_PLATFORM_MODEL", process.env.DEFAULT_PLATFORM_MODEL)]) {
                 trackOb.displayTargetSphere = new CNode3DObject({
                     id: sphereId + "_ob",
-                    model: process.env.DEFAULT_PLATFORM_MODEL,
+                    model: getEnv("DEFAULT_PLATFORM_MODEL", process.env.DEFAULT_PLATFORM_MODEL),
 
                     label: shortName,
                 })

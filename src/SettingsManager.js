@@ -7,12 +7,13 @@ import {indexedDBManager} from "./IndexedDBManager";
 import {isServerless} from "./configUtils";
 import {parseBoolean} from "./utils";
 import {assert} from "./assert";
+import {getEnvBool} from "./envUtils";
 
 // Environment variable flags for storage methods (default to false if not specified)
 // Set to 'true', 'false', '1', '0', 'yes', or 'no'
-const SETTINGS_COOKIES_ENABLED = parseBoolean(process.env.SETTINGS_COOKIES_ENABLED ?? 'false');
-const SETTINGS_SERVER_ENABLED = parseBoolean(process.env.SETTINGS_SERVER_ENABLED ?? 'false');
-const SETTINGS_DB_ENABLED = parseBoolean(process.env.SETTINGS_DB_ENABLED ?? 'false');
+const SETTINGS_COOKIES_ENABLED = getEnvBool("SETTINGS_COOKIES_ENABLED", process.env.SETTINGS_COOKIES_ENABLED);
+const SETTINGS_SERVER_ENABLED = getEnvBool("SETTINGS_SERVER_ENABLED", process.env.SETTINGS_SERVER_ENABLED);
+const SETTINGS_DB_ENABLED = getEnvBool("SETTINGS_DB_ENABLED", process.env.SETTINGS_DB_ENABLED);
 
 // Cookie helper functions for settings
 function setCookie(name, value, days) {

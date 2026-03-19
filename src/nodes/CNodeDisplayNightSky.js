@@ -2,6 +2,7 @@ import {CNode3DGroup} from "./CNode3DGroup";
 import {GlobalNightSkyScene, GlobalScene, GlobalSunSkyScene, setupNightSkyScene, setupSunSkyScene} from "../LocalFrame";
 import {Color, Group, Matrix4, Ray, Raycaster, Scene, Sphere, Vector3} from "three";
 import {degrees, radians} from "../utils";
+import {getEnv} from "../envUtils";
 import {FileManager, GlobalDateTimeNode, Globals, guiMenus, guiShowHide, NodeMan, setRenderOne, Sit} from "../Globals";
 import {
     DebugArrow,
@@ -168,7 +169,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
                 .tooltip("Get the latest LEO Satellite TLE data for the set simulator date/time. This will download the data from the internet, so it may take a few seconds.\nWill also enable the satellites to be displayed in the night sky.")
         }
 
-        if (process.env.CURRENT_STARLINK) {
+        if (getEnv("CURRENT_STARLINK", process.env.CURRENT_STARLINK)) {
             satGUI.add(this.satellites, "updateStarlink").name("Load CURRENT Starlink")
                 .onChange(function (x) {
                     this.parent.close()
@@ -176,7 +177,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
                 .tooltip("Get the CURRENT (not historical, now, real time) Starlink satellite positions. This will download the data from the internet, so it may take a few seconds.\n")
         }
 
-        if (process.env.CURRENT_ACTIVE) {
+        if (getEnv("CURRENT_ACTIVE", process.env.CURRENT_ACTIVE)) {
             satGUI.add(this.satellites, "updateActive").name("Load ACTIVE Satellites")
                 .onChange(function (x) {
                     this.parent.close()

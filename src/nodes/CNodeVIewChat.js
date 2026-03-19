@@ -3,6 +3,7 @@ import {GlobalDateTimeNode, Globals, guiMenus, markSitchDirty, withTestUser} fro
 import {SITREC_SERVER} from "../configUtils";
 import {sitrecAPI} from "../CSitrecAPI";
 import {parseBoolean} from "../utils";
+import {getEnvBool} from "../envUtils";
 import {ModelFiles} from "./CNode3DObject";
 import {clientNLU} from "../CClientNLU";
 
@@ -17,7 +18,7 @@ class CNodeViewChat extends CNodeViewText {
 
         // There's no mechanism to disable it in SitCustom,
         // so if it's not flagged enabled, just hide it
-        if (!parseBoolean(process.env.CHATBOT_ENABLED)) {
+        if (!getEnvBool("CHATBOT_ENABLED", process.env.CHATBOT_ENABLED)) {
             this.hide();
             return;
         }
