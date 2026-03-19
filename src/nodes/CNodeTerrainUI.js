@@ -15,7 +15,25 @@ import {meanSeaLevelOffset} from "../EGM96Geoid";
 import * as LAYER from "../LayerMasks";
 import {BufferGeometry, DoubleSide, Float32BufferAttribute, Group, Mesh, MeshPhongMaterial} from "three";
 import {filterSourcesForServerless, pickAvailableSourceType} from "../terrainSourceUtils";
-import {getEnv} from "../envUtils";
+import {getEnv, getEnvBool} from "../envUtils";
+
+// Known placeholder values that indicate a token hasn't been configured
+const PLACEHOLDER_TOKENS = new Set([
+    '', 'undefined', 'null', 'false',
+    'your_mapbox_token_here', 'your_maptiler_key_here',
+    'your_cesium_ion_token_here', 'your_google_maps_api_key_here',
+    'INSERT_TOKEN_HERE',
+]);
+
+/**
+ * Check if a source's required API token is available.
+ * Returns true if no token is required, or if the token is set to a real value.
+ */
+function hasRequiredToken(sourceDef) {
+    if (!sourceDef.requiredToken) return true;
+    const token = getEnv(sourceDef.requiredToken, process.env[sourceDef.requiredToken]);
+    return token && !PLACEHOLDER_TOKENS.has(token);
+}
 
 const OCEAN_SURFACE_OFFSET_METERS = 0;
 const OCEAN_SURFACE_TILE_GRID = 17;
@@ -259,8 +277,8 @@ export class CNodeTerrainUI extends CNode {
         // key is the name, value is the id
         this.mapTypesKV = {}
         for (const mapType in this.mapSources) {
-            if (!this.mapSources[mapType].excludeFromMenu) {
-                const mapDef = this.mapSources[mapType]
+            const mapDef = this.mapSources[mapType];
+            if (!mapDef.excludeFromMenu && hasRequiredToken(mapDef)) {
                 this.mapTypesKV[mapDef.name] = mapType
             }
         }
@@ -336,7 +354,9 @@ export class CNodeTerrainUI extends CNode {
         this.elevationTypesKV = {}
         for (const elevationType in this.elevationSources) {
             const elevationDef = this.elevationSources[elevationType]
-            this.elevationTypesKV[elevationDef.name] = elevationType
+            if (hasRequiredToken(elevationDef)) {
+                this.elevationTypesKV[elevationDef.name] = elevationType
+            }
         }
 
         const defaultElevationType = isServerless

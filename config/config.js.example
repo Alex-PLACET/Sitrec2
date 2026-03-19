@@ -15,6 +15,7 @@ export const _configParams = {
 
         mapbox: {
             name: "MapBox",
+            requiredToken: "MAPBOX_TOKEN",
             mapURL: (z, x, y, layer) => {
                 // direct URL to the MapBox tile, not via the cachemaps.php
                 // this is the URL that is used by the MapBox GL JS library
@@ -107,6 +108,7 @@ export const _configParams = {
         },
         maptiler: {
             name: "MapTiler",
+            requiredToken: "MAPTILER_KEY",
 
             // TODO - layers NEED TO include more info, like
             // MinZoom, MaxZoom, image format (png, jpg, etc)
