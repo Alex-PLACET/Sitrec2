@@ -3,8 +3,10 @@
 // For dev, this is a folder in the local web server
 // for prod, it's a temporary folder that is then uploaded to the production server
 
+const path = require('path');
+
 module.exports = {
-    dev_path: './dist',
-    prod_path: './dist'
+    dev_path: path.resolve(__dirname, '../dist'),
+    prod_path: path.resolve(__dirname, '../dist')
 }
 
