@@ -67,12 +67,15 @@ function parseSRT1(lines) {
     let MISBArray = new Array(numPoints);
 
     for (let i = 0; i < lines.length; i++) {
-        // Strip HTML tags repeatedly to handle nested/malformed tags
-        let prev;
-        do {
-            prev = lines[i];
-            lines[i] = lines[i].replace(/<[^>]*>/g, '');
-        } while (lines[i] !== prev);
+        // Strip HTML tags using a character-level scan (avoids regex-based HTML sanitization)
+        let result = '';
+        let inTag = false;
+        for (let j = 0; j < lines[i].length; j++) {
+            if (lines[i][j] === '<') inTag = true;
+            else if (lines[i][j] === '>') inTag = false;
+            else if (!inTag) result += lines[i][j];
+        }
+        lines[i] = result;
     }
 
     for (let i = 0; i < numPoints; i++) {

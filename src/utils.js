@@ -430,15 +430,11 @@ export function angleDifferenceDeg(a,b) {
 }
 
 export function isSubdomain(domainToCheck, baseDomain) {
-    // Ensure that both domainToCheck and baseDomain are in lowercase for accurate comparison
     domainToCheck = domainToCheck.toLowerCase();
     baseDomain = baseDomain.toLowerCase();
 
-    // Add a dot at the beginning of the baseDomain to ensure we're matching subdomains
-    // and not domains that merely end with the same sequence.
-    const pattern = new RegExp('(^|\\.)' + baseDomain.replace('.', '\\.') + '$');
-
-    return pattern.test(domainToCheck);
+    // Exact match or subdomain match (e.g. "www.example.org" matches "example.org")
+    return domainToCheck === baseDomain || domainToCheck.endsWith('.' + baseDomain);
 }
 
 // // Example usage:
