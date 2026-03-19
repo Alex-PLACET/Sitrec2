@@ -6,6 +6,7 @@ import {Color} from "three";
 import {assert} from "./assert";
 import {ViewMan} from "./CViewManager";
 import {parseBoolean} from "./utils";
+import {getEnv, getEnvBool} from "./envUtils";
 import Stats from "stats.js";
 import {
     addMenuToCenterSidebar,
@@ -777,9 +778,9 @@ export class CGuiMenuBar {
         const bar = document.createElement("div");
         bar.style.position = "absolute";
         bar.style.top = "0px";
-        if (parseBoolean(process.env.BANNER_ACTIVE)) {
-            bar.style.top = process.env.BANNER_HEIGHT + "px";
-            this.menuBar.style.top = process.env.BANNER_HEIGHT + "px";
+        if (getEnvBool("BANNER_ACTIVE", process.env.BANNER_ACTIVE)) {
+            bar.style.top = getEnv("BANNER_HEIGHT", process.env.BANNER_HEIGHT) + "px";
+            this.menuBar.style.top = getEnv("BANNER_HEIGHT", process.env.BANNER_HEIGHT) + "px";
         }
 
         bar.style.left = "0px";
@@ -865,8 +866,8 @@ export class CGuiMenuBar {
         // add an info GUI in the top right
         this.infoGUI = new GUI().title("Sitrec").close()
         // move it down if there is a banner
-        if (parseBoolean(process.env.BANNER_ACTIVE)) {
-            this.infoGUI.domElement.style.top = process.env.BANNER_HEIGHT + "px";
+        if (getEnvBool("BANNER_ACTIVE", process.env.BANNER_ACTIVE)) {
+            this.infoGUI.domElement.style.top = getEnv("BANNER_HEIGHT", process.env.BANNER_HEIGHT) + "px";
         }
 
         // Prevent browser context menu on right-click for info GUI
@@ -969,12 +970,12 @@ export class CGuiMenuBar {
         const isFullScreen = document.fullscreenElement !== null;
 
         // When in browser full-screen mode without banners, add 10px spacing from top
-        const topOffset = (isFullScreen && !parseBoolean(process.env.BANNER_ACTIVE)) ? 10 : 0;
+        const topOffset = (isFullScreen && !getEnvBool("BANNER_ACTIVE", process.env.BANNER_ACTIVE)) ? 10 : 0;
 
-        if (parseBoolean(process.env.BANNER_ACTIVE)) {
+        if (getEnvBool("BANNER_ACTIVE", process.env.BANNER_ACTIVE)) {
             // With banner, position below it
-            this.bar.style.top = process.env.BANNER_HEIGHT + "px";
-            this.menuBar.style.top = process.env.BANNER_HEIGHT + "px";
+            this.bar.style.top = getEnv("BANNER_HEIGHT", process.env.BANNER_HEIGHT) + "px";
+            this.menuBar.style.top = getEnv("BANNER_HEIGHT", process.env.BANNER_HEIGHT) + "px";
             ViewMan.topPx = this.barHeight;
         } else {
             // Without banner, use the top offset (10px in full-screen mode, 0px otherwise)

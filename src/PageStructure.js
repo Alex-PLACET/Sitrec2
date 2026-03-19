@@ -14,6 +14,7 @@
 
 
 import {parseBoolean} from "./utils";
+import {getEnv, getEnvBool, getEnvNumber} from "./envUtils";
 
 let setupDone = false;
 
@@ -46,7 +47,7 @@ export function setupPageStructure() {
     document.body.style.backgroundColor = '#000000';
 
     // if banner is not active, then we have content and controls divs
-    if (!parseBoolean(process.env.BANNER_ACTIVE)) {
+    if (!getEnvBool("BANNER_ACTIVE", process.env.BANNER_ACTIVE)) {
         // create the container div, with ID of "Content"
         const container = document.createElement('div');
         container.id = "Content";
@@ -83,15 +84,15 @@ export function setupPageStructure() {
     bannerTop.id = "BannerTop";
     bannerTop.style.position = 'absolute';
     bannerTop.style.width = '100%';
-    bannerTop.style.height = process.env.BANNER_HEIGHT + 'px';
-    bannerTop.style.backgroundColor = process.env.BANNER_BACKGROUND_COLOR;
-    bannerTop.style.color = process.env.BANNER_COLOR;
+    bannerTop.style.height = getEnv("BANNER_HEIGHT", process.env.BANNER_HEIGHT) + 'px';
+    bannerTop.style.backgroundColor = getEnv("BANNER_BACKGROUND_COLOR", process.env.BANNER_BACKGROUND_COLOR);
+    bannerTop.style.color = getEnv("BANNER_COLOR", process.env.BANNER_COLOR);
     bannerTop.style.textAlign = 'center';
-    bannerTop.style.fontFamily = process.env.BANNER_FONT;
-    bannerTop.style.fontSize = process.env.BANNER_TEXT_HEIGHT + 'px';
-    bannerTop.style.lineHeight = process.env.BANNER_HEIGHT + 'px';
+    bannerTop.style.fontFamily = getEnv("BANNER_FONT", process.env.BANNER_FONT);
+    bannerTop.style.fontSize = getEnv("BANNER_TEXT_HEIGHT", process.env.BANNER_TEXT_HEIGHT) + 'px';
+    bannerTop.style.lineHeight = getEnv("BANNER_HEIGHT", process.env.BANNER_HEIGHT) + 'px';
   //  bannerTop.style.borderBottom = '1px solid ' + process.env.BANNER_BORDER_COLOR;
-    bannerTop.textContent = process.env.BANNER_TOP_TEXT;
+    bannerTop.textContent = getEnv("BANNER_TOP_TEXT", process.env.BANNER_TOP_TEXT);
     document.body.append(bannerTop);
 
     // create the content div, accounting for top banner, controls, and bottom banner (+ 10px offset + 4px padding)
@@ -99,8 +100,8 @@ export function setupPageStructure() {
     container.id = "Content";
     container.style.position = 'absolute';
     container.style.width = '100%';
-    container.style.height = 'calc(100% - ' + (2 * process.env.BANNER_HEIGHT + CONTROLS_HEIGHT + 10 + 4) + 'px)';
-    container.style.top = process.env.BANNER_HEIGHT + 'px';
+    container.style.height = 'calc(100% - ' + (2 * getEnv("BANNER_HEIGHT", process.env.BANNER_HEIGHT) + CONTROLS_HEIGHT + 10 + 4) + 'px)';
+    container.style.top = getEnv("BANNER_HEIGHT", process.env.BANNER_HEIGHT) + 'px';
     container.style.overflow = 'hidden';
     document.body.append(container)
 
@@ -111,7 +112,7 @@ export function setupPageStructure() {
     const controlsBottom = document.createElement('div');
     controlsBottom.id = "ControlsBottom";
     controlsBottom.style.position = 'absolute';
-    controlsBottom.style.bottom = (parseInt(process.env.BANNER_HEIGHT) + 10) + 'px'; // Moved up 10px from banner
+    controlsBottom.style.bottom = (parseInt(getEnv("BANNER_HEIGHT", process.env.BANNER_HEIGHT)) + 10) + 'px'; // Moved up 10px from banner
     controlsBottom.style.width = '100%';
     controlsBottom.style.height = `${CONTROLS_HEIGHT}px`;
     controlsBottom.style.overflow = 'hidden';
@@ -127,15 +128,15 @@ export function setupPageStructure() {
     // position at the bottom
     bannerBottom.style.bottom = 0;
     bannerBottom.style.width = '100%';
-    bannerBottom.style.height = process.env.BANNER_HEIGHT + 'px';
-    bannerBottom.style.backgroundColor = process.env.BANNER_BACKGROUND_COLOR;
-    bannerBottom.style.color = process.env.BANNER_COLOR;
+    bannerBottom.style.height = getEnv("BANNER_HEIGHT", process.env.BANNER_HEIGHT) + 'px';
+    bannerBottom.style.backgroundColor = getEnv("BANNER_BACKGROUND_COLOR", process.env.BANNER_BACKGROUND_COLOR);
+    bannerBottom.style.color = getEnv("BANNER_COLOR", process.env.BANNER_COLOR);
     bannerBottom.style.textAlign = 'center';
-    bannerBottom.style.fontSize = process.env.BANNER_TEXT_HEIGHT + 'px';
-    bannerBottom.style.fontFamily = process.env.BANNER_FONT;
-    bannerBottom.style.lineHeight = process.env.BANNER_HEIGHT + 'px';
+    bannerBottom.style.fontSize = getEnv("BANNER_TEXT_HEIGHT", process.env.BANNER_TEXT_HEIGHT) + 'px';
+    bannerBottom.style.fontFamily = getEnv("BANNER_FONT", process.env.BANNER_FONT);
+    bannerBottom.style.lineHeight = getEnv("BANNER_HEIGHT", process.env.BANNER_HEIGHT) + 'px';
   //  bannerBottom.style.borderTop = '1px solid ' + process.env.BANNER_BORDER_COLOR;
-    bannerBottom.textContent = process.env.BANNER_BOTTOM_TEXT;
+    bannerBottom.textContent = getEnv("BANNER_BOTTOM_TEXT", process.env.BANNER_BOTTOM_TEXT);
     document.body.append(bannerBottom);
 
 
@@ -166,10 +167,10 @@ export function toggleControlsVisibility() {
         controlsBottom.style.display = 'block';
         
         // Restore original height based on whether banner is active (accounting for 10px offset + 4px padding)
-        if (!parseBoolean(process.env.BANNER_ACTIVE)) {
+        if (!getEnvBool("BANNER_ACTIVE", process.env.BANNER_ACTIVE)) {
             content.style.height = `calc(100% - ${CONTROLS_HEIGHT + 10 + 4}px)`;
         } else {
-            content.style.height = 'calc(100% - ' + (2 * process.env.BANNER_HEIGHT + CONTROLS_HEIGHT + 10 + 4) + 'px)';
+            content.style.height = 'calc(100% - ' + (2 * getEnv("BANNER_HEIGHT", process.env.BANNER_HEIGHT) + CONTROLS_HEIGHT + 10 + 4) + 'px)';
         }
     }
 }
@@ -195,8 +196,8 @@ function createSidebar(id, side) {
     sidebar.style.overflowX = 'hidden';
     
     let topOffset = MENU_BAR_HEIGHT;
-    if (parseBoolean(process.env.BANNER_ACTIVE)) {
-        topOffset += parseInt(process.env.BANNER_HEIGHT);
+    if (getEnvBool("BANNER_ACTIVE", process.env.BANNER_ACTIVE)) {
+        topOffset += parseInt(getEnv("BANNER_HEIGHT", process.env.BANNER_HEIGHT));
     }
     sidebar.style.top = topOffset + 'px';
     sidebar.style.height = `calc(100% - ${topOffset}px)`;
@@ -219,8 +220,8 @@ function createCenterSidebar() {
     sidebar.style.overflowX = 'hidden';
 
     let topOffset = MENU_BAR_HEIGHT;
-    if (parseBoolean(process.env.BANNER_ACTIVE)) {
-        topOffset += parseInt(process.env.BANNER_HEIGHT);
+    if (getEnvBool("BANNER_ACTIVE", process.env.BANNER_ACTIVE)) {
+        topOffset += parseInt(getEnv("BANNER_HEIGHT", process.env.BANNER_HEIGHT));
     }
     sidebar.style.top = topOffset + 'px';
     sidebar.style.height = `calc(100% - ${topOffset}px)`;
