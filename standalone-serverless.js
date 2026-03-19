@@ -21,12 +21,22 @@
  */
 
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
 const { exec } = require('child_process');
 
 const app = express();
+
+// Apply rate limiting to all routes
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 1000, // generous limit for local dev server
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+app.use(limiter);
 const PORT = process.env.SITREC_PORT || process.env.PORT || 3000;
 const DIST_DIR = path.resolve(__dirname, 'dist-serverless');
 

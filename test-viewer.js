@@ -2,6 +2,7 @@
 
 import {exec, spawn} from 'child_process';
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import {WebSocketServer} from 'ws';
 import {fileURLToPath} from 'url';
 import {dirname} from 'path';
@@ -12,6 +13,15 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const app = express();
+
+// Apply rate limiting to all routes
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 1000, // generous limit for local test server
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+app.use(limiter);
 const port = 3456;
 const exitAfterTests = process.argv.includes('--exit') || process.env.TEST_VIEWER_EXIT === 'true';
 const openBrowser = process.argv.includes('--open') || !exitAfterTests;

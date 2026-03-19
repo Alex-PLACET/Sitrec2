@@ -1,12 +1,22 @@
 #!/usr/bin/env node
 
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
 
 const app = express();
+
+// Apply rate limiting to all routes
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 1000, // generous limit for local dev server
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+app.use(limiter);
 const PORT = process.env.SITREC_PORT || process.env.PORT || 3000;
 const PHP_PORT = process.env.SITREC_PHP_PORT || process.env.PHP_PORT || 8000;
 const DIST_DIR = path.resolve(__dirname, 'dist-standalone');

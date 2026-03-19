@@ -5,14 +5,13 @@ const path = require('path');
 const fitsHtmlPath = path.join(__dirname, 'fits.html');
 const content = fs.readFileSync(fitsHtmlPath, 'utf-8');
 
-// Extract all script content
-const scriptRegex = /<script[^>]*>([\s\S]*?)<\/script>/gi;
-let match;
+// Extract all script content using a proper HTML parser
+const { JSDOM } = require('jsdom');
+const dom = new JSDOM(content);
 let scriptContent = '';
-
-while ((match = scriptRegex.exec(content)) !== null) {
-    scriptContent += match[1] + '\n';
-}
+dom.window.document.querySelectorAll('script').forEach(script => {
+    scriptContent += script.textContent + '\n';
+});
 
 // Try to parse it to check for syntax errors
 try {
