@@ -1,0 +1,25 @@
+# Dockerfile.release — lightweight packaging-only Dockerfile for CI.
+# Expects the pre-built dist/ directory to exist in the build context
+# (uploaded as an artifact from the build-js stage).
+# The full multi-stage Dockerfile is still used for local builds.
+
+FROM php:8.4-apache
+
+RUN apt-get update && apt-get install -y libzip-dev && docker-php-ext-install zip && rm -rf /var/lib/apt/lists/*
+
+COPY dist/ /var/www/html/
+
+WORKDIR /var/www/html
+
+RUN mkdir ./sitrec-cache && chmod 777 ./sitrec-cache \
+    && mkdir ./sitrec-upload && chmod 777 ./sitrec-upload
+
+COPY docker/entrypoint.sh /usr/local/bin/sitrec-entrypoint.sh
+RUN chmod +x /usr/local/bin/sitrec-entrypoint.sh
+
+VOLUME /var/www/html/sitrec-videos
+
+EXPOSE 80
+
+ENTRYPOINT ["sitrec-entrypoint.sh"]
+CMD ["apache2-foreground"]
