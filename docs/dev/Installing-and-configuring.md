@@ -1,180 +1,189 @@
 # Sitrec Installation Methods
 
-Sitrec can be installed and run in four different ways:
+Sitrec can be installed and run in several ways, from a zero-config one-liner to a full local development environment:
 
-1. **Docker (Recommended for quickest setup)** - Fully containerized, everything included in the container
-2. **Serverless Build (PHPless)** - Runs without PHP backend, either as static files or a lightweight Node.js server
-3. **Standalone Node.js Server** - Self-contained build using Node.js + your system's PHP, no web server needed
-4. **Local Web Server** - Traditional setup with Nginx/Apache + PHP, for full development environment
-
-Choose the method that best fits your needs:
-
-| Method | Best For | Requirements | Build Time |
+| Method | Best For | Requirements | Setup Time |
 |--------|----------|--------------|------------|
-| Docker | Quick testing, no configuration | **Only Docker Desktop** (no Node.js, PHP, or web server needed) | ~1 minute |
-| Serverless (PHPless) | Offline/portable use | **Node.js** (for server mode) or **just a modern browser** (for static mode) | ~10 seconds |
-| Standalone | Development without web server | **Node.js + PHP in PATH** (no web server needed) | ~10 seconds |
-| Local Server | Full development environment | **Node.js + Nginx/Apache + PHP** | ~5 seconds |
+| **Docker Image** | Quickest setup, client deployments | Docker Desktop only | ~30 seconds |
+| Docker Build | Testing from source with Docker | Docker Desktop + Git | ~2 minutes |
+| Serverless (PHPless) | Offline/portable use | Node.js (or just a browser) | ~30 seconds |
+| Standalone | Development without web server | Node.js + PHP | ~30 seconds |
+| Local Server | Full development environment | Node.js + Nginx/Apache + PHP | ~5 minutes |
+
+---
+
+## Zero-Config Docker Image (Recommended)
+
+The fastest way to run Sitrec. No source code, no build tools, no configuration required. A pre-built multi-architecture image (amd64 + arm64) is published to GitHub Container Registry on each release.
+
+**Prerequisites:** [Docker Desktop](https://www.docker.com/) installed and running.
+
+### One-liner Install
+
+**Mac / Linux / WSL:**
+```bash
+curl -sL https://raw.githubusercontent.com/MickWest/Sitrec2/main/install.sh | bash
+```
+
+**Windows PowerShell:**
+```powershell
+irm https://raw.githubusercontent.com/MickWest/Sitrec2/main/install.ps1 | iex
+```
+
+This creates a `sitrec/` directory, pulls the image, and starts the app at **http://localhost:8080**.
+
+### Manual Install
+
+If you prefer not to pipe scripts from the internet:
+
+1. Create a directory and add a `docker-compose.yml`:
+
+```yaml
+services:
+  sitrec:
+    image: ghcr.io/mickwest/sitrec2:latest
+    ports:
+      - '8080:80'
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./sitrec-videos:/var/www/html/sitrec-videos
+```
+
+2. Run:
+```bash
+docker compose up
+```
+
+3. Open **http://localhost:8080**
+
+### Configuration via Environment Variables
+
+Create a `.env` file in the same directory as `docker-compose.yml`. All settings are optional — the app works with zero configuration using free public map and elevation sources (ESRI, AWS Terrarium).
+
+```env
+# === UI Banners (optional) ===
+#BANNER_ACTIVE=true
+#BANNER_TOP_TEXT=Welcome to Sitrec
+#BANNER_BOTTOM_TEXT=
+#BANNER_COLOR=#FFFFFF
+#BANNER_BACKGROUND_COLOR=#377e22
+
+# === Maps (optional — enables higher quality imagery) ===
+#MAPBOX_TOKEN=pk.your_token_here
+#MAPTILER_KEY=your_key_here
+
+# === 3D Buildings (optional) ===
+#CESIUM_ION_TOKEN=your_token_here
+#GOOGLE_MAPS_API_KEY=your_key_here
+
+# === AI Chat (optional) ===
+#CHATBOT_ENABLED=true
+#OPENAI_API=sk-your_key_here
+
+# === Cloud Storage (optional — enables server-side saves) ===
+#SAVE_TO_S3=true
+#S3_ACCESS_KEY_ID=your_key_here
+#S3_SECRET_ACCESS_KEY=your_secret_here
+#S3_BUCKET=your-bucket
+#S3_REGION=us-west-2
+```
+
+After editing `.env`, restart the container:
+```bash
+docker compose down && docker compose up
+```
+
+Map sources that require an API token (e.g. MapBox, MapTiler) only appear in the dropdown when the corresponding token is provided. Without any tokens, the app uses ESRI World Imagery and AWS Terrarium elevation, which require no keys.
+
+### Updating
+
+```bash
+docker compose pull && docker compose up
+```
+
+### Pinning a Version
+
+To use a specific version instead of `latest`, edit `docker-compose.yml`:
+```yaml
+image: ghcr.io/mickwest/sitrec2:2.36.0
+```
+
+---
+
+## Docker Build from Source
+
+Build the Docker image locally from the source code. Useful for testing changes before they're released, or for customizing `config.js` with additional map sources.
+
+**Prerequisites:** Docker Desktop, Git
+
+**Mac / Linux:**
+```bash
+git clone https://github.com/MickWest/sitrec2 sitrec-test-dev
+cd sitrec-test-dev
+docker compose up --build
+```
+
+**Windows:**
+```bat
+git clone https://github.com/mickwest/sitrec2 sitrec-test-dev
+cd sitrec-test-dev
+docker compose up --build
+```
+
+The app will be at **http://localhost:6425**. The Dockerfile automatically copies `.example` config files if the live versions don't exist, so no manual config setup is needed.
+
+### Docker Development Build (Hot Reload)
+
+For active development with automatic recompilation:
+
+```bash
+docker-compose -f docker-compose.dev.yml up --build
+```
+
+| Feature | Standard Docker | Development Docker |
+|---------|----------------|-------------------|
+| Purpose | Production-like | Active development |
+| File Changes | Requires rebuild | Auto-recompile |
+| Ports | 6425 | 8080 (webpack), 8081 (Apache) |
+| Hot Reload | No | Yes |
+
+---
 
 ## Serverless Build (No Backend Required)
 
-The serverless build creates a version of Sitrec that runs without any backend server (no PHP). It can be used in two ways:
+Creates a version of Sitrec that runs without PHP. All data is stored in the browser's IndexedDB.
 
-### Option 1: PHPless Node.js Server
-Run as a lightweight Node.js server without PHP dependencies:
+**Prerequisites:** Node.js (for server mode) or just a modern browser (for static files)
+
+### Node.js Server Mode
 
 ```bash
 git clone https://github.com/MickWest/sitrec2 sitrec-test-dev
 cd sitrec-test-dev
-for f in config/*.example; do cp "$f" "${f%.example}"; done  # Mac/Linux
-# OR for Windows: for %f in (config\*.example) do copy /Y "%f" "%~dpnf"
+for f in config/*.example; do cp "$f" "${f%.example}"; done
 npm install
-npm run build-serverless
-npm run start-serverless
+npm run dev-serverless
 ```
 
-Then open: http://localhost:3000/sitrec
+Open **http://localhost:3000/sitrec**
 
-This provides a minimal Node.js server without any PHP backend. All data is stored locally in the browser's IndexedDB.
+### Static Files Mode
 
-### Option 2: Pure Static Files
-After building with `npm run build-serverless`, the files in `dist-serverless/` can be:
-- Opened directly in a browser via `file://` protocol (with File System Access API support)
-- Hosted on any static web server (GitHub Pages, S3, etc.)
-- Run completely offline
+After building with `npm run build-serverless`, the files in `dist-serverless/` can be opened directly in a browser, hosted on any static server (GitHub Pages, S3, etc.), or run completely offline.
 
-**Serverless Limitations:**
-- No server-side file rehosting
-- No cloud sync or user accounts
-- No AI chat feature (requires backend)
-- Data stored only in browser's IndexedDB
+**Limitations:** No server-side saves, no cloud sync, no AI chat.
+**Advantages:** Zero backend dependencies, works offline, data never leaves your machine.
 
-**Serverless Advantages:**
-- Zero backend dependencies
-- Works completely offline
-- Privacy-focused (data never leaves your machine)
-- Easy deployment anywhere
+---
 
-## Quickest Local Install, Using Docker
+## Standalone Node.js Server
 
-This method requires **only Docker Desktop** - no Node.js, PHP, or web server installation needed. Everything runs inside the Docker container.
+Self-contained build using Node.js + your system's PHP. No separate web server needed.
 
-**Prerequisites:**
-- Git
-- Docker Desktop from <https://www.docker.com/>
+**Prerequisites:** Node.js, PHP 8.3+ in PATH
 
-Install Git and Docker Desktop, then run Docker Desktop.
-
-Mac/Linux
-```bash
-git clone https://github.com/MickWest/sitrec2 sitrec-test-dev
-cd sitrec-test-dev
-for f in config/*.example; do cp "$f" "${f%.example}"; done
-docker compose -p sitrec up -d --build
-open http://localhost:6425/
-```
-
-Windows
-```bat
-git clone https://github.com/mickwest/sitrec2 sitrec-test-dev
-cd sitrec-test-dev
-for %f in (config\*.example) do copy /Y "%f" "%~dpnf"
-docker compose -p sitrec up -d --build
-start http://localhost:6425/
-```
-
-This will be running on http://localhost:6425/. The "open" or "start" commands above should open a browser window.
-
-## Docker Development Build (Advanced)
-
-For active Sitrec development with hot reload capabilities, there's an alternative Docker configuration that provides a more interactive development experience.
-
-**Standard Docker vs Development Docker:**
-
-| Feature | Standard Docker (`docker-compose.yml`) | Development Docker (`docker-compose.dev.yml`) |
-|---------|----------------------------------------|----------------------------------------------|
-| **Purpose** | Production-like environment | Active development with hot reload |
-| **Build Time** | ~2-3 minutes | ~5-10 minutes (first build) |
-| **File Changes** | Requires rebuild | Immediate (auto-recompile) |
-| **Ports** | 6425 | 8080 (webpack), 8081 (Apache) |
-| **Source Mounting** | No (files copied into image) | Yes (live editing from host) |
-| **Hot Reload** | No | Yes (webpack dev server) |
-| **Best For** | Testing, demos, production-like setup | Active code development |
-
-**Development Docker Setup:**
-
-Mac/Linux
-```bash
-git clone https://github.com/MickWest/sitrec2 sitrec-test-dev
-cd sitrec-test-dev
-for f in config/*.example; do cp "$f" "${f%.example}"; done
-docker-compose -f docker-compose.dev.yml up -d --build
-open http://localhost:8080/
-```
-
-Windows
-```bat
-git clone https://github.com/mickwest/sitrec2 sitrec-test-dev
-cd sitrec-test-dev
-for %f in (config\*.example) do copy /Y "%f" "%~dpnf"
-docker-compose -f docker-compose.dev.yml up -d --build
-start http://localhost:8080/
-```
-
-**What this provides:**
-- **Webpack Dev Server** on port 8080 with automatic recompilation
-- **Apache/PHP Backend** on port 8081 (proxied by webpack)
-- **Live file editing** - changes to source files are immediately reflected
-- **No rebuild needed** for code changes (only for Dockerfile/dependency changes)
-
-**Hot Reload Behavior:**
-- **JavaScript/CSS** (`src/`): Auto-recompiled by webpack, manual browser refresh required
-- **PHP files** (`sitrecServer/`): Immediately available, requires page refresh
-- **Sitch files** (`data/`): Immediately available, requires page refresh
-- **Webpack config**: Requires container restart
-
-**Useful Commands:**
-```bash
-# View live logs
-docker-compose -f docker-compose.dev.yml logs -f
-
-# Stop containers
-docker-compose -f docker-compose.dev.yml down
-
-# Access container shell
-docker-compose -f docker-compose.dev.yml exec sitrec-dev bash
-
-# Restart after config changes
-docker-compose -f docker-compose.dev.yml restart
-```
-
-**Troubleshooting Docker Dev:**
-
-- **Changes not reflecting?** Check browser console for webpack compilation messages, try hard refresh (Cmd+Shift+R or Ctrl+Shift+R)
-- **Port already in use?** Run `lsof -i :8080` or `lsof -i :8081` to find conflicting services
-- **Need to reset everything?** Run `docker-compose -f docker-compose.dev.yml down -v` then rebuild with `--no-cache`
-- **Empty `sitrecServer/config.php` appearing?** This is normal Docker behavior due to overlapping volume mounts - the file is harmless and already in `.gitignore`
-
-# Quick node.js dev server install (Standalone Build)
-
-This method creates a self-contained build and runs it with Node.js and your system's PHP installation. No separate web server (Nginx/Apache) is required.
-
-**Prerequisites:**
-- Node.js (with npm)
-- PHP 8.3+ installed and available in your system PATH
-
-**To check if PHP is available:**
-```bash
-php --version
-```
-If PHP is not installed:
-- **Mac**: Use Homebrew: `brew install php` (or use the built-in PHP if available)
-- **Windows**: Download from <https://windows.php.net/download/>
-- **Linux**: Use your package manager: `sudo apt install php` or `sudo yum install php`
-
-**Installation:**
-
-Mac/Linux
 ```bash
 git clone https://github.com/MickWest/sitrec2 sitrec-test-dev
 cd sitrec-test-dev
@@ -183,48 +192,24 @@ npm install
 npm run dev-standalone-debug
 ```
 
-Windows
-```bat
-git clone https://github.com/MickWest/sitrec2 sitrec-test-dev
-cd sitrec-test-dev
-for %f in (config\*.example) do copy /Y "%f" "%~dpnf"
-npm install
-npm run dev-standalone-debug
-```
+**Windows:** Replace the `for` line with: `for %f in (config\*.example) do copy /Y "%f" "%~dpnf"`
 
-**What this does:**
-1. Builds the application into a `dist-standalone` directory (not your web server)
-2. Starts a Node.js Express server on port 3000
-3. Starts PHP's built-in development server on port 8000 (using your system's PHP)
-4. Proxies requests between the frontend and backend
+Open **http://localhost:3000/sitrec**
 
-If successful, you'll see:
-```
-🚀 Sitrec standalone server is running!
-📱 Frontend: http://localhost:3000/sitrec
-🐘 PHP Backend: http://localhost:8000
-Press Ctrl+C to stop the server
-```
+This starts a Node.js Express server on port 3000 and PHP's built-in server on port 8000, with proxying between them.
 
-Then open: http://localhost:3000/sitrec
+---
 
-**Note:** This uses your local PHP installation (the `php` command in your PATH). The standalone server will automatically start and stop PHP's built-in server.
+## Local Web Server Installation
 
+Full development environment with Nginx/Apache + PHP. This is the setup used for production deployments and active Sitrec development.
 
-# Local Server Installation
+### Prerequisites
 
-## Prerequisites
+- Web server (Nginx or Apache) with PHP 8.3+ and HTTPS support
+- Node.js with npm
 
-If you want to install and run directly from a local server, and not use Docker, the you will need:
-
-- A web server (e.g. Nginx) with
-    - PHP (8.3+ recommended)
-    - HTTPS support (for CORS, can be self-signed for local dev)
-- node.js (for building, with npm)
-
-## Server Install Mac/Linux
-
-Assuming we want to install the build environment in "sitrec-test-dev", run:
+### Setup
 
 ```bash
 git clone https://github.com/MickWest/sitrec2 sitrec-test-dev
@@ -233,442 +218,148 @@ for f in config/*.example; do cp "$f" "${f%.example}"; done
 npm install
 ```
 
-Assuming you want to install in a folder called "glass" that's off the root of your local web server. In this example, the full path to my local web server root is: /Users/mick/Library/CloudStorage/Dropbox/Metabunk/
+**Windows:** Replace the `for` line with: `for %f in (config\*.example) do copy /Y "%f" "%~dpnf"`
 
-```bash
-mkdir /Users/mick/Library/CloudStorage/Dropbox/Metabunk/glass
-pushd /Users/mick/Library/CloudStorage/Dropbox/Metabunk/glass
-mkdir sitrec
-mkdir sitrec-cache
-mkdir sitrec-upload
-mkdir sitrec-videos
-mkdir sitrec-terrain
-popd
-```
+### Configure Paths
 
-Edit config/config-install.js
-Set dev_path to /Users/mick/Library/CloudStorage/Dropbox/Metabunk/glass/sitrec
-Set prod_path to any folder you can use for staging the deploy build (if needed). Example
+Edit `config/config-install.js` to point at your web server:
 
 ```javascript
 module.exports = {
-dev_path: '/Users/mick/Library/CloudStorage/Dropbox/Metabunk/glass/sitrec',
-prod_path: '/Users/mick/sitrec-deploy'
+    dev_path: '/path/to/your/webserver/sitrec',
+    prod_path: '/path/to/staging/folder'
 }
 ```
 
-Build into the local web folder we defined earlier
-```bash
-npm run build
-```
+### Create Server Directory Structure
 
-## Server Install Windows
+Your web server root needs these directories:
 
-```bat
-git clone https://github.com/mickwest/sitrec2 sitrec-test-dev
-cd sitrec-test-dev
-for %f in (config\*.example) do copy /Y "%f" "%~dpnf"
-npm install
-```
+- `sitrec/` — the built application (created by webpack)
+- `sitrec-cache/` — server-side tile cache (must be writable)
+- `sitrec-upload/` — user file uploads (must be writable)
+- `sitrec-videos/` — video files (see "Download the Videos" below)
+- `sitrec-terrain/` — local terrain tile cache (optional)
 
-Assuming you want to install in a folder called "glass" that's off the root of your local web serve
-
-```bat
-mkdir c:\\nginx\\html\\glass
-pushd c:\\nginx\\html\\glass
-mkdir sitrec
-mkdir sitrec-cache
-mkdir sitrec-upload
-mkdir sitrec-videos
-mkdir sitrec-terrain
-popd
-notepad config\config-install.js
-```
-
-Edit config\config-install.js
-Set dev_path to the local deployment folder on the web server
-Set prod_path to any folder you can use for staging the deploy build (if needed)
-
-Example:
-```javascript
-module.exports = {
-    dev_path: 'c:\\nginx\\html\\glass\\sitrec',
-    prod_path: 'c:\\users\\mick\\sitrec-deploy'
-}
-```
-
-Build into the local web folder we defined earlier
-```bash
-npm run build
-```
-
-
-## Code overview
-Sitrec runs mostly client-side using JavaScript and some custom shaders but also has a handful of server-side scripts written in PHP.
-
-The rendering code uses Three.js, and there are a variety of other open-source libraries. All this uses MIT licenses or similar.
-
-The code cannot be run directly, as it is set up to be compiled using WebPack.
-
-## Install local dev environment
-
-Assuming that you want to run the code on a local machine for development, testing, etc, you need a web server. I use Nginx, but Apache should work
-The web server should be configured to run php files (i.e. php-fpm)
-It should also load an index.html file when there's one in the directory (this is usually default)
-
-You will also need to install node.js in you build environment, from:
-<https://nodejs.org/en/download>
-
-Node.js is used both for build tools (i.e. webpack) and for packages used by the app. It is not used server-side.
-
-## Create Source file and sitrec project folder structure
-Sitrec is built from the "sitrec" project folder. Note this is NOT the same "sitrec" server folder you deploy to.
-
-Clone Sitrec from GitHub, or download a release archive. This will give you the sitrec project folder with these sub-folders:
-- `config` - the configuration files. Initially just .example files
-- `data` - per-sitch data like ADS-B data, csv files, TLEs, models, sprites, and images
-- `docker` - Configuration files for Docker builds
-- `docs` - other .md format Documentation and images
-- `sitrecServer` - The server-side PHP files, like cachemaps.php
-- `src` - The JavaScript source, with the entry point of index.js
-- `test` - Test files for the console build
-- `tests` - Unit tests that can be run by Jest
-
-Then there are the project build files:
-- `docker-compose.yml` - configures the Docker container
-- `Dockerfile` - configures the Docker image (which goes in the container)
-- `package.json` - top-level descriptor, contains npm scripts for build and deploy. It also contains the devDependencies (node modules that are used)
-- `webpack.common.js` - the main configuration file for Webpack. The next two files both include this.
-- `webpack.copy-files.js` - a separate Webpack config to just copy the files wihout rebuilding
-- `webpack.dev.js` - used for development
-- `webpack.prod.js` - used for production/deployment
-- `webpackCopyPatterns.js` - defines what files are copied from the dev folder to the build, and how they are transformed and.or renamed (e.g. custom.env)
-- `config/config.js` - Contains install-specific constants for server paths used by the app
-- `config/config-install.js` - development and production file paths, used by the build system
-
-(config.js and config-install.js are initial supplied as config.js.example and config-install.js.example - you will need to rename them).
-
-## Create the local (and production) server folder structure
-Sitrec can exist at the server root, or in any path. I use the root, but it's maybe neater to have in a folder. Here I'll assume it's in a folder called "s". You do not have to use "s", you can put it in another folder, or in the web root (like I do)
-
-There are six folders in the server structure
-- `sitrec` - the folder containing the Webpack compiled app and the data files (except videos). This is deleted and recreated when rebuilding, so don't edit anything in there, edit the
-- `sitrec-config` - contains server-side PHP configuration files - you need to edit this.
-- `sitrec-cache` - a server-side cache for terrain tiles, initially empty
-- `sitrec-upload` - for rehosting user files (like ADS-B or TLE). Initially empty
-- `sitrec-videos` - The videos for the sitches. Handled separately as it can get quite large. The videos are subdivided into public (government or other unrestricted files) and private (where the licensing rights are unclear, but are used here under fair-use). So there's two sub-folders that you need to keep
-    - `sitrec-videos/public`
-    - `sitrec-videos/private`
-- `sitrec-terrain` - Local cache for downloaded terrain tiles (imagery and elevation). Initially empty. See `tools/README_IMAGERY_DOWNLOAD.md` for download scripts.
-
-Note sitrec-cache and sitrec-upload must have write permission.
-
-There's also an optional URL shortener, which is uses a folder called 'u' to store HTML files with short names that are used to redirect to longer URLs.
-
-## Download the videos
-
-The private video folder contains videos taken by individuals and posted on the internet. I use them in Sitrec under fair-use, non-commercial, educational. But they are not included here. Ask me if you really need one.
-The public folder contain videos that are government produced, are by me, or are otherwise free of restrictions. They can be found here: <https://www.dropbox.com/scl/fo/biko4zk689lgh5m5ojgzw/h?rlkey=stuaqfig0f369jzujgizsicyn&dl=0>
-
-## Create/Edit the config files in config/
-You will need to edit shared.env, config.js, config-install.js and config.php. The defaults will work to an extent (with no credentials for downloading Mapbox or Space-Data, etc), so the _minumum_ you need to edit is config-install.js
-
-### sitrec/config/shared.env
-
-See shared.env.example file for usage.
-
-### sitrec/config/config.js
-This has the basic paths for both the local dev environment, and (optionally) the server environment
-For the dev environment, we need edits in two places:
-
-```javascript
-const SITREC_LOCAL = "http://localhost/s/sitrec/"
-const SITREC_LOCAL_SERVER = "http://localhost/s/sitrec/sitRecServer/"
-```
-Then the server, the file has code which will attempt to determine SITREC_HOST from the environment. You might have to set it manually. There's comments in the file explaining this.
-
-config.js also has the localSituation variable which determines which sitch you boot up into in a local dev environment.
-
-
-### sitrec/config/config-install.js
-
-This tells Webpack where to put the built application. My setup is:
-
-```javascript
-dev_path: '/Users/mick/Library/CloudStorage/Dropbox/Metabunk/sitrec',
-prod_path: '/Users/mick/sitrec-deploy'
-```
-
-`dev_path` is the path to the local server. Here `/Users/mick/Library/CloudStorage/Dropbox/Metabunk/` is the root of my local web server. A simple Windows configuration might be:
-
-```javascript
-dev_path: 'c:\\nginx\\html\\s\\sitrec',
-prod_path: 'c:\\Users\\Fred\\sitrec-deploy'
-```
-
-If you are just building/testing locally, these can be the same path.
-
-## sitrec/config/config.php
-
-This sets up credentials for site like mapbox, amazon S3, space-data, etc are now in shared.env
-Read the comments in the file. There's a config.php.example file to use as a starting point
-
-File paths are now automatically detected by config_paths.php, which you should not need to edit. If you have a configuration that requires you to edit this file, then please let me know (Open an issue on GitHub or email me, mick@mickwest.com)
-
-## Install the node modules
-
-In sitrec there will also be a folder, node-modules. This is autogenerated by node.js from the package.json file. To create or update it, in the sitrec folder run
+### Build
 
 ```bash
-npm install
+npm run build    # development build
+npm run deploy   # production build (minified)
 ```
 
-This will create the folder node_modules, which will (currently) have 218 folders in it. These are the 24 packages that are used, plus their dependencies.  Note you won't be uploading this to the production server, as we use WebPack to only include what is needed.  You will need to do this when you get new code, but not during your own development.
+### Configure
 
-## Available Build Commands
+Edit the files in `config/`:
 
-Sitrec has several build commands for different purposes:
+- **`shared.env`** — API keys, feature flags, storage settings. See `shared.env.example` for all options.
+- **`config.js`** — Custom map sources, help links, local sitch selection. See `config.js.example`.
+- **`config.php`** — Server-side auth integration (XenForo, etc.). See `config.php.example`.
+- **`config-install.js`** — Build output paths.
 
-### Webpack Configuration
+### Download Videos
 
-Sitrec uses separate webpack configs optimized for different environments:
+Public videos (government-produced, unrestricted) are available at:
+https://www.dropbox.com/scl/fo/biko4zk689lgh5m5ojgzw/h?rlkey=stuaqfig0f369jzujgizsicyn&dl=0
 
-| Config | Cache | File Watching | Use Case |
-|--------|-------|---------------|----------|
-| `webpack.dev.js` | Disabled | Filesystem native | Local development |
-| `webpack.dev.docker.js` | Enabled (filesystem) | Polling (1000ms) | Docker containers |
+Place them in `sitrec-videos/public/`.
 
-Local development disables caching to ensure clean rebuilds on every change. Docker uses caching and polling for better performance with volume mounts.
+### Testing
 
-### Development Builds (for local web server)
+After building, verify with these URL tests (adjust the path if not at `/sitrec/`):
 
-**`npm run build`** - Build for local development
-- Uses `webpack.dev.js` configuration
-- Builds to the path specified in `config-install.js` as `dev_path`
-- Includes source maps for debugging
-- Not minified (faster builds, easier debugging)
-- Requires a local web server (Nginx/Apache) with PHP
+- PHP: `http://localhost/sitrec/sitrecServer/info.php` — should show PHP info page
+- Terrain proxy: `http://localhost/sitrec/sitrecServer/cachemaps.php?url=https%3A%2F%2Fs3.amazonaws.com%2Felevation-tiles-prod%2Fterrarium%2F14%2F3188%2F6188.png` — should return a terrain tile image
+- Default sitch: `http://localhost/sitrec/` — loads the default sitch
+- Smoke test: `http://localhost/sitrec/?testAll=1` — loads all sitches sequentially
 
-**`npm run start`** - Development server with hot reload
-- Uses webpack-dev-server on port 3000 (configurable via `SITREC_PORT`)
-- Automatically rebuilds when you change source files
-- Proxies PHP requests to backend on port 8081 (configurable via `SITREC_BACKEND_PORT`)
-- Requires a local web server (Nginx/Apache) with PHP running on the backend port
+---
 
-**`npm run copy`** - Copy files without rebuilding
-- Uses `webpack.copy-files.js`
-- Only copies data files and PHP files, doesn't rebuild JavaScript
-- Useful when you only changed data files or PHP
+## Build Commands Reference
 
-### Standalone Builds (self-contained, no web server needed)
+### Development
 
-**`npm run build-standalone`** - Production standalone build
-- Builds to `dist-standalone` directory
-- Minified and optimized
-- Use with `npm run start-standalone` to run
+| Command | Description |
+|---------|-------------|
+| `npm run build` | Build to `dev_path` (requires web server) |
+| `npm run start` | Webpack dev server with hot reload (port 3000) |
+| `npm run copy` | Copy data/PHP files only (no JS rebuild) |
 
-**`npm run build-standalone-debug`** - Development standalone build
-- Builds to `dist-standalone` directory
-- Includes source maps and debugging info
-- Not minified
-- **Includes circular dependency detection** (will fail if circular dependencies exist)
-- Use with `npm run start-standalone-debug` to run
+### Standalone
 
-**`npm run dev-standalone-debug`** - Build and run standalone (debug mode)
-- Combines `build-standalone-debug` + `start-standalone-debug`
-- This is the command used in the "Quick node.js dev server install" section above
+| Command | Description |
+|---------|-------------|
+| `npm run dev-standalone-debug` | Build + run with debugging |
+| `npm run build-standalone` | Build only |
+| `npm run start-standalone` | Run only |
 
-**`npm run start-standalone`** - Run the standalone server
-- Starts Node.js Express server on port 3000
-- Starts PHP built-in server on port 8000
-- Serves from `dist-standalone` directory
+### Serverless
 
-**`npm run start-standalone-debug`** - Run standalone with Node.js inspector
-- Same as `start-standalone` but with `--inspect` flag
-- Allows debugging the Node.js server code
+| Command | Description |
+|---------|-------------|
+| `npm run dev-serverless` | Build + run |
+| `npm run build-serverless` | Build only |
+| `npm run start-serverless` | Run only |
 
-### Production Build
+### Production
 
-**`npm run deploy`** - Build for production deployment
-- Uses `webpack.prod.js` configuration
-- Builds to the path specified in `config-install.js` as `prod_path`
-- Fully minified and optimized
-- No source maps or debug info
-- Takes longer to build (~15 seconds vs ~3-4 seconds for dev)
+| Command | Description |
+|---------|-------------|
+| `npm run deploy` | Minified production build to `prod_path` |
 
 ### Port Configuration
 
-All ports can be customized via environment variables:
+| Mode | Default | Environment Variable |
+|------|---------|---------------------|
+| Dev server | 3000 | `SITREC_PORT` |
+| Dev backend proxy | 8081 | `SITREC_BACKEND_PORT` |
+| Standalone PHP | 8000 | `SITREC_PHP_PORT` |
+| Docker | 6425 | (docker-compose.yml) |
+| Docker Dev | 8080/8081 | (docker-compose.dev.yml) |
+| Docker Image | 8080 | (docker-compose.yml) |
 
-| Mode | Default Port | Environment Variable | Description |
-|------|-------------|---------------------|-------------|
-| `npm run start` | 3000 | `SITREC_PORT` | Webpack dev server port |
-| `npm run start` | 8081 | `SITREC_BACKEND_PORT` | Backend (nginx/Apache) port for proxying |
-| Standalone | 3000 | `SITREC_PORT` | Express server port |
-| Standalone | 8000 | `SITREC_PHP_PORT` | PHP built-in server port |
-| Serverless | 3000 | `SITREC_PORT` | Express server port |
-| Docker | 6425 | (docker-compose.yml) | Exposed port |
-| Docker Dev | 8080 | (docker-compose.dev.yml) | Webpack dev server |
-| Docker Dev | 8081 | (docker-compose.dev.yml) | Apache/PHP backend |
+---
 
-**Example: Run on different ports**
-```bash
-SITREC_PORT=4000 npm run start                           # Dev server on 4000
-SITREC_PORT=4000 SITREC_PHP_PORT=9000 npm run start-standalone  # Standalone on 4000/9000
-SITREC_BACKEND_PORT=80 npm run start                     # Proxy to nginx on port 80
-```
-
-## Debugging
-
-### Debug Builds
-
-For debugging, use the debug build commands which include enhanced features:
-
-```bash
-npm run dev-standalone-debug     # Build + run with full debugging
-npm run build-standalone-debug   # Build only with debug features
-npm run start-standalone-debug   # Start with Node.js inspector
-```
-
-**Debug build features:**
-- **Source Maps**: `eval-source-map` for accurate debugging in browser DevTools
-- **No Minification**: Code remains readable
-- **Clean Filenames**: No content hashes for easier identification
-- **Node.js Inspector**: Server runs with `--inspect` flag on port 9229
-
-### Browser Debugging (Chrome DevTools)
-
-1. Open your application (e.g., `http://localhost:3000/sitrec`)
-2. Press `F12` to open DevTools
-3. Go to **Sources** tab
-4. Navigate to `webpack://sitrec/src/` to find your source files
-5. Set breakpoints in your original source code
-
-### Node.js Server Debugging
-
-1. Run: `npm run start-standalone-debug`
-2. Look for: `Debugger listening on ws://127.0.0.1:9229/...`
-3. Open Chrome and navigate to: `chrome://inspect`
-4. Click **"Open dedicated DevTools for Node"**
-5. Set breakpoints in `standalone-server.js`
-
-### Debug Endpoints (Standalone/Serverless)
-
-When running standalone or serverless servers, these debug endpoints are available:
-
-| Endpoint | Description |
-|----------|-------------|
-| `/debug/status` | Server configuration and status |
-| `/debug/files` | List all built files and assets |
-| `/api/health` | Health check (serverless only) |
-| `/api/manifest` | Available sitches list (serverless only) |
-
-### VS Code Debugging
-
-Create `.vscode/launch.json` with:
-
-```json
-{
-    "version": "0.2.0",
-    "configurations": [
-        {
-            "type": "node",
-            "request": "launch",
-            "name": "Debug Sitrec Standalone",
-            "program": "${workspaceFolder}/standalone-server.js",
-            "console": "integratedTerminal"
-        }
-    ]
-}
-```
-
-## Build the dev app with node.js and Webpack
-
-In the sitrec _project_ folder, run
-```bash
-npm run build
-```
-
-This will build the app to the location specified by `dev_path` in `config-install.js` (e.g., http://localhost/s/sitrec/), which mostly comprises:
-
-```
-index.html - the entry point
-index.css - combined CSS
-index.9a60e8af738fb4a9ce40.bundle.js (or similar, the name changes) - the code
-/src/ - web worker code which is not included in webpack
-/sitrecServer/ - the PHP server files
-/data/ a copy of the /sitrec/data folder
-```
-
-Since this is building (via dev-path) into the local server, the dev app will be at
-
-http://localhost/s/sitrec
-
-## Testing
-
-The following are URLS for tests of basic functions (these assume that the dev setup is in /s/). If they fail, first check the dev tools console to see if there's a helpful error message.
-
-- [PHP Test](http://localhost/s/sitrec/sitrecServer/info.php)
-  Must display a PHP info page showing version number
-
-- [Terrain elevation test](http://localhost/s/sitrec/sitrecServer/cachemaps.php?url=https%3A%2F%2Fs3.amazonaws.com%2Felevation-tiles-prod%2Fterrarium%2F14%2F3188%2F6188.png)
-  Test of the tile server proxy for terrain elevation. Should give a square image
-
-- [Mapbox test](http://localhost/s/sitrec/sitrecServer/cachemaps.php?url=https%3A%2F%2Fapi.mapbox.com%2Fv4%2Fmapbox.satellite%2F16%2F20546%2F29347%402x.jpg80)
-  Returns an aerial tile of some buildings and trees:
-
-- [OSM Test](http://localhost/s/sitrec/sitrecServer/cachemaps.php?url=https%3A%2F%2Fc.tile.openstreetmap.org%2F15%2F6382%2F12376.png)
-  Returns a segment of a street map
-
-- [EOX Test](http://localhost/s/sitrec/sitrecServer/cachemaps.php?url=https%3A%2F%2Ftiles.maps.eox.at%2Fwmts%3Flayer%3Ds2cloudless_3857%26style%3Ddefault%26tilematrixset%3Dg%26Service%3DWMTS%26Request%3DGetTile%26Version%3D1.0.0%26Format%3Dimage%252Fjpeg%26TileMatrix%3D15%26TileCol%3D6383%26TileRow%3D12373)
-  Test of EOX landscape server - returns a brown aerial landscape tile
-
-- [Landscape Test](http://localhost/s/sitrec/?sitch=swr)
-  A simple landscape, shows that the landscape proxy server is working
-
-- [Default Sitch](http://localhost/s/sitrec/)
-  Will load the default local sitch set in config.js
-
-- [Aquadilla Sitch](http://localhost/s/sitrec/?sitch=agua)
-  A more complex sitch with a video, landscape, tracks, and complex computations
-
-- [Smoke Test](http://localhost/s/sitrec/?testAll=1)
-  A smoke test that loads ALL the sitches one after another
-
-- [Quick Smoke Test](http://localhost/s/sitrec/?testAll=2)
-  A smoke test that loads ALL the sitches one after another as quickly as possible
-
-Failure could mean
-- PHP-fpm not running
-- php.ini missing extension=openssl
-- s/sitrec-cache is missing or not writeable
-
-
-## Production Build and Deploy
+## Production Deployment
 
 ```bash
 npm run deploy
 ```
 
-This will build a production version of the code into the folder specified by prod_path in config-install.js
-
-This is essentially the same as the dev version, except it's minified and has no debug info (file/line numbers, etc.) The minification means it takes a bit longer to build (for me build/dev is 3-4 seconds, and deploy/prod is about 15 seconds. YMMV)
-
-The folder specified by prod_path here is arbitrarily named, it's just a temporary container for the production app and data before you transfer it to the production server. You can do that with FTP, ssh/rsync, or the deployment tool of your choice. I use rsync:
+Builds a minified production version to `prod_path`. Transfer to your production server via rsync, scp, or your preferred method:
 
 ```bash
-rsync -avz --delete -e "ssh " "$LOCAL_DIR/" "$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR
+rsync -avz --delete -e ssh "$LOCAL_DIR/" "$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR"
 ```
-Before testing this, ensure you've got the five folders on the deploy servers, the same as on the local dev server.
 
-## Docker
+Ensure the five server directories exist on the production server with appropriate write permissions for `sitrec-cache` and `sitrec-upload`.
 
-`docker compose -p sitrec up -d` will start a container running the sitrec frontend and sitrecServer. By default, this will expose the service on `http://localhost:6425/`, without a basepath. To run on a different port, change the `ports` section of the `docker-compose.yml` file.
+---
 
-`docker compose -p sitrec up -d --build` will force a rebuild of the image.
+## Code Overview
 
-A default bind mount is set up for the `sitrec-videos` folder in the root of the project directory, allowing videos to be added. The `sitrec-cache` folder uses a volume by default, but can be changed to a bind mount by uncommenting a line in the `docker-compose.yml` file.
+Sitrec runs mostly client-side using JavaScript and Three.js for 3D rendering. Server-side scripts are written in PHP. The code is compiled using webpack.
 
-Default sitrec-cache and sitrec-upload folders is created - but these will not persist.
+### Project Structure
 
-The shortening functionality is not available in the docker container, as this depends on the Metabunk server.
+- `config/` — configuration files (`.example` templates provided)
+- `data/` — per-sitch data (ADS-B, CSV, TLE, models, images)
+- `docker/` — Docker build support files
+- `docs/` — documentation
+- `sitrecServer/` — PHP backend (map proxy, chat, user management)
+- `src/` — JavaScript source code (entry point: `index.js`)
+- `tests/` — Jest unit tests
+
+### Debugging
+
+Debug builds include source maps, no minification, and Node.js inspector support:
+
+```bash
+npm run dev-standalone-debug   # Build + run with full debugging
+```
+
+- **Browser:** Open DevTools → Sources → `webpack://sitrec/src/`
+- **Node.js:** Connect Chrome DevTools via `chrome://inspect`
+- **VS Code:** Use a launch config targeting `standalone-server.js`
+
+Debug endpoints (standalone/serverless): `/debug/status`, `/debug/files`, `/api/health`
