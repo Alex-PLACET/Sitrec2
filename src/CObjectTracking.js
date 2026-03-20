@@ -830,10 +830,12 @@ class ObjectTracker {
                 this.lastVideoWidth = videoDims.width;
                 this.lastVideoHeight = videoDims.height;
                 // Clear any old tracking data since it's for a different video
-                if (!this.tracking) {
-                    this.trackedPositions.clear();
-                    this.trackedPositions.set(Math.floor(par.frame), {x: this.trackX, y: this.trackY});
+                // Must clear even during active tracking — old positions are for wrong video
+                if (this.tracking) {
+                    this.stopTracking();
                 }
+                this.trackedPositions.clear();
+                this.trackedPositions.set(Math.floor(par.frame), {x: this.trackX, y: this.trackY});
             }
         }
 

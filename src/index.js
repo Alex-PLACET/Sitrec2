@@ -422,7 +422,10 @@ Globals.pendingActions = 0;
 
 Globals.fixedFrame = undefined;
 if (urlParams.get("frame") !== null) {
-    Globals.fixedFrame = parseInt(urlParams.get("frame"));
+    const parsedFrame = parseInt(urlParams.get("frame"), 10);
+    if (!isNaN(parsedFrame)) {
+        Globals.fixedFrame = parsedFrame;
+    }
 }
 
 let customSitch = null;

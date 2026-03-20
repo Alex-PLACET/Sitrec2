@@ -26,7 +26,9 @@ class CSitrecAPI {
                 },
                 fn: (v) => {
                     const camera = NodeMan.get("fixedCameraPosition");
+                    if (!camera) return { success: false, error: "fixedCameraPosition node not found" };
                     camera.gotoLLA(v.lat, v.lon, v.alt)
+                    return { success: true };
                 }
             },
 
@@ -37,6 +39,7 @@ class CSitrecAPI {
                 },
                 fn: (v) => {
                     const camera = NodeMan.get("fixedCameraPosition");
+                    if (!camera) return { success: false, error: "fixedCameraPosition node not found" };
                     const lla = camera._LLA;
                     camera.setLLA(lla[0], lla[1], v.alt);
                     return { success: true, newAltitude: v.alt };
@@ -47,6 +50,7 @@ class CSitrecAPI {
                 doc: "Get the current camera latitude, longitude, and altitude.",
                 fn: () => {
                     const camera = NodeMan.get("fixedCameraPosition");
+                    if (!camera) return { success: false, error: "fixedCameraPosition node not found" };
                     const lla = camera._LLA;
                     return { lat: lla[0], lon: lla[1], alt: lla[2] };
                 }
@@ -60,11 +64,10 @@ class CSitrecAPI {
                 fn: (v) => {
                     const dateTime = new Date(v.dateTime);
                     if (isNaN(dateTime.getTime())) {
-                        showError("Invalid date-time format:", v.dateTime);
-                        return;
+                        return { success: false, error: "Invalid date-time format: " + v.dateTime };
                     }
                     GlobalDateTimeNode.setStartDateTime(v.dateTime);
-
+                    return { success: true, dateTime: v.dateTime };
                 }
             },
 
@@ -76,7 +79,9 @@ class CSitrecAPI {
                 },
                 fn: (v) => {
                     const camera = NodeMan.get("lookCamera");
+                    if (!camera) return { success: false, error: "lookCamera node not found" };
                     camera.setFromRaDec(v.ra, v.dec);
+                    return { success: true };
                 }
             },
 
@@ -87,7 +92,9 @@ class CSitrecAPI {
                 },
                 fn: (v) => {
                     const camera = NodeMan.get("lookCamera");
+                    if (!camera) return { success: false, error: "lookCamera node not found" };
                     camera.setFromNamedObject(v.object);
+                    return { success: true };
                 }
             },
 

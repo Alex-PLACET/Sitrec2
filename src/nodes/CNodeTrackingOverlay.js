@@ -577,6 +577,15 @@ n
             const k1 = this.keyframes[0];
             const k2 = this.keyframes[1];
 
+            // Guard against duplicate keyframes at the same frame (div by zero)
+            if (k1.frame === k2.frame) {
+                const point = [(k1.x + k2.x) / 2, (k1.y + k2.y) / 2];
+                for (let i = 0; i < this.frames; i++) {
+                    this.pointsXY[i] = [...point];
+                }
+                return;
+            }
+
             for (let i = 0; i < this.frames; i++) {
                 if (i <= k1.frame) {
                     // Before first keyframe, extrapolate linearly

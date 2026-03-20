@@ -337,6 +337,15 @@ function initConsoleKeys() {
 }
 
 
+// Safe node getter for setup - returns null (with warning) instead of asserting
+function getNodeForSetup(id, context) {
+    const node = NodeMan.get(id, false);
+    if (!node) {
+        console.warn(`SetupFromKeyAndData [${context}]: node "${id}" not found, skipping`);
+    }
+    return node;
+}
+
 // given a key and some data, execute the appropiate setup
 // this is often a node, but can be a GUI element, or some other setup
 // setup commands start with lower case and are handled in the switch statement
@@ -600,31 +609,37 @@ export async function SetupFromKeyAndData(key, _data, depth=0) {
 
 
         // focalLenController: {source: "cameraTrack", object: "lookCamera", len: 166, fov: 5},
-        case "focalLenController":
+        case "focalLenController": {
             SSLog();
-            NodeMan.get(data.object ?? "lookCamera").addController("FocalLength", {
+            const node = getNodeForSetup(data.object ?? "lookCamera", "focalLenController");
+            if (node) node.addController("FocalLength", {
                 id:data.id,
                 focalLength: data.source,
                 referenceFocalLength: data.len,
                 referenceFOV: data.fov,
             })
             break;
+        }
 
-        case "fovController":
+        case "fovController": {
             SSLog();
-            NodeMan.get(data.object ?? "lookCamera").addController("FOV", {
+            const node = getNodeForSetup(data.object ?? "lookCamera", "fovController");
+            if (node) node.addController("FOV", {
                 id:data.id,
                 source: data.source,
             })
             break;
+        }
 
-        case "matrixController":
+        case "matrixController": {
             SSLog();
-            NodeMan.get(data.object ?? "lookCamera").addController("Matrix", {
+            const node = getNodeForSetup(data.object ?? "lookCamera", "matrixController");
+            if (node) node.addController("Matrix", {
                 id:data.id,
                 source: data.source,
             })
             break;
+        }
 
         case "wescamFOV":
             SSLog();
@@ -832,14 +847,17 @@ export async function SetupFromKeyAndData(key, _data, depth=0) {
             const addID = data.id ?? camera.id + "_PTZUI";
             const idObject = {id: addID};
             const showGUI = data.showGUI ?? true;
-            NodeMan.get(camera).addController("PTZUI", {
+            const ptzNode = getNodeForSetup(camera, "ptzController");
+            if (ptzNode) ptzNode.addController("PTZUI", {
                 gui: data.gui ?? guiMenus.camera, ...data, ...idObject, showGUI: showGUI});
 
             break;
 
-        case "lookPosition":
+        case "lookPosition": {
             SSLog();
-            NodeMan.get("lookCamera").addController("UIPositionLLA", {
+            const lookPosNode = getNodeForSetup("lookCamera", "lookPosition");
+            if (!lookPosNode) break;
+            lookPosNode.addController("UIPositionLLA", {
                 id: "CameraLLA",
                 fromLat: new CNodeGUIValue({
                     id: "cameraLat",
@@ -869,41 +887,50 @@ export async function SetupFromKeyAndData(key, _data, depth=0) {
                 }, data.gui ?? guiMenus.view),
             })
             break;
+        }
 
-        case "followTrack":
+        case "followTrack": {
             SSLog();
-            NodeMan.get(data.object ?? "lookCamera").addController("TrackPosition", {
+            const node = getNodeForSetup(data.object ?? "lookCamera", "followTrack");
+            if (node) node.addController("TrackPosition", {
                 id:data.id,
                 sourceTrack: data.track ?? "cameraTrack",
             })
             break;
+        }
 
-        case "lookAt":
+        case "lookAt": {
             SSLog();
-            NodeMan.get(data.object ?? "lookCamera").addController("LookAtLLA", {
+            const node = getNodeForSetup(data.object ?? "lookCamera", "lookAt");
+            if (node) node.addController("LookAtLLA", {
                 id:data.id,
                 toLat: data.toLat,
                 toLon: data.toLon,
                 toAlt: data.toAlt,
             })
             break;
+        }
 
-        case "lookAtTrack":
+        case "lookAtTrack": {
             SSLog();
-            NodeMan.get(data.object ?? "lookCamera").addController("LookAtTrack", {
+            const node = getNodeForSetup(data.object ?? "lookCamera", "lookAtTrack");
+            if (node) node.addController("LookAtTrack", {
                 id:data.id,
                 targetTrack: data.track ?? "targetTrack",
             })
             break;
+        }
 
-        case "trackToTrack":
+        case "trackToTrack": {
             SSLog();
-            NodeMan.get(data.object ?? "lookCamera").addController("TrackToTrack", {
+            const node = getNodeForSetup(data.object ?? "lookCamera", "trackToTrack");
+            if (node) node.addController("TrackToTrack", {
                 id:data.id,
                 sourceTrack: data.target ?? "cameraTrack",
                 targetTrack: data.target ?? "targetTrack",
             })
             break;
+        }
 
 
 

@@ -610,6 +610,7 @@ export class CNodeView3D extends CNodeViewCanvas {
         
         // Restore original camera reference if it was saved
         if (this.originalCamera) {
+            this.camera = this.originalCamera;
             this.originalCamera = null;
         }
         

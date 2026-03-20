@@ -48,8 +48,6 @@ export class CNodeFactory {
     }
 
     createNodes(nodes) {
-//        console.log("++++++++ createNodes")
-        console.log(JSON.stringify(nodes))
         for (const node of nodes) {
 //            console.log("createNodes: " + node.id + ": " + node.new)
             this.create(node.new, node)

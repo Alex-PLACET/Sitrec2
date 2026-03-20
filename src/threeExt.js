@@ -266,18 +266,20 @@ export function DebugWireframeSphere(name, origin, radius = 100, color = 0xfffff
 export let DebugArrows = {}
 
 export function disposeDebugArrows() {
-    console.log("Disposing all debug arrows")
-
     for (const key in DebugArrows) {
-       // DebugArrows[key].dispose();
+        const arrow = DebugArrows[key];
+        if (arrow.parent) arrow.parent.remove(arrow);
+        arrow.dispose();
     }
     DebugArrows = {}
 }
 
 export function disposeDebugSpheres() {
-    console.log("Disposing all debug spheres")
     for (const key in DebugSpheres) {
-     //   DebugSpheres[key].dispose();
+        const sphere = DebugSpheres[key];
+        if (sphere.parent) sphere.parent.remove(sphere);
+        if (sphere.geometry) sphere.geometry.dispose();
+        if (sphere.material) sphere.material.dispose();
     }
     DebugSpheres = {}
 }

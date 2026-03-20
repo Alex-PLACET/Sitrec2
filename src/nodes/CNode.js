@@ -556,8 +556,8 @@ class CNode {
 
     //
     getValueTime(time) {
-        const frame = getFrameFromTime(time)
-        return getValue(frame)
+        const frame = this.getFrameFromTime(time)
+        return this.getValue(frame)
     }
 
     // Helper method to interpolate/extrapolate heading values

@@ -780,7 +780,7 @@ export class CNodeDateTime extends CNode {
         // }
 
 
-        this.nowGST = calculateGST(this.nowDate)
+        this.nowGST = calculateGST(this.dateNow)
     }
 
     // getDateNow(frame) {

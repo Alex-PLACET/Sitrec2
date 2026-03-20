@@ -463,6 +463,13 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
             }
 
             return rotationPromise.then(rotatedImage => {
+                // Guard: video may have been disposed during rotation
+                if (!this.imageCache) {
+                    if (rotatedImage && typeof rotatedImage.close === 'function') {
+                        try { rotatedImage.close(); } catch (e) { /* already disposed */ }
+                    }
+                    return null;
+                }
                 // Resize frame if needed based on videoMaxSize setting
                 return this.resizeFrameIfNeeded(rotatedImage);
             });
@@ -848,10 +855,10 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
                     // release all the frames in this group
                     // Close imageCache (ImageBitmap for WebCodec videos)
                     if (this.imageCache[i]) {
-                        // Don't close the lastGoodFrame - we need it as fallback
+                        // If this frame is the lastGoodFrame, clear the reference
+                        // so it doesn't become an orphaned ImageBitmap
                         if (this.imageCache[i] === this.lastGoodFrame) {
-                            this.imageCache[i] = null;
-                            continue;
+                            this.lastGoodFrame = null;
                         }
                         // Only close ImageBitmap objects, not regular images
                         if (this.imageCache[i] instanceof ImageBitmap) {
