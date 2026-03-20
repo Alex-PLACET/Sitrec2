@@ -217,13 +217,20 @@ export class CNodeControllerObjectTilt extends CNodeController {
                         // from the track, and then use that to rotate the model
                         // around the track direction
 
+                        // simSpeed: each frame represents simSpeed/fps real seconds
+                        // (e.g., simSpeed=60, fps=30 → 2 real seconds per frame)
+                        const simSpeed = Sit.simSpeed ?? 1;
                         const sampleDuration = 1;
                         // first get the angular velocity
                         const velocityA = trackDirection(this.smoothedTrack, f - sampleDuration * Sit.fps / 2, 2)
                         const velocityB = trackDirection(this.smoothedTrack, f + sampleDuration * Sit.fps / 2, 3)
                         const velocity = trackVelocity(this.smoothedTrack, f)
                         const fwd = velocity.clone().normalize()
-                        let angularVelocity = velocityA.angleTo(velocityB) / sampleDuration;  // radians per second
+
+                        // The direction samples span sampleDuration * Sit.fps frames,
+                        // which is sampleDuration * simSpeed real seconds.
+                        const actualSampleDuration = sampleDuration * simSpeed;
+                        let angularVelocity = velocityA.angleTo(velocityB) / actualSampleDuration;  // radians per second
 
                         // is it left or right turn? Use local up vector instead of global Y
                         const cross = V3().crossVectors(velocityA, velocityB)
@@ -232,8 +239,20 @@ export class CNodeControllerObjectTilt extends CNodeController {
                         if (right)
                             angularVelocity = -angularVelocity
 
+                        // Per-frame displacement → m/s: divide by real seconds per frame
+                        const speed = velocity.length() * Sit.fps / simSpeed; // meters per second
 
-                        const speed = velocity.length() * Sit.fps; // meters per second
+                        // Guard against degenerate cases: Three.js angleTo() returns
+                        // PI/2 for zero-length vectors, producing extreme (~90°) bank
+                        // angles. This occurs when the smoothed track has zero velocity
+                        // (e.g., extrapolated beyond ADS-B data range). Also protects
+                        // against rotateOnWorldAxis with a zero-length fwd axis.
+                        if (speed < 0.01 || velocityA.lengthSq() < 0.5 || velocityB.lengthSq() < 0.5) {
+                            object.updateMatrix()
+                            object.updateMatrixWorld()
+                            break;
+                        }
+
                         // convert angular velocity to bank angle
                         // function turnRate(bankDegrees, speedMPS) {
                         //     var g = 9.77468   // local gravity at 36°latitude, 25000 feet https://www.sensorsone.com/local-gravity-calculator/
