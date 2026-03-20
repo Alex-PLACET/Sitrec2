@@ -22,7 +22,7 @@ import {
 import {globalMipmapGenerator} from "./MipmapGenerator";
 import {fastComputeVertexNormals} from "./FastComputeVertexNormals";
 import {fastComputeVertexNormalsAsync} from "./FastComputeVertexNormalsAsync";
-import {showError} from "./showError";
+import {ServiceAvailability} from "./ServiceAvailability";
 import {processTextureColors} from "./TextureColorProcessor";
 import {createTerrainDayNightMaterial} from "./js/map33/material/TerrainDayNightMaterial";
 import {fileSystemFetch} from "./fileSystemFetch";
@@ -2758,11 +2758,12 @@ export class QuadTreeTile {
             } else {
                 await this.handleGeoTIFFElevation(elevationURL);
             }
+            ServiceAvailability.recordSuccessByUrl(elevationURL);
             this.isLoadingElevation = false; // Clear elevation loading state
             this.updateDebugGeometry(); // Update debug geometry to remove elevation loading indicator
             return this;
         } catch (error) {
-            showError('Error fetching elevation data:', error);
+            ServiceAvailability.recordFailureByUrl(elevationURL);
             this.isLoadingElevation = false; // Clear elevation loading state on error
             this.updateDebugGeometry(); // Update debug geometry to remove elevation loading indicator
             throw error;

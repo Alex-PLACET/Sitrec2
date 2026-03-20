@@ -1,7 +1,8 @@
 import {QuadTreeMap} from "./QuadTreeMap";
 import {QuadTreeTile} from "./QuadTreeTile";
 import * as LAYER from "./LayerMasks";
-import {showError} from "./showError";
+import {ServiceAvailability} from "./ServiceAvailability";
+import {identifyServiceFromUrl} from "./TileUsageTracker";
 import {asyncOperationRegistry} from "./AsyncOperationRegistry";
 import {meanSeaLevelOffset} from "./EGM96Geoid";
 
@@ -245,20 +246,34 @@ export class QuadTreeMapElevation extends QuadTreeMap {
                 }
             } else {
                 // Normal tile loading for minZoom <= z <= maxZoom
-                tile.fetchElevationTile(this.controller.signal).then(tile => {
-                    if (this.controller.signal.aborted) {
-                        // flag that it's aborted, so we can filter it out later
-                        return Promise.resolve('Aborted');
-                    }
-                    this.terrainNode.elevationTileLoaded(tile);
-                }).catch(error => {
-                    showError(`Failed to load elevation tile ${key}: Elevation URL was: ${tile.elevationURL()}`, error);
-                    // Mark tile as having no elevation data so it doesn't keep trying
+                // Pre-flight: skip fetch if the elevation service is known to be unavailable
+                const elevUrl = tile.elevationURL();
+                const elevService = identifyServiceFromUrl(elevUrl);
+                if (!ServiceAvailability.isAvailable(elevService)) {
                     tile.elevation = null;
-                    tile.elevationLoadFailed = true;
-                    // Still call elevationTileLoaded to trigger mesh updates with fallback elevation
-                    this.terrainNode.elevationTileLoaded(tile);
-                })
+                    tile.elevationLoadFailed = false;
+                    tile.isLoadingElevation = false;
+                    Promise.resolve().then(() => {
+                        if (!this.controller.signal.aborted) {
+                            this.terrainNode.elevationTileLoaded(tile);
+                        }
+                    });
+                } else {
+                    tile.fetchElevationTile(this.controller.signal).then(tile => {
+                        if (this.controller.signal.aborted) {
+                            // flag that it's aborted, so we can filter it out later
+                            return Promise.resolve('Aborted');
+                        }
+                        this.terrainNode.elevationTileLoaded(tile);
+                    }).catch(error => {
+                        console.warn(`Failed to load elevation tile ${key}:`, error.message);
+                        // Mark tile as having no elevation data so it doesn't keep trying
+                        tile.elevation = null;
+                        tile.elevationLoadFailed = true;
+                        // Still call elevationTileLoaded to trigger mesh updates with fallback elevation
+                        this.terrainNode.elevationTileLoaded(tile);
+                    })
+                }
             }
         }
         // Set the tile's layer mask to activate it - combine with existing layers

@@ -16,6 +16,8 @@ import * as LAYER from "../LayerMasks";
 import {BufferGeometry, DoubleSide, Float32BufferAttribute, Group, Mesh, MeshPhongMaterial} from "three";
 import {filterSourcesForServerless, pickAvailableSourceType} from "../terrainSourceUtils";
 import {getEnv} from "../envUtils";
+import {ServiceAvailability} from "../ServiceAvailability";
+import {identifyServiceFromUrl} from "../TileUsageTracker";
 
 /**
  * Static map of token names to their build-time values.
@@ -639,6 +641,37 @@ export class CNodeTerrainUI extends CNode {
 
         // Set initial UI visibility
         this.updateUIVisibility();
+
+        // Register fallback callbacks for when internet services become unavailable.
+        // Elevation: switch to "Flat" if the elevation service goes down
+        ServiceAvailability.onUnavailable("aws", () => {
+            if (this.elevationType !== "Flat" && this.elevationSources["Flat"]) {
+                this.elevationType = "Flat";
+                this.terrainNode.reloadMap(this.mapType);
+            }
+        });
+
+        // Map textures: switch to an offline fallback if map services go down
+        const mapFallback = (serviceName) => {
+            // Only switch if we're currently using a source that depends on this service
+            const currentDef = this.mapSources[this.mapType];
+            if (!currentDef) return;
+            // Check if the current map source generates URLs matching the failed service
+            // by testing a sample URL
+            if (currentDef.mapURL) {
+                const sampleUrl = currentDef.mapURL(0, 0, 0);
+                if (sampleUrl && identifyServiceFromUrl(sampleUrl) === serviceName) {
+                    const fallbackType = this.mapSources["FlatShading"] ? "FlatShading" : "Debug";
+                    this.mapType = fallbackType;
+                    this.setMapType(fallbackType).then(() => {
+                        this.terrainNode.loadMapTexture(fallbackType);
+                    });
+                }
+            }
+        };
+        for (const svcName of ["mapbox", "maptiler", "osm", "eox", "esri"]) {
+            ServiceAvailability.onUnavailable(svcName, mapFallback);
+        }
 
     }
 

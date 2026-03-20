@@ -1,6 +1,5 @@
 import {isServerless, SITREC_SERVER} from "./configUtils";
 import {withTestUser} from "./Globals";
-import {parseBoolean} from "./utils";
 import {getEnvBool} from "./envUtils";
 
 export const TILE_USAGE_SERVICES = Object.freeze({
@@ -10,7 +9,7 @@ export const TILE_USAGE_SERVICES = Object.freeze({
     CESIUM_OSM_3D_BYTES: "cesium_osm_3d_bytes",
 });
 
-const SERVICE_PATTERNS = {
+export const SERVICE_PATTERNS = {
     mapbox: /api\.mapbox\.com/i,
     maptiler: /maptiler/i,
     aws: /s3\.amazonaws\.com|elevation-tiles-prod/i,
@@ -18,6 +17,16 @@ const SERVICE_PATTERNS = {
     eox: /tiles\.maps\.eox\.at/i,
     esri: /arcgisonline\.com|arcgis/i,
 };
+
+export function identifyServiceFromUrl(url) {
+    if (!url) return 'other';
+    for (const [service, pattern] of Object.entries(SERVICE_PATTERNS)) {
+        if (pattern.test(url)) {
+            return service;
+        }
+    }
+    return 'other';
+}
 
 class TileUsageTrackerClass {
     constructor() {
@@ -74,14 +83,7 @@ class TileUsageTrackerClass {
     }
 
     identifyService(url) {
-        if (!url) return 'other';
-        
-        for (const [service, pattern] of Object.entries(SERVICE_PATTERNS)) {
-            if (pattern.test(url)) {
-                return service;
-            }
-        }
-        return 'other';
+        return identifyServiceFromUrl(url);
     }
 
     trackService(service, count = 1) {

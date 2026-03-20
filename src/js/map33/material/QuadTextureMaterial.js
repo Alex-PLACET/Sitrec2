@@ -1,6 +1,7 @@
 import {CanvasTexture, TextureLoader} from "three";
 import {createTerrainDayNightMaterial} from "./TerrainDayNightMaterial";
 import {TileUsageTracker} from "../../../TileUsageTracker";
+import {ServiceAvailability} from "../../../ServiceAvailability";
 
 const loader = new TextureLoader()
 
@@ -40,6 +41,12 @@ export function loadTextureWithRetries(url, maxRetries = 0, delay = 100, current
       return;
     }
 
+    // Pre-flight: reject immediately if the service is known to be unavailable
+    if (!ServiceAvailability.isAvailableByUrl(url[0])) {
+      reject(new Error('ServiceUnavailable'));
+      return;
+    }
+
     const attemptLoad = () => {
       // Check abort signal before each attempt
       if (abortSignal?.aborted) {
@@ -63,6 +70,7 @@ export function loadTextureWithRetries(url, maxRetries = 0, delay = 100, current
             }
 
             TileUsageTracker.trackTile(url[urlIndex]);
+            ServiceAvailability.recordSuccessByUrl(url[urlIndex]);
 
             logNetwork(url[urlIndex], 200);
             resolve(texture);
@@ -104,6 +112,7 @@ export function loadTextureWithRetries(url, maxRetries = 0, delay = 100, current
               }, delay);
             } else {
               console.log(`Failed to load ${url[urlIndex]} after ${maxRetries} attempts`);
+              ServiceAvailability.recordFailureByUrl(url[urlIndex]);
               logNetwork(url[urlIndex], 404);
               reject(err);
               processQueue();
