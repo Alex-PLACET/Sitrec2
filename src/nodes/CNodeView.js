@@ -248,10 +248,17 @@ class CNodeView extends CNode {
 
 
     modSerialize() {
-        return {
+        const result = {
             ...super.modSerialize(),
             ...this.simpleSerialize(this.toSerialCNodeView)
         };
+        // Only the actual fullscreen view should serialize as doubled.
+        // Otherwise all views with doubled:true race during deserialization,
+        // and the last one wins — hiding the others.
+        if (result.doubled && this.doubleClickFullScreen && ViewMan.fullscreenView !== this) {
+            result.doubled = false;
+        }
+        return result;
     }
 
     modDeserialize(v) {
@@ -260,10 +267,9 @@ class CNodeView extends CNode {
         this.updateWH();
         this.visible = !v.visible; // ensure we toggle the visibility
         this.setVisible(v.visible);
-        // Restore fullscreen state if this view was doubled with fullscreen
-        if (this.doubled && this.doubleClickFullScreen) {
-            ViewMan.fullscreenView = this;
-        }
+        // Don't restore fullscreen here — that's deferred to
+        // restoreFullscreenFromMods() which runs after ALL mods are applied,
+        // so it can detect corrupted saves with multiple doubled views.
     }
 
     dispose() {

@@ -158,6 +158,38 @@ class CViewManager extends CManager {
         });
     }
 
+    // Called after all view mods have been deserialized.
+    // Finds views with doubled:true and restores fullscreen for exactly one.
+    // If multiple views claim doubled (corrupted legacy save), un-doubles all.
+    restoreFullscreenFromMods() {
+        const doubledViews = [];
+        this.iterate((key, view) => {
+            if (view.doubled && view.doubleClickFullScreen) {
+                doubledViews.push(view);
+            }
+        });
+
+        if (doubledViews.length === 1) {
+            // Clean save: exactly one doubled view → restore fullscreen
+            this.fullscreenView = doubledViews[0];
+        } else if (doubledViews.length > 1) {
+            // Corrupted save: multiple doubled views → un-double all
+            console.warn(`restoreFullscreenFromMods: ${doubledViews.length} views had doubled:true — clearing all`);
+            for (const view of doubledViews) {
+                if (view.preDoubledWidth !== undefined) {
+                    view.left = view.preDoubledLeft;
+                    view.top = view.preDoubledTop;
+                    view.width = view.preDoubledWidth;
+                    view.height = view.preDoubledHeight;
+                    view.updateWH();
+                }
+                view.doubled = false;
+            }
+            this.fullscreenView = null;
+        }
+        // doubledViews.length === 0: no fullscreen, nothing to do
+    }
+
     updateZOrder() {
         const nonOverlayViews = [];
         const overlayViews = [];

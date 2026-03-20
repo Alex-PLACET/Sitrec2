@@ -4353,7 +4353,7 @@ export class CCustomManager {
                 // if we've overridden the time in the URL
                 // see the check for urlParams.get("datetime") in index.js
                 if (id !== "dateTimeStart" || !Globals.timeOverride) {
-                    node.modDeserialize(Sit.mods[id]);
+                    node.modDeserialize(mods[id]);
 
                     // if this has triggered an async action, wait for it to finish
                     // e.g. Like the CNode3DModel.loadGLTFModel method
@@ -4432,6 +4432,11 @@ export class CCustomManager {
         if (sitchData.subSitchesData) {
             this.deserializeSubSitches(sitchData.subSitchesData);
         }
+
+        // Now that all mods are applied, restore fullscreen state if exactly
+        // one view was saved as doubled. Corrupted saves with multiple doubled
+        // views are detected and un-doubled here.
+        ViewMan.restoreFullscreenFromMods();
 
         Globals.dontRecalculate = false;
 
