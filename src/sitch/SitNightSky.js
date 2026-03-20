@@ -1,4 +1,4 @@
-import {Vector3} from "three";
+import {Matrix4, Quaternion, Vector3} from "three";
 import {
     FileManager,
     getEffectiveUserID,
@@ -20,6 +20,8 @@ import {CNodeControllerManualPosition} from "../nodes/CNodeControllerVarious";
 import {assert} from "../assert.js";
 import {MV3} from "../threeUtils";
 import {getPTZController} from "../js/CameraControls";
+import {radians} from "../utils";
+import {legacyEUSToECEF} from "../LLA-ECEF-ENU";
 
 import {waitForParsingToComplete} from "../CFileManager";
 
@@ -85,8 +87,8 @@ export const SitNightSky = {
 
     mainCamera: {
         far: 80000000,
-        startCameraPosition: [2032347.51, 19437577.30, 23271391.24],
-        startCameraTarget: [2032292.18, 19436849.64, 23270707.53],
+        startCameraPositionLLA: [9.423020, 0.232847, 28439497.682404],
+        startCameraTargetLLA: [9.423053, 0.232852, 28438497.891991],
     },
 
     targetSize: 500,
@@ -197,6 +199,7 @@ export const SitNightSky = {
             assert(lookPTZ !== undefined, "lookCamera's PTZ controller not found");
 
             const savePar = {
+                v: 2, // version flag: v2 = ECEF camera coords, v1/missing = legacy EUS
                 olat: Sit.lat,
                 olon: Sit.lon,
                 lat: NodeMan.get("cameraLat").value,
@@ -337,13 +340,41 @@ export const SitNightSky = {
         NodeMan.get("cameraLat").recalculateCascade() // manual update
 
         const mainCam = NodeMan.get("mainCamera").camera;
-        mainCam.up.copy(MV3(p.u));
-        mainCam.position.copy(MV3(p.p));
-        // We (had) to use _x, _y, etc, as q is not a quaternion, it's just an object from the serialization
-        // so it lacks the accessor methods to get x,y,z,w, but has members _x, _y, _z, _w
-        mainCam.quaternion.set(p.q.x, p.q.y, p.q.z, p.q.w)
+
+        if (p.v === undefined || p.v < 2) {
+            // Legacy EUS (East-Up-South) camera coordinates — convert to ECEF
+            const latRad = radians(Sit.lat);
+            const lonRad = radians(Sit.lon);
+
+            // Convert position from EUS to ECEF
+            mainCam.position.copy(legacyEUSToECEF(MV3(p.p), latRad, lonRad));
+
+            // Build EUS→ECEF rotation matrix
+            // EUS axes: X=East, Y=Up, Z=South
+            // Combined: EUS→ENU swap then ENU→ECEF rotation
+            const sLat = Math.sin(latRad), cLat = Math.cos(latRad);
+            const sLon = Math.sin(lonRad), cLon = Math.cos(lonRad);
+            const eusToEcef = new Matrix4().set(
+                -sLon,  cLat*cLon,  sLat*cLon,  0,
+                 cLon,  cLat*sLon,  sLat*sLon,  0,
+                 0,     sLat,      -cLat,        0,
+                 0,     0,          0,           1
+            );
+
+            // Convert up vector (direction only — transformDirection ignores translation)
+            mainCam.up.copy(MV3(p.u).transformDirection(eusToEcef));
+
+            // Convert quaternion: q_ecef = q_eusToEcef * q_old
+            const eusToEcefQuat = new Quaternion().setFromRotationMatrix(eusToEcef);
+            const oldQuat = new Quaternion(p.q.x, p.q.y, p.q.z, p.q.w);
+            mainCam.quaternion.copy(eusToEcefQuat.multiply(oldQuat));
+        } else {
+            // v2+: camera data is already in ECEF
+            mainCam.up.copy(MV3(p.u));
+            mainCam.position.copy(MV3(p.p));
+            mainCam.quaternion.set(p.q.x, p.q.y, p.q.z, p.q.w);
+        }
         mainCam.updateMatrixWorld();
-        //mainCam.lookAt(MV3(p.v));
 
         par.frame = p.f;
         par.paused = p.pd;
@@ -360,7 +391,8 @@ export const SitNightSky = {
             nightSkyNode.sunArrowGroup.visible = nightSkyNode.showSunArrows;
             nightSkyNode.flareRegionGroup.visible = nightSkyNode.showFlareRegion;
             nightSkyNode.flareBandGroup.visible = nightSkyNode.showFlareBand;
-            nightSkyNode.satelliteTextGroup.visible = nightSkyNode.showSatelliteNames;
+            // satelliteTextGroup was removed; names now render via CNodeDisplaySkyOverlay
+            setRenderOne(true);
         }
 
         // Sim Speed
