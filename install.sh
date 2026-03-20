@@ -63,6 +63,9 @@ cat > .env <<'ENV'
 #S3_REGION=us-west-2
 ENV
 
+echo "[sitrec] Downloading shared.env.example..."
+curl -sL https://raw.githubusercontent.com/MickWest/Sitrec2/main/config/shared.env.example -o shared.env.example
+
 echo "[sitrec] Pulling image..."
 docker compose pull
 

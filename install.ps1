@@ -58,6 +58,9 @@ services:
 #S3_REGION=us-west-2
 "@ | Set-Content -Path ".env" -Encoding UTF8
 
+Write-Host "[sitrec] Downloading shared.env.example..."
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/MickWest/Sitrec2/main/config/shared.env.example" -OutFile "shared.env.example"
+
 Write-Host "[sitrec] Pulling image..."
 docker compose pull
 
