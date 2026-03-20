@@ -4,6 +4,7 @@ config/config.js
 config/config-install.js
 .vscode/
 config/shared.env
+config/shared.env.mick
 sitrec-videos
 sitrec-cache
 sitrec-upload
