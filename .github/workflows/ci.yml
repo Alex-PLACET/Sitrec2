@@ -87,6 +87,8 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: 22
+    - name: pin npm version to match local dev
+      run: npm install -g npm@11
     - name: config script setup
       run: |
         cp config/config.js.example config/config.js
