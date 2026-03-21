@@ -30,6 +30,8 @@ export const _configParams = {
             minZoom: 0,
             maxZoom: 20,
             supportsOceanSurface: true, // MapBox satellite imagery can have ocean surface overlay
+            attribution: "\u00a9 Mapbox \u00a9 OpenStreetMap \u00a9 Maxar",
+            termsURL: "https://docs.mapbox.com/help/dive-deeper/attribution/",
         },
 
         // mapboxProxied: {
@@ -79,7 +81,8 @@ export const _configParams = {
             },
             maxZoom: 19,
             supportsOceanSurface: true, // OpenStreetMap can have ocean surface overlay
-
+            attribution: "\u00a9 OpenStreetMap contributors",
+            termsURL: "https://www.openstreetmap.org/copyright",
         },
         osmHighlight: {
             name: "Open Streetmap (Highlight)",
@@ -104,7 +107,9 @@ export const _configParams = {
 
                 dimIntensity: 0.1,          // 10% intensity for non-highlighted pixels
                 highlightColor: [255, 255, 0] // Bright yellow for highlighted pixels
-            }
+            },
+            attribution: "\u00a9 OpenStreetMap contributors",
+            termsURL: "https://www.openstreetmap.org/copyright",
         },
         maptiler: {
             name: "MapTiler",
@@ -135,7 +140,8 @@ export const _configParams = {
             },
             maxZoom: 16,
             supportsOceanSurface: true, // MapTiler satellite imagery can have ocean surface overlay
-
+            attribution: "\u00a9 MapTiler \u00a9 OpenStreetMap contributors",
+            termsURL: "https://www.maptiler.com/copyright/",
         },
         eox: {
             name: "EOX",
@@ -144,7 +150,8 @@ export const _configParams = {
             },
             maxZoom: 12,
             supportsOceanSurface: true, // EOX satellite imagery can have ocean surface overlay
-
+            attribution: "Sentinel-2 cloudless by EOX (Contains modified Copernicus Sentinel data)",
+            termsURL: "https://s2maps.eu/",
         },
 
         ESRI: {
@@ -158,7 +165,8 @@ export const _configParams = {
             // ESRI only has one layer World_Imagery, so it's hardcoded, above
             // the capabilities URL is provided for reference
           //  capabilities:"https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/WMTS/1.0.0/WMTSCapabilities.xml",
-
+            attribution: "Powered by Esri",
+            termsURL: "https://www.esri.com/en-us/legal/terms/data-attributions",
         },
 
         // Try make this just use the base url https://geoint.nrlssc.org/nrltileserver/wms/category/Imagery
@@ -173,7 +181,7 @@ export const _configParams = {
             layer: "ImageryMosaic",
             maxZoom: 12,
             supportsOceanSurface: true, // NRL WMS imagery can have ocean surface overlay
-
+            attribution: "U.S. Naval Research Laboratory",
         },
 
 
@@ -198,7 +206,7 @@ export const _configParams = {
             mapping: 4326,
             maxZoom: 12,
             supportsOceanSurface: true, // NRL WMTS imagery can have ocean surface overlay
-
+            attribution: "U.S. Naval Research Laboratory",
         },
 
         GIBS_BM: {
@@ -209,7 +217,8 @@ export const _configParams = {
             return (`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_Black_Marble/default/default/GoogleMapsCompatible_Level8/${z}/${y}/${x}.png`);
             },
             maxZoom: 8,
-
+            attribution: "NASA GIBS, VIIRS Black Marble",
+            termsURL: "https://www.earthdata.nasa.gov/engage/open-data-services-software-policies/data-use-guidance",
         }
 
     },
@@ -227,7 +236,8 @@ export const _configParams = {
             maxZoom: 15,
             minZoom: 0,
             tileSize: 256,
-            attribution: "AWS Terrarium Elevation Data",
+            attribution: "Elevation: USGS, NOAA & contributors",
+            termsURL: "https://github.com/tilezen/joerd/blob/master/docs/attribution.md",
         },
 
         NationalMap: {
@@ -240,7 +250,8 @@ export const _configParams = {
             maxZoom: 14,
             minZoom: 0,
             tileSize: 256,
-            attribution: "National Map 3DEP GeoTIFF",
+            attribution: "Data: U.S. Geological Survey",
+            termsURL: "https://www.usgs.gov/faqs/what-are-terms-uselicensing-map-services-and-data-national-map",
             mapping: 4326,
         },
 

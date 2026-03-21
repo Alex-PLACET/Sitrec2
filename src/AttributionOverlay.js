@@ -14,7 +14,7 @@ function createOverlay() {
     Object.assign(overlayDiv.style, {
         position: "fixed",
         bottom: "2px",
-        left: "2px",
+        right: "2px",
         maxWidth: "60vw",
         padding: "1px 4px",
         background: "rgba(0,0,0,0.45)",

@@ -18,6 +18,12 @@ import {filterSourcesForServerless, pickAvailableSourceType} from "../terrainSou
 import {getEnv} from "../envUtils";
 import {ServiceAvailability} from "../ServiceAvailability";
 import {identifyServiceFromUrl} from "../TileUsageTracker";
+import {
+    disposeAttributionOverlay,
+    setElevationAttribution,
+    setMapAttribution,
+    setTilesAttribution
+} from "../AttributionOverlay";
 
 /**
  * Static map of token names to their build-time values.
@@ -106,6 +112,8 @@ export class CNodeTerrainUI extends CNode {
                     return SITREC_APP + `data/maps/no_clouds_4k/${z}/${x}/${y}.jpg`;
                 },
                 maxZoom: 3,
+                attribution: "Credit: NASA Earth Observatory",
+                termsURL: "https://www.nasa.gov/nasa-brand-center/images-and-media/",
             },
             wireframe: {
                 allowInServerless: true,
@@ -175,6 +183,8 @@ export class CNodeTerrainUI extends CNode {
                     mapURL: (z, x, y) => {
                         return `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`
                     },
+                    attribution: "Terrain: USGS, NOAA & contributors",
+                    termsURL: "https://github.com/tilezen/joerd/blob/master/docs/attribution.md",
                 },
 
                 Debug: {
@@ -194,7 +204,8 @@ export class CNodeTerrainUI extends CNode {
                     maxZoom: 8,
                     minZoom: 0,
                     tileSize: 256,
-                    attribution: "",
+                    attribution: "Powered by Esri",
+                    termsURL: "https://www.esri.com/en-us/legal/terms/data-attributions",
                     textureSubSize: 500,
                 },
 
@@ -360,7 +371,8 @@ export class CNodeTerrainUI extends CNode {
                 maxZoom: 6,
                 minZoom: 0,
                 tileSize: 256,
-                attribution: "",
+                attribution: "Elevation: USGS, NOAA & contributors",
+                termsURL: "https://github.com/tilezen/joerd/blob/master/docs/attribution.md",
             }
         }
         if (isServerless) {
@@ -401,6 +413,7 @@ export class CNodeTerrainUI extends CNode {
             // elevation map has changed, so kill the old one
             this.log("Elevation type changed to " + v + " so unloading the elevation map")
             this.terrainNode.reloadMap(this.mapType)
+            this.updateAttribution();
         })
 
 
@@ -422,6 +435,7 @@ export class CNodeTerrainUI extends CNode {
             this.setMapType(v).then(() => {
                 this.terrainNode.loadMapTexture(v)
             })
+            this.updateAttribution();
         })
 
         this.debugElevationGrid = false;
@@ -609,6 +623,7 @@ export class CNodeTerrainUI extends CNode {
                     if (this.buildingsNode) {
                         this.buildingsNode.setSource(v);
                         this.updateTerrainAndOceanVisibility();
+                        this.updateAttribution();
                     }
                 }).tooltip("Data source for 3D building tiles");
             }
@@ -650,12 +665,16 @@ export class CNodeTerrainUI extends CNode {
         // Set initial UI visibility
         this.updateUIVisibility();
 
+        // Set initial attribution overlay
+        this.updateAttribution();
+
         // Register fallback callbacks for when internet services become unavailable.
         // Elevation: switch to "Flat" if the elevation service goes down
         ServiceAvailability.onUnavailable("aws", () => {
             if (this.elevationType !== "Flat" && this.elevationSources["Flat"]) {
                 this.elevationType = "Flat";
                 this.terrainNode.reloadMap(this.mapType);
+                this.updateAttribution();
             }
         });
 
@@ -675,6 +694,7 @@ export class CNodeTerrainUI extends CNode {
                     this.setMapType(fallbackType).then(() => {
                         this.terrainNode.loadMapTexture(fallbackType);
                     });
+                    this.updateAttribution();
                 }
             }
         };
@@ -839,6 +859,8 @@ export class CNodeTerrainUI extends CNode {
             this.terrainNode.hide3DTilesGreySphere = !!this.buildingsNode;
             this.terrainNode.updateGreySphereVisibility();
         }
+
+        this.updateAttribution();
     }
 
     isGooglePhotorealisticActive() {
@@ -1193,6 +1215,14 @@ export class CNodeTerrainUI extends CNode {
 
     }
 
+    updateAttribution() {
+        const googleActive = this.isGooglePhotorealisticActive();
+        // Google 3D tiles replace the basemap, so hide map attribution when active
+        setMapAttribution(googleActive ? null : this.mapSources[this.mapType]);
+        setElevationAttribution(this.elevationSources[this.elevationType]);
+        setTilesAttribution(this.buildingsNode ? this.buildingsNode.getAttribution() : "");
+    }
+
     // note this is not the most elegant way to do this
     // but if the terrain is being removed, then we assume the GUI is too
     // this might not be the case, in the future
@@ -1202,6 +1232,7 @@ export class CNodeTerrainUI extends CNode {
             this.buildingsNode = null;
         }
         this.disposeOceanSurface();
+        disposeAttributionOverlay();
         super.dispose();
     }
 

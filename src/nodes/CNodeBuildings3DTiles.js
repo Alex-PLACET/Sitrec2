@@ -266,6 +266,21 @@ export class CNodeBuildings3DTiles extends CNode {
         return this.getPendingLoadState(viewIds).hasPending;
     }
 
+    /**
+     * Return an HTML attribution string for the currently active 3D tile source.
+     * Google requires "Google" visible; Cesium OSM requires OSM attribution.
+     */
+    getAttribution() {
+        if (!this._activeSource) return "";
+        if (this._activeSource === "google-photorealistic") {
+            return '<a href="https://developers.google.com/maps/documentation/tile/policies" target="_blank" rel="noopener noreferrer">\u00a9 Google</a>';
+        }
+        if (this._activeSource === "cesium-osm") {
+            return '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">\u00a9 OpenStreetMap contributors</a>';
+        }
+        return "";
+    }
+
     dispose() {
         this.disposeTilesRenderers();
 
