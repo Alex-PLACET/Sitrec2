@@ -6,6 +6,13 @@
 let overlayDiv = null;
 let currentParts = {map: "", elevation: "", tiles: ""};
 
+function htmlToText(html) {
+    // Convert an HTML snippet to plain text using the DOM, avoiding regex-based stripping
+    const tmp = document.createElement("div");
+    tmp.innerHTML = html;
+    return tmp.textContent || "";
+}
+
 function createOverlay() {
     if (overlayDiv) return overlayDiv;
 
@@ -90,7 +97,7 @@ export function setTilesAttribution(text) {
 export function getAttributionText() {
     const parts = [currentParts.map, currentParts.elevation, currentParts.tiles]
         .filter(Boolean)
-        .map(html => html.replace(/<[^>]*>/g, "")); // strip HTML tags
+        .map(html => htmlToText(html));
     return parts.join(" | ");
 }
 
