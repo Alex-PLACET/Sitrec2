@@ -43,6 +43,8 @@ export const TEST_REGISTRY = [
     { id: 'ai-geom', name: 'AI-Geom', group: 'AI', file: 'chatbot-playwright.test.js', grep: 'geometry instead' },
     { id: 'ai-737', name: 'AI-737', group: 'AI', file: 'chatbot-playwright.test.js', grep: '737s' },
     { id: 'ai-skinny', name: 'AI-Skinny', group: 'AI', file: 'chatbot-playwright.test.js', grep: 'skinny cuboids' },
+
+    { id: 'docker-smoke', name: 'Docker Smoke', group: 'Docker', file: 'docker-smoke.test.js', grep: 'loads and renders without errors', snapshot: 'docker-smoke-snapshot', url: '?action=new&frame=10' },
 ];
 
 export function getTestById(id) {

@@ -3,13 +3,15 @@ name: Docker Image
 # Build and publish multi-arch Docker images to GitHub Container Registry.
 # Triggers on version tags (e.g. 2.36.4) and can be run manually.
 #
-# Architecture: three-stage pipeline
+# Architecture: four-stage pipeline
 #   1. "build-js" runs once on x86 — webpack produces identical output
 #      regardless of CPU architecture, so no need to build twice.
 #   2. "package" runs natively on both amd64 and arm64 runners,
 #      copying the JS artifacts into the PHP+Apache runtime image.
-#   3. "manifest" creates the multi-arch manifest list so a single
-#      image tag works on both architectures.
+#   3. "smoke-test" pulls the amd64 image, starts the container, and runs
+#      HTTP checks + a Playwright visual regression test to verify it works.
+#   4. "manifest" creates the multi-arch manifest list so a single
+#      image tag works on both architectures (only if smoke tests pass).
 
 on:
   push:
@@ -121,9 +123,106 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.suffix }}
           cache-to: type=gha,scope=${{ matrix.suffix }},mode=max
 
-  # ── Stage 3: Create multi-arch manifest ─────────────────────────
-  manifest:
+  # ── Stage 3: Smoke-test the Docker image ──────────────────────────
+  smoke-test:
     needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lowercase image name
+        run: echo "IMAGE_NAME_LC=${IMAGE_NAME,,}" >> "$GITHUB_ENV"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Start Docker container
+        run: |
+          IMAGE="${REGISTRY}/${IMAGE_NAME_LC}:build-amd64-${GITHUB_SHA}"
+          echo "Pulling ${IMAGE}"
+          docker pull "${IMAGE}"
+          docker run -d --name sitrec-smoke \
+            -p 8080:80 \
+            -e NO_TERRAIN=true \
+            "${IMAGE}"
+
+      - name: Wait for container to respond
+        run: |
+          echo "Waiting for HTTP 200 from container..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080/ > /dev/null 2>&1; then
+              echo "Container is ready (attempt ${i})"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Container failed to respond after 60s"
+          docker logs sitrec-smoke
+          exit 1
+
+      - name: HTTP smoke tests
+        run: |
+          BODY=$(curl -sf http://localhost:8080/)
+
+          # Verify entrypoint injected runtime env vars into HTML
+          echo "$BODY" | grep -q '__SITREC_ENV__' \
+            && echo "✓ Runtime env injection present" \
+            || { echo "✗ Missing __SITREC_ENV__ in HTML"; exit 1; }
+
+          # Verify webpack output (script bundles present)
+          echo "$BODY" | grep -q '<script' \
+            && echo "✓ Script tags present" \
+            || { echo "✗ Missing script tags in HTML"; exit 1; }
+
+          echo "All HTTP smoke tests passed"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: true
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright smoke test
+        run: npx playwright test --config=playwright.docker.config.js
+        env:
+          DOCKER_SMOKE_URL: http://localhost:8080
+
+      - name: Upload smoke test snapshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-smoke-snapshots
+          path: |
+            tests_regression/docker-smoke.test.js-snapshots/
+            test-results/
+          retention-days: 7
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker logs sitrec-smoke
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f sitrec-smoke || true
+
+  # ── Stage 4: Create multi-arch manifest ─────────────────────────
+  manifest:
+    needs: [package, smoke-test]
     runs-on: ubuntu-latest
     permissions:
       contents: read
