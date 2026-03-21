@@ -15,6 +15,8 @@
     "test-builds": "node test-all-builds.js",
     "test-builds-quick": "node test-all-builds.js --quick",
     "check-three-imports": "node scripts/check-three-imports.js",
+    "generate-notices": "npx webpack --config webpack.prod.js --json /tmp/sitrec-webpack-stats.json && node scripts/generateThirdPartyNotices.js --from-stats /tmp/sitrec-webpack-stats.json",
+    "generate-notices-quick": "node scripts/generateThirdPartyNotices.js",
     "start": "npx webpack serve --config webpack.dev.js",
     "build": "npx webpack --config webpack.dev.js",
     "deploy": "npx webpack --config webpack.prod.js",
