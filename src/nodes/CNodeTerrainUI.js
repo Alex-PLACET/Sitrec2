@@ -99,6 +99,14 @@ export class CNodeTerrainUI extends CNode {
         // add the default map sources, wireframe and flat shading
         this.mapSources = {
             ...this.mapSources,
+            NoClouds: {
+                allowInServerless: true,
+                name: "Blue Marble (No Clouds)",
+                mapURL: (z, x, y) => {
+                    return SITREC_APP + `data/maps/no_clouds_4k/${z}/${x}/${y}.jpg`;
+                },
+                maxZoom: 3,
+            },
             wireframe: {
                 allowInServerless: true,
                 name: "Wireframe",
