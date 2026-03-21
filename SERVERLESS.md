@@ -141,19 +141,29 @@ curl http://localhost:3000/api/health
 
 ## Configuration
 
-Default configuration is in `src/config.default.js`:
+Default configuration is in `src/config.default.js`. Key sections:
 
 ```javascript
 export const CONFIG = {
     storage: {
-        indexedDB: { enabled: true },
-        localStorage: { enabled: true }
+        indexedDB: { enabled: true, dbName: 'SitrecDB', dbVersion: 1 },
+        localStorage: { enabled: true, prefix: 'sitrec_' }
     },
     features: {
-        serverUpload: false,    // disabled
-        aiChat: false,          // disabled
-        authentication: false   // disabled
-    }
+        serverUpload: false,    // disabled — no backend to rehost files
+        serverSettings: false,  // disabled — no cloud settings sync
+        aiChat: false,          // disabled — requires backend
+        authentication: false,  // disabled — no user login
+        s3Storage: false        // disabled — no cloud storage
+    },
+    enabledFeatures: {
+        localSave: true,        // Save to IndexedDB
+        localLoad: true,        // Load from IndexedDB
+        offline: true,          // Offline-first
+        dataCaching: true,      // Cache data in IndexedDB
+        manifestLoading: true   // Load available sitches from manifest
+    },
+    // ... plus api, ui, and cache sections — see file for full details
 };
 ```
 
@@ -222,15 +232,9 @@ Deploy to:
 - Vercel
 - Any static file hosting
 
-## Phase 2: Full Cloud Features (Future)
+## Want Cloud Features?
 
-Want cloud sync, chat, and more? Check out Phase 2 implementation:
-- User authentication
-- Cloud storage (Firebase/S3)
-- AI chat proxy
-- Real-time settings sync
-
-See `docs/dev/Installing-and-configuring.md` for full build documentation.
+For user accounts, cloud sync, AI chat, and server-side saves, use the **Standalone** or **Full Server** build instead. See `docs/dev/Installing-and-configuring.md` for setup instructions.
 
 ## Limitations & Constraints
 
@@ -251,8 +255,8 @@ See `docs/dev/Installing-and-configuring.md` for full build documentation.
 
 ## FAQ
 
-**Q: Can I convert my serverless session to cloud-based?**
-A: Export your sitch as JSON (File → Download), then import in Phase 2 cloud version.
+**Q: Can I convert my serverless session to a server-based setup?**
+A: Export your sitch as JSON (File → Download), then import it into a Standalone or Full Server installation.
 
 **Q: Will my data be deleted?**
 A: Only if you clear browser data manually. IndexedDB persists like cookies.
@@ -284,9 +288,8 @@ Found a bug? Have suggestions?
 
 ## Next Steps
 
-1. ✅ **Phase 1 Complete**: You're running it now!
-2. 📋 **Phase 2**: Cloud features (Firebase/S3)
-3. 🚀 **Phase 3**: Production deployment
+- For cloud features (user accounts, AI chat, S3 storage), see the [Standalone](docs/dev/Installing-and-configuring.md#standalone-nodejs-server) or [Full Server](docs/dev/Installing-and-configuring.md#local-web-server-installation) builds.
+- For production deployment of the serverless build, copy `dist-serverless/` to any static hosting provider.
 
 ---
 

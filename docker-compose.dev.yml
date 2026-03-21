@@ -44,7 +44,7 @@
 #   docker-compose -f docker-compose.dev.yml up      # Start development
 #   docker-compose -f docker-compose.dev.yml down    # Stop and cleanup
 #
-# See DOCKER-DEV.md for complete documentation.
+# See docs/dev/Installing-and-configuring.md for complete documentation.
 # ============================================================================
 
 services:
