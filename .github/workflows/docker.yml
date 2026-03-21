@@ -30,7 +30,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0    # full clone so git describe works for version string
 
@@ -41,7 +41,7 @@ jobs:
           cp config/shared.env.example config/shared.env
           cp config/config.php.example config/config.php
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -60,7 +60,7 @@ jobs:
           DOCKER_BUILD: true
 
       - name: Upload dist artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/
@@ -84,10 +84,10 @@ jobs:
       packages: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download dist artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist/
@@ -96,10 +96,10 @@ jobs:
         run: echo "IMAGE_NAME_LC=${IMAGE_NAME,,}" >> "$GITHUB_ENV"
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -107,12 +107,12 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}
 
       - name: Build and push (single-arch)
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile.release
@@ -132,13 +132,13 @@ jobs:
       packages: read
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Lowercase image name
         run: echo "IMAGE_NAME_LC=${IMAGE_NAME,,}" >> "$GITHUB_ENV"
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -184,7 +184,7 @@ jobs:
 
           echo "All HTTP smoke tests passed"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -207,7 +207,7 @@ jobs:
 
       - name: Upload smoke test snapshots
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: docker-smoke-snapshots
           path: |
@@ -233,7 +233,7 @@ jobs:
 
     steps:
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -244,7 +244,7 @@ jobs:
 
       - name: Extract metadata (tags)
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}
           tags: |
