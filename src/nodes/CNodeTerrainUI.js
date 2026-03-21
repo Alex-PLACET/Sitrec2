@@ -669,7 +669,8 @@ export class CNodeTerrainUI extends CNode {
             if (currentDef.mapURL) {
                 const sampleUrl = currentDef.mapURL(0, 0, 0);
                 if (sampleUrl && identifyServiceFromUrl(sampleUrl) === serviceName) {
-                    const fallbackType = this.mapSources["FlatShading"] ? "FlatShading" : "Debug";
+                    const fallbackType = this.mapSources["NoClouds"] ? "NoClouds"
+                        : this.mapSources["FlatShading"] ? "FlatShading" : "Debug";
                     this.mapType = fallbackType;
                     this.setMapType(fallbackType).then(() => {
                         this.terrainNode.loadMapTexture(fallbackType);
