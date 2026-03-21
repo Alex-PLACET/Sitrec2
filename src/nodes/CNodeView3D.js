@@ -1,6 +1,7 @@
 import {par} from "../par";
 import {createVideoExporter, DefaultVideoFormat, getBestFormatForResolution, getVideoExtension} from "../VideoExporter";
 import {drawVideoWatermark, ExportProgressWidget} from "../utils";
+import {drawAttributionOnCanvas} from "../AttributionOverlay";
 import {earthCenterECEF, XYZ2EA, XYZJ2PR} from "../SphericalMath";
 import {raDec2Celestial} from "../CelestialMath";
 import {Frame2Az, Frame2El} from "../JetUtils";
@@ -429,6 +430,7 @@ export class CNodeView3D extends CNodeViewCanvas {
                     });
 
                     drawVideoWatermark(compositeCtx, width);
+                    drawAttributionOnCanvas(compositeCtx, width, height);
                 };
 
                 await renderSingleViewFrame();

@@ -50,7 +50,7 @@ import {assert} from "./assert.js";
 import {getShortURL} from "./urlUtils";
 import {CNode3DObject, ModelAliases} from "./nodes/CNode3DObject";
 import {UpdateHUD} from "./JetStuff";
-import {degrees, getDateTimeFilename, parseBoolean} from "./utils";
+import {degrees, getDateTimeFilename} from "./utils";
 import {ViewMan} from "./CViewManager";
 import {EventManager} from "./CEventManager";
 import {isAdmin, SITREC_APP, SITREC_SERVER} from "./configUtils";
@@ -294,6 +294,18 @@ export class CCustomManager {
             .onChange((value) => {
                 Globals.settings.centerSidebar = Boolean(value);
                 this.saveGlobalSettings(true);
+            })
+            .listen();
+
+        // Add Show Attribution toggle
+        settingsFolder.add(Globals.settings, "showAttribution")
+            .name("Show Attribution")
+            .tooltip("Show map and elevation data source attribution overlay")
+            .onChange((value) => {
+                Globals.settings.showAttribution = Boolean(value);
+                this.saveGlobalSettings(true);
+                const terrainUI = NodeMan.get("terrainUI", false);
+                if (terrainUI) terrainUI.updateAttribution();
             })
             .listen();
 

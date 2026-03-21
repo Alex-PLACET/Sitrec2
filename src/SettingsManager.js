@@ -5,7 +5,6 @@
 import {getEffectiveUserID, Globals, withTestUser} from "./Globals";
 import {indexedDBManager} from "./IndexedDBManager";
 import {isServerless} from "./configUtils";
-import {parseBoolean} from "./utils";
 import {assert} from "./assert";
 import {getEnvBool} from "./envUtils";
 
@@ -86,6 +85,10 @@ export function sanitizeSettings(settings) {
 
     if (settings.centerSidebar !== undefined) {
         sanitized.centerSidebar = Boolean(settings.centerSidebar);
+    }
+
+    if (settings.showAttribution !== undefined) {
+        sanitized.showAttribution = Boolean(settings.showAttribution);
     }
 
     return sanitized;
@@ -289,11 +292,13 @@ export async function initializeSettings() {
             lastBuildingRotation: 0, // Last building rotation in radians (persists across sessions)
             chatModel: "", // AI chat model in "provider:model" format (empty = use first available)
             centerSidebar: false, // Enable center sidebar between split views
+            showAttribution: true, // Show map/elevation data source attribution overlay
         };
     }
 
     if (Globals.regression) {
         console.log("Regression mode - skipping settings load");
+        Globals.settings.showAttribution = false;
         Globals.lastSettingsJSON = JSON.stringify(sanitizeSettings(Globals.settings));
         return Globals.settings;
     }

@@ -345,6 +345,7 @@ export class VideoExportManager {
         const { GlobalScene, LocalFrame } = await import("./LocalFrame");
         const { Frame2Az, Frame2El, UpdatePRFromEA } = await import("./JetStuff");
         const { ExportProgressWidget, drawVideoWatermark } = await import("./utils");
+        const { drawAttributionOnCanvas } = await import("./AttributionOverlay");
         const { getMotionAnalysisOverlays } = await import("./CMotionAnalysis");
         const { CNodeView3D } = await import("./nodes/CNodeView3D");
 
@@ -559,6 +560,7 @@ export class VideoExportManager {
                     }
 
                     drawVideoWatermark(compositeCtx, width);
+                    drawAttributionOnCanvas(compositeCtx, width, height);
                 };
 
                 await renderCompositeFrame();
@@ -645,6 +647,7 @@ export class VideoExportManager {
         const { GlobalDateTimeNode, NodeMan, Sit, setRenderOne, guiMenus } = await import("./Globals");
         const { par } = await import("./par");
         const { drawVideoWatermark } = await import("./utils");
+        const { drawAttributionOnCanvas } = await import("./AttributionOverlay");
 
         if (this.renderVideoFolder) {
             this.renderVideoFolder.close();
@@ -807,6 +810,7 @@ export class VideoExportManager {
                 captureCtx.drawImage(videoEl, 0, 0, width, height);
 
                 drawVideoWatermark(captureCtx, width);
+                drawAttributionOnCanvas(captureCtx, width, height);
 
                 await exporter.addFrame(captureCanvas, frame);
 

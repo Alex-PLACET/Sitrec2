@@ -6,6 +6,7 @@ import {interpolatePosition} from "./CVideoData";
 import {EventManager} from "./CEventManager";
 import {createVideoExporter, DefaultVideoFormat, getBestFormatForResolution, getVideoExtension} from "./VideoExporter";
 import {drawVideoWatermark, ExportProgressWidget, getExportPrefix} from "./utils";
+import {drawAttributionOnCanvas} from "./AttributionOverlay";
 import {isLocal} from "./configUtils";
 
 let cv = null;
@@ -1489,6 +1490,7 @@ async function renderStabilizedVideo(expanded = false) {
             compositeCtx.drawImage(originalImage, offsetX + shiftX, offsetY + shiftY);
 
             drawVideoWatermark(compositeCtx, width);
+            drawAttributionOnCanvas(compositeCtx, width, height);
 
             await exporter.addFrame(compositeCanvas, i);
 

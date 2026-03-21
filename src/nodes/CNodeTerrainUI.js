@@ -1216,6 +1216,12 @@ export class CNodeTerrainUI extends CNode {
     }
 
     updateAttribution() {
+        if (!Globals.settings?.showAttribution) {
+            setMapAttribution(null);
+            setElevationAttribution(null);
+            setTilesAttribution("");
+            return;
+        }
         const googleActive = this.isGooglePhotorealisticActive();
         // Google 3D tiles replace the basemap, so hide map attribution when active
         setMapAttribution(googleActive ? null : this.mapSources[this.mapType]);

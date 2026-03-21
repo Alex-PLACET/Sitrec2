@@ -121,6 +121,10 @@ function sanitizeSettings($settings) {
         $sanitized['centerSidebar'] = boolval($settings['centerSidebar']);
     }
 
+    if (isset($settings['showAttribution'])) {
+        $sanitized['showAttribution'] = boolval($settings['showAttribution']);
+    }
+
     return $sanitized;
 }
 

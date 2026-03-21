@@ -1,7 +1,7 @@
 // AttributionOverlay.js
 // Displays legally required on-screen attribution for active map, elevation,
 // and 3D tile data sources.  Renders as a small semi-transparent HTML overlay
-// positioned at the bottom-left of the viewport.
+// positioned at the bottom-right of the viewport.
 
 let overlayDiv = null;
 let currentParts = {map: "", elevation: "", tiles: ""};
@@ -35,6 +35,7 @@ function createOverlay() {
 
 function render() {
     const el = createOverlay();
+    if (!el) return;
     const parts = [currentParts.map, currentParts.elevation, currentParts.tiles]
         .filter(Boolean);
     if (parts.length === 0) {
@@ -81,6 +82,32 @@ export function setElevationAttribution(sourceDef) {
 export function setTilesAttribution(text) {
     currentParts.tiles = text || "";
     render();
+}
+
+/**
+ * Return the current attribution as plain text (for canvas/video rendering).
+ */
+export function getAttributionText() {
+    const parts = [currentParts.map, currentParts.elevation, currentParts.tiles]
+        .filter(Boolean)
+        .map(html => html.replace(/<[^>]*>/g, "")); // strip HTML tags
+    return parts.join(" | ");
+}
+
+/**
+ * Draw attribution text onto a 2D canvas context (for video export).
+ * Positioned at bottom-right, matching the on-screen overlay style.
+ */
+export function drawAttributionOnCanvas(ctx, canvasWidth, canvasHeight) {
+    const text = getAttributionText();
+    if (!text) return;
+    ctx.save();
+    ctx.font = "10px sans-serif";
+    ctx.fillStyle = "rgba(255,255,255,0.7)";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "bottom";
+    ctx.fillText(text, canvasWidth - 4, canvasHeight - 2);
+    ctx.restore();
 }
 
 export function disposeAttributionOverlay() {

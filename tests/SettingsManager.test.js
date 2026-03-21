@@ -31,4 +31,15 @@ describe('sanitizeSettings', () => {
         expect(result.centerSidebar).toBe(true);
         expect(result.unknownSetting).toBeUndefined();
     });
+
+    test('should sanitize showAttribution as boolean', () => {
+        expect(sanitizeSettings({ showAttribution: true }).showAttribution).toBe(true);
+        expect(sanitizeSettings({ showAttribution: false }).showAttribution).toBe(false);
+        expect(sanitizeSettings({ showAttribution: 1 }).showAttribution).toBe(true);
+        expect(sanitizeSettings({ showAttribution: 0 }).showAttribution).toBe(false);
+    });
+
+    test('should not include showAttribution when not provided', () => {
+        expect(sanitizeSettings({}).showAttribution).toBeUndefined();
+    });
 });
