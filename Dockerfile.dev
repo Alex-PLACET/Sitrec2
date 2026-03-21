@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
     php8.2-zip \
     php8.2-xml \
     php8.2-mbstring \
+    php8.2-iconv \
     php8.2-curl \
     libapache2-mod-php8.2 \
     && apt-get clean \
@@ -32,6 +33,9 @@ COPY package*.json ./
 # We don't want Puppeteer to try to download anything, as it can give errors on some systems
 # and we don't run the regression tests in Docker yet
 ENV PUPPETEER_SKIP_DOWNLOAD=true
+
+# Pin npm version to match local dev (node:22 ships npm 10, lock file was generated with npm 11)
+RUN npm install -g npm@11
 
 # Install dependencies
 RUN npm ci

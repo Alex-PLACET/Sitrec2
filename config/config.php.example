@@ -80,10 +80,21 @@ function getUserInfoCustom()
         }
     }
 
-    // Only return dummy user if NOT logged in AND on localhost
-    if ($user_id == 0 && $isLocalhost) {
-        $user_groups = [3, 2, 14, 9]; // admin, registered, sitrec, verified
-        $user_id = 99999999;
+    // If not authenticated, use SITREC_DEFAULT_USERID env var (defaults to 0 = not logged in)
+    if ($user_id == 0) {
+        $defaultUserId = getenv('SITREC_DEFAULT_USERID');
+        if ($defaultUserId !== false && $defaultUserId !== '') {
+            $user_id = intval($defaultUserId);
+            $defaultGroups = getenv('SITREC_DEFAULT_USER_GROUPS');
+            if ($defaultGroups !== false && $defaultGroups !== '') {
+                $user_groups = array_map('intval', explode(',', $defaultGroups));
+            } else {
+                $user_groups = [3, 2, 14, 9]; // admin, registered, sitrec, verified
+            }
+        } elseif ($isLocalhost) {
+            $user_id = 99999999;
+            $user_groups = [3, 2, 14, 9]; // admin, registered, sitrec, verified
+        }
     }
 
     return ['user_id' => $user_id, 'user_groups' => $user_groups];

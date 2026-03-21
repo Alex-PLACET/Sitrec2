@@ -11,8 +11,8 @@ import {assert} from "./assert.js";
 import {SITREC_SERVER} from "./configUtils";
 import {withTestUser} from "./Globals";
 import {showError} from "./showError";
-import {initUploadProgress, parseBoolean, updateUploadProgress} from "./utils";
-import {getEnv, getEnvBool, getEnvNumber} from "./envUtils";
+import {initUploadProgress, updateUploadProgress} from "./utils";
+import {getEnvBool, getEnvNumber} from "./envUtils";
 
 async function computeContentHash(data) {
     let buffer;
@@ -25,9 +25,23 @@ async function computeContentHash(data) {
     } else {
         return null;
     }
-    const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.slice(0, 6).map(b => b.toString(16).padStart(2, '0')).join('');
+
+    // crypto.subtle is only available in secure contexts (HTTPS or localhost).
+    // Fall back to a simple non-crypto hash for HTTP origins like local.metabunk.org.
+    if (crypto.subtle) {
+        const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.slice(0, 6).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    // Simple FNV-1a-inspired hash fallback (not cryptographic, just for dedup fingerprinting)
+    const bytes = new Uint8Array(buffer);
+    let h = 0x811c9dc5;
+    for (let i = 0; i < bytes.length; i++) {
+        h ^= bytes[i];
+        h = Math.imul(h, 0x01000193);
+    }
+    return (h >>> 0).toString(16).padStart(8, '0').slice(0, 12);
 }
 
 export class CRehoster {

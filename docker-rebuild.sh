@@ -29,6 +29,6 @@ echo ""
 
 echo "✅ Docker rebuild complete!"
 echo ""
-echo "Access the application at: http://localhost:6425"
+echo "Access the application at: http://localhost:8080"
 echo ""
 echo "View logs: docker compose -p sitrec logs -f"

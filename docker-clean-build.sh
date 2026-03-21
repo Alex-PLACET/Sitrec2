@@ -35,7 +35,7 @@ echo ""
 
 echo "✅ Clean Docker build complete!"
 echo ""
-echo "Access the application at: http://localhost:6425"
+echo "Access the application at: http://localhost:8080"
 echo ""
 echo "To view logs: docker compose -p sitrec logs -f"
 echo "To stop: docker compose -p sitrec down"

@@ -5,7 +5,9 @@
 
 FROM php:8.4-apache
 
-RUN apt-get update && apt-get install -y libzip-dev && docker-php-ext-install zip && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y libzip-dev libonig-dev \
+    && docker-php-ext-install zip mbstring iconv \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY dist/ /var/www/html/
 

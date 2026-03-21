@@ -38,6 +38,9 @@ COPY site.webmanifest .
 # and we don't run the regression tests in Docker yet
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 
+# Pin npm version to match local dev (node:22 ships npm 10, lock file was generated with npm 11)
+RUN npm install -g npm@11
+
 # We use npm ci (Clean Install) to install the dependencies
 RUN npm ci
 
@@ -61,7 +64,9 @@ RUN npm run deploy
 # We're copying the built app from the first stage to this image
 FROM php:8.4-apache
 
-RUN apt-get update && apt-get install -y libzip-dev && docker-php-ext-install zip && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y libzip-dev libonig-dev \
+    && docker-php-ext-install zip mbstring iconv \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /build/dist /var/www/html
 

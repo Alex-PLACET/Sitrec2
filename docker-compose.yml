@@ -5,6 +5,8 @@ services:
     ports:
       - '8080:80'
     env_file:
+      - path: config/shared.env
+        required: false
       - path: .env
         required: false
     volumes:
