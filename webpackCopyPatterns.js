@@ -85,6 +85,9 @@ if (!isServerlessBuild) {
     });
 }
 
+// Copy ThirdPartyNotices.txt (open-source license attributions)
+patterns.push({ from: "ThirdPartyNotices.txt", to: "./", noErrorOnMissing: true });
+
 // Copy favicon and manifest files
 patterns.push(
     { from: "apple-touch-icon.png", to: "./" },

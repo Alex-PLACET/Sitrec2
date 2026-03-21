@@ -260,15 +260,17 @@ export async function doOver(time, interval, f) {
     }
 }
 
-// https://stackoverflow.com/questions/33137588/how-do-i-draw-a-rectangle-around-a-text-in-html-canvas
-export function getTextBBox( ctx, text ) {
-    const metrics = ctx.measureText( text );
-    const left = metrics.actualBoundingBoxLeft * -1;
-    const top = metrics.actualBoundingBoxAscent * -1;
-    const right = metrics.actualBoundingBoxRight;
-    const bottom = metrics.actualBoundingBoxDescent;
-    // actualBoundinBox... excludes white spaces
-    const width = text.trim() === text ? right - left : metrics.width;
+// Compute a bounding box for rendered text using the TextMetrics API.
+// Returns { left, top, right, bottom, width, height } relative to the baseline origin.
+export function getTextBBox(ctx, text) {
+    const m = ctx.measureText(text);
+    const left = -m.actualBoundingBoxLeft;
+    const top = -m.actualBoundingBoxAscent;
+    const right = m.actualBoundingBoxRight;
+    const bottom = m.actualBoundingBoxDescent;
+    // actualBoundingBox measurements exclude leading/trailing whitespace,
+    // so fall back to metrics.width when the text has outer spaces.
+    const width = text.trim() === text ? right - left : m.width;
     const height = bottom - top;
     return { left, top, right, bottom, width, height };
 }
@@ -368,8 +370,8 @@ export function localDate(d) {
 
 
 
-// see: https://stackoverflow.com/questions/7848004/get-column-from-a-two-dimensional-array/63860734
-export const arrayColumn = (arr, n) => arr.map(x => x[n]);
+// Extract the nth element from every row of a 2D array.
+export const arrayColumn = (arr, n) => arr.map(row => row[n]);
 
 /* View in fullscreen */
 export function openFullscreen() {

@@ -379,37 +379,6 @@ https://www.geeks3d.com/20091009/shader-library-night-vision-post-processing-fil
 The tutorial code has been substantially modified for use as a FLIR
 (Forward Looking Infrared) post-processing effect in Sitrec.`,
     },
-    {
-        name: "Stack Overflow code snippets",
-        version: "n/a",
-        license: "CC-BY-SA-4.0",
-        copyright: "Copyright (c) Stack Overflow contributors",
-        repository: "https://stackoverflow.com",
-        notes: "Small utility functions adapted from Stack Overflow answers.",
-        licenseTextOverride: `The following code snippets were adapted from Stack Overflow answers and
-are used under the Creative Commons Attribution-ShareAlike 4.0
-International License (CC BY-SA 4.0):
-
-- src/parseXml.js: XML to JavaScript object parser
-  https://stackoverflow.com/questions/4200913/xml-to-javascript-object
-
-- src/utils.js (getTextBBox): Canvas text bounding box measurement
-  https://stackoverflow.com/questions/33137588/how-do-i-draw-a-rectangle-around-a-text-in-html-canvas
-
-- src/utils.js (arrayColumn): Extract column from 2D array
-  https://stackoverflow.com/questions/7848004/get-column-from-a-two-dimensional-array/63860734
-
-- src/nodes/CNodeImageAnalysis.js (imagedata_to_image): ImageData to Image conversion
-  https://stackoverflow.com/questions/13416800/how-to-generate-an-image-from-imagedata-in-javascript
-
-CC BY-SA 4.0 License: https://creativecommons.org/licenses/by-sa/4.0/
-
-You are free to share and adapt this material under the following terms:
-- Attribution: You must give appropriate credit, provide a link to the
-  license, and indicate if changes were made.
-- ShareAlike: If you remix, transform, or build upon the material, you
-  must distribute your contributions under the same license.`,
-    },
 ];
 
 // ---------------------------------------------------------------------------
@@ -670,6 +639,17 @@ function generate() {
     const args = process.argv.slice(2);
     const statsIdx = args.indexOf("--from-stats");
     const statsPath = statsIdx !== -1 ? args[statsIdx + 1] : null;
+    const copyIdx = args.indexOf("--copy-to");
+    let copyTo = copyIdx !== -1 ? args[copyIdx + 1] : null;
+
+    // --copy-to-prod resolves the path from config/config-install.js
+    if (args.includes("--copy-to-prod")) {
+        try {
+            copyTo = require(path.join(ROOT, "config/config-install")).prod_path;
+        } catch {
+            console.warn("  WARNING: Could not read prod_path from config/config-install.js");
+        }
+    }
 
     if (statsPath && !fs.existsSync(statsPath)) {
         console.error(`ERROR: Stats file not found: ${statsPath}`);
@@ -744,6 +724,18 @@ function generate() {
     const content = lines.join("\n");
     fs.writeFileSync(OUTPUT, content, "utf-8");
     console.log(`\nWrote ${OUTPUT} (${allDeps.length} entries, ${content.length} bytes)`);
+
+    // Copy to build output directory if requested
+    if (copyTo) {
+        const destDir = path.resolve(copyTo);
+        if (fs.existsSync(destDir)) {
+            const dest = path.join(destDir, "ThirdPartyNotices.txt");
+            fs.copyFileSync(OUTPUT, dest);
+            console.log(`Copied to ${dest}`);
+        } else {
+            console.warn(`WARNING: Output directory does not exist, skipping copy: ${destDir}`);
+        }
+    }
 
     // Print license summary
     const licenseCounts = {};

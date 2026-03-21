@@ -72,17 +72,15 @@ export class CNodeImageView extends CNodeViewUI {
 
 }
 
-// https://stackoverflow.com/questions/13416800/how-to-generate-an-image-from-imagedata-in-javascript
+// Render an ImageData object to an HTMLImageElement via an offscreen canvas.
 function imagedata_to_image(imagedata) {
-    var canvas = document.createElement('canvas');
-    var ctx = canvas.getContext('2d');
+    const canvas = document.createElement("canvas");
     canvas.width = imagedata.width;
     canvas.height = imagedata.height;
-    ctx.putImageData(imagedata, 0, 0);
-
-    var image = new Image();
-    image.src = canvas.toDataURL();
-    return image;
+    canvas.getContext("2d").putImageData(imagedata, 0, 0);
+    const img = new Image();
+    img.src = canvas.toDataURL();
+    return img;
 }
 
 

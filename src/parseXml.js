@@ -1,88 +1,52 @@
-// parseXML from https://stackoverflow.com/questions/4200913/xml-to-javascript-object
+// Parse an XML string into a nested JavaScript object.
+// arrayTags: optional array of tag names that should always be wrapped in arrays,
+// even when only a single element is present.
+export function parseXml(xml, arrayTags) {
+    const dom = new DOMParser().parseFromString(xml, "text/xml");
 
-export function parseXml(xml, arrayTags)
-{
-    let dom = null;
-    if (window.DOMParser)
-    {
-        dom = (new DOMParser()).parseFromString(xml, "text/xml");
-    }
-    else if (window.ActiveXObject)
-    {
-        dom = new ActiveXObject('Microsoft.XMLDOM');
-        dom.async = false;
-        if (!dom.loadXML(xml))
-        {
-            throw new Error(dom.parseError.reason + " " + dom.parseError.srcText);
-        }
-    }
-    else
-    {
-        throw new Error("cannot parse xml string!");
-    }
-
-    function isArray(o)
-    {
-        return Array.isArray(o);
-    }
-
-    function parseNode(xmlNode, result)
-    {
-        if (xmlNode.nodeName === "#text") {
-            const v = xmlNode.nodeValue;
-            if (v.trim()) {
-                result['#text'] = v;
+    function visitNode(node, obj) {
+        // Store non-empty text nodes under a special key
+        if (node.nodeType === Node.TEXT_NODE) {
+            if (node.nodeValue.trim()) {
+                obj["#text"] = node.nodeValue;
             }
             return;
         }
 
-        const jsonNode = {};
-        const existing = result[xmlNode.nodeName];
-        if(existing)
-        {
-            if(!isArray(existing))
-            {
-                result[xmlNode.nodeName] = [existing, jsonNode];
-            }
-            else
-            {
-                result[xmlNode.nodeName].push(jsonNode);
-            }
-        }
-        else
-        {
-            if(arrayTags && arrayTags.includes(xmlNode.nodeName))
-            {
-                result[xmlNode.nodeName] = [jsonNode];
-            }
-            else
-            {
-                result[xmlNode.nodeName] = jsonNode;
+        const entry = {};
+
+        // Copy element attributes
+        if (node.attributes) {
+            for (let i = 0; i < node.attributes.length; i++) {
+                entry[node.attributes[i].name] = node.attributes[i].value;
             }
         }
 
-        if(xmlNode.attributes)
-        {
-            const length = xmlNode.attributes.length;
-            for(let i = 0; i < length; i++)
-            {
-                const attribute = xmlNode.attributes[i];
-                jsonNode[attribute.nodeName] = attribute.nodeValue;
-            }
+        // Recurse into children
+        for (let i = 0; i < node.childNodes.length; i++) {
+            visitNode(node.childNodes[i], entry);
         }
 
-        const length2 = xmlNode.childNodes.length;
-        for(let i = 0; i < length2; i++)
-        {
-            parseNode(xmlNode.childNodes[i], jsonNode);
+        // Merge this entry into the parent object, promoting to array on duplicates
+        const tag = node.nodeName;
+        const prev = obj[tag];
+        if (prev !== undefined) {
+            // Already have this tag — ensure it's an array and append
+            if (Array.isArray(prev)) {
+                prev.push(entry);
+            } else {
+                obj[tag] = [prev, entry];
+            }
+        } else if (arrayTags && arrayTags.includes(tag)) {
+            obj[tag] = [entry];
+        } else {
+            obj[tag] = entry;
         }
     }
 
     const result = {};
-    for (let i = 0; i < dom.childNodes.length; i++)
-    {
-        parseNode(dom.childNodes[i], result);
+    for (let i = 0; i < dom.childNodes.length; i++) {
+        visitNode(dom.childNodes[i], result);
     }
-
     return result;
 }

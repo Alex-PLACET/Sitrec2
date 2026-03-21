@@ -1520,6 +1520,13 @@ async function initializeOnce() {
     addHelpLink("How to Investigate Starlink Flares", "docs/Starlink")
     addHelpLink("Objects and 3D Models (Planes)", "docs/CustomModels")
 
+    if (getEnvBool("LOCAL_DOCS", process.env.LOCAL_DOCS)) {
+        docs.addExternalLink("Third-Party Notices", "./ThirdPartyNotices.txt").perm()
+            .tooltip("Open-source license attributions for bundled third-party software");
+    } else {
+        docs.addExternalLink("Third-Party Notices (Github)", "https://github.com/MickWest/Sitrec2/blob/main/ThirdPartyNotices.txt").perm();
+    }
+
     if (configParams?.extraHelpLinks !== undefined) {
 
         const external = addGUIFolder("external", "External Links", "help")

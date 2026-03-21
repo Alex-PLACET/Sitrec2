@@ -3008,36 +3008,6 @@ SOFTWARE.
 
 ---------------------------------------------------------
 
-Stack Overflow code snippets n/a - CC-BY-SA-4.0
-https://stackoverflow.com
-(Small utility functions adapted from Stack Overflow answers.)
-
-The following code snippets were adapted from Stack Overflow answers and
-are used under the Creative Commons Attribution-ShareAlike 4.0
-International License (CC BY-SA 4.0):
-
-- src/parseXml.js: XML to JavaScript object parser
-  https://stackoverflow.com/questions/4200913/xml-to-javascript-object
-
-- src/utils.js (getTextBBox): Canvas text bounding box measurement
-  https://stackoverflow.com/questions/33137588/how-do-i-draw-a-rectangle-around-a-text-in-html-canvas
-
-- src/utils.js (arrayColumn): Extract column from 2D array
-  https://stackoverflow.com/questions/7848004/get-column-from-a-two-dimensional-array/63860734
-
-- src/nodes/CNodeImageAnalysis.js (imagedata_to_image): ImageData to Image conversion
-  https://stackoverflow.com/questions/13416800/how-to-generate-an-image-from-imagedata-in-javascript
-
-CC BY-SA 4.0 License: https://creativecommons.org/licenses/by-sa/4.0/
-
-You are free to share and adapt this material under the following terms:
-- Attribution: You must give appropriate credit, provide a link to the
-  license, and indicate if changes were made.
-- ShareAlike: If you remix, transform, or build upon the material, you
-  must distribute your contributions under the same license.
-
----------------------------------------------------------
-
 stats.js 0.17.0 - MIT
 https://github.com/mrdoob/stats.js
 
