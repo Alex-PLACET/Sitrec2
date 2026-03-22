@@ -22,8 +22,15 @@ let sitrecTabId = null;
 
 // -- WebSocket Connection ---------------------------------------------------
 
-function connect() {
+async function connect() {
     if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
+        return;
+    }
+
+    // Only connect if we have a Sitrec tab — prevents extensions in browsers
+    // without Sitrec from competing for the MCP server's single extension socket.
+    const tabId = await findSitrecTab();
+    if (!tabId) {
         return;
     }
 
@@ -107,8 +114,8 @@ function isSitrecUrl(url) {
     if (!url) return false;
     return (
         url.includes("metabunk.org/sitrec") ||
-        url.includes("localhost") ||
-        url.includes("127.0.0.1")
+        /localhost:\d+\/sitrec/.test(url) ||
+        /127\.0\.0\.1:\d+\/sitrec/.test(url)
     );
 }
 

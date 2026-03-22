@@ -353,6 +353,8 @@ Then reload via eval:
 ```
 Wait for the page to load (check with `Sit.name`), re-enable the feature under test, and screenshot again to confirm.
 
+**Verify the build:** `sitrec_get_sitch` returns a `buildTime` field (e.g., `"03/22/2026 10:39:50"`) — the `document.lastModified` timestamp. After a build + reload, check this to confirm the browser is running your updated code.
+
 ### 5. Run tests
 ```bash
 npm test               # Ensure nothing is broken

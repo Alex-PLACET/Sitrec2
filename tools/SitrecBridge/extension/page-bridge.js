@@ -86,6 +86,7 @@ const handlers = {
             startTime: Sit.startTime,
             isCustom: Sit.isCustom,
             canMod: Sit.canMod,
+            buildTime: document.lastModified,
         };
     },
 

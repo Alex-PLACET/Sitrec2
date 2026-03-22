@@ -119,12 +119,53 @@ function startAsPrimary(port) {
 
 function setupExtensionConnection(ws) {
     if (extensionSocket && extensionSocket.readyState === WebSocket.OPEN) {
-        log("Primary: New extension connection — replacing old one");
-        extensionSocket.close();
+        // Another extension is already connected — probe it for a ready Sitrec tab
+        // before deciding whether to replace it.
+        const probeId = ++requestCounter;
+        const probeTimer = setTimeout(() => {
+            // Existing extension didn't respond — replace it
+            pendingRequests.delete(probeId);
+            log("Primary: Existing extension unresponsive — replacing");
+            extensionSocket.close();
+            finishExtensionSetup(ws);
+        }, 2000);
+
+        pendingRequests.set(probeId, {
+            resolve: (msg) => {
+                clearTimeout(probeTimer);
+                pendingRequests.delete(probeId);
+                const ready = !msg.error && msg.result?.ready === "complete";
+                if (ready) {
+                    log("Primary: Existing extension has a ready Sitrec tab — rejecting new connection");
+                    ws.close();
+                } else {
+                    log("Primary: Existing extension has no ready Sitrec tab — replacing");
+                    extensionSocket.close();
+                    finishExtensionSetup(ws);
+                }
+            },
+            reject: () => {
+                clearTimeout(probeTimer);
+                extensionSocket.close();
+                finishExtensionSetup(ws);
+            },
+            timer: probeTimer,
+        });
+
+        extensionSocket.send(JSON.stringify({
+            id: probeId,
+            action: "sitrec_eval",
+            params: { expression: "({ready: document.getElementById('sitrec-objects-ready') && document.getElementById('sitrec-objects-ready').dataset.ready})" },
+        }));
+        return;
     }
 
+    finishExtensionSetup(ws);
+}
+
+function finishExtensionSetup(ws) {
     extensionSocket = ws;
-    log("Primary: Chrome extension connected");
+    log("Primary: Extension connected");
 
     // Keepalive pings to prevent service worker suspension
     clearInterval(keepaliveTimer);
