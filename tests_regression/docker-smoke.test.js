@@ -7,6 +7,11 @@ import {takeScreenshotOrCompare} from './snapshot-utils.js';
  *
  * Uses a separate config: npx playwright test --config=playwright.docker.config.js
  *
+ * NOTE: We cannot wait for "No pending actions" because the Docker container
+ * has no map tile API keys, so hasPendingTiles() never clears. Instead we
+ * wait for the node graph to initialize (Globals.pendingActions === 0) and
+ * then let the scene stabilize for a few seconds before screenshotting.
+ *
  * First CI run creates the linux baseline snapshot (uploaded as artifact).
  * Download and commit it to enable visual regression on subsequent runs:
  *   tests_regression/docker-smoke.test.js-snapshots/docker-smoke-snapshot-chromium-linux.png
@@ -29,21 +34,6 @@ test.describe('Docker Smoke Tests', () => {
             errors.push(`PAGE ERROR: ${err.message}`);
         });
 
-        // Set up a promise that resolves when the app signals initialization is complete.
-        // Must be created before page.goto so we don't miss the console message.
-        const initPromise = new Promise((resolve, reject) => {
-            const timeout = setTimeout(
-                () => reject(new Error('Timed out after 90s waiting for "No pending actions"')),
-                90000
-            );
-            page.on('console', msg => {
-                if (msg.text().includes('No pending actions')) {
-                    clearTimeout(timeout);
-                    resolve();
-                }
-            });
-        });
-
         // Load a fresh default sitch — requires no external data or API keys
         const response = await page.goto('?action=new&frame=10&ignoreunload=1&regression=1', {
             waitUntil: 'load',
@@ -53,8 +43,18 @@ test.describe('Docker Smoke Tests', () => {
         // Verify HTTP 200
         expect(response.status()).toBe(200);
 
-        // Wait for the node graph to finish initializing
-        await initPromise;
+        // Wait for the app's node graph to initialize.
+        // We check for Globals.pendingActions === 0 which means the core setup
+        // is done, even if map tiles are still loading (they'll hang without API keys).
+        await page.waitForFunction(
+            () => window.Globals && window.NodeMan && window.NodeMan.list
+                && Object.keys(window.NodeMan.list).length > 0
+                && window.Globals.pendingActions === 0,
+            {timeout: 60000}
+        );
+
+        // Let the scene render and stabilize for a few seconds
+        await page.waitForTimeout(5000);
 
         // Verify at least one WebGL canvas was created (3D scene rendered)
         const canvasCount = await page.locator('canvas').count();
