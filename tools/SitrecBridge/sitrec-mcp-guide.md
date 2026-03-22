@@ -8,6 +8,11 @@ Sitrec is a 3D situation recreation app built with Three.js. It uses a **node-ba
 
 **Message path:** MCP Client (stdio) -> MCP Server (WebSocket :9780) -> Chrome Extension (background.js) -> Content Script -> Page Bridge (page-bridge.js, main world) -> Sitrec globals.
 
+### Multi-session support
+Multiple Claude Code sessions can share one Sitrec instance simultaneously. The first MCP server to start becomes the **primary** (owns the WebSocket server on port 9780, Chrome extension connects here). Subsequent servers automatically detect the port is in use and join as **secondary** peers — they connect as WebSocket clients to the primary, which relays their requests to the extension and routes responses back.
+
+Use `sitrec_status` to see which mode you're in (`"mode": "primary"` or `"mode": "secondary"`). If the primary exits, secondaries will reconnect automatically when a new primary starts.
+
 ## Key Globals (accessible via `sitrec_eval`)
 
 | Global | Type | Description |

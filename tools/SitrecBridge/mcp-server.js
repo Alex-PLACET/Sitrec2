@@ -8,6 +8,13 @@
  * Architecture:
  *   MCP Client <--stdio--> This Server <--WebSocket--> Chrome Extension <--message--> Sitrec Page
  *
+ * Multi-session support:
+ *   The first MCP server to start becomes the "primary" — it owns the WebSocket
+ *   server on the port and the Chrome extension connects to it. Subsequent MCP
+ *   servers detect the port is in use and connect as "peer" WebSocket clients to
+ *   the primary, which relays their requests to the extension and routes responses
+ *   back. This allows multiple Claude Code sessions to share one Sitrec instance.
+ *
  * Based on the relay pattern from https://github.com/railsblueprint/blueprint-mcp
  */
 
@@ -19,7 +26,7 @@ import {
     ListToolsRequestSchema,
     ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import {WebSocketServer} from "ws";
+import {WebSocket, WebSocketServer} from "ws";
 import {readFileSync} from "fs";
 import {fileURLToPath} from "url";
 import {dirname, join} from "path";
@@ -45,103 +52,372 @@ function log(...args) {
     console.error("[SitrecBridge]", ...args);
 }
 
-// ── WebSocket Relay (Extension Server) ──────────────────────────────────────
+// ── WebSocket Relay ─────────────────────────────────────────────────────────
+// Supports two modes:
+//   "primary" — owns the WebSocket server, extension connects here, relays for peers
+//   "secondary" — connects as a client to the primary, sends requests through it
 
-let extensionSocket = null;
-const pendingRequests = new Map(); // id → { resolve, reject, timer }
+let mode = null;                    // "primary" or "secondary"
+let extensionSocket = null;         // Chrome extension connection (primary only)
+let primarySocket = null;           // Connection to the primary server (secondary only)
+const pendingRequests = new Map();  // id → { resolve, reject, timer }
+const peerRequestMap = new Map();   // primaryId → { peerSocket, peerId } (primary only)
 let requestCounter = 0;
 let keepaliveTimer = null;
 
-const wss = new WebSocketServer({ port: WS_PORT });
+// ── Primary Mode ────────────────────────────────────────────────────────────
 
-wss.on("listening", () => {
-    log(`WebSocket server listening on ws://localhost:${WS_PORT}`);
-});
+function startAsPrimary(port) {
+    mode = "primary";
+    const wss = new WebSocketServer({ port });
 
-wss.on("error", (err) => {
-    if (err.code === "EADDRINUSE") {
-        log(`ERROR: Port ${WS_PORT} is already in use. Set SITREC_BRIDGE_PORT env var to use a different port.`);
-        process.exit(1);
-    }
-    log("WebSocket server error:", err.message);
-});
+    wss.on("listening", () => {
+        log(`Primary: WebSocket server listening on ws://localhost:${port}`);
+    });
 
-wss.on("connection", (ws) => {
-    // Single connection enforcement — like blueprint-mcp's ExtensionServer
-    if (extensionSocket && extensionSocket.readyState === 1) {
-        log("New connection while one is active — replacing old connection");
+    wss.on("error", (err) => {
+        log("WebSocket server error:", err.message);
+    });
+
+    wss.on("connection", (ws) => {
+        // Wait briefly for a peer identification message.
+        // The extension never sends one, so after a short timeout we treat it as extension.
+        let identified = false;
+
+        const earlyHandler = (raw) => {
+            try {
+                const msg = JSON.parse(raw.toString());
+                if (msg.type === "peer") {
+                    identified = true;
+                    ws.removeListener("message", earlyHandler);
+                    setupPeerConnection(ws);
+                    return;
+                }
+            } catch {}
+            // Not a peer message — treat as extension, but let the normal handler process it
+            if (!identified) {
+                identified = true;
+                ws.removeListener("message", earlyHandler);
+                setupExtensionConnection(ws);
+                // Re-dispatch this message through the extension handler
+                handleExtensionMessage(raw);
+            }
+        };
+
+        ws.on("message", earlyHandler);
+
+        // If no message within 500ms, assume it's the extension
+        setTimeout(() => {
+            if (!identified) {
+                identified = true;
+                ws.removeListener("message", earlyHandler);
+                setupExtensionConnection(ws);
+            }
+        }, 500);
+    });
+}
+
+function setupExtensionConnection(ws) {
+    if (extensionSocket && extensionSocket.readyState === WebSocket.OPEN) {
+        log("Primary: New extension connection — replacing old one");
         extensionSocket.close();
     }
 
     extensionSocket = ws;
-    log("Chrome extension connected");
+    log("Primary: Chrome extension connected");
 
-    // Start keepalive pings to prevent service worker suspension
+    // Keepalive pings to prevent service worker suspension
     clearInterval(keepaliveTimer);
     keepaliveTimer = setInterval(() => {
-        if (extensionSocket && extensionSocket.readyState === 1) {
+        if (extensionSocket && extensionSocket.readyState === WebSocket.OPEN) {
             extensionSocket.ping();
         }
     }, KEEPALIVE_INTERVAL_MS);
 
-    ws.on("message", (raw) => {
-        try {
-            const msg = JSON.parse(raw.toString());
-            if (msg.id != null && pendingRequests.has(msg.id)) {
-                const { resolve, timer } = pendingRequests.get(msg.id);
-                clearTimeout(timer);
-                pendingRequests.delete(msg.id);
-                resolve(msg);
-            }
-            // Notifications (no id) can be logged or ignored
-        } catch (e) {
-            log("Bad message from extension:", e.message);
-        }
-    });
+    ws.on("message", (raw) => handleExtensionMessage(raw));
 
     ws.on("close", () => {
-        log("Chrome extension disconnected");
+        log("Primary: Chrome extension disconnected");
         if (extensionSocket === ws) extensionSocket = null;
         clearInterval(keepaliveTimer);
 
-        // Reject all pending requests
-        for (const [id, { reject, timer }] of pendingRequests) {
-            clearTimeout(timer);
-            reject(new Error("Extension disconnected"));
+        // Reject all pending requests (both local and peer-relayed)
+        for (const [id, pending] of pendingRequests) {
+            clearTimeout(pending.timer);
+            // Check if this was a peer relay
+            const peerMapping = peerRequestMap.get(id);
+            if (peerMapping) {
+                // Send error back to peer
+                try {
+                    peerMapping.peerSocket.send(JSON.stringify({
+                        id: peerMapping.peerId,
+                        error: "Extension disconnected"
+                    }));
+                } catch {}
+                peerRequestMap.delete(id);
+            } else {
+                pending.reject(new Error("Extension disconnected"));
+            }
         }
         pendingRequests.clear();
     });
 
     ws.on("error", (err) => {
-        log("WebSocket error:", err.message);
-    });
-});
-
-/**
- * Send a command to the Chrome extension and wait for the response.
- * Follows the same request/response pattern as blueprint-mcp's ExtensionServer.
- */
-function sendToExtension(action, params = {}, timeoutMs = REQUEST_TIMEOUT_MS) {
-    return new Promise((resolve, reject) => {
-        if (!extensionSocket || extensionSocket.readyState !== 1) {
-            return reject(new Error(
-                "Chrome extension is not connected. Make sure:\n" +
-                "1. The SitrecBridge extension is installed and enabled in Chrome\n" +
-                "2. Sitrec is open in a browser tab\n" +
-                "3. The extension popup shows 'Connected'"
-            ));
-        }
-
-        const id = ++requestCounter;
-        const timer = setTimeout(() => {
-            pendingRequests.delete(id);
-            reject(new Error(`Timed out waiting for '${action}' response (${timeoutMs}ms)`));
-        }, timeoutMs);
-
-        pendingRequests.set(id, { resolve, reject, timer });
-        extensionSocket.send(JSON.stringify({ id, action, params }));
+        log("Primary: Extension WebSocket error:", err.message);
     });
 }
+
+function handleExtensionMessage(raw) {
+    try {
+        const msg = JSON.parse(raw.toString());
+        if (msg.id != null && pendingRequests.has(msg.id)) {
+            const { resolve, timer } = pendingRequests.get(msg.id);
+            clearTimeout(timer);
+            pendingRequests.delete(msg.id);
+
+            // Check if this was a peer relay — if so, forward response to peer
+            const peerMapping = peerRequestMap.get(msg.id);
+            if (peerMapping) {
+                peerRequestMap.delete(msg.id);
+                try {
+                    peerMapping.peerSocket.send(JSON.stringify({
+                        id: peerMapping.peerId,
+                        result: msg.result,
+                        error: msg.error,
+                    }));
+                } catch (e) {
+                    log("Primary: Failed to relay response to peer:", e.message);
+                }
+                // Still resolve the pending promise (it's a no-op resolve for peer relays)
+                resolve(msg);
+            } else {
+                // Local request — resolve normally
+                resolve(msg);
+            }
+        }
+    } catch (e) {
+        log("Primary: Bad message from extension:", e.message);
+    }
+}
+
+function setupPeerConnection(ws) {
+    log("Primary: Peer MCP server connected");
+
+    ws.on("message", (raw) => {
+        try {
+            const msg = JSON.parse(raw.toString());
+            // Peer is sending a request to relay to the extension
+            if (msg.action) {
+                relayPeerRequest(ws, msg);
+            }
+        } catch (e) {
+            log("Primary: Bad message from peer:", e.message);
+        }
+    });
+
+    ws.on("close", () => {
+        log("Primary: Peer MCP server disconnected");
+        // Clean up any pending peer requests
+        for (const [primaryId, mapping] of peerRequestMap) {
+            if (mapping.peerSocket === ws) {
+                const pending = pendingRequests.get(primaryId);
+                if (pending) {
+                    clearTimeout(pending.timer);
+                    pendingRequests.delete(primaryId);
+                }
+                peerRequestMap.delete(primaryId);
+            }
+        }
+    });
+
+    ws.on("error", (err) => {
+        log("Primary: Peer WebSocket error:", err.message);
+    });
+}
+
+function relayPeerRequest(peerSocket, msg) {
+    if (!extensionSocket || extensionSocket.readyState !== WebSocket.OPEN) {
+        peerSocket.send(JSON.stringify({
+            id: msg.id,
+            error: "Chrome extension is not connected to the primary server."
+        }));
+        return;
+    }
+
+    // Assign a primary-scoped ID and relay to extension
+    const primaryId = ++requestCounter;
+    peerRequestMap.set(primaryId, { peerSocket, peerId: msg.id });
+
+    const timer = setTimeout(() => {
+        pendingRequests.delete(primaryId);
+        peerRequestMap.delete(primaryId);
+        try {
+            peerSocket.send(JSON.stringify({
+                id: msg.id,
+                error: `Timed out waiting for '${msg.action}' response (${REQUEST_TIMEOUT_MS}ms)`
+            }));
+        } catch {}
+    }, REQUEST_TIMEOUT_MS);
+
+    pendingRequests.set(primaryId, {
+        resolve: () => {},  // Peer responses are sent directly in handleExtensionMessage
+        reject: () => {},
+        timer
+    });
+
+    extensionSocket.send(JSON.stringify({
+        id: primaryId,
+        action: msg.action,
+        params: msg.params
+    }));
+}
+
+// ── Secondary Mode ──────────────────────────────────────────────────────────
+
+function startAsSecondary(port) {
+    mode = "secondary";
+    log(`Secondary: Connecting to primary on ws://localhost:${port}`);
+
+    function connect() {
+        primarySocket = new WebSocket(`ws://localhost:${port}`);
+
+        primarySocket.on("open", () => {
+            log("Secondary: Connected to primary server");
+            // Identify ourselves as a peer
+            primarySocket.send(JSON.stringify({ type: "peer" }));
+        });
+
+        primarySocket.on("message", (raw) => {
+            try {
+                const msg = JSON.parse(raw.toString());
+                if (msg.id != null && pendingRequests.has(msg.id)) {
+                    const { resolve, timer } = pendingRequests.get(msg.id);
+                    clearTimeout(timer);
+                    pendingRequests.delete(msg.id);
+                    resolve(msg);
+                }
+            } catch (e) {
+                log("Secondary: Bad message from primary:", e.message);
+            }
+        });
+
+        primarySocket.on("close", () => {
+            log("Secondary: Disconnected from primary — attempting promotion...");
+            primarySocket = null;
+            // Reject all pending
+            for (const [id, { reject, timer }] of pendingRequests) {
+                clearTimeout(timer);
+                reject(new Error("Primary server disconnected"));
+            }
+            pendingRequests.clear();
+            // Try to become primary; if another peer already did, reconnect as secondary
+            // Random jitter (300-800ms) to avoid multiple secondaries racing
+            setTimeout(tryPromote, 300 + Math.random() * 500);
+        });
+
+        primarySocket.on("error", (err) => {
+            // Connection refused means no primary — try to promote
+            if (err.code === "ECONNREFUSED") {
+                log("Secondary: Primary not reachable — attempting promotion...");
+                primarySocket = null;
+                setTimeout(tryPromote, 300 + Math.random() * 500);
+                return;
+            }
+            log("Secondary: Connection error:", err.message);
+        });
+    }
+
+    function tryPromote() {
+        const testServer = new WebSocketServer({ port });
+        testServer.on("listening", () => {
+            testServer.close(() => {
+                log("Secondary: Promoted to primary");
+                startAsPrimary(port);
+            });
+        });
+        testServer.on("error", (err) => {
+            if (err.code === "EADDRINUSE") {
+                // Another peer already promoted — rejoin as secondary
+                log("Secondary: Another server is primary — reconnecting...");
+                setTimeout(connect, 1000);
+            } else {
+                log("Secondary: Promotion failed:", err.message);
+                setTimeout(connect, 3000);
+            }
+        });
+    }
+
+    connect();
+}
+
+// ── Unified sendToExtension ─────────────────────────────────────────────────
+// Works in both modes: primary sends directly, secondary sends via primary.
+
+function sendToExtension(action, params = {}, timeoutMs = REQUEST_TIMEOUT_MS) {
+    return new Promise((resolve, reject) => {
+        if (mode === "primary") {
+            if (!extensionSocket || extensionSocket.readyState !== WebSocket.OPEN) {
+                return reject(new Error(
+                    "Chrome extension is not connected. Make sure:\n" +
+                    "1. The SitrecBridge extension is installed and enabled\n" +
+                    "2. Sitrec is open in a browser tab\n" +
+                    "3. The extension popup shows 'Connected'"
+                ));
+            }
+
+            const id = ++requestCounter;
+            const timer = setTimeout(() => {
+                pendingRequests.delete(id);
+                reject(new Error(`Timed out waiting for '${action}' response (${timeoutMs}ms)`));
+            }, timeoutMs);
+
+            pendingRequests.set(id, { resolve, reject, timer });
+            extensionSocket.send(JSON.stringify({ id, action, params }));
+
+        } else if (mode === "secondary") {
+            if (!primarySocket || primarySocket.readyState !== WebSocket.OPEN) {
+                return reject(new Error(
+                    "Not connected to primary MCP server. Reconnecting..."
+                ));
+            }
+
+            const id = ++requestCounter;
+            const timer = setTimeout(() => {
+                pendingRequests.delete(id);
+                reject(new Error(`Timed out waiting for '${action}' response (${timeoutMs}ms)`));
+            }, timeoutMs);
+
+            pendingRequests.set(id, { resolve, reject, timer });
+            primarySocket.send(JSON.stringify({ id, action, params }));
+        }
+    });
+}
+
+// ── Startup: try primary, fall back to secondary ────────────────────────────
+
+function start() {
+    // Try to bind the port. If it fails with EADDRINUSE, become secondary.
+    const testServer = new WebSocketServer({ port: WS_PORT });
+
+    testServer.on("listening", () => {
+        // We got the port — close the test server and start properly as primary
+        testServer.close(() => {
+            startAsPrimary(WS_PORT);
+        });
+    });
+
+    testServer.on("error", (err) => {
+        if (err.code === "EADDRINUSE") {
+            log(`Port ${WS_PORT} in use — joining as secondary`);
+            startAsSecondary(WS_PORT);
+        } else {
+            log("Failed to start WebSocket server:", err.message);
+            process.exit(1);
+        }
+    });
+}
+
+start();
 
 // ── MCP Tool Definitions ────────────────────────────────────────────────────
 
@@ -335,7 +611,7 @@ const TOOLS = [
 // ── MCP Server Setup ────────────────────────────────────────────────────────
 
 const server = new Server(
-    { name: "sitrec-bridge", version: "1.0.0" },
+    { name: "sitrec-bridge", version: "1.1.0" },
     { capabilities: { tools: {}, resources: {} } }
 );
 
@@ -348,11 +624,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     // sitrec_status is handled locally — no extension needed
     if (name === "sitrec_status") {
-        const connected = !!(extensionSocket && extensionSocket.readyState === 1);
+        const connected = mode === "primary"
+            ? !!(extensionSocket && extensionSocket.readyState === WebSocket.OPEN)
+            : !!(primarySocket && primarySocket.readyState === WebSocket.OPEN);
         return {
             content: [{
                 type: "text",
                 text: JSON.stringify({
+                    mode,
                     extensionConnected: connected,
                     wsPort: WS_PORT,
                     pendingRequests: pendingRequests.size,
@@ -368,25 +647,28 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
     }
 
-    // sitrec_reload_extension is handled specially — sends a direct message
-    // to the background script (not through content script relay)
+    // sitrec_reload_extension — only works from primary
     if (name === "sitrec_reload_extension") {
-        if (!extensionSocket || extensionSocket.readyState !== 1) {
-            return {
-                content: [{ type: "text", text: "Extension not connected. Nothing to reload." }],
-                isError: true,
-            };
+        if (mode === "primary") {
+            if (!extensionSocket || extensionSocket.readyState !== WebSocket.OPEN) {
+                return {
+                    content: [{ type: "text", text: "Extension not connected. Nothing to reload." }],
+                    isError: true,
+                };
+            }
+            extensionSocket.send(JSON.stringify({ id: ++requestCounter, action: "reload" }));
+        } else {
+            // Secondary: relay through primary
+            try {
+                await sendToExtension("reload", {});
+            } catch {}
         }
-        // Send reload message directly — the background script handles this
-        // as a chrome.runtime.onMessage, but we send it via WebSocket.
-        // The background script will call chrome.runtime.reload() after a short delay.
-        extensionSocket.send(JSON.stringify({ id: ++requestCounter, action: "reload" }));
         return {
             content: [{ type: "text", text: "Extension reloading. It will reconnect automatically in a few seconds." }],
         };
     }
 
-    // All other tools relay to the extension
+    // All other tools relay to the extension (via primary if secondary)
     try {
         const response = await sendToExtension(name, args || {});
 
