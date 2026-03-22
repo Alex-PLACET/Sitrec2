@@ -51,10 +51,20 @@
       font-size: 11px;
       color: #888;
     }
+    .update-banner {
+      margin-top: 8px;
+      padding: 6px 8px;
+      background: #fef3c7;
+      border: 1px solid #f59e0b;
+      border-radius: 4px;
+      font-size: 11px;
+      color: #92400e;
+      display: none;
+    }
   </style>
 </head>
 <body>
-  <h2>SitrecBridge</h2>
+  <h2>SitrecBridge <span id="version" style="font-size: 11px; font-weight: normal; color: #888;"></span></h2>
 
   <div class="status-row">
     <div class="dot" id="ws-dot"></div>
@@ -69,6 +79,8 @@
   </div>
 
   <button id="reconnect-btn">Reconnect</button>
+
+  <div class="update-banner" id="update-banner"></div>
 
   <div class="info" id="info"></div>
 

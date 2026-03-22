@@ -93,12 +93,19 @@ function startAsPrimary(port) {
                     setupPeerConnection(ws);
                     return;
                 }
+                if (msg.type === "force-extension") {
+                    // User explicitly requested reconnect — replace existing without probing
+                    identified = true;
+                    ws.removeListener("message", earlyHandler);
+                    setupExtensionConnection(ws, true);
+                    return;
+                }
             } catch {}
             // Not a peer message — treat as extension, but let the normal handler process it
             if (!identified) {
                 identified = true;
                 ws.removeListener("message", earlyHandler);
-                setupExtensionConnection(ws);
+                setupExtensionConnection(ws, false);
                 // Re-dispatch this message through the extension handler
                 handleExtensionMessage(raw);
             }
@@ -111,52 +118,32 @@ function startAsPrimary(port) {
             if (!identified) {
                 identified = true;
                 ws.removeListener("message", earlyHandler);
-                setupExtensionConnection(ws);
+                setupExtensionConnection(ws, false);
             }
         }, 500);
     });
 }
 
-function setupExtensionConnection(ws) {
+function setupExtensionConnection(ws, force = false) {
     if (extensionSocket && extensionSocket.readyState === WebSocket.OPEN) {
-        // Another extension is already connected — probe it for a ready Sitrec tab
-        // before deciding whether to replace it.
-        const probeId = ++requestCounter;
-        const probeTimer = setTimeout(() => {
-            // Existing extension didn't respond — replace it
-            pendingRequests.delete(probeId);
-            log("Primary: Existing extension unresponsive — replacing");
+        if (force) {
+            // User explicitly requested this connection — replace existing
+            log("Primary: Forced reconnect — replacing existing extension");
             extensionSocket.close();
             finishExtensionSetup(ws);
-        }, 2000);
+            return;
+        }
 
-        pendingRequests.set(probeId, {
-            resolve: (msg) => {
-                clearTimeout(probeTimer);
-                pendingRequests.delete(probeId);
-                const ready = !msg.error && msg.result?.ready === "complete";
-                if (ready) {
-                    log("Primary: Existing extension has a ready Sitrec tab — rejecting new connection");
-                    ws.close();
-                } else {
-                    log("Primary: Existing extension has no ready Sitrec tab — replacing");
-                    extensionSocket.close();
-                    finishExtensionSetup(ws);
-                }
-            },
-            reject: () => {
-                clearTimeout(probeTimer);
-                extensionSocket.close();
-                finishExtensionSetup(ws);
-            },
-            timer: probeTimer,
-        });
-
-        extensionSocket.send(JSON.stringify({
-            id: probeId,
-            action: "sitrec_eval",
-            params: { expression: "({ready: document.getElementById('sitrec-objects-ready') && document.getElementById('sitrec-objects-ready').dataset.ready})" },
-        }));
+        // First-come-first-served: reject the newcomer via a message.
+        // Do NOT call ws.close() here — let the extension close after receiving
+        // the message. Closing server-side risks the close event arriving before
+        // the message, which would cause the extension to reconnect (churn).
+        log("Primary: Already have an extension — rejecting new connection");
+        ws.send(JSON.stringify({ type: "rejected", reason: "Another extension is already connected" }));
+        // Clean up after a timeout in case the extension doesn't close promptly
+        setTimeout(() => {
+            if (ws.readyState === WebSocket.OPEN) ws.close();
+        }, 5000);
         return;
     }
 
@@ -166,6 +153,14 @@ function setupExtensionConnection(ws) {
 function finishExtensionSetup(ws) {
     extensionSocket = ws;
     log("Primary: Extension connected");
+
+    // Send the source manifest version so the extension can detect if it needs reloading
+    try {
+        const sourceManifest = JSON.parse(readFileSync(join(__dirname, "extension", "manifest.json"), "utf-8"));
+        ws.send(JSON.stringify({ type: "version-info", sourceVersion: sourceManifest.version }));
+    } catch (e) {
+        log("Primary: Could not read source manifest for version check:", e.message);
+    }
 
     // Keepalive pings to prevent service worker suspension
     clearInterval(keepaliveTimer);

@@ -7,6 +7,14 @@
  * Message flow:
  *   MCP Server --WebSocket--> here --chrome.tabs.sendMessage--> content-script.js
  *   content-script.js --chrome.runtime.sendMessage--> here --WebSocket--> MCP Server
+ *
+ * Multi-browser coordination:
+ *   The MCP server accepts only ONE extension at a time (first-come-first-served).
+ *   If another browser's extension is already connected, the server sends a
+ *   {type: "rejected"} message and closes the socket. This extension then sets
+ *   rejectedByServer=true and stops all auto-reconnect attempts. Only the user
+ *   clicking "Reconnect" in the popup can override this (sends "force-extension"
+ *   to the server, which replaces the existing connection).
  */
 
 const WS_URL = "ws://localhost:9780";
@@ -19,6 +27,9 @@ let ws = null;
 let reconnectTimer = null;
 let reconnectInterval = RECONNECT_INTERVAL_MS;
 let sitrecTabId = null;
+let forceNextConnect = false;   // Set by popup "Reconnect" to override server rejection
+let rejectedByServer = false;   // True after server rejects us — suppresses ALL auto-reconnect
+let sourceVersion = null;       // Version from source manifest.json (sent by MCP server)
 
 // -- WebSocket Connection ---------------------------------------------------
 
@@ -27,8 +38,13 @@ async function connect() {
         return;
     }
 
-    // Only connect if we have a Sitrec tab — prevents extensions in browsers
-    // without Sitrec from competing for the MCP server's single extension socket.
+    // Suppressed after server rejected us (another extension is active).
+    // Only cleared by the popup Reconnect button.
+    if (rejectedByServer) {
+        return;
+    }
+
+    // Only connect if we have a Sitrec tab.
     const tabId = await findSitrecTab();
     if (!tabId) {
         return;
@@ -42,15 +58,48 @@ async function connect() {
         return;
     }
 
+    const isForced = forceNextConnect;
+    forceNextConnect = false;
+
     ws.onopen = () => {
-        console.log("[SitrecBridge] Connected to MCP server");
+        console.log("[SitrecBridge] WebSocket open, awaiting server acceptance...");
         reconnectInterval = RECONNECT_INTERVAL_MS; // Reset backoff
-        updatePopupState();
+        if (isForced) {
+            // Tell the server to replace the existing extension
+            ws.send(JSON.stringify({ type: "force-extension" }));
+        }
+        // Don't updatePopupState() here — wait for version-info (confirmation
+        // that the server accepted us) to avoid a brief "Connected" flash
+        // before a potential rejection.
     };
 
     ws.onmessage = async (event) => {
         try {
             const msg = JSON.parse(event.data);
+
+            // Server rejected us — another extension is already connected.
+            // Stop all auto-reconnect. Only the popup Reconnect button can clear this.
+            // We close the WebSocket ourselves (server leaves it open for us to close
+            // cleanly, avoiding race conditions with close-before-message delivery).
+            if (msg.type === "rejected") {
+                rejectedByServer = true;
+                console.log("[SitrecBridge] Server rejected: " + (msg.reason || "another extension active"));
+                // Close our end — onclose will fire but rejectedByServer is already set,
+                // so it won't scheduleReconnect.
+                if (ws) {
+                    ws.close();
+                }
+                updatePopupState();
+                return;
+            }
+
+            // Version info from the server (source manifest version)
+            if (msg.type === "version-info") {
+                sourceVersion = msg.sourceVersion || null;
+                updatePopupState();
+                return;
+            }
+
             await handleServerMessage(msg);
         } catch (e) {
             console.error("[SitrecBridge] Error handling message:", e);
@@ -58,10 +107,13 @@ async function connect() {
     };
 
     ws.onclose = () => {
-        console.log("[SitrecBridge] Disconnected from MCP server");
         ws = null;
+        console.log("[SitrecBridge] Disconnected from MCP server");
         updatePopupState();
-        scheduleReconnect();
+        // If rejected, don't reconnect — the flag was already set in onmessage
+        if (!rejectedByServer) {
+            scheduleReconnect();
+        }
     };
 
     ws.onerror = (err) => {
@@ -217,11 +269,15 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 // -- Popup Communication ----------------------------------------------------
 
 function updatePopupState() {
+    const installedVersion = chrome.runtime.getManifest().version;
     // Best-effort -- popup may not be open
     chrome.runtime.sendMessage({
         type: "stateUpdate",
         wsConnected: ws && ws.readyState === WebSocket.OPEN,
         sitrecTabId,
+        rejectedByServer,
+        installedVersion,
+        sourceVersion,
     }).catch(() => {});
 }
 
@@ -232,6 +288,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 wsConnected: ws && ws.readyState === WebSocket.OPEN,
                 sitrecTabId: tabId,
                 wsUrl: WS_URL,
+                rejectedByServer,
+                installedVersion: chrome.runtime.getManifest().version,
+                sourceVersion,
             });
         });
         return true; // async response
@@ -243,6 +302,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             clearTimeout(reconnectTimer);
             reconnectTimer = null;
         }
+        // Close existing connection if any, so connect() starts fresh
+        if (ws) {
+            ws.onclose = null;  // Prevent scheduleReconnect from the close
+            ws.close();
+            ws = null;
+        }
+        rejectedByServer = false;   // Clear suppression
+        forceNextConnect = true;    // Tell server to replace existing extension
         connect();
         sendResponse({ ok: true });
         return false;
