@@ -68,7 +68,8 @@
       "<rootDir>/test/",
       "<rootDir>/.claude/",
       "<rootDir>/tests_regression/",
-      "<rootDir>/test_other/"
+      "<rootDir>/test_other/",
+      "<rootDir>/dist-standalone/"
     ],
     "roots": [
       "<rootDir>"
