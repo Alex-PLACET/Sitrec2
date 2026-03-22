@@ -919,8 +919,10 @@ export class CNodeView3D extends CNodeViewCanvas {
             this.widthPx = this.in.canvasWidth.v0;
             this.heightPx = this.in.canvasHeight.v0;
         } else {
-            this.widthPx = this.widthDiv * window.devicePixelRatio;
-            this.heightPx = this.heightDiv * window.devicePixelRatio;
+            // widthDiv may be undefined if setFromDiv bailed (div not yet laid out).
+            // Use a minimum of 1 to avoid zero-size WebGL resources.
+            this.widthPx = (this.widthDiv || 1) * window.devicePixelRatio;
+            this.heightPx = (this.heightDiv || 1) * window.devicePixelRatio;
         }
 
         // Apply resolution scaling for side-by-side rendering on integrated GPU
@@ -1105,6 +1107,13 @@ export class CNodeView3D extends CNodeViewCanvas {
 
             if (this.visible) {
 
+                // Guard: skip rendering if dimensions are zero (race condition during initialization
+                // where the browser hasn't completed layout before the first render frame).
+                // The resize path will pick up valid dimensions on the next frame.
+                if (this.widthPx <= 0 || this.heightPx <= 0) {
+                    return;
+                }
+
                 if (globalProfiler) globalProfiler.push('#ffa500', 'rtSetup');
                 // if the lookView, then check for the video view
                 if (this.id === "lookView") {
@@ -1170,8 +1179,13 @@ export class CNodeView3D extends CNodeViewCanvas {
                     height = this.heightPx;
                 }
 
+                // Skip rendering if computed dimensions are invalid (zero or NaN)
+                if (!width || !height || width <= 0 || height <= 0) {
+                    return;
+                }
+
                 // CRITICAL: Sync renderer size with current dimensions EVERY FRAME
-                // This prevents race conditions where resize gestures cause frames to render 
+                // This prevents race conditions where resize gestures cause frames to render
                 // before the 100ms deferred resize completes. Deduping avoids redundant WebGL calls.
                 if (width !== this._lastSyncedRendererWidth || height !== this._lastSyncedRendererHeight) {
                     this.renderer.setSize(width, height, false);
