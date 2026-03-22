@@ -7,11 +7,15 @@
     "sitrec-bridge": "./mcp-server.js"
   },
   "scripts": {
-    "start": "node mcp-server.js"
+    "start": "node mcp-server.js",
+    "build": "node build-dist.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.5",
     "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
   },
   "engines": {
     "node": ">=18"

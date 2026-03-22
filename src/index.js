@@ -1521,6 +1521,9 @@ async function initializeOnce() {
         docs.addExternalLink("Third-Party Notices (Github)", "https://github.com/MickWest/Sitrec2/blob/main/ThirdPartyNotices.txt").perm();
     }
 
+    docs.addExternalLink("Download MCP Bridge", "./tools/SitrecBridge/dist/SitrecBridge.zip").perm()
+        .tooltip("Download the SitrecBridge MCP server + Chrome extension (zero dependencies, just needs Node.js)");
+
     if (configParams?.extraHelpLinks !== undefined) {
 
         const external = addGUIFolder("external", "External Links", "help")

@@ -28,8 +28,10 @@ if (isServerlessBuild) {
 patterns.push({ from: "./src/workers/*.js", to:"" });
 patterns.push({ from: "./src/PixelFilters.js", to:"./src" });
 
-// Copy tools directory
-patterns.push({ from: "tools", to: "./tools" });
+// Copy tools directory (exclude SitrecBridge dev artifacts — only the dist zip is needed)
+patterns.push({ from: "tools", to: "./tools", globOptions: {
+    ignore: ["**/SitrecBridge/node_modules/**", "**/SitrecBridge/package-lock.json"],
+} });
 patterns.push({ from: "assets/install", to: "./install" });
 
 // Copy tests directory (for browser-based benchmarks/tests) - dev only

@@ -9,7 +9,7 @@ Sitrec instance via a Chrome extension.
 Claude Code / Claude Desktop
     │  (MCP protocol, stdio)
     ▼
-mcp-server.js  (Node.js)
+mcp-server  (Node.js)
     │  (WebSocket, ws://localhost:9780)
     ▼
 Chrome Extension  (background service worker)
@@ -24,54 +24,55 @@ page-bridge.js  (page main world)
 Sitrec globals  (NodeMan, Sit, par, Globals, etc.)
 ```
 
-## Setup
+## Quick Start (Production)
 
-### 1. Install MCP server dependencies
+**Prerequisites:** [Node.js](https://nodejs.org/) 18 or later.
 
-```bash
-cd tools/SitrecBridge
-npm install
-```
+### 1. Download and unzip
+
+Download [`SitrecBridge.zip`](https://www.metabunk.org/sitrec/tools/SitrecBridge/dist/SitrecBridge.zip) and unzip it anywhere.
 
 ### 2. Load the Chrome extension
 
 1. Open Chrome and go to `chrome://extensions/`
 2. Enable "Developer mode" (top right)
 3. Click "Load unpacked"
-4. Select the `tools/SitrecBridge/extension/` directory
+4. Select the `SitrecBridge/extension/` folder
 5. The SitrecBridge extension should appear with a blue icon
 
-### 3. Configure Claude Code
+### 3. Configure your MCP client
 
-Add to your MCP settings (`.claude/settings.json` or global settings):
-
-```json
-{
-  "mcpServers": {
-    "sitrec-bridge": {
-      "command": "node",
-      "args": ["/path/to/sitrec/tools/SitrecBridge/mcp-server.js"]
-    }
-  }
-}
-```
-
-Or for Claude Desktop, add to `claude_desktop_config.json`:
+**Claude Code** — add to `.mcp.json` in your project root:
 
 ```json
 {
   "mcpServers": {
     "sitrec-bridge": {
       "command": "node",
-      "args": ["/path/to/sitrec/tools/SitrecBridge/mcp-server.js"]
+      "args": ["/path/to/SitrecBridge/mcp-server.mjs"]
     }
   }
 }
 ```
+
+**Claude Desktop** — add to `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "sitrec-bridge": {
+      "command": "node",
+      "args": ["/path/to/SitrecBridge/mcp-server.mjs"]
+    }
+  }
+}
+```
+
+Replace `/path/to/SitrecBridge/` with the actual path where you unzipped the files.
 
 ### 4. Use it
 
-1. Open Sitrec in Chrome (e.g. `https://local.metabunk.org/sitrec`)
+1. Open Sitrec in Chrome (e.g. `https://www.metabunk.org/sitrec`)
 2. Check the extension popup — both indicators should be green
 3. In Claude Code, the `sitrec_*` tools are now available
 
@@ -107,7 +108,7 @@ Or for Claude Desktop, add to `claude_desktop_config.json`:
 ## Troubleshooting
 
 **Extension shows "Disconnected":**
-- Make sure the MCP server is running (`node mcp-server.js` or via Claude Code)
+- Make sure the MCP server is running (via Claude Code or `node mcp-server.mjs`)
 - Check that port 9780 isn't blocked or in use
 - Click "Reconnect" in the popup
 
@@ -124,9 +125,40 @@ Or for Claude Desktop, add to `claude_desktop_config.json`:
 - Complex operations (loading sitches) may need more time
 - The `sitrec_load_sitch` tool waits for the sitch to finish loading
 
-## Development
+## Development Setup
+
+If you're working on the Sitrec codebase itself:
+
+```bash
+cd tools/SitrecBridge
+npm install
+```
 
 The extension has no build step — edit files directly and reload in
 `chrome://extensions/`. The MCP server also runs directly with Node.js (ESM).
+
+For development, point your MCP config at the source file instead:
+
+```json
+{
+  "mcpServers": {
+    "sitrec-bridge": {
+      "command": "node",
+      "args": ["./tools/SitrecBridge/mcp-server.js"]
+    }
+  }
+}
+```
+
+### Building the Distribution Zip
+
+```bash
+cd tools/SitrecBridge
+npm install          # Installs deps including esbuild
+npm run build        # Produces dist/SitrecBridge.zip
+```
+
+This bundles all npm dependencies into a single `mcp-server.mjs` file so end
+users don't need to run `npm install`.
 
 To regenerate placeholder icons: `node generate-icons.cjs`
