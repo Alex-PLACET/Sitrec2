@@ -183,6 +183,29 @@ async function handleServerMessage(msg) {
         return;
     }
 
+    // Full-window screenshot: capture the entire visible tab (including HTML overlays)
+    // using chrome.tabs.captureVisibleTab(), handled here in the background script.
+    if (action === "sitrec_screenshot" && params?.fullWindow) {
+        const tabId = await findSitrecTab();
+        if (!tabId) {
+            sendToServer({ id, error: "No Sitrec tab found." });
+            return;
+        }
+        try {
+            // Ensure the Sitrec tab is active so captureVisibleTab works
+            const tab = await chrome.tabs.get(tabId);
+            await chrome.tabs.update(tabId, { active: true });
+            // Small delay to let the tab render after activation
+            await new Promise(r => setTimeout(r, 100));
+            const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
+            const imageData = dataUrl.replace(/^data:image\/png;base64,/, "");
+            sendToServer({ id, result: { imageData } });
+        } catch (e) {
+            sendToServer({ id, error: `captureVisibleTab failed: ${e.message}` });
+        }
+        return;
+    }
+
     const tabId = await findSitrecTab();
     if (!tabId) {
         sendToServer({

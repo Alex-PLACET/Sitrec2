@@ -562,7 +562,8 @@ const TOOLS = [
         name: "sitrec_screenshot",
         description:
             "Capture a screenshot of a Sitrec view. Forces a render then captures the canvas, " +
-            "so it works even with preserveDrawingBuffer=false. Returns a base64-encoded PNG image.",
+            "so it works even with preserveDrawingBuffer=false. Returns a base64-encoded PNG image. " +
+            "Use fullWindow=true to capture the entire browser tab including HTML overlays (time display, UI labels).",
         inputSchema: {
             type: "object",
             properties: {
@@ -573,6 +574,10 @@ const TOOLS = [
                 selector: {
                     type: "string",
                     description: "Fallback CSS selector if view is not found (defaults to 'canvas')",
+                },
+                fullWindow: {
+                    type: "boolean",
+                    description: "If true, captures the entire browser tab (including HTML overlays like time display) instead of just the WebGL canvas.",
                 },
             },
             required: [],
