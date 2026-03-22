@@ -55,20 +55,38 @@ Download [`SitrecBridge.zip`](https://www.metabunk.org/sitrec/tools/SitrecBridge
 }
 ```
 
-**Claude Desktop** — add to `claude_desktop_config.json`:
+**Claude Desktop** — edit `claude_desktop_config.json`
+(Settings gear → Developer → Edit Config):
 
+*macOS / Linux:*
 ```json
 {
   "mcpServers": {
     "sitrec-bridge": {
-      "command": "node",
-      "args": ["/path/to/SitrecBridge/mcp-server.mjs"]
+      "command": "/path/to/SitrecBridge/run.sh"
+    }
+  }
+}
+```
+
+*Windows:*
+```json
+{
+  "mcpServers": {
+    "sitrec-bridge": {
+      "command": "/path/to/SitrecBridge/run.bat"
     }
   }
 }
 ```
 
 Replace `/path/to/SitrecBridge/` with the actual path where you unzipped the files.
+Then restart Claude Desktop.
+
+> **Why `run.sh` instead of `node` directly?** Claude Desktop launches MCP
+> servers without sourcing your shell profile, so if you installed Node via
+> nvm, fnm, or Volta, the bare `node` command won't be found. The launcher
+> script locates Node automatically.
 
 ### 4. Use it
 

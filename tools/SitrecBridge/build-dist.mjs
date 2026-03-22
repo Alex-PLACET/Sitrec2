@@ -50,6 +50,11 @@ if (result.errors.length > 0) {
 cpSync(join(__dirname, "sitrec-mcp-guide.md"), join(DIST, "sitrec-mcp-guide.md"));
 cpSync(join(__dirname, "README.md"), join(DIST, "README.md"));
 
+// 3b. Copy launcher scripts (needed for Claude Desktop which doesn't inherit shell PATH)
+cpSync(join(__dirname, "run.sh"), join(DIST, "run.sh"));
+cpSync(join(__dirname, "run.bat"), join(DIST, "run.bat"));
+execSync(`chmod +x "${join(DIST, "run.sh")}"`);
+
 // 4. Copy the Chrome extension
 cpSync(join(__dirname, "extension"), join(DIST, "extension"), {recursive: true});
 
