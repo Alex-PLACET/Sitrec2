@@ -10,6 +10,18 @@
  * executes them against Sitrec's API, and sends results back.
  */
 
+// ── MCP Debug Mode ──────────────────────────────────────────────────────────
+// Tell Sitrec's assert() to capture asserts instead of hitting debugger.
+// Asserts are collected in window._mcpAsserts and drained after each handler call.
+window._mcpDebug = true;
+window._mcpAsserts = [];
+
+function drainAsserts() {
+    const asserts = window._mcpAsserts;
+    window._mcpAsserts = [];
+    return asserts.length > 0 ? asserts : null;
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 function isSitrecReady() {
@@ -33,11 +45,6 @@ function safeSerialize(val, depth = 0) {
     if (val.isQuaternion) return { x: val.x, y: val.y, z: val.z, w: val.w, _type: "Quaternion" };
     if (val.isMatrix4) return { elements: Array.from(val.elements), _type: "Matrix4" };
     if (val.isColor) return { r: val.r, g: val.g, b: val.b, _type: "Color" };
-
-    // LLA-like objects
-    if (val.lat !== undefined && val.lon !== undefined) {
-        return { lat: val.lat, lon: val.lon, alt: val.alt, _type: "LLA" };
-    }
 
     // Arrays
     if (Array.isArray(val)) {
@@ -221,10 +228,13 @@ const handlers = {
         if (viewNode?.renderer) {
             try {
                 // Run the full render pipeline: sky, main scene, then effects
+                const frame = Math.floor(window.par?.frame ?? 0);
                 if (typeof viewNode.renderSky === "function") viewNode.renderSky();
-                if (typeof viewNode.renderCanvas === "function") viewNode.renderCanvas();
+                if (typeof viewNode.renderCanvas === "function") viewNode.renderCanvas(frame);
                 if (typeof viewNode.renderTargetAndEffects === "function") viewNode.renderTargetAndEffects();
-            } catch (e) { /* render may fail, still try capture */ }
+            } catch (e) {
+                return { error: `Render error during screenshot: ${e.message}` };
+            }
             const dataUrl = viewNode.renderer.domElement.toDataURL("image/png");
             const imageData = dataUrl.replace(/^data:image\/png;base64,/, "");
             return { imageData };
@@ -314,15 +324,15 @@ window.addEventListener("message", async (event) => {
 
     try {
         const result = await handler(params || {});
-        window.postMessage(
-            { source: "sitrec-bridge-page", reqId, result },
-            "*"
-        );
+        const asserts = drainAsserts();
+        const response = { source: "sitrec-bridge-page", reqId, result };
+        if (asserts) response.asserts = asserts;
+        window.postMessage(response, "*");
     } catch (e) {
-        window.postMessage(
-            { source: "sitrec-bridge-page", reqId, error: e.message },
-            "*"
-        );
+        const asserts = drainAsserts();
+        const response = { source: "sitrec-bridge-page", reqId, error: e.message };
+        if (asserts) response.asserts = asserts;
+        window.postMessage(response, "*");
     }
 });
 

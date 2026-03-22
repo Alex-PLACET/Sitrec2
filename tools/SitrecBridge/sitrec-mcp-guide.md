@@ -358,5 +358,14 @@ npm test               # Ensure nothing is broken
 - **Use `par.renderOne = true`** after making changes via eval to force a render frame, so screenshots capture the updated state.
 - **Iterate fast.** The full cycle (eval diagnosis → code fix → build → reload → verify) can be done in under a minute without any manual browser interaction.
 
-### safeSerialize gotcha
-The page-bridge `safeSerialize` detects objects with `.lat`/`.lon` properties and converts them to `{_type:"LLA"}`, stripping other fields. To avoid this, return strings or use field names that don't include `lat`/`lon`.
+### Assert relay
+When the MCP bridge is active, Sitrec's `assert()` skips the `debugger` statement and instead captures the assert message and stack trace. These are relayed back in the MCP tool response as `⚠️ ASSERT(S) FIRED DURING THIS CALL:` with full stack traces. Execution continues so the call still returns a result (or error).
+
+**If you see an assert in a response:** treat it as a "drop everything" signal. Read the assert message and stack, find the code, and fix the root cause before proceeding. Do not ignore asserts or retry without investigating.
+
+When no MCP bridge is connected, asserts fire the `debugger` as normal for interactive DevTools debugging.
+
+Common assert triggers: calling render methods without a `frame` argument, accessing nodes before the sitch is fully loaded, or querying frames outside the valid range.
+
+### safeSerialize
+The page-bridge `safeSerialize` handles Three.js types (Vector3, Euler, etc.) by checking their `isVector3`/`isEuler` flags. All other objects are serialized generically (up to 50 keys, depth 4). Arrays are capped at 100 elements.

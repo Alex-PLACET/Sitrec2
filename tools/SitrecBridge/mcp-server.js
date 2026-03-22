@@ -390,29 +390,45 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     try {
         const response = await sendToExtension(name, args || {});
 
+        // Build assert warning text if any asserts fired during this call
+        let assertText = "";
+        const asserts = response.result?.asserts;
+        if (asserts && asserts.length > 0) {
+            assertText = "\n\n⚠️ ASSERT(S) FIRED DURING THIS CALL:\n" +
+                asserts.map((a, i) => `[${i + 1}] ${a.message}\n${a.stack}`).join("\n\n");
+        }
+
         if (response.error) {
             return {
-                content: [{ type: "text", text: `Error: ${response.error}` }],
+                content: [{ type: "text", text: `Error: ${response.error}${assertText}` }],
                 isError: true,
             };
         }
 
         // Screenshots return as image content
         if (name === "sitrec_screenshot" && response.result?.imageData) {
-            return {
-                content: [{
-                    type: "image",
-                    data: response.result.imageData,
-                    mimeType: "image/png",
-                }],
-            };
+            const content = [{
+                type: "image",
+                data: response.result.imageData,
+                mimeType: "image/png",
+            }];
+            if (assertText) {
+                content.push({ type: "text", text: assertText });
+            }
+            return { content };
         }
 
-        const text = typeof response.result === "string"
-            ? response.result
-            : JSON.stringify(response.result, null, 2);
+        // Remove asserts from the result before serializing (already extracted above)
+        const resultToShow = response.result;
+        if (resultToShow && typeof resultToShow === "object") {
+            delete resultToShow.asserts;
+        }
 
-        return { content: [{ type: "text", text }] };
+        const text = typeof resultToShow === "string"
+            ? resultToShow
+            : JSON.stringify(resultToShow, null, 2);
+
+        return { content: [{ type: "text", text: text + assertText }] };
     } catch (e) {
         return {
             content: [{ type: "text", text: `Error: ${e.message}` }],

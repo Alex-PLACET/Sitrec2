@@ -93,7 +93,7 @@ window.addEventListener("message", (event) => {
     if (event.source !== window) return;
     if (!event.data || event.data.source !== "sitrec-bridge-page") return;
 
-    const { reqId, result, error } = event.data;
+    const { reqId, result, error, asserts } = event.data;
     const pending = pendingPageRequests.get(reqId);
     if (!pending) return;
 
@@ -101,8 +101,12 @@ window.addEventListener("message", (event) => {
     pendingPageRequests.delete(reqId);
 
     if (error) {
-        pending.sendResponse({ error });
+        const response = { error };
+        if (asserts) response.asserts = asserts;
+        pending.sendResponse(response);
     } else {
-        pending.sendResponse(result);
+        const response = result != null && typeof result === "object" ? result : { result };
+        if (asserts) response.asserts = asserts;
+        pending.sendResponse(response);
     }
 });

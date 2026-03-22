@@ -17,6 +17,16 @@ export function assert(condition, message = false) {
     if (!condition) {
         console.trace()
         console.error("ASSERT: " + message);
+
+        // MCP debugging: if the bridge is active, capture the assert instead of
+        // hitting debugger (which would halt JS and cause an MCP timeout).
+        if (typeof window !== "undefined" && window._mcpDebug) {
+            const stack = new Error().stack;
+            if (!window._mcpAsserts) window._mcpAsserts = [];
+            window._mcpAsserts.push({ message: String(message), stack });
+            return; // skip debugger so execution continues
+        }
+
         if (!Globals.validationMode) {
             debugger;
         }
