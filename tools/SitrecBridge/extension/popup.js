@@ -9,6 +9,55 @@ const tabStatus = document.getElementById("tab-status");
 const info = document.getElementById("info");
 const versionEl = document.getElementById("version");
 const updateBanner = document.getElementById("update-banner");
+const currentCmdEl = document.getElementById("current-cmd");
+const historyListEl = document.getElementById("history-list");
+
+let elapsedTimer = null;
+
+function formatDuration(ms) {
+    if (ms < 1000) return `${ms}ms`;
+    return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function stripPrefix(action) {
+    return action.replace(/^sitrec_/, "");
+}
+
+function renderCurrentCommand(cmd) {
+    if (!cmd) {
+        currentCmdEl.style.display = "none";
+        if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
+        return;
+    }
+    currentCmdEl.style.display = "block";
+    const updateElapsed = () => {
+        const elapsed = Date.now() - cmd.startTime;
+        let html = `<span class="action">${stripPrefix(cmd.action)}</span> <span class="elapsed">${formatDuration(elapsed)}</span>`;
+        if (cmd.detail) html += `<span class="detail">${escHtml(cmd.detail)}</span>`;
+        currentCmdEl.innerHTML = html;
+    };
+    updateElapsed();
+    if (elapsedTimer) clearInterval(elapsedTimer);
+    elapsedTimer = setInterval(updateElapsed, 200);
+}
+
+function renderHistory(history) {
+    if (!history || history.length === 0) {
+        historyListEl.innerHTML = '<li style="color:#9ca3af;">No commands yet</li>';
+        return;
+    }
+    historyListEl.innerHTML = history.map(cmd => {
+        const icon = cmd.ok ? "\u2713" : "\u2717";
+        const iconColor = cmd.ok ? "#22c55e" : "#ef4444";
+        const dur = formatDuration(cmd.endTime - cmd.startTime);
+        const detail = cmd.detail ? cmd.detail : "";
+        return `<li><span class="icon" style="color:${iconColor}">${icon}</span><span class="action">${stripPrefix(cmd.action)}</span><span class="detail">${escHtml(detail)}</span><span class="dur">${dur}</span></li>`;
+    }).join("");
+}
+
+function escHtml(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
 
 function update(state) {
     if (state.wsConnected) {
@@ -52,6 +101,10 @@ function update(state) {
     } else {
         updateBanner.style.display = "none";
     }
+
+    // Activity section
+    renderCurrentCommand(state.currentCommand);
+    renderHistory(state.commandHistory);
 
     info.textContent = `WebSocket: ${state.wsUrl || "ws://localhost:9780"}`;
 }

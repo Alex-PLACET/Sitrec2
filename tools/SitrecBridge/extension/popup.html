@@ -61,6 +61,63 @@
       color: #92400e;
       display: none;
     }
+    .activity {
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px solid #eee;
+    }
+    .activity h3 {
+      margin: 0 0 6px 0;
+      font-size: 12px;
+      color: #666;
+      font-weight: 600;
+    }
+    .current-cmd {
+      padding: 5px 7px;
+      background: #eff6ff;
+      border: 1px solid #93c5fd;
+      border-radius: 4px;
+      font-size: 11px;
+      color: #1e40af;
+      margin-bottom: 6px;
+      display: none;
+    }
+    .current-cmd .action { font-weight: 600; }
+    .current-cmd .detail {
+      display: block;
+      color: #3b82f6;
+      word-break: break-all;
+      margin-top: 2px;
+    }
+    .current-cmd .elapsed {
+      color: #6b7280;
+      font-size: 10px;
+    }
+    .history-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      font-size: 11px;
+    }
+    .history-list li {
+      padding: 2px 0;
+      border-bottom: 1px solid #f3f4f6;
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+    }
+    .history-list li:last-child { border-bottom: none; }
+    .history-list .icon { flex-shrink: 0; font-size: 10px; }
+    .history-list .action { color: #374151; font-weight: 500; }
+    .history-list .detail {
+      color: #9ca3af;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+      min-width: 0;
+    }
+    .history-list .dur { color: #9ca3af; flex-shrink: 0; font-size: 10px; }
   </style>
 </head>
 <body>
@@ -81,6 +138,12 @@
   <button id="reconnect-btn">Reconnect</button>
 
   <div class="update-banner" id="update-banner"></div>
+
+  <div class="activity" id="activity">
+    <h3>Activity</h3>
+    <div class="current-cmd" id="current-cmd"></div>
+    <ul class="history-list" id="history-list"></ul>
+  </div>
 
   <div class="info" id="info"></div>
 

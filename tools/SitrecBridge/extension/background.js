@@ -30,6 +30,9 @@ let sitrecTabId = null;
 let forceNextConnect = false;   // Set by popup "Reconnect" to override server rejection
 let rejectedByServer = false;   // True after server rejects us — suppresses ALL auto-reconnect
 let sourceVersion = null;       // Version from source manifest.json (sent by MCP server)
+let currentCommand = null;      // Currently executing MCP command {action, detail, startTime}
+let commandHistory = [];        // Recent commands [{action, detail, startTime, endTime, ok}]
+const MAX_HISTORY = 8;
 
 // -- WebSocket Connection ---------------------------------------------------
 
@@ -171,6 +174,52 @@ function isSitrecUrl(url) {
     );
 }
 
+// -- Command Tracking -------------------------------------------------------
+
+function commandDetail(action, params) {
+    if (!params) return "";
+    switch (action) {
+        case "sitrec_eval":
+            return (params.expression || params.code || "").slice(0, 80).replace(/\n/g, " ");
+        case "sitrec_api_call":
+            return params.function || "";
+        case "sitrec_load_sitch":
+            return params.name || "";
+        case "sitrec_get_node":
+            return params.id || "";
+        case "sitrec_list_nodes":
+            return params.filter || params.type || "";
+        case "sitrec_set_frame":
+            return `frame ${params.frame}`;
+        case "sitrec_screenshot":
+            return params.fullWindow ? "full window" : "canvas";
+        default:
+            return "";
+    }
+}
+
+function trackCommandStart(action, params) {
+    currentCommand = {
+        action,
+        detail: commandDetail(action, params),
+        startTime: Date.now(),
+    };
+    updatePopupState();
+}
+
+function trackCommandEnd(ok) {
+    if (currentCommand) {
+        commandHistory.unshift({
+            ...currentCommand,
+            endTime: Date.now(),
+            ok,
+        });
+        if (commandHistory.length > MAX_HISTORY) commandHistory.pop();
+    }
+    currentCommand = null;
+    updatePopupState();
+}
+
 // -- Handle Incoming Server Messages ----------------------------------------
 
 async function handleServerMessage(msg) {
@@ -178,10 +227,14 @@ async function handleServerMessage(msg) {
 
     // Handle reload directly in the background script -- no tab needed
     if (action === "reload") {
+        trackCommandStart(action, params);
         sendToServer({ id, result: { ok: true, reloading: true } });
+        trackCommandEnd(true);
         setTimeout(() => chrome.runtime.reload(), 100);
         return;
     }
+
+    trackCommandStart(action, params);
 
     // Full-window screenshot: capture the entire visible tab (including HTML overlays)
     // using chrome.tabs.captureVisibleTab(), handled here in the background script.
@@ -189,6 +242,7 @@ async function handleServerMessage(msg) {
         const tabId = await findSitrecTab();
         if (!tabId) {
             sendToServer({ id, error: "No Sitrec tab found." });
+            trackCommandEnd(false);
             return;
         }
         try {
@@ -244,8 +298,10 @@ async function handleServerMessage(msg) {
                 imageData = dataUrl.replace(dataUrlPrefix, "");
             }
             sendToServer({ id, result: { imageData, mimeType } });
+            trackCommandEnd(true);
         } catch (e) {
             sendToServer({ id, error: `captureVisibleTab failed: ${e.message}` });
+            trackCommandEnd(false);
         }
         return;
     }
@@ -256,6 +312,7 @@ async function handleServerMessage(msg) {
             id,
             error: "No Sitrec tab found. Please open Sitrec in a browser tab.",
         });
+        trackCommandEnd(false);
         return;
     }
 
@@ -263,6 +320,7 @@ async function handleServerMessage(msg) {
         // Forward to content script and wait for response
         const result = await chrome.tabs.sendMessage(tabId, { action, params });
         sendToServer({ id, result });
+        trackCommandEnd(true);
     } catch (e) {
         // Content script may not be injected yet -- try injecting it
         try {
@@ -273,11 +331,13 @@ async function handleServerMessage(msg) {
             // Retry after injection
             const result = await chrome.tabs.sendMessage(tabId, { action, params });
             sendToServer({ id, result });
+            trackCommandEnd(true);
         } catch (e2) {
             sendToServer({
                 id,
                 error: `Failed to communicate with Sitrec tab: ${e2.message}`,
             });
+            trackCommandEnd(false);
         }
     }
 }
@@ -345,6 +405,8 @@ function updatePopupState() {
         rejectedByServer,
         installedVersion,
         sourceVersion,
+        currentCommand,
+        commandHistory,
     }).catch(() => {});
 }
 
@@ -358,6 +420,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 rejectedByServer,
                 installedVersion: chrome.runtime.getManifest().version,
                 sourceVersion,
+                currentCommand,
+                commandHistory,
             });
         });
         return true; // async response

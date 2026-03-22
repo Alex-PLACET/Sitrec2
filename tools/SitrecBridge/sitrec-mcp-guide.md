@@ -261,6 +261,46 @@ function distKm(lat1, lon1, lat2, lon2) {
 ```
 Use `node.misb[row][13]` / `[14]` for lat/lon in degrees (not `getValue().lla` which may be scaled).
 
+### Changing the Time (startTime / nowTime)
+
+Sitrec has two key time values:
+- **`Sit.startTime`** — UTC time at frame 0
+- **`Sit.nowTime`** — UTC time at the current frame
+
+The relationship: `nowTime = startTime + (frame * simSpeed / fps)`, controlled by `Sit.simSpeed` (default 1) and `Sit.fps`.
+
+The `dateTimeStart` node (`CNodeDateTime`) owns the authoritative time state. It caches the parsed start time internally — **setting `Sit.startTime` as a string does NOT propagate** to the rendering (sun position, sky, lighting will not update).
+
+**Correct way to change the time:**
+```js
+(() => {
+    const dt = NodeMan.get('dateTimeStart');
+    dt.setStartDateTime(new Date("2022-09-19T12:00:00.000Z"));
+    dt.recalculateCascade();
+    return { startTime: Sit.startTime, nowTime: Sit.nowTime };
+})()
+```
+
+`setStartDateTime()` updates the internal `dateStart`, recalculates `dateNow`, repopulates all UI fields (year/month/day/hour/minute/second), and triggers a render. `recalculateCascade()` propagates the change to all downstream nodes (sun position, lighting, night sky, satellite positions, etc.).
+
+**Other time methods on `dateTimeStart`:**
+- `setNowDateTime(date)` — set the time at the *current frame* (back-calculates startTime)
+- `AdjustStartTime(ms)` — shift start time by milliseconds
+- `resetStartTime()` — revert to the original start time from the sitch definition
+- `resetNowTimeToCurrent()` — sync to the system clock
+
+**Time zone:** The `dateTimeStart` node tracks a display time zone (`timeZoneName`, e.g., `"PDT UTC-7"`). This affects the UI display but all internal times are UTC. The time zone is auto-detected from the system or from the data source.
+
+**Simulation speed:** `Sit.simSpeed` controls how many real-time seconds pass per frame step. Changing it via `sitrec_eval` requires updating the start time to keep `nowTime` consistent — use the GUI controller instead:
+```js
+(() => {
+    const dt = NodeMan.get('dateTimeStart');
+    const ctrl = guiMenus.time.controllers.find(c => c.property === 'simSpeed');
+    ctrl.setValue(10); // 10x speed
+    return { simSpeed: Sit.simSpeed };
+})()
+```
+
 ### Importing local files into Sitrec
 
 Browser security prevents programmatic file picker dialogs (the `<input type="file">.click()` call is blocked without a real user gesture). To import a local file (KML, CSV, video, etc.) into Sitrec from the MCP:
