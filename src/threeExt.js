@@ -381,48 +381,38 @@ export function scaleArrows(view) {
  */
 export function updateTrackPositionIndicator(view) {
 
-    // Check if there's a track being edited
-    if (!Globals.editingTrack || !Globals.editingTrack.splineEditor) {
-        return;
+    // Update Globals.editingTrack (TrackManager-managed synthetic tracks)
+    if (Globals.editingTrack && Globals.editingTrack.splineEditor) {
+        const trackOb = Globals.editingTrack;
+        const splineEditor = trackOb.splineEditor;
+
+        if (splineEditor.enable && splineEditor.positionIndicatorCone) {
+            const trackNode = trackOb.splineEditorNode;
+            if (trackNode && trackNode.array && trackNode.array.length > 0) {
+                const currentFrame = Math.floor(par.frame);
+                if (currentFrame >= 0 && currentFrame < trackNode.array.length) {
+                    const position = trackNode.array[currentFrame].position;
+                    if (position) {
+                        splineEditor.updatePositionIndicator(position, view);
+                    }
+                }
+            }
+        }
     }
-    
-    const trackOb = Globals.editingTrack;
-    const splineEditor = trackOb.splineEditor;
-    
-    // Check if the editor is enabled and has the position indicator
-    if (!splineEditor.enable || !splineEditor.positionIndicatorCone) {
-        return;
-    }
-    
-    // Get the track node (CNodeSplineEditor)
-    const trackNode = trackOb.splineEditorNode;
-    if (!trackNode || !trackNode.array || trackNode.array.length === 0) {
-        return;
-    }
-    
-    // Get the current frame position
-    const currentFrame = Math.floor(par.frame);
-    if (currentFrame < 0 || currentFrame >= trackNode.array.length) {
-        return;
-    }
-    
-    const position = trackNode.array[currentFrame].position;
-    if (!position) {
-        return;
-    }
-    
-    // Update the position indicator
-    splineEditor.updatePositionIndicator(position, view);
-    
-    // Update the widget handle scales to maintain constant screen size
-    if (splineEditor.transformControl && splineEditor.transformControl.updateHandleScales) {
-        splineEditor.transformControl.updateHandleScales(view);
-    }
-    
-    // Update control point cube scales to maintain constant screen size
-    if (splineEditor.updateCubeScales) {
-        splineEditor.updateCubeScales(view);
-    }
+
+    // Scale handles for ALL enabled spline editors (including sitch-defined ones
+    // like agua's lanternSplineEditor that don't go through Globals.editingTrack)
+    NodeMan.iterate((id, node) => {
+        if (node.splineEditor && node.splineEditor.enable) {
+            const se = node.splineEditor;
+            if (se.updateCubeScales) {
+                se.updateCubeScales(view);
+            }
+            if (se.transformControl && se.transformControl.updateHandleScales) {
+                se.transformControl.updateHandleScales(view);
+            }
+        }
+    });
 }
 
 /**
