@@ -476,9 +476,7 @@ if (customSitch !== null) {
 
             Sit.initialDropZoneAnimation = false;
 
-            if (typeof window !== 'undefined') {
-                window.Sit = Sit;
-            }
+            markSitrecReady();
 
             customSitchLoaded = true;
         }
@@ -1189,6 +1187,7 @@ async function newSitch(situation, customSetup = false ) {
         // if it's custom, then "situation" is a sitch data file
         // i.e. the text of a text based sitch
         setSit(new CSituation(situation))
+        markSitrecReady();
     }
 
     console.log("Setting up new sitch: "+situation+ " Sit.menuName = "+Sit.menuName+ " Sit.name = "+Sit.name);
@@ -1318,14 +1317,9 @@ async function initializeOnce() {
 //        console.log('Set SITREC_OBJECTS_READY flag:', window.SITREC_OBJECTS_READY);
 //        console.log('Created DOM ready signal element');
         
-        // Also expose Sit when it's available
+        // Also expose Sit when it's available (e.g. built-in sitch loaded synchronously)
         if (typeof Sit !== 'undefined') {
-            window.Sit = Sit;
-            window.SITREC_OBJECTS_READY.Sit = true;
-            readyElement.setAttribute('data-ready', 'complete');
-            console.log('Also exposed Sit to window:', !!window.Sit);
-        } else {
-            console.log('Sit is not yet defined, will expose later');
+            markSitrecReady();
         }
     } else {
         console.log('Window is not defined, cannot expose objects');
@@ -2546,6 +2540,41 @@ function renderMain(elapsed) {
     if (globalProfiler) globalProfiler.pop();
 }
 
+// Mark Sitrec as fully ready — exposes Sit to window and updates the DOM
+// ready signal used by Puppeteer tests and the MCP bridge extension.
+// Called after setSit() in all sitch loading paths (built-in and custom).
+function markSitrecReady() {
+    if (typeof window === 'undefined') return;
+    window.Sit = Sit;
+
+    if (window.SITREC_OBJECTS_READY) {
+        window.SITREC_OBJECTS_READY.Sit = true;
+        window.SITREC_OBJECTS_READY.allReady = true;
+        window.SITREC_OBJECTS_READY.timestamp = Date.now();
+    } else {
+        window.SITREC_OBJECTS_READY = {
+            NodeMan: !!window.NodeMan,
+            DragDropHandler: !!window.DragDropHandler,
+            Sit: true,
+            allReady: true,
+            timestamp: Date.now()
+        };
+    }
+
+    const readyElement = document.getElementById('sitrec-objects-ready');
+    if (readyElement) {
+        readyElement.setAttribute('data-ready', 'complete');
+        readyElement.setAttribute('data-timestamp', Date.now().toString());
+    } else {
+        const newReadyElement = document.createElement('div');
+        newReadyElement.id = 'sitrec-objects-ready';
+        newReadyElement.setAttribute('data-ready', 'complete');
+        newReadyElement.setAttribute('data-timestamp', Date.now().toString());
+        newReadyElement.style.display = 'none';
+        document.body.appendChild(newReadyElement);
+    }
+}
+
 function selectInitialSitch(force) {
 
     if (force) {
@@ -2630,45 +2659,7 @@ function selectInitialSitch(force) {
     console.log("");
 
     setSit(new CSituation(startSitch))
-    
-    // Expose Sit to window for testing purposes
-    if (typeof window !== 'undefined') {
-        window.Sit = Sit;
-        
-        // Update the ready flag to include Sit
-        if (window.SITREC_OBJECTS_READY) {
-            window.SITREC_OBJECTS_READY.Sit = true;
-            window.SITREC_OBJECTS_READY.allReady = true;
-            window.SITREC_OBJECTS_READY.timestamp = Date.now();
-        } else {
-            window.SITREC_OBJECTS_READY = {
-                NodeMan: !!window.NodeMan,
-                DragDropHandler: !!window.DragDropHandler,
-                Sit: true,
-                allReady: true,
-                timestamp: Date.now()
-            };
-        }
-        
-        // Update the DOM ready signal
-        const readyElement = document.getElementById('sitrec-objects-ready');
-        if (readyElement) {
-            readyElement.setAttribute('data-ready', 'complete');
-            readyElement.setAttribute('data-timestamp', Date.now().toString());
-        } else {
-            // Create the element if it doesn't exist
-            const newReadyElement = document.createElement('div');
-            newReadyElement.id = 'sitrec-objects-ready';
-            newReadyElement.setAttribute('data-ready', 'complete');
-            newReadyElement.setAttribute('data-timestamp', Date.now().toString());
-            newReadyElement.style.display = 'none';
-            document.body.appendChild(newReadyElement);
-        }
-        
-        // console.log('Exposed Sit to window in selectInitialSitch:', !!window.Sit);
-        // console.log('Updated SITREC_OBJECTS_READY flag:', window.SITREC_OBJECTS_READY);
-        // console.log('Updated DOM ready signal to complete');
-    }
+    markSitrecReady();
 }
 
 
