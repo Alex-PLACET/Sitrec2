@@ -220,7 +220,31 @@ const handlers = {
         return { paused: par.paused };
     },
 
-    sitrec_screenshot({ selector, view } = {}) {
+    sitrec_screenshot({ selector, view, quality, maxWidth } = {}) {
+        // quality: JPEG quality 0-100 (default 75). Use 100 or "png" for lossless PNG.
+        // maxWidth: if set, downscale the captured image to this width (maintains aspect ratio).
+        const usePng = quality === "png";
+        const jpegQuality = usePng ? undefined : Math.min(100, Math.max(1, Number(quality) || 75)) / 100;
+        const mimeType = usePng ? "image/png" : "image/jpeg";
+        const dataUrlPrefix = usePng ? /^data:image\/png;base64,/ : /^data:image\/jpeg;base64,/;
+
+        // Helper: optionally downscale a canvas, then export as data URL
+        function exportCanvas(srcCanvas) {
+            let canvas = srcCanvas;
+            if (maxWidth && srcCanvas.width > maxWidth) {
+                const scale = maxWidth / srcCanvas.width;
+                const offscreen = document.createElement("canvas");
+                offscreen.width = Math.round(srcCanvas.width * scale);
+                offscreen.height = Math.round(srcCanvas.height * scale);
+                const ctx = offscreen.getContext("2d");
+                ctx.drawImage(srcCanvas, 0, 0, offscreen.width, offscreen.height);
+                canvas = offscreen;
+            }
+            const dataUrl = usePng ? canvas.toDataURL("image/png") : canvas.toDataURL("image/jpeg", jpegQuality);
+            const imageData = dataUrl.replace(dataUrlPrefix, "");
+            return { imageData, mimeType };
+        }
+
         // If a view name is given (e.g. "mainView", "lookView"), render that
         // view's renderer and capture its canvas directly. This works even when
         // preserveDrawingBuffer is false because we capture synchronously after render.
@@ -236,9 +260,7 @@ const handlers = {
             } catch (e) {
                 return { error: `Render error during screenshot: ${e.message}` };
             }
-            const dataUrl = viewNode.renderer.domElement.toDataURL("image/png");
-            const imageData = dataUrl.replace(/^data:image\/png;base64,/, "");
-            return { imageData };
+            return exportCanvas(viewNode.renderer.domElement);
         }
 
         // Fallback: try a CSS selector
@@ -247,9 +269,7 @@ const handlers = {
         if (!canvas) return { error: `No element found for selector '${sel}'` };
 
         if (canvas.tagName === "CANVAS") {
-            const dataUrl = canvas.toDataURL("image/png");
-            const imageData = dataUrl.replace(/^data:image\/png;base64,/, "");
-            return { imageData };
+            return exportCanvas(canvas);
         }
 
         return { error: "Selected element is not a canvas. Use 'canvas' selector." };

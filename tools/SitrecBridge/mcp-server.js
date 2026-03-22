@@ -35,6 +35,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const WS_PORT = parseInt(process.env.SITREC_BRIDGE_PORT || "9780", 10);
+const WS_HOST = "127.0.0.1"; // Localhost only — avoids macOS firewall EPERM on 0.0.0.0
 
 // Load the agent guide once at startup
 let agentGuide = "";
@@ -69,7 +70,7 @@ let keepaliveTimer = null;
 
 function startAsPrimary(port) {
     mode = "primary";
-    const wss = new WebSocketServer({ port });
+    const wss = new WebSocketServer({ host: WS_HOST, port });
 
     wss.on("listening", () => {
         log(`Primary: WebSocket server listening on ws://localhost:${port}`);
@@ -364,7 +365,7 @@ function startAsSecondary(port) {
     }
 
     function tryPromote() {
-        const testServer = new WebSocketServer({ port });
+        const testServer = new WebSocketServer({ host: WS_HOST, port });
         testServer.on("listening", () => {
             testServer.close(() => {
                 log("Secondary: Promoted to primary");
@@ -433,7 +434,7 @@ function sendToExtension(action, params = {}, timeoutMs = REQUEST_TIMEOUT_MS) {
 
 function start() {
     // Try to bind the port. If it fails with EADDRINUSE, become secondary.
-    const testServer = new WebSocketServer({ port: WS_PORT });
+    const testServer = new WebSocketServer({ host: WS_HOST, port: WS_PORT });
 
     testServer.on("listening", () => {
         // We got the port — close the test server and start properly as primary
@@ -562,7 +563,7 @@ const TOOLS = [
         name: "sitrec_screenshot",
         description:
             "Capture a screenshot of a Sitrec view. Forces a render then captures the canvas, " +
-            "so it works even with preserveDrawingBuffer=false. Returns a base64-encoded PNG image. " +
+            "so it works even with preserveDrawingBuffer=false. Returns a base64-encoded image (JPEG by default for smaller size, use quality='png' for lossless). " +
             "Use fullWindow=true to capture the entire browser tab including HTML overlays (time display, UI labels).",
         inputSchema: {
             type: "object",
@@ -578,6 +579,14 @@ const TOOLS = [
                 fullWindow: {
                     type: "boolean",
                     description: "If true, captures the entire browser tab (including HTML overlays like time display) instead of just the WebGL canvas.",
+                },
+                quality: {
+                    type: ["number", "string"],
+                    description: "JPEG quality 1-100 (default 75). Use 'png' for lossless PNG output. Lower values = smaller file size.",
+                },
+                maxWidth: {
+                    type: "number",
+                    description: "Maximum image width in pixels. If the captured image is wider, it will be downscaled (maintaining aspect ratio). Useful on high-DPI displays to reduce image size.",
                 },
             },
             required: [],
@@ -733,7 +742,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const content = [{
                 type: "image",
                 data: response.result.imageData,
-                mimeType: "image/png",
+                mimeType: response.result.mimeType || "image/png",
             }];
             if (assertText) {
                 content.push({ type: "text", text: assertText });
