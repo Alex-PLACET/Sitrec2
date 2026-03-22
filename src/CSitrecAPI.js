@@ -1,10 +1,14 @@
 // Client-side Sitrec API with callable functions and documentation
-import {CustomManager, GlobalDateTimeNode, guiMenus, NodeMan, Sit} from "./Globals";
+import {CustomManager, Globals, GlobalDateTimeNode, guiMenus, NodeMan, Sit} from "./Globals";
 import {isLocal} from "./configUtils";
 import {showError} from "./showError";
 import GUI from "./js/lil-gui.esm";
 import {ModelFiles} from "./nodes/CNode3DObject";
 import {par} from "./par";
+import {ViewMan} from "./CViewManager";
+import {toggleControlsVisibility, areControlsHidden} from "./PageStructure";
+import {openFullscreen, closeFullscreen, isFullscreen} from "./utils";
+import {forceUpdateUIText} from "./nodes/CNodeViewUI";
 
 class CSitrecAPI {
     constructor() {
@@ -780,9 +784,9 @@ class CSitrecAPI {
                 doc: "Set the dimensions of an object's geometry using standardized width/height/depth values. Maps to appropriate parameters based on geometry type: box uses width/height/depth directly; cylinder uses width as radiusTop and radiusBottom, height as height; sphere uses width as radius; capsule uses width as radius and height as totalLength.",
                 params: {
                     object: "Object name or partial name",
-                    width: "Width dimension (maps to radius for round objects)",
-                    height: "Height dimension (optional)",
-                    depth: "Depth dimension (optional, for box geometry)"
+                    width: "Width dimension in meters, float (maps to radius for round objects)",
+                    height: "Height dimension in meters, float (optional)",
+                    depth: "Depth dimension in meters, float (optional, for box geometry)"
                 },
                 fn: (v) => {
                     const gui = guiMenus.objects;
@@ -863,17 +867,17 @@ class CSitrecAPI {
             setAllObjectsDimensions: {
                 doc: "Set the dimensions of all objects' geometries using standardized width/height/depth values. Automatically maps to the correct parameters based on each object's geometry type.",
                 params: {
-                    width: "Width dimension (maps to radius for round objects)",
-                    height: "Height dimension (optional)",
-                    depth: "Depth dimension (optional, for box geometry)"
+                    width: "Width dimension in meters, float (maps to radius for round objects)",
+                    height: "Height dimension in meters, float (optional)",
+                    depth: "Depth dimension in meters, float (optional, for box geometry)"
                 },
                 fn: (v) => {
                     const gui = guiMenus.objects;
                     if (!gui) return { success: false, error: "Objects menu not found" };
-                    
+
                     const folders = gui.children.filter(c => c instanceof GUI);
                     const results = [];
-                    
+
                     for (const folder of folders) {
                         const dimResult = this.api.setObjectDimensions.fn.call(this, {
                             object: folder._title,
@@ -883,10 +887,191 @@ class CSitrecAPI {
                         });
                         results.push({ object: folder._title, ...dimResult });
                     }
-                    
+
                     return { success: true, objects: results };
                 }
-            }
+            },
+
+            // ---- View / Layout API ----
+
+            listViews: {
+                doc: "List all available views with their current position, size, and visibility.",
+                fn: () => {
+                    const views = [];
+                    ViewMan.iterate((id, view) => {
+                        if (!view.overlayView) {
+                            views.push({
+                                id: id,
+                                visible: view.visible,
+                                left: view.left,
+                                top: view.top,
+                                width: view.width,
+                                height: view.height,
+                            });
+                        }
+                    });
+                    return views;
+                }
+            },
+
+            showView: {
+                doc: "Show a view by name.",
+                params: { view: "View ID (e.g. 'mainView', 'lookView', 'video')" },
+                fn: (v) => {
+                    const view = ViewMan.get(v.view, false);
+                    if (!view) return { success: false, error: `View '${v.view}' not found` };
+                    view.setVisible(true);
+                    return { success: true };
+                }
+            },
+
+            hideView: {
+                doc: "Hide a view by name.",
+                params: { view: "View ID (e.g. 'mainView', 'lookView', 'video')" },
+                fn: (v) => {
+                    const view = ViewMan.get(v.view, false);
+                    if (!view) return { success: false, error: `View '${v.view}' not found` };
+                    view.setVisible(false);
+                    return { success: true };
+                }
+            },
+
+            setViewPosition: {
+                doc: "Set a view's position and size using fractional coordinates (0-1).",
+                params: {
+                    view: "View ID (e.g. 'mainView')",
+                    left: "Left edge as float fraction of container width (0-1)",
+                    top: "Top edge as float fraction of container height (0-1)",
+                    width: "Width as float fraction of container width (0-1)",
+                    height: "Height as float fraction of container height (0-1)",
+                    visible: "Optional: also set visibility (boolean)"
+                },
+                fn: (v) => {
+                    const view = ViewMan.get(v.view, false);
+                    if (!view) return { success: false, error: `View '${v.view}' not found` };
+                    if (v.visible !== undefined) view.setVisible(v.visible);
+                    view.left = v.left;
+                    view.top = v.top;
+                    view.width = v.width;
+                    view.height = v.height;
+                    view.updateWH();
+                    forceUpdateUIText();
+                    return { success: true };
+                }
+            },
+
+            setLayout: {
+                doc: "Arrange views using a named layout template. Templates: 'columns' (equal-width columns), 'rows' (equal-height rows), 'leftWide' (large left pane, stacked right), 'rightWide' (stacked left, large right pane), 'grid' (auto 2D grid), 'single' (first view fullscreen, others hidden). Pass an array of view IDs to include in the layout.",
+                params: {
+                    template: "Layout template name: 'columns', 'rows', 'leftWide', 'rightWide', 'grid', 'single'",
+                    views: "Array of view IDs to arrange (e.g. ['mainView', 'lookView', 'video'])"
+                },
+                fn: (v) => {
+                    return this._applyLayoutTemplate(v.template, v.views);
+                }
+            },
+
+            hideMenu: {
+                doc: "Hide the menu bar.",
+                fn: () => {
+                    if (Globals.menuBar && !Globals.menuBar._hidden) {
+                        Globals.menuBar.hide();
+                    }
+                    return { success: true };
+                }
+            },
+
+            showMenu: {
+                doc: "Show the menu bar.",
+                fn: () => {
+                    if (Globals.menuBar && Globals.menuBar._hidden) {
+                        Globals.menuBar.show();
+                    }
+                    return { success: true };
+                }
+            },
+
+            hideTimeline: {
+                doc: "Hide the timeline/controls bar at the bottom.",
+                fn: () => {
+                    if (!areControlsHidden()) {
+                        toggleControlsVisibility();
+                    }
+                    return { success: true };
+                }
+            },
+
+            showTimeline: {
+                doc: "Show the timeline/controls bar at the bottom.",
+                fn: () => {
+                    if (areControlsHidden()) {
+                        toggleControlsVisibility();
+                    }
+                    return { success: true };
+                }
+            },
+
+            hideChrome: {
+                doc: "Hide both the menu bar and the timeline for a clean embedded view.",
+                fn: () => {
+                    if (Globals.menuBar && !Globals.menuBar._hidden) {
+                        Globals.menuBar.hide();
+                    }
+                    if (!areControlsHidden()) {
+                        toggleControlsVisibility();
+                    }
+                    requestAnimationFrame(() => {
+                        ViewMan.updateSize();
+                    });
+                    return { success: true };
+                }
+            },
+
+            showChrome: {
+                doc: "Show both the menu bar and the timeline.",
+                fn: () => {
+                    if (Globals.menuBar && Globals.menuBar._hidden) {
+                        Globals.menuBar.show();
+                    }
+                    if (areControlsHidden()) {
+                        toggleControlsVisibility();
+                    }
+                    requestAnimationFrame(() => {
+                        ViewMan.updateSize();
+                    });
+                    return { success: true };
+                }
+            },
+
+            toggleFullscreen: {
+                doc: "Toggle browser fullscreen mode. If the browser is not in fullscreen, it will enter fullscreen. If it is already in fullscreen, it will exit.",
+                fn: () => {
+                    const entering = !isFullscreen();
+                    if (entering) {
+                        openFullscreen();
+                    } else {
+                        closeFullscreen();
+                    }
+                    return { success: true, fullscreen: entering };
+                }
+            },
+
+            listLayoutTemplates: {
+                doc: "List all available layout templates with descriptions.",
+                fn: () => {
+                    return {
+                        templates: {
+                            columns: "Equal-width vertical columns, one per view",
+                            rows: "Equal-height horizontal rows, one per view",
+                            leftWide: "Large left pane (2/3 width), remaining views stacked on the right",
+                            rightWide: "Remaining views stacked on the left, large right pane (2/3 width)",
+                            grid: "Auto-sized 2D grid (rows x cols chosen to fit N views)",
+                            single: "First view takes full area, others hidden",
+                        },
+                        usage: "Call setLayout({template: 'columns', views: ['mainView','lookView','video']})"
+                    };
+                }
+            },
 
         }
 
@@ -1095,6 +1280,142 @@ class CSitrecAPI {
         }
     }
 
+    _applyLayoutTemplate(templateName, viewNames) {
+        // Coerce a single string to an array (LLMs often pass a string instead of an array)
+        if (typeof viewNames === "string") {
+            viewNames = [viewNames];
+        }
+        if (!viewNames || !Array.isArray(viewNames) || viewNames.length === 0) {
+            return { success: false, error: "views must be a non-empty array of view IDs" };
+        }
+
+        // Validate all views exist
+        const views = [];
+        for (const name of viewNames) {
+            const view = ViewMan.get(name, false);
+            if (!view) return { success: false, error: `View '${name}' not found` };
+            views.push({ name, view });
+        }
+
+        const n = views.length;
+
+        // Clear fullscreen state
+        ViewMan.fullscreenView = null;
+        ViewMan.iterate((id, v) => {
+            if (v.doubled) {
+                v.doubled = false;
+                v.left = v.preDoubledLeft;
+                v.top = v.preDoubledTop;
+                if (v.width > 0) v.width = v.preDoubledWidth;
+                if (v.height > 0) v.height = v.preDoubledHeight;
+                v.updateWH();
+            }
+        });
+
+        // Build position map from template
+        let positions;
+        switch (templateName) {
+            case "columns": {
+                // Equal-width columns
+                const w = 1 / n;
+                positions = views.map((v, i) => ({
+                    name: v.name, visible: true,
+                    left: i * w, top: 0, width: w, height: 1,
+                }));
+                break;
+            }
+
+            case "rows": {
+                // Equal-height rows
+                const h = 1 / n;
+                positions = views.map((v, i) => ({
+                    name: v.name, visible: true,
+                    left: 0, top: i * h, width: 1, height: h,
+                }));
+                break;
+            }
+
+            case "leftWide": {
+                // First view large on left, rest stacked on right
+                if (n === 1) {
+                    positions = [{ name: views[0].name, visible: true, left: 0, top: 0, width: 1, height: 1 }];
+                } else {
+                    const leftW = n <= 2 ? 0.5 : 2 / 3;
+                    const rightW = 1 - leftW;
+                    const rh = 1 / (n - 1);
+                    positions = [
+                        { name: views[0].name, visible: true, left: 0, top: 0, width: leftW, height: 1 },
+                    ];
+                    for (let i = 1; i < n; i++) {
+                        positions.push({
+                            name: views[i].name, visible: true,
+                            left: leftW, top: (i - 1) * rh, width: rightW, height: rh,
+                        });
+                    }
+                }
+                break;
+            }
+
+            case "rightWide": {
+                // Last view large on right, rest stacked on left
+                if (n === 1) {
+                    positions = [{ name: views[0].name, visible: true, left: 0, top: 0, width: 1, height: 1 }];
+                } else {
+                    const rightW = n <= 2 ? 0.5 : 2 / 3;
+                    const leftW = 1 - rightW;
+                    const lh = 1 / (n - 1);
+                    positions = [];
+                    for (let i = 0; i < n - 1; i++) {
+                        positions.push({
+                            name: views[i].name, visible: true,
+                            left: 0, top: i * lh, width: leftW, height: lh,
+                        });
+                    }
+                    positions.push({
+                        name: views[n - 1].name, visible: true,
+                        left: leftW, top: 0, width: rightW, height: 1,
+                    });
+                }
+                break;
+            }
+
+            case "grid": {
+                // Auto grid: choose cols/rows to be roughly square
+                const cols = Math.ceil(Math.sqrt(n));
+                const rows = Math.ceil(n / cols);
+                const cw = 1 / cols;
+                const rh = 1 / rows;
+                positions = views.map((v, i) => ({
+                    name: v.name, visible: true,
+                    left: (i % cols) * cw, top: Math.floor(i / cols) * rh,
+                    width: cw, height: rh,
+                }));
+                break;
+            }
+
+            case "single": {
+                // First view fullscreen, others hidden
+                positions = views.map((v, i) => ({
+                    name: v.name,
+                    visible: i === 0,
+                    left: 0, top: 0, width: 1, height: 1,
+                }));
+                break;
+            }
+
+            default:
+                return { success: false, error: `Unknown template '${templateName}'. Available: columns, rows, leftWide, rightWide, grid, single` };
+        }
+
+        // Apply positions
+        for (const pos of positions) {
+            ViewMan.updateViewFromPreset(pos.name, pos);
+        }
+
+        forceUpdateUIText();
+        return { success: true, template: templateName, views: positions };
+    }
+
     getDocumentation() {
         return Object.entries(this.api).reduce((acc, [key, value]) => {
             let paramsString = Object.entries(value.params || {})
@@ -1114,6 +1435,28 @@ class CSitrecAPI {
         };
     }
 
+    // Coerce LLM-provided arguments to match expected types from param descriptions.
+    // LLMs frequently pass numbers as strings ("45.5" instead of 45.5) or booleans
+    // as strings ("true" instead of true).
+    _coerceArgs(args, params) {
+        if (!args || !params) return args;
+        const coerced = { ...args };
+        for (const [key, desc] of Object.entries(params)) {
+            if (coerced[key] === undefined) continue;
+            const d = desc.toLowerCase();
+            if (d.includes('float') || d.includes('number') || /\bint(eger)?\b/.test(d)) {
+                const n = Number(coerced[key]);
+                if (!isNaN(n)) coerced[key] = n;
+            } else if (d.includes('bool')) {
+                if (coerced[key] === "true") coerced[key] = true;
+                else if (coerced[key] === "false") coerced[key] = false;
+            } else if (d.includes('array')) {
+                if (typeof coerced[key] === "string") coerced[key] = [coerced[key]];
+            }
+        }
+        return coerced;
+    }
+
     handleAPICall(call) {
         console.log("Handling API call:", call);
         const apiFn = this.api[call.fn];
@@ -1121,7 +1464,8 @@ class CSitrecAPI {
             return { success: false, error: `Unknown API function: ${call.fn}` };
         }
         try {
-            const result = apiFn.fn(call.args);
+            const args = this._coerceArgs(call.args, apiFn.params);
+            const result = apiFn.fn(args);
             return { success: true, fn: call.fn, result };
         } catch (e) {
             return { success: false, fn: call.fn, error: e.message };
@@ -1156,6 +1500,19 @@ class CSitrecAPI {
             "play",
             "pause",
             "toggleDebug",
+            "listViews",
+            "showView",
+            "hideView",
+            "setViewPosition",
+            "setLayout",
+            "hideMenu",
+            "showMenu",
+            "hideTimeline",
+            "showTimeline",
+            "hideChrome",
+            "showChrome",
+            "toggleFullscreen",
+            "listLayoutTemplates",
         ]);
 
         return !transientCalls.has(call.fn);

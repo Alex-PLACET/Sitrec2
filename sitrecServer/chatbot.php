@@ -395,16 +395,23 @@ function buildToolsFromDoc($sitrecDoc, $menuSummary) {
                 $type = "string";
                 if (stripos($paramDesc, 'float') !== false || stripos($paramDesc, 'number') !== false) {
                     $type = "number";
-                } elseif (stripos($paramDesc, 'int') !== false) {
+                } elseif (preg_match('/\binteger\b|\bint\b/i', $paramDesc)) {
                     $type = "integer";
                 } elseif (stripos($paramDesc, 'bool') !== false) {
                     $type = "boolean";
+                } elseif (stripos($paramDesc, 'array') !== false) {
+                    $type = "array";
                 }
                 
-                $properties[$paramName] = [
+                $prop = [
                     "type" => $type,
                     "description" => $paramDesc
                 ];
+                // For array types, add items schema so LLMs know element type
+                if ($type === "array") {
+                    $prop["items"] = ["type" => "string"];
+                }
+                $properties[$paramName] = $prop;
                 
                 if (stripos($paramDesc, 'optional') === false) {
                     $required[] = $paramName;
