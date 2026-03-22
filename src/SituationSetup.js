@@ -28,7 +28,7 @@ import {CNodeDisplayTargetSphere} from "./nodes/CNodeDisplayTargetSphere";
 import {CNodeArray} from "./nodes/CNodeArray";
 import {par} from "./par";
 import {CNodeViewUI} from "./nodes/CNodeViewUI";
-import {AddTimeDisplayToUI, AddTimeDisplayToUIOld} from "./UIHelpers";
+import {AddTimeDisplayToUI} from "./UIHelpers";
 import {SetupGUIFrames} from "./JetGUI";
 import {CNodeWind} from "./nodes/CNodeWind";
 import {curveChanged, initJetVariables, initViews, SetupTraverseNodes, UIChangedAz} from "./JetStuff";
@@ -1034,21 +1034,12 @@ export async function SetupFromKeyAndData(key, _data, depth=0) {
             const overlayNode = data.overlay ?? "lookView";
             const overlayView = NodeMan.get(overlayNode);
             const labelVideo = new CNodeViewUI({id: data.id ?? "labelVideo", overlayView: overlayView});
-            let textSize = 2.5;
-            let dateTimeY = data.dateTimeY ?? 96;
+            let textSize = -16;
+            let dateTimeY = data.dateTimeY ?? 3;
+            let dateTimeX = data.dateTimeX ?? 99.5;
+            let align = data.align ?? "right";
 
-            let dateTimeX = data.dateTimeX ?? 50;
-            let align = data.align ?? "center";
-
-            if (Sit.isCustom) {
-                dateTimeX = 99.5;
-                textSize = -16
-                dateTimeY = 3;
-                align = "right"
-                AddTimeDisplayToUI(labelVideo, dateTimeX, dateTimeY, textSize, "#f0f000", align)
-            } else {
-                AddTimeDisplayToUIOld(labelVideo, dateTimeX, dateTimeY, textSize, "#f0f000", align)
-            }
+            AddTimeDisplayToUI(labelVideo, dateTimeX, dateTimeY, textSize, "#f0f000", align)
 
             labelVideo.setVisible(true)
             node = labelVideo;

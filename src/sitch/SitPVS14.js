@@ -1,6 +1,6 @@
 import {NodeMan} from "../Globals";
 import {CNodeViewUI} from "../nodes/CNodeViewUI";
-import {AddTimeDisplayToUIOld} from "../UIHelpers";
+import {AddTimeDisplayToUI} from "../UIHelpers";
 
 import {CNodeDisplayTrack} from "../nodes/CNodeDisplayTrack";
 import * as LAYER from "../LayerMasks";
@@ -105,7 +105,7 @@ export const SitPVS14 = {
 
 
         var labelVideo = new CNodeViewUI({id: "labelVideo", overlayView: "lookView"});
-        AddTimeDisplayToUIOld(labelVideo, 50,96, 3.5, "#f0f000")
+        AddTimeDisplayToUI(labelVideo, 99.5, 3, -16, "#f0f000", "right")
 
 
         // var labelMainViewPVS = new CNodeViewUI({id: "labelMainViewPVS", overlayView: ViewMan.list.mainView.data});

@@ -11,7 +11,7 @@ import {
 } from "../Globals";
 import {par} from "../par";
 import {CNodeViewUI} from "../nodes/CNodeViewUI";
-import {AddTimeDisplayToUIOld} from "../UIHelpers";
+import {AddTimeDisplayToUI} from "../UIHelpers";
 import {DragDropHandler} from "../DragDropHandler";
 import JSURL from "jsurl"
 import {isLocal, SITREC_SERVER} from "../configUtils.js";
@@ -154,7 +154,7 @@ export const SitNightSky = {
         DragDropHandler.addDropArea(viewLook.div);
 
         var labelVideo = new CNodeViewUI({id: "labelVideo", overlayView: viewLook});
-        AddTimeDisplayToUIOld(labelVideo, 50,96, 2.5, "#f0f000")
+        AddTimeDisplayToUI(labelVideo, 99.5, 3, -16, "#f0f000", "right")
 
 
 

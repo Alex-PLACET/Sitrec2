@@ -170,7 +170,7 @@ export const SitFlir1 = {
 
 
     videoView: {left: 0.74, top: 0.5, width: -1, height: 0.5,},
-    labelView: {dateTimeY:90},
+    // labelView removed - FLIR1 does not need a time display
 
 
     focusTracks:{
