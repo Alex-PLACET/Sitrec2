@@ -1,13 +1,13 @@
 // Client-side Sitrec API with callable functions and documentation
-import {CustomManager, Globals, GlobalDateTimeNode, guiMenus, NodeMan, Sit} from "./Globals";
+import {CustomManager, GlobalDateTimeNode, Globals, guiMenus, NodeMan, Sit} from "./Globals";
 import {isLocal} from "./configUtils";
 import {showError} from "./showError";
 import GUI from "./js/lil-gui.esm";
 import {ModelFiles} from "./nodes/CNode3DObject";
 import {par} from "./par";
 import {ViewMan} from "./CViewManager";
-import {toggleControlsVisibility, areControlsHidden} from "./PageStructure";
-import {openFullscreen, closeFullscreen, isFullscreen} from "./utils";
+import {areControlsHidden, toggleControlsVisibility} from "./PageStructure";
+import {closeFullscreen, isFullscreen, openFullscreen} from "./utils";
 import {forceUpdateUIText} from "./nodes/CNodeViewUI";
 
 class CSitrecAPI {
@@ -1525,3 +1525,8 @@ class CSitrecAPI {
 }
 
 export const sitrecAPI = new CSitrecAPI();
+
+// Expose to window for SitrecBridge MCP access
+if (typeof window !== 'undefined') {
+    window.sitrecAPI = sitrecAPI;
+}

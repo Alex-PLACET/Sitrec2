@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      width: 280px;
+      padding: 12px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 13px;
+      color: #222;
+      margin: 0;
+    }
+    h2 {
+      margin: 0 0 10px 0;
+      font-size: 15px;
+      color: #333;
+    }
+    .status-row {
+      display: flex;
+      align-items: center;
+      margin: 6px 0;
+      gap: 8px;
+    }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dot.green { background: #22c55e; }
+    .dot.red { background: #ef4444; }
+    .dot.yellow { background: #eab308; }
+    .label { color: #666; min-width: 90px; }
+    .value { font-weight: 500; }
+    button {
+      margin-top: 10px;
+      width: 100%;
+      padding: 6px 12px;
+      font-size: 12px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      background: #f8f8f8;
+      cursor: pointer;
+    }
+    button:hover { background: #eee; }
+    .info {
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px solid #eee;
+      font-size: 11px;
+      color: #888;
+    }
+  </style>
+</head>
+<body>
+  <h2>SitrecBridge</h2>
+
+  <div class="status-row">
+    <div class="dot" id="ws-dot"></div>
+    <span class="label">MCP Server:</span>
+    <span class="value" id="ws-status">Checking...</span>
+  </div>
+
+  <div class="status-row">
+    <div class="dot" id="tab-dot"></div>
+    <span class="label">Sitrec Tab:</span>
+    <span class="value" id="tab-status">Checking...</span>
+  </div>
+
+  <button id="reconnect-btn">Reconnect</button>
+
+  <div class="info" id="info"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

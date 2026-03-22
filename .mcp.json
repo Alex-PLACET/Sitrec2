@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "sitrec-bridge": {
+      "command": "node",
+      "args": ["./tools/SitrecBridge/mcp-server.js"]
+    }
+  }
+}

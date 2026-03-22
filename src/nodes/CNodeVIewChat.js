@@ -2,7 +2,6 @@ import {CNodeViewText} from "./CNodeViewText.js";
 import {GlobalDateTimeNode, Globals, guiMenus, markSitchDirty, withTestUser} from "../Globals";
 import {SITREC_SERVER} from "../configUtils";
 import {sitrecAPI} from "../CSitrecAPI";
-import {parseBoolean} from "../utils";
 import {getEnvBool} from "../envUtils";
 import {ModelFiles} from "./CNode3DObject";
 import {clientNLU} from "../CClientNLU";
@@ -58,7 +57,7 @@ class CNodeViewChat extends CNodeViewText {
      * Override to adjust height for chat with input box
      */
     getOutputAreaHeight() {
-        return 'calc(100% - 95px)'; // 40px for tab + 55px for input area
+        return 'calc(100% - 40px)'; // Just the tab — input is inside the chat log
     }
 
     /**
@@ -94,18 +93,36 @@ class CNodeViewChat extends CNodeViewText {
      * Create the input box for chat
      */
     createInputBox() {
+        // Terminal-style: prompt line lives inside the scrollable chat log
+        this.promptLine = document.createElement('div');
+        this.promptLine.style.display = 'flex';
+        this.promptLine.style.alignItems = 'baseline';
+        this.promptLine.style.margin = '4px 0';
+
+        const promptPrefix = document.createElement('span');
+        promptPrefix.textContent = '> ';
+        promptPrefix.style.color = 'var(--cnodeview-chat-color)';
+        promptPrefix.style.flexShrink = '0';
+        this.promptLine.appendChild(promptPrefix);
+
         this.inputBox = document.createElement('input');
         this.inputBox.type = 'text';
-        this.inputBox.placeholder = 'Ask something...';
-        this.inputBox.style.position = 'absolute';
-        this.inputBox.style.bottom = '0';
-        this.inputBox.style.width = '100%';
-        this.inputBox.style.boxSizing = 'border-box';
-        this.inputBox.style.padding = '8px';
+        this.inputBox.style.flex = '1';
+        this.inputBox.style.border = 'none';
+        this.inputBox.style.outline = 'none';
+        this.inputBox.style.backgroundColor = 'transparent';
+        this.inputBox.style.color = 'var(--cnodeview-chat-color)';
+        this.inputBox.style.fontFamily = 'monospace';
         this.inputBox.style.fontSize = '15px';
+        this.inputBox.style.padding = '0';
+        this.inputBox.style.margin = '0';
+        this.inputBox.style.width = '0';        // flex handles sizing
+        this.inputBox.style.minWidth = '0';
         this.inputBox.classList.add('cnodeview-input');
-        this.chatLog.tabIndex = 0; // Make it focusable
-        this.div.appendChild(this.inputBox);
+        this.promptLine.appendChild(this.inputBox);
+
+        this.chatLog.tabIndex = 0; // Make chatLog focusable
+        this.chatLog.appendChild(this.promptLine);
     }
 
     /**
@@ -205,26 +222,13 @@ class CNodeViewChat extends CNodeViewText {
         }
     }
 
-    /**
-     * Override setTheme to also apply input box styling
-     */
-    setTheme(name) {
-        super.setTheme(name);
-        
-        // Apply additional styling for input box
-        if (this.inputBox) {
-            this.inputBox.style.backgroundColor = `var(--cnodeview-input-bg)`;
-            this.inputBox.style.color = `var(--cnodeview-input-color)`;
-        }
-    }
-
     // Add user message to chat log
     addUserMessage(text) {
         const div = document.createElement('div');
         div.textContent = `You: ${text}`;
         div.style.margin = '4px 0';
         div.style.color = `var(--cnodeview-chat-color)`;
-        this.chatLog.appendChild(div);
+        this.chatLog.insertBefore(div, this.promptLine);
         this.cullMessages();
         this.scrollToBottom();
         this.chatHistory.push({ role: 'user', text });
@@ -236,7 +240,7 @@ class CNodeViewChat extends CNodeViewText {
         div.textContent = `Bot: ${text}`;
         div.style.margin = '4px 0';
         div.style.color = `var(--cnodeview-bot-color)`;
-        this.chatLog.appendChild(div);
+        this.chatLog.insertBefore(div, this.promptLine);
         this.cullMessages();
         this.scrollToBottom();
         this.chatHistory.push({ role: 'bot', text });
@@ -249,9 +253,15 @@ class CNodeViewChat extends CNodeViewText {
         div.textContent = `Debug: ${text}`;
         div.style.margin = '4px 0';
         div.style.color = `var(--cnodeview-debug-color)`;
-        this.chatLog.appendChild(div);
+        this.chatLog.insertBefore(div, this.promptLine);
         this.cullMessages();
         this.scrollToBottom();
+    }
+
+    clearOutput() {
+        super.clearOutput();
+        // Re-append the prompt line (innerHTML='' removed it)
+        this.chatLog.appendChild(this.promptLine);
     }
 
     async handleMessage(text) {

@@ -11,17 +11,31 @@
  * Based on the relay pattern from https://github.com/railsblueprint/blueprint-mcp
  */
 
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import {Server} from "@modelcontextprotocol/sdk/server/index.js";
+import {StdioServerTransport} from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
     CallToolRequestSchema,
-    ListToolsRequestSchema,
     ListResourcesRequestSchema,
+    ListToolsRequestSchema,
     ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { WebSocketServer } from "ws";
+import {WebSocketServer} from "ws";
+import {readFileSync} from "fs";
+import {fileURLToPath} from "url";
+import {dirname, join} from "path";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const WS_PORT = parseInt(process.env.SITREC_BRIDGE_PORT || "9780", 10);
+
+// Load the agent guide once at startup
+let agentGuide = "";
+try {
+    agentGuide = readFileSync(join(__dirname, "sitrec-mcp-guide.md"), "utf-8");
+} catch (e) {
+    agentGuide = "Guide not found. See tools/SitrecBridge/sitrec-mcp-guide.md";
+}
 const REQUEST_TIMEOUT_MS = 15000;
 const KEEPALIVE_INTERVAL_MS = 10000;
 
@@ -235,13 +249,18 @@ const TOOLS = [
     {
         name: "sitrec_screenshot",
         description:
-            "Capture a screenshot of the Sitrec canvas. Returns a base64-encoded PNG image.",
+            "Capture a screenshot of a Sitrec view. Forces a render then captures the canvas, " +
+            "so it works even with preserveDrawingBuffer=false. Returns a base64-encoded PNG image.",
         inputSchema: {
             type: "object",
             properties: {
+                view: {
+                    type: "string",
+                    description: "View node name to capture (defaults to 'mainView'). Other options: 'lookView'.",
+                },
                 selector: {
                     type: "string",
-                    description: "CSS selector of element to capture (defaults to 'canvas')",
+                    description: "Fallback CSS selector if view is not found (defaults to 'canvas')",
                 },
             },
             required: [],
@@ -264,6 +283,52 @@ const TOOLS = [
             },
             required: ["expression"],
         },
+    },
+    {
+        name: "sitrec_api_call",
+        description:
+            "Call a Sitrec API function by name. These are the same functions available to the " +
+            "built-in AI chatbot. Use sitrec_api_list to see available functions and their parameters. " +
+            "Common functions: gotoLLA, setDateTime, setFrame, play, pause, satellitesLoadCurrentStarlink, " +
+            "addObjectAtLLA, setMenuValue, showView, hideView, setLayout, toggleFullscreen.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                fn: {
+                    type: "string",
+                    description: "API function name (e.g. 'gotoLLA', 'setDateTime', 'setFrame')",
+                },
+                args: {
+                    type: "object",
+                    description: "Arguments object for the function (e.g. {lat: 51.5, lon: -0.13, alt: 0})",
+                },
+            },
+            required: ["fn"],
+        },
+    },
+    {
+        name: "sitrec_api_list",
+        description:
+            "List all available Sitrec API functions with their documentation, parameters, " +
+            "and available menu controls. Returns the full API reference.",
+        inputSchema: { type: "object", properties: {}, required: [] },
+    },
+    {
+        name: "sitrec_reload_extension",
+        description:
+            "Reload the SitrecBridge Chrome extension. Use after modifying extension files " +
+            "(background.js, content-script.js, page-bridge.js, manifest.json) to pick up changes " +
+            "without manually clicking reload in chrome://extensions. The extension will disconnect " +
+            "briefly and reconnect automatically.",
+        inputSchema: { type: "object", properties: {}, required: [] },
+    },
+    {
+        name: "sitrec_guide",
+        description:
+            "Get the Sitrec MCP Agent Guide — a comprehensive reference for the node system, " +
+            "API functions, data structures, views, cameras, tracks, menus, and common patterns. " +
+            "Read this first before interacting with Sitrec to avoid repeated trial-and-error inspection.",
+        inputSchema: { type: "object", properties: {}, required: [] },
     },
 ];
 
@@ -293,6 +358,31 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     pendingRequests: pendingRequests.size,
                 }, null, 2),
             }],
+        };
+    }
+
+    // sitrec_guide is handled locally — returns the agent guide markdown
+    if (name === "sitrec_guide") {
+        return {
+            content: [{ type: "text", text: agentGuide }],
+        };
+    }
+
+    // sitrec_reload_extension is handled specially — sends a direct message
+    // to the background script (not through content script relay)
+    if (name === "sitrec_reload_extension") {
+        if (!extensionSocket || extensionSocket.readyState !== 1) {
+            return {
+                content: [{ type: "text", text: "Extension not connected. Nothing to reload." }],
+                isError: true,
+            };
+        }
+        // Send reload message directly — the background script handles this
+        // as a chrome.runtime.onMessage, but we send it via WebSocket.
+        // The background script will call chrome.runtime.reload() after a short delay.
+        extensionSocket.send(JSON.stringify({ id: ++requestCounter, action: "reload" }));
+        return {
+            content: [{ type: "text", text: "Extension reloading. It will reconnect automatically in a few seconds." }],
         };
     }
 
@@ -347,6 +437,12 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => ({
             description: "All nodes in the current Sitrec node graph",
             mimeType: "application/json",
         },
+        {
+            uri: "sitrec://guide",
+            name: "Agent Guide",
+            description: "Comprehensive reference for AI agents interacting with Sitrec",
+            mimeType: "text/markdown",
+        },
     ],
 }));
 
@@ -355,6 +451,12 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
     try {
         let action;
         let params = {};
+
+        if (uri === "sitrec://guide") {
+            return {
+                contents: [{ uri, mimeType: "text/markdown", text: agentGuide }],
+            };
+        }
 
         if (uri === "sitrec://sitch/current") {
             action = "sitrec_get_sitch";
