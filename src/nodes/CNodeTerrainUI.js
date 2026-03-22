@@ -854,9 +854,8 @@ export class CNodeTerrainUI extends CNode {
 
         this.updateTerrainAndOceanVisibility();
 
-        // Hide the grey sphere when 3D tiles are active
+        // Update grey sphere visibility — it checks buildingsNode directly now.
         if (this.terrainNode) {
-            this.terrainNode.hide3DTilesGreySphere = !!this.buildingsNode;
             this.terrainNode.updateGreySphereVisibility();
         }
 
