@@ -45,6 +45,134 @@ Example entry format:
 
 ---
 
+## Version 2.37.0 (unreleased)
+
+### New Features
+- **SitrecBridge MCP Server**: AI assistants (Claude Code, Claude Desktop) can now control Sitrec in real-time via the SitrecBridge MCP server and Chrome extension — navigate, take screenshots, inspect nodes, and call API functions
+- **SitrecBridge Distribution Build**: Zero-dependency distributable zip for end users (no `npm install` needed), with a download link in the Help menu
+- **Screenshot Quality Control**: MCP screenshots now support JPEG quality (1–100) and `maxWidth` downscale parameter for smaller payloads on high-DPI displays
+- **Full Window Screenshots**: Capture the entire browser tab including HTML overlays (time display, UI labels), not just the WebGL canvas
+- **Attribution Overlay**: Map tile providers now display proper attribution overlays
+- **ThirdPartyNotices.txt**: Auto-generated third-party license notices included in builds
+
+### Improvements
+- Chatbot API: add `toggleFullscreen`, fix LLM parameter type fragility
+- Enable chatbot in older sitches
+- MCP server binds to localhost only, avoiding macOS firewall prompts
+- Multi-browser MCP support with automatic primary/secondary promotion
+- MCP server handles browser debugger asserts for round-trip debugging
+- Update GitHub Actions to Node.js 24-compatible versions
+- Added smoke test to Docker build
+- Fall back to `npm install` when `npm ci` fails on lock file sync issues
+
+### Bug Fixes
+- Fixed grey sphere visibility check for 3D building tiles
+- Fixed zero-size WebGL render targets causing errors during initialization
+- Fixed messy time display on legacy sitches
+- Fixed custom sitches never reaching data-ready="complete"
+- Fixed spline editor handles too small in legacy sitches (e.g. Agua)
+- Fixed potential incomplete multi-character sanitization (CodeQL alert)
+
+---
+
+## Version 2.36.8 (2026-03-20)
+
+### Improvements
+- Fallback to NASA Blue Marble minimal basemap when internet tile services are unavailable
+- Docker: install mbstring and iconv, allow override of user ID and user groups, fallback checksum when crypto.subtle unavailable
+- Pin npm@11 in CI workflows to fix `npm ci` lock file mismatch
+
+---
+
+## Version 2.36.7 (2026-03-20)
+
+### New Features
+- **Service Availability Checks**: Tile services are tested for availability before use
+
+### Improvements
+- Use server file storage if S3 is disabled
+- Add shared.env.example download to Docker install scripts
+- Add explicit permissions to GitHub Actions workflow jobs
+- Added nightsky permalink regression test for legacy URL format
+
+### Bug Fixes
+- Fixed banking calculations in degenerate cases and when Sim Speed is not 1
+- Fixed old nightsky permalink URLs broken by EUS→ECEF migration
+- Fixed 15 obscure bugs found during full codebase review
+- Fixed fullscreen race condition causing black views on custom sitch load
+- Fixed issues when toggling 3D buildings on with legacy terrain 9x9 grid
+- Fixed CodeQL alerts: HTML stripping, hostname matching, URL sanitization, DOM text XSS, rate limiting
+
+---
+
+## Version 2.36.6 (2026-03-19)
+
+### Bug Fixes
+- Fixed missing map sources from recent .env changes
+- Docker fixes
+
+---
+
+## Version 2.36.5 (2026-03-19)
+
+### Bug Fixes
+- Fixed Ubuntu version on ARM Docker build
+
+---
+
+## Version 2.36.4 (2026-03-19)
+
+### Bug Fixes
+- Fixed Docker image lowercase naming issue
+
+---
+
+## Version 2.36.3 (2026-03-19)
+
+### Improvements
+- Standardize Docker port to 8080, improve install docs, add video download scripts
+- Restructure install docs with Zero-Config Docker Image as primary method
+- Add PowerShell install script for Windows deployment
+- Add one-liner install script for Docker deployment
+
+### Bug Fixes
+- Fixed relative paths in CI
+
+---
+
+## Version 2.36.2 (2026-03-18)
+
+### Bug Fixes
+- Use relative `./dist` paths in config-install.js.example
+
+---
+
+## Version 2.36.1 (2026-03-18)
+
+### Improvements
+- Suppress Apache ServerName warning in Docker containers
+- Split Docker CI into build-js + native ARM packaging
+- Skip CI workflow on tag pushes
+
+---
+
+## Version 2.36.0 (2026-03-18)
+
+### Improvements
+- Migrate all runtime env vars to `getEnv()` for Docker override support
+- Add `env_file` support to docker-compose.yml
+- Add GitHub Actions workflow for multi-arch Docker image publishing
+- Standardize placeholder tokens as EXAMPLEKEY
+- Hide map/elevation sources when their API token is missing
+
+### Bug Fixes
+- Fixed premature star visibility during twilight
+
+### Security
+- Bump minimatch, serialize-javascript, terser-webpack-plugin, copy-webpack-plugin, tar
+
+---
+
 ## Version 2.35.0 (2026-03-18)
 
 ### New Features
