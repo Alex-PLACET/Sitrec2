@@ -117,9 +117,7 @@ COMPOSE
 if [ "$HAVE_EXISTING_ENV" = false ]; then
 cat > .env <<'ENV'
 # Sitrec configuration — uncomment and edit as needed.
-# After changes you must "down" then "up" (not just restart):
-#   docker compose down && docker compose up
-#   podman-compose down && podman-compose up
+# After changes, run: ./sitrec.sh restart
 
 # === Banners (optional) ===
 #BANNER_ACTIVE=true
@@ -150,8 +148,17 @@ cat > .env <<'ENV'
 ENV
 fi
 
+# ---------------------------------------------------------------------------
+# Save the detected runtime so sitrec.sh knows which compose command to use
+# ---------------------------------------------------------------------------
+echo "$COMPOSE" > .runtime
+
 echo "[sitrec] Downloading shared.env.example..."
 curl -sL https://raw.githubusercontent.com/MickWest/Sitrec2/main/config/shared.env.example -o shared.env.example
+
+echo "[sitrec] Downloading sitrec.sh management script..."
+curl -sL https://raw.githubusercontent.com/MickWest/Sitrec2/main/sitrec.sh -o sitrec.sh
+chmod +x sitrec.sh
 
 echo "[sitrec] Pulling image..."
 $COMPOSE pull
@@ -160,10 +167,12 @@ echo ""
 echo "============================================"
 echo "  Sitrec installed in ./$DIR/"
 echo "  "
-echo "  Start:   cd $DIR && $COMPOSE up"
-echo "  Stop:    $COMPOSE down"
-echo "  Open:    http://localhost:8080"
-echo "  Config:  edit $DIR/.env"
+echo "  Start:     ./sitrec.sh start"
+echo "  Stop:      ./sitrec.sh stop"
+echo "  Restart:   ./sitrec.sh restart  (after .env changes)"
+echo "  Update:    ./sitrec.sh pull"
+echo "  Open:      http://localhost:8080"
+echo "  Config:    edit .env"
 echo "============================================"
 echo ""
 echo "[sitrec] Starting..."

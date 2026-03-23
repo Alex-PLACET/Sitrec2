@@ -130,7 +130,12 @@ The example below shows some commonly used settings. For the full list of availa
 #S3_REGION=us-west-2
 ```
 
-After editing `.env`, you must **`down` then `up`** — not just restart. Environment variables are baked into the container at creation time, so a simple restart will keep using the old values:
+After editing `.env`, you must recreate the container (not just restart it). Environment variables are baked in at creation time. The easiest way is to use the included management script:
+```bash
+./sitrec.sh restart
+```
+
+Or manually:
 ```bash
 docker compose down && docker compose up          # Docker
 podman-compose down && podman-compose up           # Podman
@@ -158,10 +163,15 @@ Or download manually from [this Dropbox folder](https://www.dropbox.com/scl/fo/b
 
 ### Updating to the Latest Version
 
-To get the newest release, run:
+To get the newest release:
 ```bash
-docker compose pull && docker compose up          # Docker
-podman-compose pull && podman-compose up           # Podman
+./sitrec.sh pull
+```
+
+Or manually:
+```bash
+docker compose pull && docker compose down && docker compose up      # Docker
+podman-compose pull && podman-compose down && podman-compose up      # Podman
 ```
 
 ### Pinning a Specific Version
@@ -185,15 +195,16 @@ image: ghcr.io/mickwest/sitrec2:2.36.0
 - **GHCR access:** If you get "403 Forbidden" pulling the image, clear stale credentials with `podman logout ghcr.io` and retry.
 - **Rootless by default:** Podman runs without root privileges. This is normally transparent, but if you see permission errors on mounted volumes, ensure the directories exist before starting the container.
 
-**Daily usage** — the commands are the same as Docker, just substitute `podman-compose`:
+**Daily usage** — the `sitrec.sh` management script handles Docker/Podman differences automatically:
 
 | Task | Command |
 |------|---------|
-| Start | `podman-compose up` |
-| Start (background) | `podman-compose up -d` |
-| Stop | `podman-compose down` |
-| Update | `podman-compose pull && podman-compose up` |
-| View logs | `podman-compose logs -f` |
+| Start | `./sitrec.sh start` |
+| Stop | `./sitrec.sh stop` |
+| Restart (after .env changes) | `./sitrec.sh restart` |
+| Update to latest | `./sitrec.sh pull` |
+| View logs | `./sitrec.sh logs` |
+| Show status | `./sitrec.sh status` |
 
 ---
 
