@@ -8,6 +8,7 @@
 #   restart     Stop and recreate the container (picks up .env changes)
 #   pull        Pull the latest image and recreate the container
 #   versions    List available versions and switch to one
+#   update      Update this script and shared.env.example from GitHub
 #   logs        Follow container logs
 #   status      Show container status
 #
@@ -158,6 +159,32 @@ for t in tags:
 
         switch_version "$SELECTED"
         ;;
+    update)
+        echo "[sitrec] Updating sitrec.sh from GitHub..."
+        REPO_URL="https://raw.githubusercontent.com/MickWest/Sitrec2/main"
+        # Download to temp file first — replacing a running script mid-execution is unsafe
+        curl -sf "$REPO_URL/sitrec.sh" -o sitrec.sh.tmp
+        if [ $? -ne 0 ] || [ ! -s sitrec.sh.tmp ]; then
+            rm -f sitrec.sh.tmp
+            echo "[sitrec] ERROR: Download failed. Are you online?"
+            exit 1
+        fi
+        mv sitrec.sh.tmp sitrec.sh
+        chmod +x sitrec.sh
+        echo "[sitrec] Updated sitrec.sh"
+
+        echo "[sitrec] Updating shared.env.example..."
+        curl -sf "$REPO_URL/config/shared.env.example" -o shared.env.example.tmp
+        if [ -s shared.env.example.tmp ]; then
+            mv shared.env.example.tmp shared.env.example
+            echo "[sitrec] Updated shared.env.example"
+        else
+            rm -f shared.env.example.tmp
+            echo "[sitrec] WARNING: Could not update shared.env.example"
+        fi
+
+        echo "[sitrec] Done. Run ./sitrec.sh pull to also update the Sitrec image."
+        ;;
     logs)
         $COMPOSE logs -f
         ;;
@@ -173,6 +200,7 @@ for t in tags:
         echo "  restart   Stop and recreate (picks up .env changes)"
         echo "  pull      Pull latest image and recreate"
         echo "  versions  List available versions and switch"
+        echo "  update    Update this script from GitHub"
         echo "  logs      Follow container logs"
         echo "  status    Show container status"
         ;;
