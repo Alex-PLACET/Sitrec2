@@ -60,20 +60,15 @@ switch_version() {
 # Commands
 # ---------------------------------------------------------------------------
 case "${1:-help}" in
-    start)
-        echo "[sitrec] Starting..."
+    start|restart)
+        echo "[sitrec] Starting (recreating container to pick up any .env changes)..."
+        $COMPOSE down 2>/dev/null || true
         $COMPOSE up -d
         echo "[sitrec] Running at http://localhost:8080"
         ;;
     stop)
         echo "[sitrec] Stopping..."
         $COMPOSE down
-        ;;
-    restart)
-        echo "[sitrec] Restarting (recreating container to pick up .env changes)..."
-        $COMPOSE down
-        $COMPOSE up -d
-        echo "[sitrec] Running at http://localhost:8080"
         ;;
     pull)
         echo "[sitrec] Pulling latest image and restarting..."
@@ -195,9 +190,8 @@ for t in tags:
         echo "Usage: ./sitrec.sh [command]"
         echo ""
         echo "Commands:"
-        echo "  start     Start the container"
+        echo "  start     Start (or restart) the container"
         echo "  stop      Stop the container"
-        echo "  restart   Stop and recreate (picks up .env changes)"
         echo "  pull      Pull latest image and recreate"
         echo "  versions  List available versions and switch"
         echo "  update    Update this script from GitHub"
