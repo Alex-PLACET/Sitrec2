@@ -81,6 +81,7 @@ import {meanSeaLevelOffset} from "./EGM96Geoid";
 import {collectActiveTrackSourceFileIDs, shouldSerializeLoadedFileEntry} from "./trackSourceUtils";
 import {encodeShareParam, resolveURLForFetch, toShareableCustomValue} from "./SitrecObjectResolver";
 import {getEnvBool} from "./envUtils";
+import {CNodeFloodSim} from "./nodes/CNodeFloodSim";
 
 export class CCustomManager {
     constructor() {
@@ -964,8 +965,14 @@ export class CCustomManager {
         }
 
         this.setupVideoInfoMenu();
-        
+
         this.setupOSDDataSeriesController();
+
+        if (!NodeMan.exists("FloodSim")) {
+            new CNodeFloodSim({
+                id: "FloodSim",
+            });
+        }
 
         this.setupSubSitches();
 
