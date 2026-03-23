@@ -85,6 +85,9 @@ fi
 
 cd "$DIR"
 
+# Create volume mount directories (Podman requires these to exist; Docker auto-creates them)
+mkdir -p sitrec-videos
+
 # ---------------------------------------------------------------------------
 # Volume mount suffix: on SELinux systems (RHEL, Fedora, CentOS)
 # volumes need :Z label for the container to access them.
