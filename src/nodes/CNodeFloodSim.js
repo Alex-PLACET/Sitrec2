@@ -379,7 +379,7 @@ export class CNodeFloodSim extends CNode3DGroup {
         }
 
         const dt = (Sit.simSpeed || 1) / (Sit.fps || 30);
-        const substeps = 3;
+        const substeps = 4;
         const subDt = dt / substeps;
         for (let s = 0; s < substeps; s++) {
             this.physicsStep(subDt);
@@ -469,12 +469,19 @@ export class CNodeFloodSim extends CNode3DGroup {
 
     resolveCollisions() {
         const px = this.px, py = this.py, pz = this.pz;
+        const vx = this.vx, vy = this.vy, vz = this.vz;
         const alive = this.alive;
+        const onGround = this.onGround;
         const n = this.count;
         const diam = this.sphereSize;
         const diamSq = diam * diam;
         const cs = diam;
         const invCS = 1 / cs;
+        // Pressure strength: converts overlap into velocity impulse
+        const pressK = 2.0;
+        const viscosity = 0.02; // velocity blending between neighbors (cohesive flow)
+        const maxSpeed = 50;
+        const maxSpeedSq = maxSpeed * maxSpeed;
 
         let aliveN = 0;
         let minCX = 1e9, maxCX = -1e9, minCY = 1e9, maxCY = -1e9;
@@ -549,14 +556,24 @@ export class CNodeFloodSim extends CNode3DGroup {
                     const dSq = ddx * ddx + ddy * ddy + ddz * ddz;
                     if (dSq >= diamSq || dSq < 1e-10) continue;
                     const d = Math.sqrt(dSq), inv = 1 / d;
-                    const p = (diam - d) * 0.5;
-                    const nnx = ddx * inv * p, nny = ddy * inv * p, nnz = ddz * inv * p;
-                    px[i] -= nnx; py[i] -= nny; pz[i] -= nnz;
-                    px[j] += nnx; py[j] += nny; pz[j] += nnz;
+                    const overlap = diam - d;
+                    const nx = ddx * inv, ny = ddy * inv, nz = ddz * inv;
+                    // Position correction (prevent penetration)
+                    const pp = overlap * 0.5;
+                    px[i] -= nx * pp; py[i] -= ny * pp; pz[i] -= nz * pp;
+                    px[j] += nx * pp; py[j] += ny * pp; pz[j] += nz * pp;
+                    // Pressure velocity impulse (creates fluid flow from density)
+                    const pv = overlap * pressK;
+                    vx[i] -= nx * pv; vy[i] -= ny * pv; vz[i] -= nz * pv;
+                    vx[j] += nx * pv; vy[j] += ny * pv; vz[j] += nz * pv;
+                    // Viscosity: blend velocities for cohesive flow
+                    const dvx = (vx[j] - vx[i]) * viscosity, dvy = (vy[j] - vy[i]) * viscosity, dvz = (vz[j] - vz[i]) * viscosity;
+                    vx[i] += dvx; vy[i] += dvy; vz[i] += dvz;
+                    vx[j] -= dvx; vy[j] -= dvy; vz[j] -= dvz;
                 }
             }
 
-            // 4 forward-neighbor cells (position-only push-apart)
+            // 4 forward-neighbor cells (push-apart + pressure impulse)
             const neighbors = [c + nbr0, c + nbr1, c + nbr2, c + nbr3];
             for (let ni = 0; ni < 4; ni++) {
                 const nc = neighbors[ni];
@@ -570,12 +587,26 @@ export class CNodeFloodSim extends CNode3DGroup {
                         const dSq = ddx * ddx + ddy * ddy + ddz * ddz;
                         if (dSq >= diamSq || dSq < 1e-10) continue;
                         const d = Math.sqrt(dSq), inv = 1 / d;
-                        const p = (diam - d) * 0.5;
-                        const nnx = ddx * inv * p, nny = ddy * inv * p, nnz = ddz * inv * p;
-                        px[i] -= nnx; py[i] -= nny; pz[i] -= nnz;
-                        px[j] += nnx; py[j] += nny; pz[j] += nnz;
+                        const overlap = diam - d;
+                        const nx = ddx * inv, ny = ddy * inv, nz = ddz * inv;
+                        const pp = overlap * 0.5;
+                        px[i] -= nx * pp; py[i] -= ny * pp; pz[i] -= nz * pp;
+                        px[j] += nx * pp; py[j] += ny * pp; pz[j] += nz * pp;
+                        const pv = overlap * pressK;
+                        vx[i] -= nx * pv; vy[i] -= ny * pv; vz[i] -= nz * pv;
+                        vx[j] += nx * pv; vy[j] += ny * pv; vz[j] += nz * pv;
                     }
                 }
+            }
+        }
+
+        // Clamp velocities to prevent explosion from accumulated pressure
+        for (let i = 0; i < n; i++) {
+            if (!alive[i]) continue;
+            const sSq = vx[i] * vx[i] + vy[i] * vy[i] + vz[i] * vz[i];
+            if (sSq > maxSpeedSq) {
+                const s = maxSpeed / Math.sqrt(sSq);
+                vx[i] *= s; vy[i] *= s; vz[i] *= s;
             }
         }
     }
