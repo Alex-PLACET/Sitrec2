@@ -20,11 +20,11 @@ The fastest way to run Sitrec. No source code, no build tools, no configuration 
 
 **Prerequisites:** Install either Docker or Podman (see below), then run the one-liner install.
 
-### Installing Docker
+### Installing Docker (Simplest)
 
 Download and install [Docker Desktop](https://www.docker.com/) for your platform — it includes everything you need (engine, compose, and GUI). Available for Windows, Mac, and Linux.
 
-### Installing Podman
+### Installing Podman (Optional)
 
 [Podman](https://podman.io/) is a Docker alternative that doesn't require Docker Desktop. See [Using Podman](#using-podman-instead-of-docker) below for more details.
 
