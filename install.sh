@@ -8,10 +8,12 @@
 # Creates a sitrec/ directory with docker-compose.yml and .env template,
 # then pulls and starts the container.
 #
-# For air-gapped systems, use --offline. This skips image pull and file
-# downloads. You must pre-load the image and have install.sh locally:
-#   podman load -i sitrec-image.tar
-#   ./install.sh --offline --podman
+# Options:
+#   --podman      Force Podman (default: auto-detect)
+#   --docker      Force Docker
+#   --offline     Air-gapped install (skip pull/downloads, image pre-loaded)
+#   --videos      Mount sitrec-videos/ volume for legacy sitches
+#   --no-selinux  Skip :Z volume labels even on SELinux systems
 
 set -e
 
@@ -19,6 +21,7 @@ DIR="sitrec"
 FORCE_RUNTIME=""
 OFFLINE=false
 NO_SELINUX=false
+MOUNT_VIDEOS=false
 
 for arg in "$@"; do
     case "$arg" in
@@ -26,6 +29,7 @@ for arg in "$@"; do
         --docker)     FORCE_RUNTIME="docker" ;;
         --offline)    OFFLINE=true ;;
         --no-selinux) NO_SELINUX=true ;;
+        --videos)     MOUNT_VIDEOS=true ;;
     esac
 done
 
@@ -95,27 +99,29 @@ fi
 
 cd "$DIR"
 
-# Create volume mount directories (Podman requires these to exist; Docker auto-creates them)
-mkdir -p sitrec-videos
-
-# ---------------------------------------------------------------------------
-# Volume mount suffix: on SELinux systems (RHEL, Fedora, CentOS)
-# volumes need :Z label for the container to access them.
-# ---------------------------------------------------------------------------
-VOL_SUFFIX=""
-if [ "$NO_SELINUX" = false ] \
-    && command -v getenforce &>/dev/null \
-    && [ "$(getenforce 2>/dev/null)" = "Enforcing" ] \
-    && [ -d /sys/fs/selinux ]; then
-    VOL_SUFFIX=":Z"
-    echo "[sitrec] SELinux enforcing — using :Z volume labels"
-    echo "[sitrec] (use --no-selinux to disable if this causes problems)"
-fi
-
 # ---------------------------------------------------------------------------
 # Write docker-compose.yml
 # Uses simple string-form env_file (compatible with both Docker and Podman).
+# Volumes are only added with --videos flag (needed for legacy sitches only).
 # ---------------------------------------------------------------------------
+VOLUMES_BLOCK=""
+if [ "$MOUNT_VIDEOS" = true ]; then
+    mkdir -p sitrec-videos
+
+    VOL_SUFFIX=""
+    if [ "$NO_SELINUX" = false ] \
+        && command -v getenforce &>/dev/null \
+        && [ "$(getenforce 2>/dev/null)" = "Enforcing" ] \
+        && [ -d /sys/fs/selinux ]; then
+        VOL_SUFFIX=":Z"
+        echo "[sitrec] SELinux enforcing — using :Z volume labels"
+        echo "[sitrec] (use --no-selinux to disable if this causes problems)"
+    fi
+
+    VOLUMES_BLOCK="    volumes:
+      - ./sitrec-videos:/var/www/html/sitrec-videos${VOL_SUFFIX}"
+fi
+
 cat > docker-compose.yml <<COMPOSE
 services:
   sitrec:
@@ -124,8 +130,7 @@ services:
       - '8080:80'
     env_file:
       - .env
-    volumes:
-      - ./sitrec-videos:/var/www/html/sitrec-videos${VOL_SUFFIX}
+${VOLUMES_BLOCK}
 COMPOSE
 
 # ---------------------------------------------------------------------------
