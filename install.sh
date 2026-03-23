@@ -1,21 +1,29 @@
 #!/bin/bash
 # Sitrec one-liner installer (works with Docker or Podman)
 # Usage: curl -sL https://raw.githubusercontent.com/MickWest/Sitrec2/main/install.sh | bash
-#   or:  curl -sL ... | bash -s -- --podman   (force Podman)
-#   or:  curl -sL ... | bash -s -- --docker   (force Docker)
+#   or:  curl -sL ... | bash -s -- --podman    (force Podman)
+#   or:  curl -sL ... | bash -s -- --docker    (force Docker)
+#   or:  ./install.sh --offline --podman        (air-gapped install, image pre-loaded)
 #
 # Creates a sitrec/ directory with docker-compose.yml and .env template,
 # then pulls and starts the container.
+#
+# For air-gapped systems, use --offline. This skips image pull and file
+# downloads. You must pre-load the image and have install.sh locally:
+#   podman load -i sitrec-image.tar
+#   ./install.sh --offline --podman
 
 set -e
 
 DIR="sitrec"
 FORCE_RUNTIME=""
+OFFLINE=false
 
 for arg in "$@"; do
     case "$arg" in
-        --podman) FORCE_RUNTIME="podman" ;;
-        --docker) FORCE_RUNTIME="docker" ;;
+        --podman)  FORCE_RUNTIME="podman" ;;
+        --docker)  FORCE_RUNTIME="docker" ;;
+        --offline) OFFLINE=true ;;
     esac
 done
 
@@ -156,15 +164,31 @@ fi
 # ---------------------------------------------------------------------------
 echo "$COMPOSE" > .runtime
 
-echo "[sitrec] Downloading shared.env.example..."
-curl -sL https://raw.githubusercontent.com/MickWest/Sitrec2/main/config/shared.env.example -o shared.env.example
+if [ "$OFFLINE" = true ]; then
+    echo "[sitrec] Offline mode — skipping downloads and image pull"
+    # Copy sitrec.sh from alongside install.sh (assumes local copy of repo files)
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+    if [ -f "$SCRIPT_DIR/sitrec.sh" ]; then
+        cp "$SCRIPT_DIR/sitrec.sh" sitrec.sh
+    else
+        echo "[sitrec] WARNING: sitrec.sh not found next to install.sh — run ./sitrec.sh help to check"
+    fi
+    if [ -f "$SCRIPT_DIR/shared.env.example" ]; then
+        cp "$SCRIPT_DIR/shared.env.example" shared.env.example
+    elif [ -f "$SCRIPT_DIR/config/shared.env.example" ]; then
+        cp "$SCRIPT_DIR/config/shared.env.example" shared.env.example
+    fi
+else
+    echo "[sitrec] Downloading shared.env.example..."
+    curl -sL https://raw.githubusercontent.com/MickWest/Sitrec2/main/config/shared.env.example -o shared.env.example
 
-echo "[sitrec] Downloading sitrec.sh management script..."
-curl -sL https://raw.githubusercontent.com/MickWest/Sitrec2/main/sitrec.sh -o sitrec.sh
-chmod +x sitrec.sh
+    echo "[sitrec] Downloading sitrec.sh management script..."
+    curl -sL https://raw.githubusercontent.com/MickWest/Sitrec2/main/sitrec.sh -o sitrec.sh
 
-echo "[sitrec] Pulling image..."
-$COMPOSE pull
+    echo "[sitrec] Pulling image..."
+    $COMPOSE pull
+fi
+chmod +x sitrec.sh 2>/dev/null || true
 
 echo ""
 echo "============================================"

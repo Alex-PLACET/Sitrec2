@@ -206,6 +206,43 @@ image: ghcr.io/mickwest/sitrec2:2.36.0
 | View logs | `./sitrec.sh logs` |
 | Show status | `./sitrec.sh status` |
 
+### Air-Gapped / Offline Install
+
+For systems with no internet access (e.g. secure or classified environments), you can transfer the image and install files manually.
+
+**On a machine with internet access:**
+
+1. Pull and save the image to a tar file:
+```bash
+podman pull ghcr.io/mickwest/sitrec2:latest
+podman save ghcr.io/mickwest/sitrec2:latest -o sitrec-image.tar
+```
+(Substitute `docker` for `podman` if using Docker.)
+
+2. Download the install files:
+```bash
+curl -sLO https://raw.githubusercontent.com/MickWest/Sitrec2/main/install.sh
+curl -sLO https://raw.githubusercontent.com/MickWest/Sitrec2/main/sitrec.sh
+curl -sL https://raw.githubusercontent.com/MickWest/Sitrec2/main/config/shared.env.example -o shared.env.example
+```
+
+3. Transfer `sitrec-image.tar`, `install.sh`, `sitrec.sh`, and `shared.env.example` to the target system. Optionally include a pre-configured `.env` file.
+
+**On the air-gapped system:**
+
+1. Load the image:
+```bash
+podman load -i sitrec-image.tar
+```
+
+2. Place `install.sh`, `sitrec.sh`, and `shared.env.example` in the same directory, then run:
+```bash
+chmod +x install.sh
+./install.sh --offline --podman
+```
+
+The `--offline` flag skips image pull and file downloads. It copies `sitrec.sh` and `shared.env.example` from alongside `install.sh` instead.
+
 ---
 
 *The sections below are for developers. If you just want to run Sitrec, the Docker Image method above is all you need.*
