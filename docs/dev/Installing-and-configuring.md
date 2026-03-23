@@ -66,6 +66,10 @@ If you have both Docker and Podman installed, the script defaults to Docker. Use
 ```bash
 curl -sL https://raw.githubusercontent.com/MickWest/Sitrec2/main/install.sh | bash -s -- --podman
 ```
+Or if you have `install.sh` locally:
+```bash
+./install.sh --podman
+```
 
 If you have a pre-configured `.env` file, place it in the current directory before running the installer — it will be copied into the `sitrec/` folder automatically instead of generating a new template.
 
