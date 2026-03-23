@@ -130,7 +130,7 @@ The example below shows some commonly used settings. For the full list of availa
 #S3_REGION=us-west-2
 ```
 
-After editing `.env`, restart the container:
+After editing `.env`, you must **`down` then `up`** — not just restart. Environment variables are baked into the container at creation time, so a simple restart will keep using the old values:
 ```bash
 docker compose down && docker compose up          # Docker
 podman-compose down && podman-compose up           # Podman

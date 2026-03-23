@@ -117,8 +117,9 @@ COMPOSE
 if [ "$HAVE_EXISTING_ENV" = false ]; then
 cat > .env <<'ENV'
 # Sitrec configuration — uncomment and edit as needed.
-# After changes run: docker compose down && docker compose up
-# (or: podman-compose down && podman-compose up)
+# After changes you must "down" then "up" (not just restart):
+#   docker compose down && docker compose up
+#   podman-compose down && podman-compose up
 
 # === Banners (optional) ===
 #BANNER_ACTIVE=true
