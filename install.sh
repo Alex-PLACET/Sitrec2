@@ -103,9 +103,12 @@ mkdir -p sitrec-videos
 # volumes need :Z label for the container to access them.
 # ---------------------------------------------------------------------------
 VOL_SUFFIX=""
-if [ "$NO_SELINUX" = false ] && command -v getenforce &>/dev/null && [ "$(getenforce 2>/dev/null)" != "Disabled" ]; then
+if [ "$NO_SELINUX" = false ] \
+    && command -v getenforce &>/dev/null \
+    && [ "$(getenforce 2>/dev/null)" = "Enforcing" ] \
+    && [ -d /sys/fs/selinux ]; then
     VOL_SUFFIX=":Z"
-    echo "[sitrec] SELinux detected — using :Z volume labels"
+    echo "[sitrec] SELinux enforcing — using :Z volume labels"
     echo "[sitrec] (use --no-selinux to disable if this causes problems)"
 fi
 
