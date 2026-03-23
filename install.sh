@@ -178,5 +178,9 @@ echo "  Open:      http://localhost:8080"
 echo "  Config:    edit .env"
 echo "============================================"
 echo ""
+# Clean up any stale containers from a previous install (e.g. if the user
+# deleted the sitrec/ directory without running "down" first)
+$COMPOSE down 2>/dev/null || true
+
 echo "[sitrec] Starting..."
 $COMPOSE up
