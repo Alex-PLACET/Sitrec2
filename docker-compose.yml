@@ -5,8 +5,7 @@ services:
     ports:
       - '8080:80'
     env_file:
-      - path: .env
-        required: false
+      - .env
     volumes:
 # We mount the videos as a volume to avoid having to include them in the docker image      -
       - ./sitrec-videos:/var/www/html/sitrec-videos

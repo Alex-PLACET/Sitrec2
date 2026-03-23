@@ -101,6 +101,9 @@ echo "<?php /*;" > "$ENV_PHP_FILE"
 
 for var in $CLIENT_VARS $SERVER_VARS; do
     val="${!var}"
+    # Strip surrounding quotes (some compose tools pass them literally)
+    val="${val#\"}" ; val="${val%\"}"
+    val="${val#\'}" ; val="${val%\'}"
     if [ -n "$val" ]; then
         echo "${var}=${val}" >> "$ENV_PHP_FILE"
     fi
@@ -120,6 +123,9 @@ if [ -f "$HTML_FILE" ]; then
     FIRST=true
     for var in $CLIENT_VARS; do
         val="${!var}"
+        # Strip surrounding quotes (some compose tools pass them literally)
+        val="${val#\"}" ; val="${val%\"}"
+        val="${val#\'}" ; val="${val%\'}"
         if [ -n "$val" ]; then
             # Escape double quotes and backslashes in the value
             escaped=$(echo "$val" | sed 's/\\/\\\\/g; s/"/\\"/g')

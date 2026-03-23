@@ -6,7 +6,7 @@ For developers, there are additional options:
 
 | Method | Best For | Requirements | Setup Time |
 |--------|----------|--------------|------------|
-| **Docker Image** | Running Sitrec, no setup needed | Docker Desktop only | ~30 seconds |
+| **Docker Image** | Running Sitrec, no setup needed | Docker Desktop or Podman | ~30 seconds |
 | Docker Build | Testing from source | Docker Desktop + Git | ~2 minutes |
 | Serverless | Offline/portable use | Node.js (or just a browser) | ~30 seconds |
 | Standalone | Development without web server | Node.js + PHP | ~30 seconds |
@@ -18,11 +18,39 @@ For developers, there are additional options:
 
 The fastest way to run Sitrec. No source code, no build tools, no configuration required. A pre-built image is published on each release and works on Windows, Mac (Intel and Apple Silicon), and Linux.
 
-**Prerequisites:** Install and run [Docker Desktop](https://www.docker.com/).
+**Prerequisites:** Install either Docker or Podman (see below), then run the one-liner install.
+
+### Installing Docker
+
+Download and install [Docker Desktop](https://www.docker.com/) for your platform — it includes everything you need (engine, compose, and GUI). Available for Windows, Mac, and Linux.
+
+### Installing Podman
+
+[Podman](https://podman.io/) is a Docker alternative that doesn't require Docker Desktop. See [Using Podman](#using-podman-instead-of-docker) below for more details.
+
+**Mac:**
+```bash
+brew install podman podman-compose
+podman machine init && podman machine start
+```
+
+**Linux (RHEL / Fedora / CentOS):**
+```bash
+sudo dnf install podman podman-compose
+```
+
+**Linux (Ubuntu / Debian):**
+```bash
+sudo apt install podman
+pip install podman-compose
+```
+
+**Windows:**
+Download the Podman installer from [podman.io](https://podman.io/) or use `winget install RedHat.Podman`, then install podman-compose with `pip install podman-compose`.
 
 ### One-liner Install
 
-Open a terminal and paste the command for your platform. This downloads a small install script that sets everything up automatically.
+Open a terminal and paste the command for your platform. This downloads a small install script that sets everything up automatically. The script auto-detects whether you have Docker or Podman installed.
 
 **Mac / Linux / WSL:**
 ```bash
@@ -33,6 +61,13 @@ curl -sL https://raw.githubusercontent.com/MickWest/Sitrec2/main/install.sh | ba
 ```powershell
 irm https://raw.githubusercontent.com/MickWest/Sitrec2/main/install.ps1 | iex
 ```
+
+If you have both Docker and Podman installed, the script defaults to Docker. Use `--podman` or `--docker` to override:
+```bash
+curl -sL https://raw.githubusercontent.com/MickWest/Sitrec2/main/install.sh | bash -s -- --podman
+```
+
+If you have a pre-configured `.env` file, place it in the current directory before running the installer — it will be copied into the `sitrec/` folder automatically instead of generating a new template.
 
 This creates a `sitrec/` folder in your current directory, downloads Sitrec, and starts it. Once you see "resuming normal operations" in the output, open **http://localhost:8080** in your browser.
 
@@ -49,18 +84,20 @@ services:
     ports:
       - '8080:80'
     env_file:
-      - path: .env
-        required: false
+      - .env
     volumes:
       - ./sitrec-videos:/var/www/html/sitrec-videos
 ```
 
-2. Open a terminal in that folder and run:
+2. Create an empty `.env` file in the same folder (required by the compose file; you can add settings to it later).
+
+3. Open a terminal in that folder and run:
 ```bash
-docker compose up
+docker compose up        # Docker
+podman-compose up        # Podman
 ```
 
-3. Once you see "resuming normal operations", open **http://localhost:8080** in your browser.
+4. Once you see "resuming normal operations", open **http://localhost:8080** in your browser.
 
 ### Configuration (Optional)
 
@@ -91,7 +128,8 @@ The example below shows some commonly used settings. For the full list of availa
 
 After editing `.env`, restart the container:
 ```bash
-docker compose down && docker compose up
+docker compose down && docker compose up          # Docker
+podman-compose down && podman-compose up           # Podman
 ```
 
 Map sources that require an API token (e.g. MapBox, MapTiler) only appear in the terrain menu when the corresponding token is provided. Without any tokens, the app uses ESRI World Imagery and AWS Terrarium elevation, which require no keys.
@@ -118,7 +156,8 @@ Or download manually from [this Dropbox folder](https://www.dropbox.com/scl/fo/b
 
 To get the newest release, run:
 ```bash
-docker compose pull && docker compose up
+docker compose pull && docker compose up          # Docker
+podman-compose pull && podman-compose up           # Podman
 ```
 
 ### Pinning a Specific Version
@@ -127,6 +166,30 @@ By default Sitrec uses the latest release. To lock to a specific version, edit t
 ```yaml
 image: ghcr.io/mickwest/sitrec2:2.36.0
 ```
+
+### Using Podman Instead of Docker
+
+[Podman](https://podman.io/) is a drop-in Docker alternative commonly used on systems where Docker is unavailable (e.g. secure environments, RHEL, Fedora). Sitrec's install script and compose file are compatible with both. See [Installing Podman](#installing-podman) above for setup instructions.
+
+**Key differences from Docker:**
+
+- **SELinux (RHEL/Fedora):** The install script automatically adds `:Z` labels to volume mounts when SELinux is detected. If you're writing a manual `docker-compose.yml`, add `:Z` to your volume paths:
+  ```yaml
+  volumes:
+    - ./sitrec-videos:/var/www/html/sitrec-videos:Z
+  ```
+- **GHCR access:** If you get "403 Forbidden" pulling the image, clear stale credentials with `podman logout ghcr.io` and retry.
+- **Rootless by default:** Podman runs without root privileges. This is normally transparent, but if you see permission errors on mounted volumes, ensure the directories exist before starting the container.
+
+**Daily usage** — the commands are the same as Docker, just substitute `podman-compose`:
+
+| Task | Command |
+|------|---------|
+| Start | `podman-compose up` |
+| Start (background) | `podman-compose up -d` |
+| Stop | `podman-compose down` |
+| Update | `podman-compose pull && podman-compose up` |
+| View logs | `podman-compose logs -f` |
 
 ---
 
