@@ -89,21 +89,15 @@ case "${1:-help}" in
             exit 1
         fi
 
-        # Fetch tags, filter to version numbers + latest, sort newest first
-        TAGS=$(curl -sf -H "Authorization: Bearer $TOKEN" \
+        # Fetch tags, filter to version numbers, sort newest first
+        AUTH_HDR="Authorization: Bearer $TOKEN"
+        TAGS=$(curl -sf -H "$AUTH_HDR" \
             "https://ghcr.io/v2/mickwest/sitrec2/tags/list" \
             | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
-tags = [t for t in data['tags'] if not t.startswith('build-')]
-def sort_key(t):
-    if t == 'latest':
-        return (float('inf'),)
-    try:
-        return tuple(int(p) for p in t.split('.'))
-    except ValueError:
-        return (-1,)
-tags.sort(key=sort_key, reverse=True)
+tags = [t for t in data['tags'] if not t.startswith('build-') and t != 'latest']
+tags.sort(key=lambda t: tuple(int(p) for p in t.split('.')) if all(p.isdigit() for p in t.split('.')) else (-1,), reverse=True)
 for t in tags:
     print(t)
 " 2>/dev/null)
@@ -113,19 +107,52 @@ for t in tags:
             exit 1
         fi
 
+        # Find which version tag 'latest' points to by comparing manifest digests.
+        # Uses HEAD requests for speed; only checks the 3 newest tags.
+        LATEST_VERSION=""
+        ACCEPT_HDR="Accept: application/vnd.oci.image.index.v1+json"
+        MANIFEST_URL="https://ghcr.io/v2/mickwest/sitrec2/manifests"
+        LATEST_DIGEST=$(curl -sf -I -H "$AUTH_HDR" -H "$ACCEPT_HDR" \
+            "$MANIFEST_URL/latest" 2>/dev/null \
+            | grep -i docker-content-digest | awk '{print $2}' | tr -d '\r' || true)
+
+        if [ -n "$LATEST_DIGEST" ]; then
+            CHECK_COUNT=0
+            while IFS= read -r tag; do
+                [ $CHECK_COUNT -ge 3 ] && break
+                TAG_DIGEST=$(curl -sf -I -H "$AUTH_HDR" -H "$ACCEPT_HDR" \
+                    "$MANIFEST_URL/$tag" 2>/dev/null \
+                    | grep -i docker-content-digest | awk '{print $2}' | tr -d '\r' || true)
+                if [ "$TAG_DIGEST" = "$LATEST_DIGEST" ]; then
+                    LATEST_VERSION="$tag"
+                    break
+                fi
+                CHECK_COUNT=$((CHECK_COUNT + 1))
+            done <<< "$TAGS"
+        fi
+
         # Show current version
         CURRENT=$(grep "image:" docker-compose.yml | sed "s|.*${IMAGE}:||" | tr -d ' ')
         echo ""
         echo "  Current: $CURRENT"
         echo ""
 
-        # Number the list
+        # If latest didn't match any version tag, show it as a separate entry
+        if [ -z "$LATEST_VERSION" ]; then
+            TAGS="latest"$'\n'"$TAGS"
+        fi
+
+        # Number the list, merging 'latest' onto its matching version
         i=1
         while IFS= read -r tag; do
-            if [ "$tag" = "$CURRENT" ]; then
-                printf "  %2d) %s  <-- current\n" "$i" "$tag"
+            LABEL="$tag"
+            if [ -n "$LATEST_VERSION" ] && [ "$tag" = "$LATEST_VERSION" ]; then
+                LABEL="$tag (latest)"
+            fi
+            if [ "$tag" = "$CURRENT" ] || { [ "$CURRENT" = "latest" ] && [ "$tag" = "$LATEST_VERSION" ]; }; then
+                printf "  %2d) %s  <-- current\n" "$i" "$LABEL"
             else
-                printf "  %2d) %s\n" "$i" "$tag"
+                printf "  %2d) %s\n" "$i" "$LABEL"
             fi
             i=$((i + 1))
         done <<< "$TAGS"
@@ -145,6 +172,12 @@ for t in tags:
         if [ -z "$SELECTED" ]; then
             echo "[sitrec] Invalid selection."
             exit 1
+        fi
+
+        # If they picked the version that 'latest' points to, use 'latest' as the
+        # tag so it auto-tracks future releases
+        if [ "$SELECTED" = "$LATEST_VERSION" ]; then
+            SELECTED="latest"
         fi
 
         if [ "$SELECTED" = "$CURRENT" ]; then
