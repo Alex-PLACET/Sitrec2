@@ -1,5 +1,15 @@
 // Client-side Sitrec API with callable functions and documentation
-import {CustomManager, GlobalDateTimeNode, Globals, guiMenus, NodeMan, Sit} from "./Globals";
+import {
+    CustomManager,
+    FileManager,
+    GlobalDateTimeNode,
+    Globals,
+    guiMenus,
+    NodeMan,
+    Sit,
+    TrackManager,
+    UndoManager
+} from "./Globals";
 import {isLocal} from "./configUtils";
 import {showError} from "./showError";
 import GUI from "./js/lil-gui.esm";
@@ -1069,6 +1079,94 @@ class CSitrecAPI {
                             single: "First view takes full area, others hidden",
                         },
                         usage: "Call setLayout({template: 'columns', views: ['mainView','lookView','video']})"
+                    };
+                }
+            },
+
+            listTracks: {
+                doc: "List all tracks currently loaded in the TrackManager.",
+                fn: () => {
+                    if (!TrackManager) return { error: "TrackManager not available" };
+                    const tracks = [];
+                    TrackManager.iterate((key, trackOb) => {
+                        tracks.push({
+                            id: key,
+                            menuText: trackOb.menuText,
+                            trackID: trackOb.trackID,
+                            isSynthetic: !!trackOb.isSynthetic,
+                        });
+                    });
+                    return { count: tracks.length, tracks };
+                }
+            },
+
+            getTrackPosition: {
+                doc: "Get the position (LLA) of a track node at a specific frame.",
+                params: {
+                    id: "Track node ID (string)",
+                    frame: "Frame number (integer, optional, defaults to current frame)"
+                },
+                fn: (v) => {
+                    const node = NodeMan.get(v.id);
+                    if (!node) return { error: `Track node '${v.id}' not found` };
+                    const f = v.frame ?? par.frame ?? 0;
+                    try {
+                        const val = node.getValue(f);
+                        if (val && val.position) {
+                            const result = {
+                                frame: f,
+                                position: { x: val.position.x, y: val.position.y, z: val.position.z },
+                            };
+                            if (val.lla) result.lla = { lat: val.lla.lat, lon: val.lla.lon, alt: val.lla.alt };
+                            return result;
+                        }
+                        return { frame: f, value: String(val) };
+                    } catch (e) {
+                        return { error: e.message };
+                    }
+                }
+            },
+
+            listLoadedFiles: {
+                doc: "List all files currently loaded in the FileManager.",
+                fn: () => {
+                    if (!FileManager) return { error: "FileManager not available" };
+                    const files = [];
+                    if (FileManager.list) {
+                        FileManager.list.forEach((file, key) => {
+                            files.push({ name: key, type: file.type || "unknown" });
+                        });
+                    }
+                    return { count: files.length, files };
+                }
+            },
+
+            undo: {
+                doc: "Undo the last action.",
+                fn: () => {
+                    if (!UndoManager) return { error: "UndoManager not available" };
+                    UndoManager.undo();
+                    return { success: true };
+                }
+            },
+
+            redo: {
+                doc: "Redo the last undone action.",
+                fn: () => {
+                    if (!UndoManager) return { error: "UndoManager not available" };
+                    UndoManager.redo();
+                    return { success: true };
+                }
+            },
+
+            getSitchState: {
+                doc: "Get the current sitch state including whether it has unsaved changes.",
+                fn: () => {
+                    return {
+                        name: Sit?.name,
+                        dirty: Globals.sitchDirty,
+                        isCustom: Sit?.isCustom,
+                        canMod: Sit?.canMod,
                     };
                 }
             },

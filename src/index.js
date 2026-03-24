@@ -45,7 +45,7 @@ import {
     SitchMan,
     TrackManager,
 } from "./Globals";
-import {disableScroll, f2m, parseBoolean, stripComments, updateDocumentTitle} from './utils.js'
+import {disableScroll, f2m, stripComments, updateDocumentTitle} from './utils.js'
 import {CSituation} from "./CSituation";
 import {par, resetPar} from "./par";
 
@@ -1288,13 +1288,21 @@ async function initializeOnce() {
     setSynth3DManager(new C3DSynthManager())
     setUndoManager(undoManager)
     
-    // Expose objects to window for testing purposes
+    // Expose objects to window for console/MCP/testing access
     if (typeof window !== 'undefined') {
         window.NodeMan = NodeMan;
         window.LocalFrame = LocalFrame;
         window.GlobalScene = GlobalScene;
         window.DragDropHandler = DragDropHandler;
         window.UndoManager = undoManager;
+        window.SitchMan = SitchMan;
+        window.TrackManager = TrackManager;
+        window.ViewMan = ViewMan;
+        window.CustomManager = CustomManager;
+        window.EventManager = EventManager;
+        window.NodeFactory = NodeFactory;
+        window.guiMenus = guiMenus;
+        window.newSitch = newSitch;
         window.toggleMotionAnalysis = toggleMotionAnalysis;
         window.getMotionAnalyzerForTesting = getMotionAnalyzerForTesting;
 

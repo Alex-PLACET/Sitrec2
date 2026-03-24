@@ -104,7 +104,7 @@ const handlers = {
     },
 
     sitrec_list_sitches() {
-        const SitchMan = window.Globals?.SitchMan;
+        const SitchMan = window.SitchMan;
         if (!SitchMan) {
             return { error: "SitchMan not available" };
         }
