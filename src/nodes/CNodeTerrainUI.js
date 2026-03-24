@@ -488,6 +488,7 @@ export class CNodeTerrainUI extends CNode {
                 this.terrainNode.loadMapTexture(v)
             })
             this.updateAttribution();
+            this.terrainNode.updateGreySphereVisibility();
         })
 
         this.debugElevationGrid = false;
