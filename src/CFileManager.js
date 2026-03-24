@@ -16,7 +16,6 @@ import {
     getDateTimeFilename,
     getFileExtension,
     isHttpOrHttps,
-    parseBoolean,
     updateDocumentTitle,
     versionString
 } from "./utils";
@@ -71,6 +70,7 @@ import {
 import {findColumn, stripDuplicateTimes} from "./ParseUtils";
 import {isConsole, isLocal, isServerless, SITREC_APP, SITREC_DOMAIN, SITREC_SERVER} from "./configUtils";
 import {TSParser} from "./TSParser";
+import {NITFParser} from "./NITFParser";
 import {showError, showErrorOnce} from "./showError";
 import {asyncOperationRegistry} from "./AsyncOperationRegistry";
 import {ECEFToLLAVD_radii} from "./LLA-ECEF-ENU";
@@ -3595,7 +3595,15 @@ export class CFileManager extends CManager {
                 return this.parseAsset(streamFilename, streamId, streamData, streamMetadata);
             });
         }
-        
+
+        // NITF files contain imagery + geolocation metadata, producing
+        // virtual image (→ video) and track (→ camera position) files
+        const fnLower = filename.toLowerCase();
+        if (fnLower.endsWith('.ntf') || fnLower.endsWith('.nitf') || NITFParser.isNITF(buffer)) {
+            console.log("NITF file detected: " + filename);
+            return NITFParser.parseNITFFile(filename, id, buffer);
+        }
+
         // similarly, if it's a zip file, then we need to extract the files
         // and then parse them
         // checking for a zip file by both extension and magic number in the first four bytes

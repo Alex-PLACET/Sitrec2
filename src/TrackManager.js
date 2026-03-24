@@ -719,7 +719,11 @@ class CTrackManager extends CManager {
 //        console.log("Sit.centerOnLoadedTracks: ", Sit.centerOnLoadedTracks, " Globals.dontAutoZoom: ", Globals.dontAutoZoom, " Globals.sitchEstablished: ", Globals.sitchEstablished)
 
 
-        if (Sit.centerOnLoadedTracks && !Globals.dontAutoZoom && !Globals.sitchEstablished) {
+        // Auto-center for tracks that define their own camera (e.g., NITF with geolocation)
+        const trackFile = FileManager.get(trackOb.trackFileName);
+        const forceCenter = trackFile && trackFile.autoSelectAsCamera;
+
+        if (Sit.centerOnLoadedTracks && !Globals.dontAutoZoom && (!Globals.sitchEstablished || forceCenter)) {
 
 
 //            console.log("Centering on loaded track ", shortName)
@@ -737,23 +741,39 @@ class CTrackManager extends CManager {
             const diagonal = bbox.max.clone().sub(bbox.min).length();
 
             const hfov = mainView.getHFOV();
-            // we want the camera height be enough to encompass the diagonal across the hfov
-            const cameraHeight = (diagonal * 1.25) / (2 * Math.tan(hfov / 2));
 
+            // Check if this is a high-altitude/orbital track (e.g., satellite at >10km)
+            const trackAltitude = center.clone().sub(ground).length();
 
-            // move the camera up by the cameraHeight
-            const up = getLocalUpVector(ground);
-            const cameraTarget = ground.clone().add(up.clone().multiplyScalar(cameraHeight));
-            // and move south by  the cameraHeight
-            const south = getLocalSouthVector(ground);
-            cameraTarget.add(south.clone().multiplyScalar(cameraHeight));
-            mainCamera.position.copy(cameraTarget);
+            if (trackAltitude > 10000) {
+                // Orbital track: center on the midpoint of the line from satellite to ground,
+                // and back the camera far enough to see the entire line
+                const midpoint = center.clone().add(ground).multiplyScalar(0.5);
+                const up = getLocalUpVector(midpoint);
+                const south = getLocalSouthVector(midpoint);
 
-            // set the up vector to the local up vector
-            mainCamera.up.copy(up);
+                // Camera distance: far enough to fit the full satellite-to-ground line in view
+                const cameraDistance = (trackAltitude / 2) / Math.tan(hfov / 2) * 1.1;
 
-            // and look at the ground point
-            mainCamera.lookAt(ground);
+                // Position camera to the south at midpoint height, looking at the midpoint
+                const cameraTarget = midpoint.clone().add(south.clone().multiplyScalar(cameraDistance));
+                mainCamera.position.copy(cameraTarget);
+                mainCamera.up.copy(up);
+                mainCamera.lookAt(midpoint);
+            } else {
+                // Standard track: position camera above and south of the ground point
+                const cameraHeight = Math.max(
+                    (diagonal * 1.25) / (2 * Math.tan(hfov / 2)),
+                    1000 // minimum 1km
+                );
+                const up = getLocalUpVector(ground);
+                const cameraTarget = ground.clone().add(up.clone().multiplyScalar(cameraHeight));
+                const south = getLocalSouthVector(ground);
+                cameraTarget.add(south.clone().multiplyScalar(cameraHeight));
+                mainCamera.position.copy(cameraTarget);
+                mainCamera.up.copy(up);
+                mainCamera.lookAt(ground);
+            }
 
             // since we've set the camera default postion for this track, store it
             // so calling mainCameraNode.resetCamera() will use these new values
@@ -898,6 +918,13 @@ class CTrackManager extends CManager {
                                     headingSwitch.selectOption("To Target");
                                 }
                             }
+                        }
+
+                        // Track files like NITF that define their own camera should auto-select
+                        // as the camera track, even after sitch is established
+                        const autoTrackFile = FileManager.get(trackOb.trackFileName);
+                        if (autoTrackFile && autoTrackFile.autoSelectAsCamera && switchNode.id === "cameraTrackSwitch") {
+                            switchNode.selectOption(shortName);
                         }
                     }
 
