@@ -186,12 +186,15 @@ export class NITFParser {
             pos += (isV21 ? 4 : 4) + 6; // LSSH(4)+LS(6)
         }
 
-        // Labels (NITF 2.0 only)
+        // Labels (NITF 2.0 only) / Reserved NUMX (NITF 2.1)
         if (isV20) {
             const numl = readInt(pos, 3); pos += 3;
             for (let i = 0; i < numl; i++) {
                 pos += 4 + 3; // LLSH(4)+LL(3)
             }
+        } else {
+            // NITF 2.1: NUMX is a reserved 3-byte field (always "000")
+            pos += 3;
         }
 
         // Text segments
@@ -503,13 +506,28 @@ export class NITFParser {
      * Supports uncompressed mono (8/16-bit), RGB, and LUT-based images.
      */
     static async imageToPNG(image) {
-        const {nrows, ncols, rawData, abpp, nbands, irep, pvtype, bands, imode} = image;
+        const {nrows, ncols, rawData, abpp, nbands, irep, pvtype, bands, imode,
+               nbpr, nbpc, nppbh, nppbv} = image;
+
+        // Handle compressed formats
+        if (image.ic === 'M3' || image.ic === 'C3') {
+            // Masked/non-masked JPEG — decode per-block using browser Image API
+            return this._decodeJPEGBlocked(image);
+        }
 
         if (image.ic !== 'NC' && image.ic !== 'NM') {
             console.warn(`NITFParser: Compressed NITF images (IC=${image.ic}) are not yet supported`);
             // Create a placeholder gray image
             return this._placeholderPNG(ncols, nrows, `Unsupported compression: ${image.ic}`);
         }
+
+        // De-block the raw data if image uses multiple blocks.
+        // Blocked images (NBPR > 1 or NBPC > 1) store pixels block-by-block
+        // rather than in raster order. Rearrange to raster order first.
+        const isBlocked = nbpr > 1 || nbpc > 1;
+        const pixelData = isBlocked
+            ? this._deblockData(rawData, nrows, ncols, nbpr, nbpc, nppbh, nppbv, nbands, abpp, imode)
+            : rawData;
 
         const canvas = document.createElement('canvas');
         canvas.width = ncols;
@@ -523,7 +541,7 @@ export class NITFParser {
             // ── Monochrome ───────────────────────────────────────
             if (abpp <= 8) {
                 for (let i = 0; i < pixelCount; i++) {
-                    const val = rawData[i] || 0;
+                    const val = pixelData[i] || 0;
                     rgba[i * 4] = val;
                     rgba[i * 4 + 1] = val;
                     rgba[i * 4 + 2] = val;
@@ -532,8 +550,8 @@ export class NITFParser {
             } else if (abpp <= 16) {
                 // 16-bit mono, big-endian (NITF standard byte order)
                 for (let i = 0; i < pixelCount; i++) {
-                    const hi = rawData[i * 2] || 0;
-                    const lo = rawData[i * 2 + 1] || 0;
+                    const hi = pixelData[i * 2] || 0;
+                    const lo = pixelData[i * 2 + 1] || 0;
                     const val16 = (hi << 8) | lo;
                     const val = Math.round(val16 * 255 / 65535);
                     rgba[i * 4] = val;
@@ -550,9 +568,9 @@ export class NITFParser {
                 // Band Interleaved by Pixel: RGBRGBRGB...
                 for (let i = 0; i < pixelCount; i++) {
                     const base = i * nbands * bpp;
-                    rgba[i * 4] = rawData[base];
-                    rgba[i * 4 + 1] = rawData[base + bpp];
-                    rgba[i * 4 + 2] = rawData[base + 2 * bpp];
+                    rgba[i * 4] = pixelData[base];
+                    rgba[i * 4 + 1] = pixelData[base + bpp];
+                    rgba[i * 4 + 2] = pixelData[base + 2 * bpp];
                     rgba[i * 4 + 3] = 255;
                 }
             } else if (imode === 'R') {
@@ -561,18 +579,18 @@ export class NITFParser {
                     for (let col = 0; col < ncols; col++) {
                         const px = row * ncols + col;
                         const rowBase = row * ncols * nbands * bpp;
-                        rgba[px * 4] = rawData[rowBase + col * bpp];
-                        rgba[px * 4 + 1] = rawData[rowBase + ncols * bpp + col * bpp];
-                        rgba[px * 4 + 2] = rawData[rowBase + 2 * ncols * bpp + col * bpp];
+                        rgba[px * 4] = pixelData[rowBase + col * bpp];
+                        rgba[px * 4 + 1] = pixelData[rowBase + ncols * bpp + col * bpp];
+                        rgba[px * 4 + 2] = pixelData[rowBase + 2 * ncols * bpp + col * bpp];
                         rgba[px * 4 + 3] = 255;
                     }
                 }
             } else {
                 // Band Sequential (S) or Block mode (B): full R plane, full G plane, full B plane
                 for (let i = 0; i < pixelCount; i++) {
-                    rgba[i * 4] = rawData[i * bpp];
-                    rgba[i * 4 + 1] = rawData[pixelCount * bpp + i * bpp];
-                    rgba[i * 4 + 2] = rawData[2 * pixelCount * bpp + i * bpp];
+                    rgba[i * 4] = pixelData[i * bpp];
+                    rgba[i * 4 + 1] = pixelData[pixelCount * bpp + i * bpp];
+                    rgba[i * 4 + 2] = pixelData[2 * pixelCount * bpp + i * bpp];
                     rgba[i * 4 + 3] = 255;
                 }
             }
@@ -580,7 +598,7 @@ export class NITFParser {
             // ── LUT-based ────────────────────────────────────────
             const luts = bands[0].luts;
             for (let i = 0; i < pixelCount; i++) {
-                const idx = rawData[i] || 0;
+                const idx = pixelData[i] || 0;
                 rgba[i * 4] = luts[0] ? luts[0][idx] : idx;
                 rgba[i * 4 + 1] = luts[1] ? luts[1][idx] : (luts[0] ? luts[0][idx] : idx);
                 rgba[i * 4 + 2] = luts[2] ? luts[2][idx] : (luts[0] ? luts[0][idx] : idx);
@@ -590,7 +608,7 @@ export class NITFParser {
             // ── Fallback: first band as grayscale ────────────────
             console.warn(`NITFParser: Unsupported image representation: ${irep} with ${nbands} bands, using first band as grayscale`);
             for (let i = 0; i < pixelCount; i++) {
-                const val = rawData[i] || 0;
+                const val = pixelData[i] || 0;
                 rgba[i * 4] = val;
                 rgba[i * 4 + 1] = val;
                 rgba[i * 4 + 2] = val;
@@ -602,6 +620,205 @@ export class NITFParser {
 
         const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
         return await blob.arrayBuffer();
+    }
+
+    /**
+     * Rearrange blocked NITF pixel data into raster order.
+     * Blocked images store pixels in block-major order:
+     *   Block(0,0), Block(0,1), ..., Block(1,0), Block(1,1), ...
+     * Each block contains NPPBH × NPPBV pixels in row-major order.
+     * For IMODE='B' with multiple bands, each block stores all bands sequentially.
+     */
+    static _deblockData(rawData, nrows, ncols, nbpr, nbpc, nppbh, nppbv, nbands, abpp) {
+        const bpp = Math.ceil(abpp / 8); // bytes per pixel per band
+        const blockPixels = nppbh * nppbv;
+        const blockBytes = blockPixels * bpp * nbands;
+        const raster = new Uint8Array(nrows * ncols * bpp * nbands);
+
+        for (let bRow = 0; bRow < nbpc; bRow++) {
+            for (let bCol = 0; bCol < nbpr; bCol++) {
+                const blockIdx = bRow * nbpr + bCol;
+                const blockOffset = blockIdx * blockBytes;
+                const pixRowStart = bRow * nppbv;
+                const pixColStart = bCol * nppbh;
+
+                for (let band = 0; band < nbands; band++) {
+                    const bandOffset = blockOffset + band * blockPixels * bpp;
+                    const rasterBandOffset = band * nrows * ncols * bpp;
+
+                    for (let ly = 0; ly < nppbv; ly++) {
+                        const globalRow = pixRowStart + ly;
+                        if (globalRow >= nrows) break; // partial block at bottom edge
+                        const srcStart = bandOffset + ly * nppbh * bpp;
+                        const dstStart = rasterBandOffset + (globalRow * ncols + pixColStart) * bpp;
+                        const copyLen = Math.min(nppbh, ncols - pixColStart) * bpp;
+                        raster.set(rawData.subarray(srcStart, srcStart + copyLen), dstStart);
+                    }
+                }
+            }
+        }
+
+        return raster;
+    }
+
+    /**
+     * Decode a JPEG-compressed NITF image (IC='C3' or 'M3').
+     * M3 = masked blocked JPEG: has a block offset table followed by per-block JPEG codestreams.
+     * C3 = non-masked blocked JPEG: blocks stored contiguously, delimited by JPEG SOI/EOI markers.
+     */
+    static async _decodeJPEGBlocked(image) {
+        const {nrows, ncols, rawData, nbpr, nbpc, nppbh, nppbv} = image;
+        const isMasked = image.ic === 'M3';
+        const nblocks = nbpr * nbpc;
+
+        // Browser canvas limits: max ~128M pixels to be safe across browsers.
+        // Downscale if the image exceeds this.
+        const MAX_PIXELS = 128 * 1024 * 1024;
+        const MAX_DIM = 16384;
+        let scale = 1;
+        if (nrows * ncols > MAX_PIXELS) {
+            scale = Math.sqrt(MAX_PIXELS / (nrows * ncols));
+        }
+        if (nrows * scale > MAX_DIM) scale = MAX_DIM / nrows;
+        if (ncols * scale > MAX_DIM) scale = MAX_DIM / ncols;
+
+        const outW = Math.round(ncols * scale);
+        const outH = Math.round(nrows * scale);
+        if (scale < 1) {
+            console.log(`NITFParser: Downscaling ${ncols}×${nrows} → ${outW}×${outH} (scale ${scale.toFixed(3)})`);
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = outW;
+        canvas.height = outH;
+        const ctx = canvas.getContext('2d');
+
+        // Fill with black so masked blocks appear black, not white
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, outW, outH);
+
+        // For masked images, parse the block mask table
+        let blockRanges; // array of {start, length} or null for masked blocks
+        if (isMasked) {
+            blockRanges = this._parseMaskedBlockTable(rawData, nblocks);
+        } else {
+            blockRanges = this._scanJPEGBlocks(rawData, nblocks);
+        }
+
+        // Decode each block and paint onto canvas (scaled)
+        const decodePromises = [];
+        for (let i = 0; i < nblocks; i++) {
+            if (!blockRanges[i]) continue; // masked block
+
+            const {start, length} = blockRanges[i];
+            const jpegData = rawData.subarray(start, start + length);
+            const bCol = i % nbpr;
+            const bRow = Math.floor(i / nbpr);
+            const x = Math.round(bCol * nppbh * scale);
+            const y = Math.round(bRow * nppbv * scale);
+            const w = Math.round(nppbh * scale);
+            const h = Math.round(nppbv * scale);
+
+            // Decode JPEG using browser's native Image API
+            decodePromises.push(this._decodeJPEGBlock(jpegData, ctx, x, y, w, h));
+        }
+
+        await Promise.all(decodePromises);
+
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        return await blob.arrayBuffer();
+    }
+
+    /** Parse the M3 block mask offset table and return per-block data ranges. */
+    static _parseMaskedBlockTable(rawData, nblocks) {
+        const view = new DataView(rawData.buffer, rawData.byteOffset, rawData.byteLength);
+        let pos = 0;
+
+        const imdatoff = view.getUint32(pos); pos += 4;
+        const bmrlnth = view.getUint16(pos); pos += 2;
+        // tmrlnth(2) + tpxcdlnth(2) — skip for now
+        pos += 4;
+
+        // Read block offsets (each bmrlnth bytes, typically 4 = uint32)
+        const blockOffsets = [];
+        for (let i = 0; i < nblocks; i++) {
+            blockOffsets.push(bmrlnth === 4 ? view.getUint32(pos) : 0);
+            pos += bmrlnth || 4;
+        }
+
+        // Build sorted list of valid (non-masked) offsets for size calculation
+        const MASKED = 0xFFFFFFFF;
+        const validOffsets = blockOffsets
+            .filter(o => o !== MASKED)
+            .sort((a, b) => a - b);
+        // End sentinel: total compressed data length
+        const compDataLen = rawData.byteLength - imdatoff;
+        validOffsets.push(compDataLen);
+
+        const ranges = [];
+        for (let i = 0; i < nblocks; i++) {
+            if (blockOffsets[i] === MASKED) {
+                ranges.push(null);
+                continue;
+            }
+            const startInComp = blockOffsets[i];
+            const nextIdx = validOffsets.indexOf(startInComp) + 1;
+            const endInComp = validOffsets[nextIdx];
+            ranges.push({
+                start: imdatoff + startInComp,
+                length: endInComp - startInComp
+            });
+        }
+        return ranges;
+    }
+
+    /** Scan contiguous JPEG codestreams (for non-masked C3 images). */
+    static _scanJPEGBlocks(rawData, nblocks) {
+        const ranges = [];
+        let pos = 0;
+        for (let i = 0; i < nblocks; i++) {
+            // Find SOI marker (FFD8)
+            if (pos + 2 > rawData.length || rawData[pos] !== 0xFF || rawData[pos + 1] !== 0xD8) {
+                ranges.push(null);
+                continue;
+            }
+            const start = pos;
+            // Scan for EOI marker (FFD9) — safe because JPEG byte-stuffs 0xFF in entropy data
+            pos += 2;
+            while (pos + 1 < rawData.length) {
+                if (rawData[pos] === 0xFF && rawData[pos + 1] === 0xD9) {
+                    pos += 2;
+                    break;
+                }
+                pos++;
+            }
+            ranges.push({start, length: pos - start});
+        }
+        return ranges;
+    }
+
+    /** Decode a single JPEG block and draw it onto the canvas at (x, y) with optional scaling. */
+    static _decodeJPEGBlock(jpegData, ctx, x, y, w, h) {
+        const blob = new Blob([jpegData], {type: 'image/jpeg'});
+        const url = URL.createObjectURL(blob);
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+                if (w !== undefined && h !== undefined) {
+                    ctx.drawImage(img, x, y, w, h);
+                } else {
+                    ctx.drawImage(img, x, y);
+                }
+                URL.revokeObjectURL(url);
+                resolve();
+            };
+            img.onerror = () => {
+                console.warn(`NITFParser: Failed to decode JPEG block at (${x}, ${y})`);
+                URL.revokeObjectURL(url);
+                resolve(); // don't reject — leave the block blank
+            };
+            img.src = url;
+        });
     }
 
     /** Create a placeholder PNG for unsupported compression modes */

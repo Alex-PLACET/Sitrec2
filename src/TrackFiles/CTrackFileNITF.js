@@ -63,26 +63,83 @@ export class CTrackFileNITF extends CTrackFile {
         this.gsdX = this.imageWidth > 0 ? this.groundWidth / this.imageWidth : 1;
         this.gsdY = this.imageHeight > 0 ? this.groundHeight / this.imageHeight : 1;
 
-        // Use a typical GEOINT satellite altitude, then compute the FOV
-        // needed to fit the image footprint from that altitude.
-        // When TREs with real sensor data are present, those should override these estimates.
-        this.sensorAltitude = this._estimateAltitude();
+        // Try to extract real sensor data from TREs
+        this.sensorData = this._parseENGRDA() || {};
+
+        if (this.sensorData.imuLatitude !== undefined) {
+            // Real sensor position from ENGRDA TRE
+            this.sensorLat = this.sensorData.imuLatitude;
+            this.sensorLon = this.sensorData.imuLongitude;
+            // ENGRDA altitude is typically in feet
+            this.sensorAltitude = this.sensorData.imuAltitude * 0.3048;
+            this.platformHeading = this.sensorData.imuYaw || 0;
+            this.platformPitch = this.sensorData.imuPitch || 0;
+            this.platformRoll = this.sensorData.imuRoll || 0;
+            console.log(`CTrackFileNITF: ENGRDA sensor at (${this.sensorLat.toFixed(6)}, ${this.sensorLon.toFixed(6)}) ` +
+                `alt=${this.sensorAltitude.toFixed(0)}m heading=${this.platformHeading.toFixed(1)}° ` +
+                `pitch=${this.platformPitch.toFixed(1)}° roll=${this.platformRoll.toFixed(1)}°`);
+        } else {
+            // Fallback: assume satellite at 500 km, nadir view
+            this.sensorLat = this.centerLat;
+            this.sensorLon = this.centerLon;
+            this.sensorAltitude = 500000;
+            this.platformHeading = 0;
+            this.platformPitch = 0;
+            this.platformRoll = 0;
+        }
+
         this.sensorFOV = this._computeFOVFromAltitude();
 
         console.log(`CTrackFileNITF: center=(${this.centerLat.toFixed(6)}, ${this.centerLon.toFixed(6)}) ` +
             `ground=${this.groundWidth.toFixed(1)}x${this.groundHeight.toFixed(1)}m ` +
             `GSD=${this.gsdX.toFixed(3)}x${this.gsdY.toFixed(3)}m ` +
-            `est. alt=${this.sensorAltitude.toFixed(0)}m FOV=${this.sensorFOV.toFixed(4)}°`);
+            `alt=${this.sensorAltitude.toFixed(0)}m FOV=${this.sensorFOV.toFixed(4)}°`);
     }
 
     /**
-     * Estimate sensor altitude. Uses a typical GEOINT satellite altitude (~500 km).
-     * Real altitude would come from SENSRB or RPC TREs if present.
+     * Parse ENGRDA TRE to extract sensor position and orientation.
+     * Returns object with imuLatitude, imuLongitude, imuAltitude, imuYaw, imuPitch, imuRoll
+     * or null if ENGRDA is not present.
      */
-    _estimateAltitude() {
-        // TODO: extract from TREs (SENSRB, USE00A) when available
-        // Default: typical reconnaissance/commercial satellite orbit
-        return 500000; // 500 km in meters
+    _parseENGRDA() {
+        const tre = this.tres && this.tres['ENGRDA'];
+        if (!tre || !tre.raw) return null;
+
+        const raw = tre.raw;
+        const readStr = (pos, len) => {
+            let str = '';
+            for (let i = 0; i < len && pos + i < raw.length; i++) {
+                str += String.fromCharCode(raw[pos + i]);
+            }
+            return str;
+        };
+
+        try {
+            let pos = 0;
+            pos += 20; // RESRC
+            const recnt = parseInt(readStr(pos, 3).trim(), 10); pos += 3;
+            const result = {};
+
+            for (let r = 0; r < recnt && pos < raw.length; r++) {
+                const engln = parseInt(readStr(pos, 2).trim(), 10); pos += 2;
+                const englbl = readStr(pos, engln).trim(); pos += engln;
+                pos += 4 + 4; // ENGMTXC + ENGMTXR
+                const engtyp = readStr(pos, 1); pos += 1;
+                pos += 1; // ENGDTS
+                pos += 2; // ENGDATU
+                const engdatc = parseInt(readStr(pos, 8).trim(), 10); pos += 8;
+                const engdata = readStr(pos, engdatc).trim(); pos += engdatc;
+
+                if (engtyp === 'A') {
+                    const num = parseFloat(engdata);
+                    result[englbl] = isNaN(num) ? engdata : num;
+                }
+            }
+            return Object.keys(result).length > 0 ? result : null;
+        } catch (e) {
+            console.warn('CTrackFileNITF: Failed to parse ENGRDA TRE:', e);
+            return null;
+        }
     }
 
     /**
@@ -115,18 +172,18 @@ export class CTrackFileNITF extends CTrackFile {
             const row = new Array(MISBFields).fill(null);
 
             row[MISB.UnixTimeStamp] = ts;
-            row[MISB.SensorLatitude] = this.centerLat;
-            row[MISB.SensorLongitude] = this.centerLon;
+            row[MISB.SensorLatitude] = this.sensorLat;
+            row[MISB.SensorLongitude] = this.sensorLon;
             row[MISB.SensorTrueAltitude] = this.sensorAltitude;
 
-            // Platform is level (typical satellite orientation)
-            row[MISB.PlatformHeadingAngle] = 0;   // North-aligned
-            row[MISB.PlatformPitchAngle] = 0;     // Level flight
-            row[MISB.PlatformRollAngle] = 0;
+            // Platform orientation (from ENGRDA if available, else default nadir)
+            row[MISB.PlatformHeadingAngle] = this.platformHeading;
+            row[MISB.PlatformPitchAngle] = this.platformPitch;
+            row[MISB.PlatformRollAngle] = this.platformRoll;
 
-            // Sensor/gimbal points straight down from the level platform
+            // Sensor/gimbal points straight down from the platform body
             row[MISB.SensorRelativeAzimuthAngle] = 0;
-            row[MISB.SensorRelativeElevationAngle] = -90;  // Nadir
+            row[MISB.SensorRelativeElevationAngle] = -90;
             row[MISB.SensorRelativeRollAngle] = 0;
 
             // FOV scaled by aspect ratio
