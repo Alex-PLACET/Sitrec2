@@ -393,7 +393,11 @@ class MetaBezierCurveEditor {
                 // and g.w,g.h is the width and height of the graph in canvas pixels
 
                 if (canvasWidth <= 58 || canvasHeight <= 54) {
-                    console.warn("MetaBezierCurveEditor: canvas is too small", canvasWidth, canvasHeight);
+                    // Only warn when neither dimension is 0 — zero means the canvas
+                    // hasn't been laid out yet (transitional state, not a real problem).
+                    if (canvasWidth > 0 && canvasHeight > 0) {
+                        console.warn("MetaBezierCurveEditor: canvas is too small", canvasWidth, canvasHeight);
+                    }
                     this.g = {x: 0, y: 0, w: Math.max(1, canvasWidth), h: Math.max(1, canvasHeight)};
                     return;
                 }

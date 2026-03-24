@@ -912,17 +912,21 @@ export class CNodeView3D extends CNodeViewCanvas {
     }
 
     setupRenderPipeline(v) {
-        this.setFromDiv(this.div); // This will set the widthDiv, heightDiv
+        // Use dimensions already computed by CNodeView constructor's updateWH().
+        // Do NOT read from DOM via setFromDiv here — the browser may not have
+        // completed layout yet, which causes intermittent zero dimensions and
+        // NaN propagation into WebGL (renderbuffer/framebuffer errors).
+        // The per-frame render loop calls setFromDiv to pick up later changes.
+        this.widthDiv = this.widthPx;
+        this.heightDiv = this.heightPx;
 
         // Determine canvas dimensions
         if (this.in.canvasWidth !== undefined) {
             this.widthPx = this.in.canvasWidth.v0;
             this.heightPx = this.in.canvasHeight.v0;
         } else {
-            // widthDiv may be undefined if setFromDiv bailed (div not yet laid out).
-            // Use a minimum of 1 to avoid zero-size WebGL resources.
-            this.widthPx = (this.widthDiv || 1) * window.devicePixelRatio;
-            this.heightPx = (this.heightDiv || 1) * window.devicePixelRatio;
+            this.widthPx = this.widthDiv * window.devicePixelRatio;
+            this.heightPx = this.heightDiv * window.devicePixelRatio;
         }
 
         // Apply resolution scaling for side-by-side rendering on integrated GPU

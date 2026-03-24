@@ -411,8 +411,7 @@ class CNodeView extends CNode {
     setFromDiv(div) {
 
         if (div.clientWidth === 0 || div.clientHeight === 0) {
-            // div is not visible, so don't do anything
-//            console.warn("Div has no size in "+this.id+" possibly hidden or not in DOM")
+            // div is not visible, so don't update — keep last known valid dimensions
             return;
         }
 
