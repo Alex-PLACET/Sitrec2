@@ -173,6 +173,18 @@ export async function setupConfigPaths() {
         SITREC_CUSTOM_TLE_TOOLTIP: getEnv("SITREC_CUSTOM_TLE_TOOLTIP", process.env.SITREC_CUSTOM_TLE_TOOLTIP),
         SITREC_ENABLE_DEFAULT_TLE_SOURCES: getEnv("SITREC_ENABLE_DEFAULT_TLE_SOURCES", process.env.SITREC_ENABLE_DEFAULT_TLE_SOURCES),
     };
+
+    // Merge custom map/elevation source vars injected at build time by DefinePlugin.
+    // These are collected from shared.env by webpack.common.js as a JSON blob because
+    // dotenv-webpack can't handle dynamic key iteration — only literal process.env.X works.
+    try {
+        const customSources = JSON.parse(process.env.SITREC_CUSTOM_SOURCES || '{}');
+        for (const [key, value] of Object.entries(customSources)) {
+            Globals.env[key] = getEnv(key, value);
+        }
+    } catch (e) {
+        console.warn("Failed to parse SITREC_CUSTOM_SOURCES:", e);
+    }
     
     // log all the exported variables in serverless mode
     console.log("SITREC_DOMAIN: ", SITREC_DOMAIN);

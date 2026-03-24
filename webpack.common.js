@@ -250,6 +250,16 @@ ${bodyContent}
             'process.env.DOCKER_BUILD': JSON.stringify(process.env.DOCKER_BUILD === 'true'),
             'CAN_REQUIRE_CONTEXT': JSON.stringify(true),
             'INCLUDE_IWER_EMULATOR': JSON.stringify(env.includeIWER !== false),
+            // Collect all SITREC_CUSTOM_MAP_* and SITREC_CUSTOM_ELEVATION_* vars from shared.env
+            // as a JSON blob so serverless builds can iterate them at runtime (dotenv-webpack
+            // only replaces literal process.env.X references, not dynamic key access).
+            'process.env.SITREC_CUSTOM_SOURCES': JSON.stringify(JSON.stringify(
+                Object.fromEntries(
+                    Object.entries(result.parsed || {}).filter(([k]) =>
+                        k.startsWith('SITREC_CUSTOM_MAP_') || k.startsWith('SITREC_CUSTOM_ELEVATION_')
+                    )
+                )
+            )),
         }),
 
         // Write build-version.txt so the app can detect stale cached index.html

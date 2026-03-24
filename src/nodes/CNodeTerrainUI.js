@@ -295,6 +295,30 @@ export class CNodeTerrainUI extends CNode {
             }
         }
 
+        // Add custom map sources from SITREC_CUSTOM_MAP_<NAME>_* env vars.
+        // Scans Globals.env for keys matching SITREC_CUSTOM_MAP_<NAME>_URL,
+        // groups related properties by <NAME>, and creates a source entry for each.
+        if (Globals.env) {
+            for (const key in Globals.env) {
+                const match = key.match(/^SITREC_CUSTOM_MAP_(.+)_URL$/);
+                if (match && Globals.env[key]) {
+                    const name = match[1];
+                    const prefix = `SITREC_CUSTOM_MAP_${name}_`;
+                    const template = Globals.env[key];
+                    const sourceKey = `CustomMap_${name}`;
+                    this.mapSources[sourceKey] = {
+                        name: Globals.env[prefix + 'NAME'] || `Custom Map (${name})`,
+                        mapURL: (z, x, y) => template.replace('{z}', z).replace('{x}', x).replace('{y}', y),
+                        maxZoom: parseInt(Globals.env[prefix + 'MAX_ZOOM']) || 20,
+                        attribution: Globals.env[prefix + 'ATTRIBUTION'] || "",
+                        termsURL: Globals.env[prefix + 'TERMS_URL'] || "",
+                        allowInServerless: true,
+                    };
+                    console.log(`Added custom map source from env: ${sourceKey}`, this.mapSources[sourceKey].name);
+                }
+            }
+        }
+
         if (isServerless) {
             this.mapSources = filterSourcesForServerless(this.mapSources);
         }
@@ -375,6 +399,34 @@ export class CNodeTerrainUI extends CNode {
                 termsURL: "https://github.com/tilezen/joerd/blob/master/docs/attribution.md",
             }
         }
+        // Add custom elevation sources from SITREC_CUSTOM_ELEVATION_<NAME>_* env vars.
+        if (Globals.env) {
+            for (const key in Globals.env) {
+                const match = key.match(/^SITREC_CUSTOM_ELEVATION_(.+)_URL$/);
+                if (match && Globals.env[key]) {
+                    const name = match[1];
+                    const prefix = `SITREC_CUSTOM_ELEVATION_${name}_`;
+                    const template = Globals.env[key];
+                    const sourceKey = `CustomElevation_${name}`;
+                    const source = {
+                        name: Globals.env[prefix + 'NAME'] || `Custom Elevation (${name})`,
+                        mapURL: (z, x, y) => template.replace('{z}', z).replace('{x}', x).replace('{y}', y),
+                        maxZoom: parseInt(Globals.env[prefix + 'MAX_ZOOM']) || 15,
+                        minZoom: 0,
+                        tileSize: 256,
+                        attribution: Globals.env[prefix + 'ATTRIBUTION'] || "",
+                        termsURL: Globals.env[prefix + 'TERMS_URL'] || "",
+                        allowInServerless: true,
+                    };
+                    if (Globals.env[prefix + 'MAPPING']) {
+                        source.mapping = parseInt(Globals.env[prefix + 'MAPPING']);
+                    }
+                    this.elevationSources[sourceKey] = source;
+                    console.log(`Added custom elevation source from env: ${sourceKey}`, source.name);
+                }
+            }
+        }
+
         if (isServerless) {
             this.elevationSources = filterSourcesForServerless(this.elevationSources);
         }

@@ -59,6 +59,13 @@ CESIUM_ION_TOKEN
 GOOGLE_MAPS_API_KEY
 "
 
+# Dynamically add any SITREC_CUSTOM_MAP_* and SITREC_CUSTOM_ELEVATION_* env vars
+# so custom map/elevation sources with arbitrary names are forwarded to the browser.
+for var in $(env | grep -oE '^SITREC_CUSTOM_(MAP|ELEVATION)_[^=]+'); do
+    CLIENT_VARS="$CLIENT_VARS
+$var"
+done
+
 # ---------------------------------------------------------------------------
 # SERVER_VARS: secrets and server-only config. Written to shared.env.php
 # for PHP but NEVER injected into index.html.

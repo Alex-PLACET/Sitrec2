@@ -3,8 +3,8 @@ import {pointAbove} from "../threeExt";
 import {cos, radians} from "../utils";
 import {Globals, NodeMan, Sit} from "../Globals";
 import {ECEFToLLAVD_radii, RLLAToECEF_radii, RLLAToECEFV_Sphere} from "../LLA-ECEF-ENU";
-import {earthCenterECEF, setAltitudeHAE} from "../SphericalMath";
-import {Group, Mesh, MeshBasicMaterial, Raycaster, SphereGeometry} from "three";
+import {setAltitudeHAE} from "../SphericalMath";
+import {BufferGeometry, DoubleSide, Float32BufferAttribute, Group, Mesh, MeshBasicMaterial, Raycaster} from "three";
 import {GlobalScene} from "../LocalFrame";
 import {assert} from "../assert";
 import {CTileMappingGoogleCRS84Quad, CTileMappingGoogleMapsCompatible} from "../WMSUtils";
@@ -18,6 +18,61 @@ import {CNodeViewUI} from "./CNodeViewUI";
 import {isLocal} from "../configUtils";
 
 const terrainGUIColor = "#c0ffc0";
+
+// Web Mercator (EPSG:3857) maximum latitude — atan(sinh(π)) ≈ 85.0511°
+const MERCATOR_MAX_LAT_DEG = Math.atan(Math.sinh(Math.PI)) * 180 / Math.PI;
+
+// Create a BufferGeometry cap that follows the WGS84 ellipsoid surface
+// from the Mercator latitude limit to the pole.
+function createPolarCapGeometry(isNorth, lonSegments = 64, latSteps = 8) {
+    const positions = [];
+    const indices = [];
+
+    const latEdge = isNorth ? MERCATOR_MAX_LAT_DEG : -MERCATOR_MAX_LAT_DEG;
+    const latPole = isNorth ? 90 : -90;
+    const DEG2RAD = Math.PI / 180;
+    const vertsPerRing = lonSegments + 1;
+
+    // Generate ring vertices from Mercator edge toward pole
+    for (let i = 0; i < latSteps; i++) {
+        const t = i / latSteps;
+        const lat = latEdge + t * (latPole - latEdge);
+        const latRad = lat * DEG2RAD;
+        for (let j = 0; j <= lonSegments; j++) {
+            const lon = (j / lonSegments) * 360 - 180;
+            const pos = RLLAToECEF_radii(latRad, lon * DEG2RAD, 0);
+            positions.push(pos.x, pos.y, pos.z);
+        }
+    }
+
+    // Single pole vertex
+    const polePos = RLLAToECEF_radii(latPole * DEG2RAD, 0, 0);
+    positions.push(polePos.x, polePos.y, polePos.z);
+    const poleIdx = latSteps * vertsPerRing;
+
+    // Quad faces between adjacent rings
+    for (let i = 0; i < latSteps - 1; i++) {
+        for (let j = 0; j < lonSegments; j++) {
+            const a = i * vertsPerRing + j;
+            const b = a + 1;
+            const c = (i + 1) * vertsPerRing + j;
+            const d = c + 1;
+            indices.push(a, b, d);
+            indices.push(a, d, c);
+        }
+    }
+
+    // Fan from last ring to pole
+    const lastRingStart = (latSteps - 1) * vertsPerRing;
+    for (let j = 0; j < lonSegments; j++) {
+        indices.push(lastRingStart + j, lastRingStart + j + 1, poleIdx);
+    }
+
+    const geometry = new BufferGeometry();
+    geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
+    geometry.setIndex(indices);
+    return geometry;
+}
 
 /*
  * A terrain is composed of two parts:
@@ -120,29 +175,16 @@ export class CNodeTerrain extends CNode {
         this.group = new Group();
         GlobalScene.add(this.group);
 
-        // Create a grey ellipsoid positioned at the centre of the Earth.
-        // Semi-axes are 1 km smaller than the earth model radii to prevent z-fighting.
-        // A unit sphere is scaled non-uniformly: equatorial (a) on X/Z, polar (b) on Y.
-        // The local Y axis (polar) is then rotated so it points along the actual Earth
-        // rotation axis in ECEF space: R_x(lat − 90°) maps Y → (0, sin(lat), −cos(lat)).
-        // Degenerates to a sphere when polarRadius === equatorRadius.
-        // Only visible when Globals.dynamicSubdivision is true.
-        const greySphereGeometry = new SphereGeometry(1, 32, 32);
-        const greySphereMaterial = new MeshBasicMaterial({ color: 0x808080 }); // Grey
-        this.greySphere = new Mesh(greySphereGeometry, greySphereMaterial);
-        this.greySphere.scale.set(
-            Globals.equatorRadius - 1000,  // X – equatorial semi-axis
-            Globals.polarRadius  - 1000,   // Y – polar semi-axis (before rotation)
-            Globals.equatorRadius - 1000   // Z – equatorial semi-axis
-        );
-        // Rotate so the polar (local-Y) axis aligns with the Earth's rotation axis.
-        // In ECEF the polar axis is always Z, so rotate Y→+Z with +π/2 about X.
-        // (In old EUS this was latitude-dependent: Sit.lat * π/180 - π/2)
-        this.greySphere.rotation.x = Math.PI / 2;
-        // Position at the true Earth centre (ECEF origin).
-        this.greySphere.position.copy(earthCenterECEF());
-        this.greySphere.visible = Globals.dynamicSubdivision === true;
-        GlobalScene.add(this.greySphere);
+        // Create grey polar caps covering the regions beyond Web Mercator's
+        // latitude limit (~±85.05°). These sit on the ellipsoid surface so they
+        // don't z-fight with tiles the way a full undersized sphere did.
+        const capMaterial = new MeshBasicMaterial({ color: 0x808080, side: DoubleSide });
+        this.polarCapNorth = new Mesh(createPolarCapGeometry(true), capMaterial);
+        this.polarCapSouth = new Mesh(createPolarCapGeometry(false), capMaterial.clone());
+        this.polarCapNorth.visible = Globals.dynamicSubdivision === true;
+        this.polarCapSouth.visible = Globals.dynamicSubdivision === true;
+        GlobalScene.add(this.polarCapNorth);
+        GlobalScene.add(this.polarCapSouth);
 
         // // DEBUG: Create test spheres to verify rendering in VR
         // const testSphereRadius = 10; // 10m radius
@@ -349,13 +391,16 @@ export class CNodeTerrain extends CNode {
             this.group = undefined;
         }
 
-        // Clean up the grey sphere
-        if (this.greySphere !== undefined) {
-            GlobalScene.remove(this.greySphere);
-            this.greySphere.geometry.dispose();
-            this.greySphere.material.dispose();
-            this.greySphere = undefined;
+        // Clean up polar caps
+        for (const cap of [this.polarCapNorth, this.polarCapSouth]) {
+            if (cap !== undefined) {
+                GlobalScene.remove(cap);
+                cap.geometry.dispose();
+                cap.material.dispose();
+            }
         }
+        this.polarCapNorth = undefined;
+        this.polarCapSouth = undefined;
 
         // Clean up test spheres
         if (this.testSphereRed !== undefined) {
@@ -392,21 +437,12 @@ export class CNodeTerrain extends CNode {
     }
 
     updateGreySphereVisibility() {
-        // Grey sphere should only be visible when dynamic subdivision is on
+        // Polar caps should only be visible when dynamic subdivision is on
         // and 3D tiles are not active (they provide their own ground surface).
-        // Check the UI node's buildingsNode directly for the most reliable state.
-        if (this.greySphere) {
-            const has3DTiles = !!(this.UI?.buildingsNode);
-            this.greySphere.visible = Globals.dynamicSubdivision === true
-                && !has3DTiles;
-            // Sync scale, rotation and position with the active earth model.
-            this.greySphere.scale.set(
-                Globals.equatorRadius - 1000,
-                Globals.polarRadius  - 1000,
-                Globals.equatorRadius - 1000
-            );
-            this.greySphere.rotation.x = Math.PI / 2;
-            this.greySphere.position.copy(earthCenterECEF());
+        const has3DTiles = !!(this.UI?.buildingsNode);
+        const visible = Globals.dynamicSubdivision === true && !has3DTiles;
+        for (const cap of [this.polarCapNorth, this.polarCapSouth]) {
+            if (cap) cap.visible = visible;
         }
     }
 
