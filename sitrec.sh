@@ -133,8 +133,52 @@ for t in tags:
 
         # Show current version
         CURRENT=$(grep "image:" docker-compose.yml | sed "s|.*${IMAGE}:||" | tr -d ' ')
+
+        # When pinned to 'latest', resolve the actual locally-installed version
+        # by comparing the local image digest against remote tag digests.
+        LOCAL_VERSION=""
+        if [ "$CURRENT" = "latest" ]; then
+            case "$COMPOSE" in
+                docker*)  RUNTIME_CMD="docker" ;;
+                *)        RUNTIME_CMD="podman" ;;
+            esac
+            LOCAL_DIGEST=$($RUNTIME_CMD image inspect "${IMAGE}:latest" \
+                --format '{{index .RepoDigests 0}}' 2>/dev/null \
+                | sed 's/.*@//' || true)
+            if [ -n "$LOCAL_DIGEST" ]; then
+                if [ -n "$LATEST_DIGEST" ] && [ "$LOCAL_DIGEST" = "$LATEST_DIGEST" ]; then
+                    LOCAL_VERSION="$LATEST_VERSION"
+                else
+                    # Local image differs from remote latest — check recent tags
+                    _lc=0
+                    while IFS= read -r _ltag; do
+                        [ $_lc -ge 10 ] && break
+                        _ld=$(curl -sf -I -H "$AUTH_HDR" -H "$ACCEPT_HDR" \
+                            "$MANIFEST_URL/$_ltag" 2>/dev/null \
+                            | grep -i docker-content-digest | awk '{print $2}' | tr -d '\r' || true)
+                        if [ "$_ld" = "$LOCAL_DIGEST" ]; then
+                            LOCAL_VERSION="$_ltag"
+                            break
+                        fi
+                        _lc=$((_lc + 1))
+                    done <<< "$TAGS"
+                fi
+            fi
+        fi
+
         echo ""
-        echo "  Current: $CURRENT"
+        if [ "$CURRENT" = "latest" ]; then
+            if [ -n "$LOCAL_VERSION" ]; then
+                echo "  Installed: $LOCAL_VERSION (pinned to latest)"
+                if [ -n "$LATEST_VERSION" ] && [ "$LOCAL_VERSION" != "$LATEST_VERSION" ]; then
+                    echo "  Available: $LATEST_VERSION  ← run ./sitrec.sh pull to update"
+                fi
+            else
+                echo "  Current: latest (could not determine installed version)"
+            fi
+        else
+            echo "  Current: $CURRENT"
+        fi
         echo ""
 
         # If latest didn't match any version tag, show it as a separate entry
@@ -149,8 +193,8 @@ for t in tags:
             if [ -n "$LATEST_VERSION" ] && [ "$tag" = "$LATEST_VERSION" ]; then
                 LABEL="$tag (latest)"
             fi
-            if [ "$tag" = "$CURRENT" ] || { [ "$CURRENT" = "latest" ] && [ "$tag" = "$LATEST_VERSION" ]; }; then
-                printf "  %2d) %s  <-- current\n" "$i" "$LABEL"
+            if [ "$tag" = "$CURRENT" ] || { [ "$CURRENT" = "latest" ] && [ "$tag" = "${LOCAL_VERSION:-$LATEST_VERSION}" ]; }; then
+                printf "  %2d) %s  <-- installed\n" "$i" "$LABEL"
             else
                 printf "  %2d) %s\n" "$i" "$LABEL"
             fi
