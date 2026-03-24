@@ -52,7 +52,7 @@ export class CNodeDisplayLOS extends CNode3DGroup {
 
         this.recalculate()
 
-        this.showHider("Lines of Sight", "o");
+        this.showHider("Lines of Sight", "o", "Show lines of sight from camera to target (toggle: O)");
     }
 
     // we update the positions of the spheres every frame

@@ -108,6 +108,7 @@ export class CUnits {
         this.changeUnits(this.units);
         if(guiPhysics)
             guiPhysics.add(this, "unitsName", this.selectableUnits).name("Units")
+                .tooltip("Unit system for speed, distance, and altitude displays")
                 .listen()
                 .perm()
                 .onChange(x => this.changeUnits(x,false));

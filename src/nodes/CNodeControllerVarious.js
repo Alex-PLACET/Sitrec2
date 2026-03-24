@@ -657,7 +657,7 @@ export class CNodeControllerCelestial extends CNodeController {
         this.lastValidObject = this.celestialObject;
         this.setGUI(v, "camera");
         if (this.gui) {
-            this.textController = this.gui.add(this, "celestialObject").name("Celestial Object").onFinishChange(() => {
+            this.textController = this.gui.add(this, "celestialObject").name("Celestial Object").tooltip("Name of the celestial body the camera tracks (e.g. Moon, Venus, Jupiter)").onFinishChange(() => {
                 this.validateAndUpdate();
             }).hide();
         }

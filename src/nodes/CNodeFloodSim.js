@@ -178,21 +178,21 @@ export class CNodeFloodSim extends CNode3DGroup {
 
     setupGUI() {
         if (!guiPhysics) return;
-        this.guiFolder = guiPhysics.addFolder("Flood Sim");
-        this.guiFolder.add(this, "floodEnabled").name("Flood").listen()
+        this.guiFolder = guiPhysics.addFolder("Flood Sim").close();
+        this.guiFolder.add(this, "floodEnabled").name("Flood").tooltip("Enable or disable the flood particle simulation").listen()
             .onChange(() => setRenderOne());
-        this.guiFolder.add(this, "floodRate", 1, 500, 1).name("Flood Rate");
-        this.guiFolder.add(this, "sphereSize", 0.05, 100.0, 0.05).name("Sphere Size");
-        this.guiFolder.add(this, "dropRadius", 1, 10000, 1).name("Drop Radius");
-        this.guiFolder.add(this, "maxParticles", 1000, 200000, 1000).name("Max Particles")
+        this.guiFolder.add(this, "floodRate", 1, 500, 1).name("Flood Rate").tooltip("Number of particles spawned per frame");
+        this.guiFolder.add(this, "sphereSize", 0.05, 100.0, 0.05).name("Sphere Size").tooltip("Visual radius of each water particle");
+        this.guiFolder.add(this, "dropRadius", 1, 10000, 1).name("Drop Radius").tooltip("Radius around the drop point where particles spawn");
+        this.guiFolder.add(this, "maxParticles", 1000, 200000, 1000).name("Max Particles").tooltip("Maximum number of active water particles")
             .onChange(v => this.resizeBuffers(v));
-        this.guiFolder.add(this, "method", ["Fast", "PBF"]).name("Method");
-        this.guiFolder.addColor(this, "waterColor").name("Water Color")
+        this.guiFolder.add(this, "method", ["Fast", "PBF"]).name("Method").tooltip("Simulation method: Fast (simple) or PBF (position-based fluids)");
+        this.guiFolder.addColor(this, "waterColor").name("Water Color").tooltip("Color of the water particles")
             .onChange(() => {
                 this.instancedMesh.material.color.set(this.waterColor);
                 setRenderOne();
             });
-        this.guiFolder.add(this, "resetFlood").name("Reset");
+        this.guiFolder.add(this, "resetFlood").name("Reset").tooltip("Remove all particles and restart the simulation");
     }
 
     resetFlood() {

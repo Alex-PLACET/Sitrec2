@@ -95,13 +95,14 @@ export class CNode3DGroup extends CNode3D {
 
     // Similar to showHider in KeyboardHandler.js
     // but more specific to modern objects, not using the legacy "par" object
-    showHider(name, key) {
+    showHider(name, key, tip) {
         // "key" is the keystroke to show/hide the object
         this.visible = this.group.visible;
         const hider = guiShowHide.add(this, "visible").name(name).listen().onChange((v) => {
             this.show(v);
             setRenderOne(true);
         })
+        if (tip) hider.tooltip(tip);
 
         if (key) {
             toggles[key] = hider;

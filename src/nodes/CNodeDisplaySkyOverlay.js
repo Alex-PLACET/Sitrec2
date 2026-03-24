@@ -37,7 +37,7 @@ export class CNodeDisplaySkyOverlay extends CNodeViewUI {
 
         gui.add(this, "showStarNames").onChange(() => {
             setRenderOne(true);
-        }).name(this.overlayView.id + " Star names").listen();
+        }).name(this.overlayView.id + " Star names").tooltip("Show star name labels in this view").listen();
         this.addSimpleSerial("showStarNames");
 
 

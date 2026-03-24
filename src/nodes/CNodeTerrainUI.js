@@ -607,7 +607,7 @@ export class CNodeTerrainUI extends CNode {
         // Mirror this.dynamic to Globals.dynamicSubdivision
         Globals.dynamicSubdivision = this.dynamic;
         
-        this.dynamicController = this.gui.add(this, "dynamic").name("Dynamic Subdivision").onChange(v => {
+        this.dynamicController = this.gui.add(this, "dynamic").name("Dynamic Subdivision").tooltip("Use camera-adaptive tile subdivision for globe-scale viewing").onChange(v => {
             // 3D building tiles require dynamic subdivision.
             // Prevent disabling while buildings are active.
             if (!v && this.showBuildings) {

@@ -2911,25 +2911,25 @@ export function addFiltersToVideoNode(videoNode) {
     }
 
     if (!NodeMan.exists("videoBrightness")) {
-        brightness = new CNodeGUIValue({ id: "videoBrightness", value: 1, start: 0, end: 5, step: 0.01, desc: "Brightness" }, guiVideoEffectsFolder),
-            contrast = new CNodeGUIValue({ id: "videoContrast", value: 1, start: 0, end: 5, step: 0.01, desc: "Contrast" }, guiVideoEffectsFolder),
-            blur = new CNodeGUIValue({ id: "videoBlur", value: 0, start: 0, end: 50, step: 0.05, desc: "Blur Src Px" }, guiVideoEffectsFolder),
-            greyscale = new CNodeGUIValue({ id: "videoGreyscale", value: 0, start: 0, end: 1, step: 0.01, desc: "Greyscale" }, guiVideoEffectsFolder),
-            hue = new CNodeGUIValue({ id: "videoHue", value: 0, start: 0, end: 360, step: 1, desc: "Hue Rotate" }, guiVideoEffectsFolder),
-            invert = new CNodeGUIValue({ id: "videoInvert", value: 0, start: 0, end: 1, step: 0.01, desc: "Invert" }, guiVideoEffectsFolder),
-            saturate = new CNodeGUIValue({ id: "videoSaturate", value: 1, start: 0, end: 5, step: 0.01, desc: "Saturate" }, guiVideoEffectsFolder),
-            enableVideoEffects = new CNodeGUIFlag({ id: "videoEnableEffects", value: true, desc: "Enable Video Effects" }, guiVideoEffectsFolder),
-            sharpenAmount = new CNodeGUIValue({ id: "videoSharpenAmount", value: 1, start: 0, end: 5, step: 0.1, desc: "Sharpen Amount" }, guiVideoEffectsFolder),
-            edgeDetectThreshold = new CNodeGUIValue({ id: "videoEdgeDetectThreshold", value: 0, start: 0, end: 255, step: 1, desc: "Edge Threshold" }, guiVideoEffectsFolder),
-            embossDepth = new CNodeGUIValue({ id: "videoEmbossDepth", value: 1, start: 0, end: 3, step: 0.1, desc: "Emboss Depth" }, guiVideoEffectsFolder),
-            echoMin = new CNodeGUIFlag({ id: "videoEchoMin", value: false, desc: "Echo Dark", onChange: () => {
+        brightness = new CNodeGUIValue({ id: "videoBrightness", value: 1, start: 0, end: 5, step: 0.01, desc: "Brightness", tip: "Brightness multiplier (1 = normal)" }, guiVideoEffectsFolder),
+            contrast = new CNodeGUIValue({ id: "videoContrast", value: 1, start: 0, end: 5, step: 0.01, desc: "Contrast", tip: "Contrast multiplier (1 = normal)" }, guiVideoEffectsFolder),
+            blur = new CNodeGUIValue({ id: "videoBlur", value: 0, start: 0, end: 50, step: 0.05, desc: "Blur Src Px", tip: "Gaussian blur radius in source pixels (0 = none)" }, guiVideoEffectsFolder),
+            greyscale = new CNodeGUIValue({ id: "videoGreyscale", value: 0, start: 0, end: 1, step: 0.01, desc: "Greyscale", tip: "Greyscale mix (0 = color, 1 = fully grey)" }, guiVideoEffectsFolder),
+            hue = new CNodeGUIValue({ id: "videoHue", value: 0, start: 0, end: 360, step: 1, desc: "Hue Rotate", tip: "Rotate the hue of the video in degrees" }, guiVideoEffectsFolder),
+            invert = new CNodeGUIValue({ id: "videoInvert", value: 0, start: 0, end: 1, step: 0.01, desc: "Invert", tip: "Invert colors (0 = normal, 1 = fully inverted)" }, guiVideoEffectsFolder),
+            saturate = new CNodeGUIValue({ id: "videoSaturate", value: 1, start: 0, end: 5, step: 0.01, desc: "Saturate", tip: "Saturation multiplier (1 = normal, 0 = desaturated)" }, guiVideoEffectsFolder),
+            enableVideoEffects = new CNodeGUIFlag({ id: "videoEnableEffects", value: true, desc: "Enable Video Effects", tip: "Master toggle for all video adjustments" }, guiVideoEffectsFolder),
+            sharpenAmount = new CNodeGUIValue({ id: "videoSharpenAmount", value: 1, start: 0, end: 5, step: 0.1, desc: "Sharpen Amount", tip: "Strength of the sharpen convolution filter" }, guiVideoEffectsFolder),
+            edgeDetectThreshold = new CNodeGUIValue({ id: "videoEdgeDetectThreshold", value: 0, start: 0, end: 255, step: 1, desc: "Edge Threshold", tip: "Minimum edge intensity to display (0 = show all)" }, guiVideoEffectsFolder),
+            embossDepth = new CNodeGUIValue({ id: "videoEmbossDepth", value: 1, start: 0, end: 3, step: 0.1, desc: "Emboss Depth", tip: "Strength of the emboss convolution effect" }, guiVideoEffectsFolder),
+            echoMin = new CNodeGUIFlag({ id: "videoEchoMin", value: false, desc: "Echo Dark", tip: "Accumulate darkest pixel values across frames", onChange: () => {
                 videoNode.restartFullABEchoIfActive();
             }}, guiVideoProcessingFolder),
-            echoMax = new CNodeGUIFlag({ id: "videoEchoMax", value: false, desc: "Echo Light", onChange: () => {
+            echoMax = new CNodeGUIFlag({ id: "videoEchoMax", value: false, desc: "Echo Light", tip: "Accumulate brightest pixel values across frames", onChange: () => {
                 videoNode.restartFullABEchoIfActive();
             }}, guiVideoProcessingFolder),
-            echoFrames = new CNodeGUIValue({ id: "videoEchoFrames", value: 10, start: 2, end: 100, step: 1, desc: "Echo Frames" }, guiVideoProcessingFolder),
-            fullABEcho = new CNodeGUIFlag({ id: "videoFullABEcho", value: false, desc: "Full A-B Echo", onChange: () => {
+            echoFrames = new CNodeGUIValue({ id: "videoEchoFrames", value: 10, start: 2, end: 100, step: 1, desc: "Echo Frames", tip: "Number of frames to accumulate for echo effects" }, guiVideoProcessingFolder),
+            fullABEcho = new CNodeGUIFlag({ id: "videoFullABEcho", value: false, desc: "Full A-B Echo", tip: "Echo accumulation across the full A-B frame range", onChange: () => {
                 if (fullABEcho.value) {
                     if (fullABBlend.value) fullABBlend.value = false;
                     if (fullABExposure.value) fullABExposure.value = false;
@@ -2941,7 +2941,7 @@ export function addFiltersToVideoNode(videoNode) {
                     videoNode.stopFullABEcho();
                 }
             }}, guiVideoProcessingFolder),
-            fullABBlend = new CNodeGUIFlag({ id: "videoFullABBlend", value: false, desc: "Full A-B Blend", onChange: () => {
+            fullABBlend = new CNodeGUIFlag({ id: "videoFullABBlend", value: false, desc: "Full A-B Blend", tip: "Average blend of all frames in the A-B range", onChange: () => {
                 if (fullABBlend.value) {
                     if (fullABEcho.value) fullABEcho.value = false;
                     if (fullABExposure.value) fullABExposure.value = false;
@@ -2950,7 +2950,7 @@ export function addFiltersToVideoNode(videoNode) {
                     videoNode.stopFullABBlend();
                 }
             }}, guiVideoProcessingFolder),
-            fullABExposure = new CNodeGUIFlag({ id: "videoFullABExposure", value: false, desc: "Full A-B Exposure", onChange: () => {
+            fullABExposure = new CNodeGUIFlag({ id: "videoFullABExposure", value: false, desc: "Full A-B Exposure", tip: "Long-exposure simulation across the A-B frame range", onChange: () => {
                 if (fullABExposure.value) {
                     if (fullABEcho.value) fullABEcho.value = false;
                     if (fullABBlend.value) fullABBlend.value = false;
@@ -2959,15 +2959,15 @@ export function addFiltersToVideoNode(videoNode) {
                     videoNode.stopFullABExposure();
                 }
             }}, guiVideoProcessingFolder),
-            fullABEchoOpacity = new CNodeGUIValue({ id: "videoFullABEchoOpacity", value: 100, start: 0, end: 100, step: 1, desc: "A-B Echo Opacity %" }, guiVideoProcessingFolder),
-            showCache = new CNodeGUIFlag({ id: "videoShowCache", value: false, desc: "Show Cache" }, guiVideoProcessingFolder),
-            elaJpegQuality = new CNodeGUIValue({ id: "videoELAJpegQuality", value: 90, start: 1, end: 100, step: 1, desc: "JPEG Quality", onChange: () => {
+            fullABEchoOpacity = new CNodeGUIValue({ id: "videoFullABEchoOpacity", value: 100, start: 0, end: 100, step: 1, desc: "A-B Echo Opacity %", tip: "Opacity of the A-B echo/blend/exposure overlay" }, guiVideoProcessingFolder),
+            showCache = new CNodeGUIFlag({ id: "videoShowCache", value: false, desc: "Show Cache", tip: "Show the current state of the video frame cache" }, guiVideoProcessingFolder),
+            elaJpegQuality = new CNodeGUIValue({ id: "videoELAJpegQuality", value: 90, start: 1, end: 100, step: 1, desc: "JPEG Quality", tip: "JPEG compression quality used for error level re-encoding", onChange: () => {
                 videoNode.invalidateELAResult();
             }}, guiVideoELAFolder),
-            elaErrorScale = new CNodeGUIValue({ id: "videoELAErrorScale", value: 20, start: 0.1, end: 80, step: 0.1, desc: "Error Scale", onChange: () => {
+            elaErrorScale = new CNodeGUIValue({ id: "videoELAErrorScale", value: 20, start: 0.1, end: 80, step: 0.1, desc: "Error Scale", tip: "Multiplier to amplify compression error differences", onChange: () => {
                 videoNode.invalidateELAResult();
             }}, guiVideoELAFolder),
-            elaOpacity = new CNodeGUIValue({ id: "videoELAOpacity", value: 65, start: 0, end: 100, step: 1, desc: "Opacity %" }, guiVideoELAFolder),
+            elaOpacity = new CNodeGUIValue({ id: "videoELAOpacity", value: 65, start: 0, end: 100, step: 1, desc: "Opacity %", tip: "Opacity of the ELA overlay on the video" }, guiVideoELAFolder),
             elaExpandMethod = new CNodeConstant({ id: "videoELAExpandMethod", value: 'none' }),
             elaContrastClipPercent = new CNodeGUIValue({
                 id: "videoELAContrastClipPercent",
@@ -2976,6 +2976,7 @@ export function addFiltersToVideoNode(videoNode) {
                 end: 10,
                 step: 0.1,
                 desc: "Clip %",
+                tip: "Percentage of extreme values to clip for auto-contrast expansion",
                 onChange: () => {
                     videoNode.invalidateELAResult();
                 }
@@ -2985,30 +2986,30 @@ export function addFiltersToVideoNode(videoNode) {
                 "Histogram Equalization": "histogramEqualization",
                 "Auto Contrast": "autoContrast",
                 "Auto Contrast Channels": "autoContrastChannels"
-            }).name("Expand Output").onChange(value => {
+            }).name("Expand Output").tooltip("Method to expand the ELA output dynamic range").onChange(value => {
                 elaExpandMethod.value = value;
                 updateELAExpandControlVisibility();
                 videoNode.invalidateELAResult();
                 setRenderOne(true);
             }),
-            noiseBlockSize = new CNodeGUIValue({ id: "videoNoiseBlockSize", value: 16, start: 4, end: 128, step: 1, desc: "Block Size", onChange: () => {
+            noiseBlockSize = new CNodeGUIValue({ id: "videoNoiseBlockSize", value: 16, start: 4, end: 128, step: 1, desc: "Block Size", tip: "Size of blocks used for noise variance estimation", onChange: () => {
                 videoNode.invalidateNoiseResult();
             }}, guiVideoNoiseFolder),
-            noiseScale = new CNodeGUIValue({ id: "videoNoiseScale", value: 5, start: 0.1, end: 20, step: 0.1, desc: "Noise Scale", onChange: () => {
+            noiseScale = new CNodeGUIValue({ id: "videoNoiseScale", value: 5, start: 0.1, end: 20, step: 0.1, desc: "Noise Scale", tip: "Multiplier to amplify the noise visualization", onChange: () => {
                 videoNode.invalidateNoiseResult();
             }}, guiVideoNoiseFolder),
-            noiseOpacity = new CNodeGUIValue({ id: "videoNoiseOpacity", value: 65, start: 0, end: 100, step: 1, desc: "Opacity %" }, guiVideoNoiseFolder),
+            noiseOpacity = new CNodeGUIValue({ id: "videoNoiseOpacity", value: 65, start: 0, end: 100, step: 1, desc: "Opacity %", tip: "Opacity of the noise analysis overlay" }, guiVideoNoiseFolder),
             noiseDisplayMode = new CNodeConstant({ id: "videoNoiseDisplayMode", value: 'heatmap' }),
             noiseDisplayModeDropdown = guiVideoNoiseFolder.add(noiseDisplayModeOptions, "modeValue", {
                 "Noise Heatmap": "heatmap",
                 "Noise Residual": "residual"
-            }).name("Display Mode").onChange(value => {
+            }).name("Display Mode").tooltip("How to visualize the noise analysis results").onChange(value => {
                 noiseDisplayMode.value = value;
                 videoNode.invalidateNoiseResult();
                 setRenderOne(true);
             }),
             convolutionFilter = new CNodeConstant({ id: "videoConvolutionFilter", value: 'none' }),
-            convolutionFilterDropdown = guiVideoEffectsFolder.add(filterOptions, "convolutionFilterValue", ['none', 'sharpen', 'edgeDetect', 'emboss']).name("Convolution Filter").onChange(value => {
+            convolutionFilterDropdown = guiVideoEffectsFolder.add(filterOptions, "convolutionFilterValue", ['none', 'sharpen', 'edgeDetect', 'emboss']).name("Convolution Filter").tooltip("Spatial convolution filter type to apply").onChange(value => {
                 convolutionFilter.value = value;
                 updateConvolutionControlVisibility();
                 setRenderOne(true);
@@ -3017,10 +3018,10 @@ export function addFiltersToVideoNode(videoNode) {
             edgeDetectThresholdControl = edgeDetectThreshold.guiEntry,
             embossDepthControl = embossDepth.guiEntry,
             updateConvolutionControlVisibility(),
-            guiVideoEffectsFolder.add(reset, "resetFilters").name("Reset Video Adjustments")
+            guiVideoEffectsFolder.add(reset, "resetFilters").name("Reset Video Adjustments").tooltip("Reset all video adjustments to their default values")
 
         const makeVideoActions = { makeVideo: () => videoNode.makeProcessedVideo() };
-        guiVideoProcessingFolder.add(makeVideoActions, "makeVideo").name("Make Video");
+        guiVideoProcessingFolder.add(makeVideoActions, "makeVideo").name("Make Video").tooltip("Export the processed video with all current effects applied");
     } else {
         brightness = NodeMan.get("videoBrightness");
         contrast = NodeMan.get("videoContrast");
@@ -3115,27 +3116,27 @@ export function addFiltersToVideoNode(videoNode) {
 
         gridFolder.add(gridOverlay, "gridShow").name("Show").listen().onChange((value) => {
             gridOverlay.setShow(value);
-        });
+        }).tooltip("Show a grid overlay on the video");
 
         gridFolder.add(gridOverlay, "gridSize", 1, 128, 0.1).name("Size").listen().onChange(() => {
             setRenderOne(true);
-        });
+        }).tooltip("Grid cell size in pixels");
 
         gridFolder.add(gridOverlay, "gridSubdivisions", 1, 16, 1).name("Subdivisions").listen().onChange(() => {
             setRenderOne(true);
-        });
+        }).tooltip("Number of subdivisions within each grid cell");
 
         gridFolder.add(gridOverlay, "gridXOffset", 0,127,0.1).name("X Offset").listen().onChange(() => {
             setRenderOne(true);
-        });
+        }).tooltip("Horizontal offset of the grid in pixels");
 
         gridFolder.add(gridOverlay, "gridYOffset",0,127,0.1).name("Y Offset").listen().onChange(() => {
             setRenderOne(true);
-        });
+        }).tooltip("Vertical offset of the grid in pixels");
 
         gridFolder.addColor(gridOverlay, "gridColor").name("Color").listen().onChange(() => {
             setRenderOne(true);
-        });
+        }).tooltip("Color of the grid lines");
     }
 
 }

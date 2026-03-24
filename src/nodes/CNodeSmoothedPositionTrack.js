@@ -72,6 +72,7 @@ export class CNodeSmoothedPositionTrack extends CNodeTrack {
         const methods = ["none", "moving", "movingPolyEdge", "sliding", "savgol", "spline"];
         this.smoothingMethodController = this.guiFolder.add(this, "method", methods)
             .name("Smoothing Method")
+            .tooltip("Algorithm used to smooth the camera track data")
             .onChange(() => this._onMethodChanged());
         // Set initial visibility, and defer a second pass to ensure the GUI is fully settled
         this._updateParameterVisibility();

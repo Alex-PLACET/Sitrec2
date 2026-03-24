@@ -317,7 +317,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
 
         const satelliteOptions = [
             {
-                key: "showSatellites", name: "Show Satellites (Global)", object: this.satellites, action: () => {
+                key: "showSatellites", name: "Show Satellites (Global)", tip: "Master toggle: show or hide all satellites", object: this.satellites, action: () => {
                     this.satelliteGroup.visible = this.satellites.showSatellites;
                     this.satellites.filterSatellites()
                 }
@@ -325,101 +325,117 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
             {
                 key: "showStarlink",
                 name: "Starlink",
+                tip: "Show SpaceX Starlink satellites",
                 object: this.satellites,
                 action: () => this.satellites.filterSatellites()
             },
-            {key: "showISS", name: "ISS", object: this.satellites, action: () => this.satellites.filterSatellites()},
+            {key: "showISS", name: "ISS", tip: "Show the International Space Station", object: this.satellites, action: () => this.satellites.filterSatellites()},
             {
                 key: "showBrightest",
                 name: "Celestrack's Brightest",
+                tip: "Show Celestrack's list of brightest satellites",
                 object: this.satellites,
                 action: () => this.satellites.filterSatellites()
             },
             {
                 key: "showOtherSatellites",
                 name: "Other Satellites",
+                tip: "Show satellites not in the above categories",
                 object: this.satellites,
                 action: () => this.satellites.filterSatellites()
             },
             {
                 key: "showSatelliteList",
                 name: "List",
+                tip: "Show a text list of visible satellites",
                 object: this.satellites,
                 action: () => this.satellites.filterSatellites()
             },
             {
                 key: "showSatelliteTracks",
                 name: "Satellite Arrows",
+                tip: "Show arrows indicating satellite trajectories",
                 object: this.satellites,
                 action: () => this.satelliteTrackGroup.visible = this.satellites.showSatelliteTracks
             },
             {
                 key: "showFlareTracks",
                 name: "Flare Lines",
+                tip: "Show lines connecting flaring satellites to the camera and the Sun",
                 object: this.satellites,
                 action: () => this.satelliteFlareTracksGroup.visible = this.satellites.showFlareTracks
             },
             {
                 key: "showSatelliteGround",
                 name: "Satellite Ground Arrows",
+                tip: "Show arrows to the ground below each satellite",
                 object: this.satellites,
                 action: () => this.satelliteGroundGroup.visible = this.satellites.showSatelliteGround
             },
             {
                 key: "showSatelliteNames",
                 name: "Satellite Labels (Look View)",
+                tip: "Show satellite name labels in the look/camera view",
                 object: this.satellites,
                 action: () => setRenderOne(true)
             },
             {
                 key: "showSatelliteNamesMain",
                 name: "Satellite Labels (Main View)",
+                tip: "Show satellite name labels in the main 3D view",
                 object: this.satellites,
                 action: () => setRenderOne(true)
             },
             {
                 key: "labelFlares",
                 name: "Label Flares Only",
+                tip: "Only label satellites that are currently flaring",
                 object: this.satellites,
                 action: () => setRenderOne(true)
             },
             {
                 key: "labelLit",
                 name: "Label Lit Only",
+                tip: "Only label satellites that are sunlit (not in Earth's shadow)",
                 object: this.satellites,
                 action: () => setRenderOne(true)
             },
             {
                 key: "labelLookVisible",
                 name: "Label Look Visible Only",
+                tip: "Only label satellites visible in the look view camera frustum",
                 object: this.satellites,
                 action: () => setRenderOne(true)
             },
             {
                 key: "showFlareRegion",
                 name: "Flare Region",
+                tip: "Show the sky region where satellite flares are visible",
                 object: this,
                 action: () => this.flareRegionGroup.visible = this.showFlareRegion
             },
             {
                 key: "showFlareBand",
                 name: "Flare Band",
+                tip: "Show the band on the ground where flares from a satellite track sweep",
                 object: this,
                 action: () => this.flareBandGroup.visible = this.showFlareBand
             },
         ];
 
         satelliteOptions.forEach(option => {
-            satGUI.add(option.object, option.key).listen().onChange(() => {
+            const ctrl = satGUI.add(option.object, option.key).listen().onChange(() => {
                 setRenderOne(true);
                 option.action();
             }).name(option.name);
+            if (option.tip) ctrl.tooltip(option.tip);
             // All satellite properties now have getters/setters on NightSkyNode
             // so they should be serialized directly (not with satellites. prefix)
             this.addSimpleSerial(option.key);
         });
 
         satGUI.add(this, "maxLabelsDisplayed", 100, 10000, 100).listen().name("Max Labels Displayed")
+            .tooltip("Maximum number of satellite labels to render at once")
             .onChange(() => setRenderOne(true));
         this.addSimpleSerial("maxLabelsDisplayed");
 
@@ -562,7 +578,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
         this.celestialGUI.add(this, "showEquatorialGrid").listen().onChange(() => {
             setRenderOne(true);
             this.updateVis()
-        }).name("Equatorial Grid")
+        }).name("Equatorial Grid").tooltip("Show the celestial equatorial coordinate grid")
         this.addSimpleSerial("showEquatorialGrid")
 
 
@@ -572,7 +588,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
         this.celestialGUI.add(this, "showConstellations").listen().onChange(() => {
             setRenderOne(true);
             this.updateVis()
-        }).name("Constellation Lines")
+        }).name("Constellation Lines").tooltip("Show lines connecting stars in constellations")
         this.addSimpleSerial("showConstellations")
         this.celestialElements.addConstellationLines(this.constellationsGroup)
 
@@ -580,7 +596,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
         this.celestialGUI.add(this, "showStars").listen().onChange(() => {
             setRenderOne(true);
             this.updateVis()
-        }).name("Render Stars")
+        }).name("Render Stars").tooltip("Show stars in the night sky")
         this.addSimpleSerial("showStars")
 
         this.celestialElements.addConstellationNames(this.constellationsGroup);
@@ -603,7 +619,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
             setRenderOne(true);
             this.updateVis()
 
-        }).name("Equatorial Grid in Look View")
+        }).name("Equatorial Grid in Look View").tooltip("Show the equatorial grid in the look/camera view")
         this.addSimpleSerial("showEquatorialGridLook")
 
         // same for the flare region
@@ -615,7 +631,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
                 this.flareRegionGroup.layers.mask = LAYER.MASK_HELPERS;
             }
             propagateLayerMaskObject(this.flareRegionGroup);
-        }).name("Flare Region in Look View");
+        }).name("Flare Region in Look View").tooltip("Show the flare region cone in the look camera view");
         this.addSimpleSerial("showFlareRegionLook");
 
 
@@ -727,7 +743,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
             setRenderOne(true);
             this[obName].show(this[flagName]);
             this[groupName].show(this[flagName]);
-        }).name(name + " Vector");
+        }).name(name + " Vector").tooltip("Show a direction vector pointing toward " + name);
         this.addSimpleSerial(flagName)
     }
 

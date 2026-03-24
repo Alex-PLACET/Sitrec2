@@ -112,6 +112,7 @@ export class CNodeControllerObjectTilt extends CNodeController {
         this.tiltTypeGuiParent = parent;
         this.tiltTypeGui = parent.add(this, "tiltType", options)
             .name("Banking")
+            .tooltip("How the object banks/tilts during turns")
             .listen(() => { setRenderOne(true) })
         // Mark as common so CNode3DObject.destroyNonCommonUI() preserves it
         // when rebuilding geometry-specific GUI controls during deserialization

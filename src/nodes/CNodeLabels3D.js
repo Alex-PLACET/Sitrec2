@@ -82,7 +82,7 @@ export function setupMeasurementUI() {
 
     refreshMeasurementVisibility();
 
-    measurementUIVars.controller =  guiShowHide.add(Globals, "showMeasurements").name("Measurements").listen().onChange( (value) => {
+    measurementUIVars.controller =  guiShowHide.add(Globals, "showMeasurements").name("Measurements").tooltip("Show distance and angle measurement labels and arrows").listen().onChange( (value) => {
 //        console.warn("%%%%%%% showMeasurements changed to " + value)
         refreshMeasurementVisibility();
         setRenderOne(true);
@@ -95,12 +95,12 @@ export function setupMeasurementUI() {
 
 
 
-    labelsControllerMain = guiShowHide.add(Globals, "showLabelsMain").name("Labels in Main").listen().onChange( (value) => {
+    labelsControllerMain = guiShowHide.add(Globals, "showLabelsMain").name("Labels in Main").tooltip("Show track/object labels in the main 3D view").listen().onChange( (value) => {
        refreshLabelVisibility();
        setRenderOne(true);
     });
 
-    labelsControllerLook = guiShowHide.add(Globals, "showLabelsLook").name("Labels in Look").listen().onChange( (value) => {
+    labelsControllerLook = guiShowHide.add(Globals, "showLabelsLook").name("Labels in Look").tooltip("Show track/object labels in the look/camera view").listen().onChange( (value) => {
         refreshLabelVisibility();
         setRenderOne(true);
     })
@@ -110,12 +110,12 @@ export function setupMeasurementUI() {
     Globals.showFeaturesMain = true;
     Globals.showFeaturesLook = false;
 
-    featuresControllerMain = guiShowHide.add(Globals, "showFeaturesMain").name("Features in Main").listen().onChange( (value) => {
+    featuresControllerMain = guiShowHide.add(Globals, "showFeaturesMain").name("Features/Pins in Main").tooltip("Show feature markers (pins) in the main 3D view").listen().onChange( (value) => {
         refreshFeatureVisibility();
         setRenderOne(true);
     });
 
-    featuresControllerLook = guiShowHide.add(Globals, "showFeaturesLook").name("Features in Look").listen().onChange( (value) => {
+    featuresControllerLook = guiShowHide.add(Globals, "showFeaturesLook").name("Features in Look").tooltip("Show feature markers in the look/camera view").listen().onChange( (value) => {
         refreshFeatureVisibility();
         setRenderOne(true);
     })

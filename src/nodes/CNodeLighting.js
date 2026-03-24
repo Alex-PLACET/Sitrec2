@@ -30,7 +30,7 @@ export class CNodeLighting extends CNode {
         this.addGUIValue("sunIntensity", 0, 2, 0.01, "Sun Intensity")
             .tooltip("Sunlight intensity. 0 is no sunlight, 1 is normal full sunlight, 2 is double sunlight");
         this.addGUIValue("sunScattering", 0, 2, 0.01, "Sun Scattering")
-            .tooltip;("Sunlight scattering amount");
+            .tooltip("Sunlight scattering amount");
         this.addGUIValue("sunBoost", 1, 100, 1, "Sun Boost (HDR)")
             .tooltip("Multiplier for sun DirectionalLight intensity (HDR). Increases specular highlight brightness for realistic sun reflections through fog.");
         this.addGUIValue("sceneExposure", 0.01, 2.0, 0.01, "Scene Exposure (HDR)")

@@ -127,20 +127,20 @@ export class CNodeControllerPTZUI extends CNodeControllerAzElZoom {
             this.setGUI(v,"camera");
             const guiPTZ = this.gui;
 
-            guiPTZ.add(this, "az", -180, 180, 0.01, false).listen().name("Pan (Az)").onChange(v => this.refresh()).setLabelColor(pszUIColor).wrap()
-            guiPTZ.add(this, "el", -89, 89, 0.01, false).listen().name("Tilt (El)").onChange(v => this.refresh()).setLabelColor(pszUIColor)
+            guiPTZ.add(this, "az", -180, 180, 0.01, false).listen().name("Pan (Az)").tooltip("Camera azimuth / pan angle in degrees").onChange(v => this.refresh()).setLabelColor(pszUIColor).wrap()
+            guiPTZ.add(this, "el", -89, 89, 0.01, false).listen().name("Tilt (El)").tooltip("Camera elevation / tilt angle in degrees").onChange(v => this.refresh()).setLabelColor(pszUIColor)
             if (this.fov !== undefined) {
-                guiPTZ.add(this, "fov", 0.0001, 170, 0.01, false).listen().name("Zoom (fov)").onChange(v => {
+                guiPTZ.add(this, "fov", 0.0001, 170, 0.01, false).listen().name("Zoom (fov)").tooltip("Camera vertical field of view in degrees").onChange(v => {
                     this.refresh()
                 }).setLabelColor(pszUIColor) // .elastic(0.0001, 170)
             }
             if (this.roll !== undefined ) {
-                guiPTZ.add(this, "roll", -180, 180, 0.005).listen().name("Roll").onChange(v => this.refresh()).setLabelColor(pszUIColor)
+                guiPTZ.add(this, "roll", -180, 180, 0.005).listen().name("Roll").tooltip("Camera roll angle in degrees").onChange(v => this.refresh()).setLabelColor(pszUIColor)
             }
-            guiPTZ.add(this, "xOffset", -10, 10, 0.001).listen().name("xOffset").onChange(v => this.refresh()).setLabelColor(pszUIColor)
-            guiPTZ.add(this, "yOffset", -10, 10, 0.001).listen().name("yOffset").onChange(v => this.refresh()).setLabelColor(pszUIColor)
-            guiPTZ.add(this, "nearPlane", 0.001, 1, 0.001).listen().name("Near Plane (m)").onChange(v => this.refresh()).setLabelColor(pszUIColor)
-            guiPTZ.add(this, "relative").listen().name("Relative").onChange(v => this.refresh())
+            guiPTZ.add(this, "xOffset", -10, 10, 0.001).listen().name("xOffset").tooltip("Horizontal offset of the camera from center").onChange(v => this.refresh()).setLabelColor(pszUIColor)
+            guiPTZ.add(this, "yOffset", -10, 10, 0.001).listen().name("yOffset").tooltip("Vertical offset of the camera from center").onChange(v => this.refresh()).setLabelColor(pszUIColor)
+            guiPTZ.add(this, "nearPlane", 0.001, 1, 0.001).listen().name("Near Plane (m)").tooltip("Camera near clipping plane distance in meters").onChange(v => this.refresh()).setLabelColor(pszUIColor)
+            guiPTZ.add(this, "relative").listen().name("Relative").tooltip("Use relative angles instead of absolute").onChange(v => this.refresh())
         }
        // this.refresh()
     }

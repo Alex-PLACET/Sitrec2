@@ -257,6 +257,7 @@ export class CNodeOSDDataSeriesController extends CNode {
         this.graphSettings = { show: false, xAxis: "None", y1Axis: "None", y2Axis: "None" };
         this.graphFolder = this.guiFolder.addFolder("Graph").close();
         this.graphFolder.add(this.graphSettings, "show").name("Show").listen()
+            .tooltip("Show or hide the OSD data graph view")
             .onChange(() => {
                 if (this.graphSettings.show && this.graphView) {
                     this.graphView.show(true);
@@ -301,9 +302,9 @@ export class CNodeOSDDataSeriesController extends CNode {
             this.updateGraph();
         };
 
-        this.xAxisCtrl = this.graphFolder.add(this.graphSettings, "xAxis", xOptions).name("X Axis").onChange(onChange);
-        this.y1AxisCtrl = this.graphFolder.add(this.graphSettings, "y1Axis", yOptions).name("Y1 Axis").onChange(onChange);
-        this.y2AxisCtrl = this.graphFolder.add(this.graphSettings, "y2Axis", yOptions).name("Y2 Axis").onChange(onChange);
+        this.xAxisCtrl = this.graphFolder.add(this.graphSettings, "xAxis", xOptions).name("X Axis").tooltip("Data series for the horizontal axis").onChange(onChange);
+        this.y1AxisCtrl = this.graphFolder.add(this.graphSettings, "y1Axis", yOptions).name("Y1 Axis").tooltip("Data series for the left vertical axis").onChange(onChange);
+        this.y2AxisCtrl = this.graphFolder.add(this.graphSettings, "y2Axis", yOptions).name("Y2 Axis").tooltip("Data series for the right vertical axis").onChange(onChange);
     }
 
     getTrackNumericData(trackIndex, frameMin = 0, frameMax = Sit.frames - 1) {

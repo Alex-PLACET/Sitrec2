@@ -409,6 +409,8 @@ export class CNodeGUIFlag extends CNodeConstant {
                 setRenderOne(true);
             }
         ).name(v.desc ? v.desc : "<no desc>").listen()
+        if (v.tip) this.guiEntry.tooltip(v.tip);
+        if (v.tooltip) this.guiEntry.tooltip(v.tooltip);
     }
 }
 

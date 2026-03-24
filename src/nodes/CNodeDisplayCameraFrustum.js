@@ -94,25 +94,25 @@ export class CNodeDisplayCameraFrustum extends CNode3DGroup {
         this.showQuad = v.showQuad ?? false;
 
         this.showFrustum = v.showFrustum ?? true;
-        this.showHider("Camera View Frustum");
-        this.guiToggle("showQuad", "Frustum Ground Quad")
+        this.showHider("Camera View Frustum", undefined, "Show the camera's viewing frustum in the 3D scene");
+        this.guiToggle("showQuad", "Frustum Ground Quad", "Show the camera frustum intersection with the ground")
 
         this.showVideoInFrustum = false;
-        guiShowHide.add(this, "showVideoInFrustum").name("Video in Frustum").listen().onChange((v) => {
+        guiShowHide.add(this, "showVideoInFrustum").name("Video in Frustum").tooltip("Project the video onto the camera frustum far plane").listen().onChange((v) => {
             this.updateVideoQuadVisibility();
             setRenderOne(true);
         })
         this.addSimpleSerial("showVideoInFrustum")
 
         this.showVideoOnGround = false;
-        guiShowHide.add(this, "showVideoOnGround").name("Video on Ground").listen().onChange((v) => {
+        guiShowHide.add(this, "showVideoOnGround").name("Video on Ground").tooltip("Project the video onto the ground").listen().onChange((v) => {
             this.updateGroundVideoQuadVisibility();
             setRenderOne(true);
         })
         this.addSimpleSerial("showVideoOnGround")
 
         this.showGroundVideoInLookView = false;
-        guiShowHide.add(this, "showGroundVideoInLookView").name("Ground Video in Look View").listen().onChange((v) => {
+        guiShowHide.add(this, "showGroundVideoInLookView").name("Ground Video in Look View").tooltip("Show the ground-projected video in the look view").listen().onChange((v) => {
             this.updateGroundVideoLayerMask();
             setRenderOne(true);
         })
@@ -134,7 +134,7 @@ export class CNodeDisplayCameraFrustum extends CNode3DGroup {
         }, guiMenus.showhide);
 
         this.videoOpacity = 1.0;
-        guiShowHide.add(this, "videoOpacity", 0, 1, 0.01).name("Video Opacity").listen().onChange(() => {
+        guiShowHide.add(this, "videoOpacity", 0, 1, 0.01).name("Video Opacity").tooltip("Opacity of the projected video overlay").listen().onChange(() => {
             if (this.videoQuadMaterial) {
                 this.videoQuadMaterial.opacity = this.videoOpacity;
             }

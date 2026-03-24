@@ -575,7 +575,7 @@ export class CCustomManager {
 
         if (Globals.showAllTracksInLook === undefined)
             Globals.showAllTracksInLook = false;
-        guiMenus.showhide.add(Globals, "showAllTracksInLook").name("Show All Tracks in Look View").onChange(() => {
+        guiMenus.showhide.add(Globals, "showAllTracksInLook").name("Show All Tracks in Look View").tooltip("Display all aircraft tracks in the look/camera view").onChange(() => {
             this.refreshLookViewTracks();
 
         }).listen();
@@ -583,6 +583,7 @@ export class CCustomManager {
         if (GlobalScene.showCompassElevation === undefined) {
             Globals.showCompassElevation = false;
             guiMenus.showhide.add(Globals, "showCompassElevation").name("Show Compass Elevation")
+                .tooltip("Show compass elevation (angle above the local ground plane) in addition to bearing (azimuth)")
                 .onChange(() => {
                     // iterate over all nodes, find any CNodeCompassUI, and force update their text by changing lastHeading to null
                     NodeMan.iterate((id, node) => {
@@ -608,6 +609,7 @@ export class CCustomManager {
             Globals.objectScale = 1.0;
         guiMenus.objects.add(Globals, "objectScale", 1, 50, 0.01)
             .name("Global Scale")
+            .tooltip("Scale factor applied to all 3D objects in the scene - useful for finding things. Set back to 1 for real size")
             .listen()
             .onChange((value) => {
                 // iterate over all node, any CNode3DObject, and set the scale to this.objectScale
@@ -1063,13 +1065,15 @@ export class CCustomManager {
         this.subSaveFolder = this.subSitchFolder.addFolder("Sub Saving Details").close()
             .tooltip("Select which node types to include when saving/updating sub sitches");
         for (const key in this.subIncludes) {
-            this.subSaveFolder.add(this.subSaveEnabled, key).name(key).listen();
+            this.subSaveFolder.add(this.subSaveEnabled, key).name(key).listen()
+                .tooltip("Include " + key.toLowerCase() + " data when saving sub sitches");
         }
 
         this.subLoadFolder = this.subSitchFolder.addFolder("Sub Loading Details").close()
             .tooltip("Select which node types to restore when switching to a sub sitch");
         for (const key in this.subIncludes) {
-            this.subLoadFolder.add(this.subLoadEnabled, key).name(key).listen();
+            this.subLoadFolder.add(this.subLoadEnabled, key).name(key).listen()
+                .tooltip("Restore " + key.toLowerCase() + " data when loading a sub sitch");
         }
 
         this.subSitchFolder.add(this, "syncSubSaveDetails").name("Sync Sub Save Details")

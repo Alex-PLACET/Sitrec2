@@ -142,7 +142,7 @@ constructor(v) {
 
     this.group.visible = this.visible;
 
-    this.gui.add(this, "visible").name("Visible").onChange(() => {
+    this.gui.add(this, "visible").name("Visible").tooltip("Show or hide the flow orbs").onChange(() => {
         this.group.visible = this.visible;
     }).listen();
 

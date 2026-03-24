@@ -107,7 +107,7 @@ export class CNodeFlowOrbs extends CNodeSpriteGroup {
             .tooltip("Method to spread orbs along the camera look vector. \n'Range' spreads orbs evenly along the look vector between near and far distances. \n'Altitude' spreads orbs evenly along the look vector, between the low and high absolute altitudes (MSL)");
 
         // add near and far sliders
-        this.nearSlider = this.gui.add(this, "near", 1, 1000, 1).listen().name("Near (m)").onChange(() => {
+        this.nearSlider = this.gui.add(this, "near", 1, 1000, 1).listen().name("Near (m)").tooltip("Nearest distance from camera for orb placement").onChange(() => {
             if (this.far <= this.near) {
                 this.far = this.near + 10;
             }
@@ -115,7 +115,7 @@ export class CNodeFlowOrbs extends CNodeSpriteGroup {
         }).elastic(10, 100000, true).listen();
 
         // same for far
-        this.farSlider = this.gui.add(this, "far", 100, 10000, 1).listen().name("Far (m)").onChange(() => {
+        this.farSlider = this.gui.add(this, "far", 100, 10000, 1).listen().name("Far (m)").tooltip("Farthest distance from camera for orb placement").onChange(() => {
             if (this.far <= this.near) {
                 this.near = this.far - 10;
             }

@@ -962,16 +962,16 @@ export class CNode3DObject extends CNode3DGroup {
         this.reflectionFolder.isCommon = true;
 
         this.reflectionFolder.add(this, "startReflectionAnalysis")
-            .name("Start Analysis").isCommon = true;
+            .name("Start Analysis").tooltip("Cast rays fromt the camera to find  reflection directions").isCommon = true;
 
         this.reflectionFolder.add(this, "reflectionGridSize", 5, 100, 1)
-            .name("Grid Size")
+            .name("Grid Size").tooltip("Number of sample points per axis for the reflection grid")
             .onFinishChange(() => {
                 if (this.reflectionArrowIds.length > 0) this.startReflectionAnalysis();
             }).isCommon = true;
 
         this.reflectionFolder.add(this, "cleanUpReflectionAnalysis")
-            .name("Clean Up").isCommon = true;
+            .name("Clean Up").tooltip("Remove all reflection analysis arrows from the scene").isCommon = true;
 
         this.rebuild();
 
