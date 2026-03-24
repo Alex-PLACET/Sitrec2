@@ -337,11 +337,11 @@ server.listen(9781, () => console.log('ready'));
 This works because `FileManager.parseResult()` is the same pipeline used by drag-and-drop. The one-shot server avoids browser CORS issues and closes itself after serving the file once.
 
 ### Reloading the Sitrec tab
-To reload the page without triggering the browser's "Leave Site?" confirmation dialog, set `Globals.allowUnload = true` before calling `location.reload()`:
+When the MCP bridge is active (`window._mcpDebug` is set by `page-bridge.js`), the `beforeunload` "Leave Site?" dialog is **automatically suppressed**. Just reload directly:
 ```js
-(Globals.allowUnload = true, location.reload(), 'reloading')
+(location.reload(), 'reloading')
 ```
-Setting `window.onbeforeunload = null` does **not** work — the handler is registered via `addEventListener`, not as a property. `Globals.allowUnload` is the app's own escape hatch that causes the handler to return early.
+No need to set `Globals.allowUnload` — the MCP bridge handles it.
 
 ### Generated track duration and start time
 When generating track data (KML, CSV, etc.) for import into Sitrec, default to the sitch's existing duration and start time unless the user specifies otherwise:
@@ -389,7 +389,7 @@ npm run build          # Build the updated code
 ```
 Then reload via eval:
 ```js
-(Globals.allowUnload = true, location.reload(), 'reloading')
+(location.reload(), 'reloading')
 ```
 Wait for the page to load (check with `Sit.name`), re-enable the feature under test, and screenshot again to confirm.
 

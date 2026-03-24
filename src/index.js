@@ -176,6 +176,8 @@ if (typeof window !== 'undefined') {
             if (serverVersion && serverVersion.trim() !== process.env.BUILD_VERSION_STRING) {
                 console.warn("Stale build detected! Running: " + process.env.BUILD_VERSION_STRING
                     + " Server has: " + serverVersion.trim());
+                // When MCP bridge is connected, skip the dialog (just log the warning)
+                if (window._mcpDebug) return;
                 if (confirm("A newer version of Sitrec is available.\n\n"
                     + "Running: " + process.env.BUILD_VERSION_STRING + "\n"
                     + "Available: " + serverVersion.trim() + "\n\n"
@@ -1216,6 +1218,10 @@ async function initializeOnce() {
             // Check if we're in the middle of a download operation
             if (Globals.allowUnload) {
                 return; // Allow the operation without showing the dialog
+            }
+            // When MCP bridge is connected, never show the dialog
+            if (window._mcpDebug) {
+                return;
             }
             // Only warn if the user has made meaningful changes
             // (not just camera position/orientation or frame number)
