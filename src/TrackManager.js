@@ -573,9 +573,9 @@ class CTrackManager extends CManager {
                         } else {
                             const maxG = trackDataNode.getMaxGForce();
                             if (maxG > trackDataNode.filterMaxG) {
-                                // In regression mode, auto-enable the filter to avoid
-                                // blocking headless Playwright with a confirm() dialog.
-                                const enable = Globals.regression || confirm(
+                                // In regression mode or MCP mode, auto-enable the filter to avoid
+                                // blocking headless Playwright or MCP with a confirm() dialog.
+                                const enable = Globals.regression || window._mcpDebug || confirm(
                                     `Bad points in track data "${shortName}". Max g-force: ${maxG.toFixed(1)}g. Enable Bad Data Filter?`
                                 );
                                 if (enable) {
