@@ -59,6 +59,129 @@ done
 # Detect container runtime: prefer docker, fall back to podman.
 # Use --docker or --podman to override when both are installed.
 # ---------------------------------------------------------------------------
+install_podman() {
+    echo ""
+    echo "[sitrec] Neither Docker nor Podman found."
+
+    # Non-interactive (piped from curl) — just print instructions and exit
+    if [ ! -t 0 ]; then
+        echo "[sitrec] Install Docker or Podman first, then re-run this script."
+        echo ""
+        echo "  Docker:  https://docs.docker.com/get-docker/"
+        echo "  Podman:  https://podman.io/getting-started/installation"
+        exit 1
+    fi
+
+    # Detect OS and package manager
+    PKG_MGR=""
+    if command -v apt-get &>/dev/null; then
+        PKG_MGR="apt"
+    elif command -v dnf &>/dev/null; then
+        PKG_MGR="dnf"
+    elif command -v yum &>/dev/null; then
+        PKG_MGR="yum"
+    elif command -v brew &>/dev/null; then
+        PKG_MGR="brew"
+    elif command -v pacman &>/dev/null; then
+        PKG_MGR="pacman"
+    fi
+
+    if [ -z "$PKG_MGR" ]; then
+        echo "[sitrec] Could not detect a supported package manager."
+        echo "[sitrec] Please install Docker or Podman manually:"
+        echo ""
+        echo "  Docker:  https://docs.docker.com/get-docker/"
+        echo "  Podman:  https://podman.io/getting-started/installation"
+        exit 1
+    fi
+
+    printf "[sitrec] Install podman + podman-compose using %s? [y/N] " "$PKG_MGR"
+    read -r answer
+    if [ "$answer" != "y" ] && [ "$answer" != "Y" ]; then
+        echo "[sitrec] Aborted. Install Docker or Podman manually, then re-run."
+        exit 1
+    fi
+
+    # Check if we can write to system dirs (or use sudo)
+    SUDO=""
+    if [ "$PKG_MGR" != "brew" ]; then
+        if [ "$(id -u)" -ne 0 ]; then
+            if command -v sudo &>/dev/null; then
+                SUDO="sudo"
+                echo "[sitrec] Will use sudo for installation."
+            else
+                echo "[sitrec] Root privileges required but sudo not available."
+                echo "[sitrec] Run as root or install manually:"
+                case "$PKG_MGR" in
+                    apt)    echo "  apt-get install -y podman podman-compose" ;;
+                    dnf)    echo "  dnf install -y podman podman-compose" ;;
+                    yum)    echo "  yum install -y podman podman-compose" ;;
+                    pacman) echo "  pacman -S --noconfirm podman podman-compose" ;;
+                esac
+                exit 1
+            fi
+        fi
+    fi
+
+    echo "[sitrec] Installing podman..."
+    case "$PKG_MGR" in
+        apt)
+            $SUDO apt-get update -qq
+            $SUDO apt-get install -y podman
+            ;;
+        dnf)
+            $SUDO dnf install -y podman
+            ;;
+        yum)
+            $SUDO yum install -y podman
+            ;;
+        brew)
+            brew install podman
+            ;;
+        pacman)
+            $SUDO pacman -S --noconfirm podman
+            ;;
+    esac
+
+    if ! command -v podman &>/dev/null; then
+        echo "[sitrec] ERROR: podman installation failed."
+        exit 1
+    fi
+
+    echo "[sitrec] Installing podman-compose..."
+    case "$PKG_MGR" in
+        apt)    $SUDO apt-get install -y podman-compose 2>/dev/null ;;
+        dnf)    $SUDO dnf install -y podman-compose 2>/dev/null ;;
+        yum)    $SUDO yum install -y podman-compose 2>/dev/null ;;
+        brew)   brew install podman-compose 2>/dev/null ;;
+        pacman) $SUDO pacman -S --noconfirm podman-compose 2>/dev/null ;;
+    esac
+
+    # Fallback: install via pip if package manager didn't have it
+    if ! command -v podman-compose &>/dev/null; then
+        if command -v pip3 &>/dev/null; then
+            echo "[sitrec] Package not available, trying pip3..."
+            pip3 install --user podman-compose 2>/dev/null
+        elif command -v pip &>/dev/null; then
+            echo "[sitrec] Package not available, trying pip..."
+            pip install --user podman-compose 2>/dev/null
+        fi
+    fi
+
+    if ! command -v podman-compose &>/dev/null; then
+        # podman might still have the compose subcommand
+        if podman compose --help &>/dev/null 2>&1; then
+            echo "[sitrec] podman-compose not available, but 'podman compose' works."
+        else
+            echo "[sitrec] WARNING: podman-compose could not be installed."
+            echo "[sitrec] Try: pip3 install podman-compose"
+            exit 1
+        fi
+    fi
+
+    echo "[sitrec] Installation complete."
+}
+
 detect_runtime() {
     if command -v docker &>/dev/null && docker compose version &>/dev/null 2>&1; then
         COMPOSE="docker compose"
@@ -70,14 +193,26 @@ detect_runtime() {
         COMPOSE="podman compose"
         RUNTIME="podman"
     else
-        echo "[sitrec] ERROR: Neither docker nor podman found. Install one first."
-        exit 1
+        install_podman
+        # Re-detect after install
+        if command -v podman-compose &>/dev/null; then
+            COMPOSE="podman-compose"
+            RUNTIME="podman"
+        elif command -v podman &>/dev/null && podman compose --help &>/dev/null 2>&1; then
+            COMPOSE="podman compose"
+            RUNTIME="podman"
+        else
+            echo "[sitrec] ERROR: Installation succeeded but runtime not detected."
+            exit 1
+        fi
     fi
 }
 
 if [ "$FORCE_RUNTIME" = "podman" ]; then
     if command -v podman-compose &>/dev/null; then
         COMPOSE="podman-compose"
+    elif command -v podman &>/dev/null && podman compose --help &>/dev/null 2>&1; then
+        COMPOSE="podman compose"
     elif command -v podman &>/dev/null; then
         COMPOSE="podman compose"
     else
