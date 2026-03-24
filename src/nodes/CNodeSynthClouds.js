@@ -11,7 +11,6 @@ import {
     Raycaster,
     ShaderMaterial,
     SphereGeometry,
-    SRGBColorSpace,
     TextureLoader,
     Vector3
 } from "three";
@@ -853,6 +852,11 @@ export class CNodeSynthClouds extends CNode3DGroup {
             this.guiFolder.title = `Clouds: ${this.name}`;
         }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
         
+        this.guiFolder.add(this, 'visible').name('Visible').onChange((value) => {
+            this.show(value);
+            setRenderOne(true);
+        }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+
         const editModeData = {editMode: this.editMode};
         this.editModeController = this.guiFolder.add(editModeData, 'editMode').name('Edit Mode').onChange((value) => {
             this.setEditMode(value);
@@ -1094,6 +1098,7 @@ export class CNodeSynthClouds extends CNode3DGroup {
         return {
             id: this.cloudsID,
             name: this.name,
+            visible: this.visible,
             centerLat: this.centerLat,
             centerLon: this.centerLon,
             altitude: this.altitude,
@@ -1117,6 +1122,7 @@ export class CNodeSynthClouds extends CNode3DGroup {
         return new CNodeSynthClouds({
             id: data.id,
             name: data.name,
+            visible: data.visible,
             centerLat: data.centerLat,
             centerLon: data.centerLon,
             altitude: data.altitude,

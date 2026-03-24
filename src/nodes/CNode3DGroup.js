@@ -39,6 +39,11 @@ export class CNode3DGroup extends CNode3D {
 
         this.container.add(this._object)
 
+        // Sync Three.js group visibility with node visible flag (set in CNode constructor)
+        if (!this.visible) {
+            this._object.visible = false;
+        }
+
         this.visibleCheck = v.visibleCheck;
 
     }

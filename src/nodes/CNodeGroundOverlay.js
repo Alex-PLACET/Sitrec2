@@ -2164,11 +2164,16 @@ export class CNodeGroundOverlay extends CNode3DGroup {
             this.guiFolder.title = `Overlay: ${this.name}`;
         });
         
+        this.guiFolder.add(this, 'visible').name('Visible').onChange((value) => {
+            this.show(value);
+            setRenderOne(true);
+        }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+
         const editModeData = {editMode: this.editMode};
         this.editModeController = this.guiFolder.add(editModeData, 'editMode').name('Edit Mode').onChange((value) => {
             this.setEditMode(value);
         });
-        
+
         this.guiFolder.add(this, 'lockShape').name('Lock Shape').onChange(() => {
             if (this.editMode) {
                 if (this.lockShape) {
@@ -2399,6 +2404,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         return {
             id: this.overlayID,
             name: this.name,
+            visible: this.visible,
             north: this.north,
             south: this.south,
             east: this.east,
@@ -2428,6 +2434,7 @@ export class CNodeGroundOverlay extends CNode3DGroup {
         return new CNodeGroundOverlay({
             id: data.id,
             name: data.name,
+            visible: data.visible,
             north: data.north,
             south: data.south,
             east: data.east,

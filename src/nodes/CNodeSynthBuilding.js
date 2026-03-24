@@ -2360,6 +2360,11 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
         
         const editModeData = {editMode: this.editMode};
+        this.guiFolder.add(this, 'visible').name('Visible').onChange((value) => {
+            this.show(value);
+            setRenderOne(true);
+        }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
+
         this.editModeController = this.guiFolder.add(editModeData, 'editMode').name('Edit Mode').onChange((value) => {
 
             if (value && Globals.editingBuilding && Globals.editingBuilding !== this) {
@@ -2599,6 +2604,7 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         return {
             id: this.buildingID,
             name: this.name,
+            visible: this.visible,
             cornerLatLons: this.cornerLatLons.map(c => ({lat: c.lat, lon: c.lon})),
             roofAGL: this.roofAGL,
             rooflineHeightAGL: this.rooflineHeightAGL,
@@ -2624,6 +2630,7 @@ export class CNodeSynthBuilding extends CNode3DGroup {
             return new CNodeSynthBuilding({
                 id: data.id,
                 name: data.name,
+                visible: data.visible,
                 cornerLatLons: data.cornerLatLons.map(c => ({lat: c.lat, lon: c.lon})),
                 roofAGL: data.roofAGL !== undefined ? data.roofAGL : 4,
                 rooflineHeightAGL: data.rooflineHeightAGL !== undefined ? data.rooflineHeightAGL : 0,
