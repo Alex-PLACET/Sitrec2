@@ -288,10 +288,10 @@ export class CFileManager extends CManager {
             //this.guiFolder.add(this, "resetOrigin").name("Reset Origin").perm();
 
             if (isLocal) {
-                this.guiFolder.add(NodeMan, "recalculateAllRootFirst").name("debug recalculate all").perm();
-                this.guiFolder.add(this, "dumpNodes").name("debug dump nodes").perm();
-                this.guiFolder.add(this, "dumpNodesBackwards").name("debug dump nodes backwards").perm();
-                this.guiFolder.add(this, "dumpRoots").name("debug dump Root notes").perm();
+                guiMenus.debug.add(NodeMan, "recalculateAllRootFirst").name("debug recalculate all").perm();
+                guiMenus.debug.add(this, "dumpNodes").name("debug dump nodes").perm();
+                guiMenus.debug.add(this, "dumpNodesBackwards").name("debug dump nodes backwards").perm();
+                guiMenus.debug.add(this, "dumpRoots").name("debug dump Root notes").perm();
             }
 
         }
@@ -708,6 +708,29 @@ export class CFileManager extends CManager {
     }
 
     /**
+     * Visually activate one storage folder and deactivate the other.
+     * The inactive folder is closed and its title greyed out.
+     * @param {"server"|"local"} which - which folder the user just used
+     */
+    activateStorageFolder(which) {
+        if (which === "server" && this.guiServer) {
+            this.guiServer.open();
+            this.guiServer.domElement.style.color = "";
+            if (this.guiLocal) {
+                this.guiLocal.close();
+                this.guiLocal.setLabelColor("#888");
+            }
+        } else if (which === "local" && this.guiLocal) {
+            this.guiLocal.open();
+            this.guiLocal.domElement.style.color = "";
+            if (this.guiServer) {
+                this.guiServer.close();
+                this.guiServer.setLabelColor("#888");
+            }
+        }
+    }
+
+    /**
      * Initiates the server login process.
      * Updates the UI upon successful login.
      */
@@ -784,6 +807,7 @@ export class CFileManager extends CManager {
     }
 
     openBrowseDialog() {
+        this.activateStorageFolder("server");
         if (this.sitchBrowser) {
             this.sitchBrowser.open();
         }
@@ -1231,6 +1255,7 @@ export class CFileManager extends CManager {
      */
     loadVersion(displayName) {
         if (displayName === "-" || !this.versionsData.length) return;
+        this.activateStorageFolder("server");
         this.clearLocalSitchContext();
         this.localSaveTargetArmed = false;
         
@@ -1381,6 +1406,7 @@ export class CFileManager extends CManager {
      * @returns {Promise<boolean>}
      */
     saveSitchFromMenu() {
+        this.activateStorageFolder("server");
         return this.saveSitch().then(() => {
             this.lastSaveAction = "server";
             console.log("Sitch saved as " + Sit.sitchName);
@@ -1509,6 +1535,7 @@ export class CFileManager extends CManager {
      * @returns {Promise<void>}
      */
     saveSitchAs() {
+        this.activateStorageFolder("server");
         const lastSitchName = Sit.sitchName;
         Sit.sitchName = undefined;
         return this.saveSitch()
@@ -1620,6 +1647,7 @@ export class CFileManager extends CManager {
      * @returns {Promise<boolean>}
      */
     async saveLocal({recordAction = true} = {}) {
+        this.activateStorageFolder("local");
         if (this.isDesktopLocalFsAvailable()) {
             if (!this.localSaveTargetArmed || !this.localSitchEntry) {
                 const ok = await this.saveLocalAs({recordAction: false});
@@ -1709,6 +1737,7 @@ export class CFileManager extends CManager {
      * @returns {Promise<boolean>}
      */
     async saveLocalAs({recordAction = true} = {}) {
+        this.activateStorageFolder("local");
         if (this.isDesktopLocalFsAvailable()) {
             const selection = await this.getDesktopLocalSaveTarget();
             if (!selection) {
@@ -1842,6 +1871,7 @@ export class CFileManager extends CManager {
      * @returns {Promise<boolean>} True if reconnect succeeded.
      */
     async reconnectWorkingFolder({loadSitch = true} = {}) {
+        this.activateStorageFolder("local");
         if (this.isDesktopLocalFsAvailable()) {
             await this.restoreWorkingFolder();
             if (loadSitch && this.localSitchEntry) {
@@ -2268,6 +2298,7 @@ export class CFileManager extends CManager {
      * @async
      */
     async openDirectory() {
+        this.activateStorageFolder("local");
         if (this.isDesktopLocalFsAvailable()) {
             try {
                 const desktopFs = getDesktopFileSystemBridge();
@@ -2330,6 +2361,7 @@ export class CFileManager extends CManager {
      * @async
      */
     async openLocalSitch() {
+        this.activateStorageFolder("local");
         if (this.isDesktopLocalFsAvailable()) {
             try {
                 const desktopFs = getDesktopFileSystemBridge();
