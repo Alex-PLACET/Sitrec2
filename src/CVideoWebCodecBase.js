@@ -99,6 +99,9 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
         this.ctx_tmp = null;
         this._groupIdCounter = 0;
         this._activeGroupMap = new Map();
+        this._softwareDecoderMode = false;   // true after falling back to software decoding
+        this._consecutiveGroupErrors = 0;    // track consecutive group decode failures
+        this._allGroupsFailed = false;       // true when decode is permanently failed
     }
 
     initWorker() {
@@ -108,7 +111,20 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
             (groupId) => this._onWorkerGroupFlushed(groupId),
             (message, groupId) => this._onWorkerError(message, groupId),
         );
+        this._workerManager.onConfigured = (hwAccel) => this._onWorkerConfigured(hwAccel);
         this._workerManager.init();
+    }
+
+    /**
+     * Called when worker decoder is (re)configured. If we just switched to
+     * software decoding, retry any pending groups immediately.
+     */
+    _onWorkerConfigured(hwAccel) {
+        if (this._softwareDecoderMode && hwAccel === 'prefer-software') {
+            console.log(`[Video] Software decoder ready — retrying pending groups`);
+            // Trigger a re-request for the current frame on next render
+            setRenderOne(true);
+        }
     }
 
     /**
@@ -133,10 +149,10 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
         }
     }
 
-    configureWorker(config) {
+    configureWorker(config, hardwareAcceleration) {
         if (!this._workerManager) this.initWorker();
         this._workerConfig = config;
-        this._workerManager.configure(config, this.effectiveRotation, Globals.settings?.videoMaxSize);
+        this._workerManager.configure(config, this.effectiveRotation, Globals.settings?.videoMaxSize, hardwareAcceleration);
     }
 
     _onWorkerFrame(groupId, frameNumber, bitmap, width, height) {
@@ -204,6 +220,7 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
             group._decodeTimer = null;
         }
         this.flushing = false;
+        this._consecutiveGroupErrors = 0; // Reset on success
         const droppedFrames = group._expectedLength - (group.decodeOrder ? group.decodeOrder.length : 0);
         if (droppedFrames > 0 && group.pending > 0) {
             if (droppedFrames > 0) {
@@ -229,15 +246,119 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
                     clearTimeout(group._decodeTimer);
                     group._decodeTimer = null;
                 }
-                console.warn(`[Video] Worker error for group ${groupId}: ${message}`);
+
+                const decodedCount = group.decodeOrder ? group.decodeOrder.length : 0;
+
+                if (decodedCount > 0) {
+                    // PARTIAL SUCCESS: flush rejected but some frames WERE decoded.
+                    // The decoder works — some frames are just corrupt (common in .TS extracts).
+                    // Accept whatever we got and don't count this as a decoder failure.
+                    console.warn(`[Video] Group ${groupId} flush error, but ${decodedCount}/${group._expectedLength} frames decoded OK. Accepting partial decode.`);
+                    group.pending = 0;
+                    group.loaded = true; // Accept partial result
+                    this.groupsPending = Math.max(0, this.groupsPending - 1);
+                    this._activeGroupMap.delete(groupId);
+                    this._consecutiveGroupErrors = 0; // Decoder IS working
+                    this.handleGroupComplete();
+                    return;
+                }
+
+                // TOTAL FAILURE: zero frames decoded
+                if (!group._decodeFailures) group._decodeFailures = 0;
+                group._decodeFailures++;
+                console.warn(`[Video] Worker error for group ${groupId} (attempt ${group._decodeFailures}), 0 frames decoded: ${message}`);
                 group.pending = 0;
                 group.loaded = false;
                 this.groupsPending = Math.max(0, this.groupsPending - 1);
                 this._activeGroupMap.delete(groupId);
             }
+        } else {
+            // Generic decoder error (not group-specific) — informational only, don't count as group failure
+            console.debug(`[Video] Worker decoder error (non-group): ${message}`);
+            return; // Don't count toward consecutive errors or trigger fallback
         }
-        console.debug("Worker decode error (non-fatal): " + message);
+
+        this._consecutiveGroupErrors++;
+
+        // After first error, try falling back to software decoder
+        if (!this._softwareDecoderMode && this._consecutiveGroupErrors >= 1 && this._workerConfig) {
+            console.warn(`[Video] Hardware decoder failed (${this._consecutiveGroupErrors} consecutive errors). Falling back to software decoder...`);
+            this._softwareDecoderMode = true;
+            // Reset all groups so they can be re-requested with software decoder
+            for (const g of this.groups) {
+                if (!g.loaded) {
+                    g._decodeFailures = 0; // Reset failures for software retry
+                }
+            }
+            this._consecutiveGroupErrors = 0;
+            this.configureWorker(this._workerConfig, 'prefer-software');
+            // Don't call handleGroupComplete() — wait for _onWorkerConfigured callback
+            // to trigger retry after the software decoder is ready
+            return;
+        } else if (this._softwareDecoderMode && this._consecutiveGroupErrors >= 3) {
+            // Software decoder also failing — give up
+            if (!this._allGroupsFailed) {
+                console.error(`[Video] Software decoder also failed after ${this._consecutiveGroupErrors} consecutive errors. Video decode permanently failed.`);
+                this._allGroupsFailed = true;
+                this._onAllDecodeFailed();
+            }
+        }
+
         this.handleGroupComplete();
+    }
+
+    /**
+     * Called when both hardware and software decoders have failed.
+     * Creates an error image for display and marks all groups as permanently failed.
+     */
+    _onAllDecodeFailed() {
+        // Mark all groups as permanently failed
+        for (const g of this.groups) {
+            if (!g.loaded) {
+                g._permanentlyFailed = true;
+            }
+        }
+
+        // Create an informative error image
+        const w = this.videoWidth || 640;
+        const h = this.videoHeight || 480;
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+
+        ctx.fillStyle = '#1a1a2e';
+        ctx.fillRect(0, 0, w, h);
+
+        const scale = Math.min(w / 640, h / 480);
+        const fontSize = Math.round(18 * scale);
+        const titleSize = Math.round(24 * scale);
+        const centerX = w / 2;
+        let y = h * 0.2;
+        const lineHeight = fontSize * 1.6;
+
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#ff6b6b';
+        ctx.font = `bold ${titleSize}px sans-serif`;
+        ctx.fillText('Video Decode Failed', centerX, y);
+        y += lineHeight * 1.5;
+
+        ctx.fillStyle = '#e0e0e0';
+        ctx.font = `${fontSize}px sans-serif`;
+        const lines = [
+            `Hardware and software decoders both rejected this stream.`,
+            `File: ${this.filename || 'Unknown'}`,
+            `Codec: ${this._workerConfig?.codec || 'Unknown'}  Resolution: ${this.videoWidth}x${this.videoHeight}`,
+            ``,
+            `Try re-encoding with: ffmpeg -i input.ts -c:v libx264 -preset fast output.mp4`,
+        ];
+        for (const line of lines) {
+            ctx.fillText(line, centerX, y);
+            y += lineHeight;
+        }
+
+        this.errorImage = canvas;
+        showError(`[Video] Decode permanently failed for ${this.filename}. Hardware and software decoders both rejected this H.264 stream.`);
     }
 
     createDecoder() {
@@ -742,6 +863,22 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
 
         if (group.loaded || group.pending > 0) return;
 
+        // Don't retry groups that have permanently failed
+        if (group._permanentlyFailed) return;
+
+        // Limit retries per group to prevent infinite loops
+        // Allow more retries if we're switching to software decoder
+        const maxRetries = this._softwareDecoderMode ? 6 : 3;
+        if (group._decodeFailures && group._decodeFailures >= maxRetries) {
+            if (!group._permanentlyFailed) {
+                group._permanentlyFailed = true;
+            }
+            return;
+        }
+
+        // Don't dispatch new work if all decoding has permanently failed
+        if (this._allGroupsFailed) return;
+
         if (this._workerManager && this._workerManager.configured) {
             this._requestGroupViaWorker(group);
         } else if (this._workerManager && !this._workerManager.configFailed) {
@@ -977,8 +1114,8 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
     getImage(frame) {
         frame = Math.floor(frame / this.videoSpeed);
 
-        if (this.incompatible || this.fallbackMode) {
-            return this.errorImage;
+        if (this.incompatible || this.fallbackMode || this._allGroupsFailed) {
+            return this.errorImage || this.createBlankFrame();
         }
 
         if (this._loadingId && (!this.groups || this.groups.length === 0 || !this.imageCache || !this.chunks)) {

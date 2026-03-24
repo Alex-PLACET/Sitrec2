@@ -334,7 +334,28 @@ export class H264Decoder {
     }
 
     /**
-     * Group NAL units into complete frames
+     * Read first_mb_in_slice from a slice NAL unit header.
+     * This is the first Exp-Golomb coded value after the NAL header byte.
+     * Returns 0 for the first slice in a frame, non-zero for continuation slices.
+     * @param {Uint8Array} nalData - NAL unit data (starting with NAL header byte)
+     * @returns {number} first_mb_in_slice value, or 0 on parse error
+     */
+    static readFirstMbInSlice(nalData) {
+        if (nalData.length < 2) return 0;
+        try {
+            const reader = new H264BitReader(nalData);
+            reader.readBits(8); // skip NAL header byte
+            return reader.readUE(); // first_mb_in_slice
+        } catch (e) {
+            return 0; // On parse error, treat as new frame (safe default)
+        }
+    }
+
+    /**
+     * Group NAL units into complete frames.
+     * Handles multi-slice frames by checking first_mb_in_slice:
+     * - first_mb_in_slice === 0 means start of a new frame
+     * - first_mb_in_slice > 0 means a continuation slice of the current frame
      */
     static groupNALUnitsIntoFrames(nalUnits) {
         const frames = [];
@@ -345,44 +366,63 @@ export class H264Decoder {
 
         for (const nal of nalUnits) {
             const nalType = nal.data[0] & 0x1F;
-            
+
             if (nalType === 5) {
-                // IDR frame - start new keyframe
-                if (currentFrame.nalUnits.length > 0) {
-                    frames.push(currentFrame);
+                // IDR slice — check if this is a new frame or continuation slice
+                const firstMb = this.readFirstMbInSlice(nal.data);
+                if (firstMb === 0) {
+                    // New IDR frame (first slice)
+                    if (currentFrame.nalUnits.length > 0) {
+                        frames.push(currentFrame);
+                    }
+                    currentFrame = {
+                        type: 'key',
+                        nalUnits: [nal]
+                    };
+                } else {
+                    // Continuation slice of current IDR frame
+                    currentFrame.nalUnits.push(nal);
                 }
-                currentFrame = {
-                    type: 'key',
-                    nalUnits: [nal]
-                };
-                
+
             } else if (nalType === 1) {
-                // P frame - start new delta frame
-                if (currentFrame.nalUnits.length > 0) {
-                    frames.push(currentFrame);
+                // P/I slice — check if this is a new frame or continuation slice
+                const firstMb = this.readFirstMbInSlice(nal.data);
+                if (firstMb === 0) {
+                    // New frame (first slice)
+                    if (currentFrame.nalUnits.length > 0) {
+                        frames.push(currentFrame);
+                    }
+                    currentFrame = {
+                        type: 'delta',
+                        nalUnits: [nal]
+                    };
+                } else {
+                    // Continuation slice of current frame
+                    currentFrame.nalUnits.push(nal);
                 }
-                currentFrame = {
-                    type: 'delta',
-                    nalUnits: [nal]
-                };
-                
+
             } else if (nalType === 2) {
-                // B frame - start new delta frame (B-frames are also delta frames in WebCodecs)
-                if (currentFrame.nalUnits.length > 0) {
-                    frames.push(currentFrame);
+                // B slice — check if this is a new frame or continuation slice
+                const firstMb = this.readFirstMbInSlice(nal.data);
+                if (firstMb === 0) {
+                    if (currentFrame.nalUnits.length > 0) {
+                        frames.push(currentFrame);
+                    }
+                    currentFrame = {
+                        type: 'delta',
+                        nalUnits: [nal]
+                    };
+                } else {
+                    currentFrame.nalUnits.push(nal);
                 }
-                currentFrame = {
-                    type: 'delta',
-                    nalUnits: [nal]
-                };
-                
+
             } else if (nalType === 6) {
                 // SEI - add to current frame if we have one with video data
                 if (currentFrame.nalUnits.length > 0 && currentFrame.type !== null) {
                     currentFrame.nalUnits.push(nal);
                 }
                 // If no current frame or current frame has no video data, ignore orphaned SEI
-                
+
             } else if (nalType === 9) {
                 // Access Unit Delimiter - frame boundary marker
                 if (currentFrame.nalUnits.length > 0) {

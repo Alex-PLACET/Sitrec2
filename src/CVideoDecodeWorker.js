@@ -10,6 +10,7 @@ let timestampToFrameNumber = new Map();
 let effectiveRotation = 0;
 let videoMaxSize = null;
 let lastConfig = null;
+let configGeneration = 0; // incremented on each configure to ignore stale error callbacks
 
 const resolutionMap = {
     "1080P": 1920,
@@ -22,9 +23,12 @@ function createDecoder() {
     if (decoder && decoder.state !== 'closed') {
         try { decoder.close(); } catch(e) {}
     }
+    const myGeneration = configGeneration;
     decoder = new VideoDecoder({
         output: handleDecodedFrame,
         error: (e) => {
+            // Ignore error callbacks from a previous decoder generation
+            if (myGeneration !== configGeneration) return;
             self.postMessage({ type: 'error', message: e.message, name: e.name });
             recoverDecoder();
         }
@@ -120,6 +124,7 @@ self.onmessage = function(e) {
     const msg = e.data;
     switch (msg.type) {
         case 'configure': {
+            configGeneration++; // Invalidate any pending error callbacks from old decoder
             createDecoder();
             const config = { codec: msg.codec };
             if (msg.description) {
@@ -127,13 +132,14 @@ self.onmessage = function(e) {
             }
             if (msg.codedWidth) config.codedWidth = msg.codedWidth;
             if (msg.codedHeight) config.codedHeight = msg.codedHeight;
+            if (msg.hardwareAcceleration) config.hardwareAcceleration = msg.hardwareAcceleration;
             lastConfig = config;
             try {
                 decoder.configure(config);
                 configured = true;
                 effectiveRotation = msg.effectiveRotation || 0;
                 videoMaxSize = msg.videoMaxSize || null;
-                self.postMessage({ type: 'configured' });
+                self.postMessage({ type: 'configured', hardwareAcceleration: msg.hardwareAcceleration || 'default' });
             } catch (configErr) {
                 configured = false;
                 self.postMessage({ type: 'configureError', message: configErr.message });
@@ -286,7 +292,7 @@ export class VideoDecodeWorkerManager {
         };
     }
 
-    configure(config, effectiveRotation, videoMaxSize) {
+    configure(config, effectiveRotation, videoMaxSize, hardwareAcceleration) {
         if (!this.worker || this._disposed) return;
         const msg = {
             type: 'configure',
@@ -296,6 +302,7 @@ export class VideoDecodeWorkerManager {
         };
         if (config.codedWidth) msg.codedWidth = config.codedWidth;
         if (config.codedHeight) msg.codedHeight = config.codedHeight;
+        if (hardwareAcceleration) msg.hardwareAcceleration = hardwareAcceleration;
         if (config.description) {
             if (config.description instanceof ArrayBuffer) {
                 msg.description = config.description.slice(0);
@@ -307,6 +314,7 @@ export class VideoDecodeWorkerManager {
             }
         }
         this.configFailed = false;
+        this.configured = false; // Reset until we get 'configured' back
         this.worker.postMessage(msg, msg.description ? [msg.description] : []);
     }
 
@@ -364,6 +372,8 @@ export class VideoDecodeWorkerManager {
         switch (msg.type) {
             case 'configured':
                 this.configured = true;
+                console.log(`[Video] Worker decoder configured (${msg.hardwareAcceleration})`);
+                if (this.onConfigured) this.onConfigured(msg.hardwareAcceleration);
                 break;
             case 'configureError':
                 this.configured = false;
