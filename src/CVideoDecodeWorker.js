@@ -154,23 +154,74 @@ self.onmessage = function(e) {
                 timestampToFrameNumber.set(mapping.timestamp, mapping.frameNumber);
             }
             const chunks = msg.chunks;
+            const groupStartTime = performance.now();
+            const FLUSH_TIMEOUT_MS = 30000; // 30 second timeout for decoder.flush()
             try {
+                let decodeErrors = 0;
                 for (const chunkData of chunks) {
-                    const chunk = new EncodedVideoChunk({
-                        type: chunkData.type,
-                        timestamp: chunkData.timestamp,
-                        duration: chunkData.duration,
-                        data: chunkData.data,
-                    });
-                    decoder.decode(chunk);
+                    try {
+                        const chunk = new EncodedVideoChunk({
+                            type: chunkData.type,
+                            timestamp: chunkData.timestamp,
+                            duration: chunkData.duration,
+                            data: chunkData.data,
+                        });
+                        decoder.decode(chunk);
+                    } catch (chunkErr) {
+                        decodeErrors++;
+                        if (decodeErrors <= 3) {
+                            self.postMessage({ type: 'log', level: 'warn',
+                                message: 'Worker: chunk decode error (group=' + currentGroupId + '): ' + chunkErr.message });
+                        }
+                    }
+                }
+                if (decodeErrors > 0) {
+                    self.postMessage({ type: 'log', level: 'warn',
+                        message: 'Worker: ' + decodeErrors + '/' + chunks.length + ' chunks failed to decode in group ' + currentGroupId });
+                }
+                if (decodeErrors === chunks.length) {
+                    // All chunks failed — no point flushing
+                    self.postMessage({ type: 'groupError', groupId: currentGroupId,
+                        message: 'All ' + chunks.length + ' chunks failed to decode' });
+                    break;
                 }
                 flushing = true;
+                let flushTimedOut = false;
+                const flushTimer = setTimeout(() => {
+                    flushTimedOut = true;
+                    flushing = false;
+                    const elapsed = ((performance.now() - groupStartTime) / 1000).toFixed(1);
+                    self.postMessage({ type: 'log', level: 'error',
+                        message: 'Worker: decoder.flush() TIMED OUT after ' + elapsed + 's for group ' + currentGroupId
+                            + ' (' + chunks.length + ' chunks). Decoder may be stuck on corrupt data.' });
+                    self.postMessage({ type: 'groupError', groupId: currentGroupId,
+                        message: 'Decoder flush timed out after ' + FLUSH_TIMEOUT_MS + 'ms — possible corrupt video data' });
+                    // Attempt decoder recovery
+                    try {
+                        if (decoder && decoder.state !== 'closed') {
+                            decoder.reset();
+                            if (lastConfig) {
+                                decoder.configure(lastConfig);
+                                configured = true;
+                            }
+                        }
+                    } catch (recoverErr) {
+                        configured = false;
+                    }
+                }, FLUSH_TIMEOUT_MS);
                 decoder.flush().then(() => {
-                    flushing = false;
-                    self.postMessage({ type: 'groupFlushed', groupId: currentGroupId });
+                    if (!flushTimedOut) {
+                        clearTimeout(flushTimer);
+                        flushing = false;
+                        const elapsed = ((performance.now() - groupStartTime) / 1000).toFixed(1);
+                        self.postMessage({ type: 'groupFlushed', groupId: currentGroupId });
+                    }
                 }).catch((err) => {
-                    flushing = false;
-                    self.postMessage({ type: 'groupError', groupId: currentGroupId, message: err.message });
+                    if (!flushTimedOut) {
+                        clearTimeout(flushTimer);
+                        flushing = false;
+                        self.postMessage({ type: 'groupError', groupId: currentGroupId, message: err.message });
+                    }
                 });
             } catch (err) {
                 self.postMessage({ type: 'groupError', groupId: currentGroupId, message: err.message });
@@ -351,6 +402,12 @@ export class VideoDecodeWorkerManager {
                 break;
             case 'resetDone':
                 this.busy = false;
+                break;
+            case 'log':
+                // Forward worker log messages to main thread console
+                if (msg.level === 'error') console.error(msg.message);
+                else if (msg.level === 'warn') console.warn(msg.message);
+                else console.log(msg.message);
                 break;
         }
     }

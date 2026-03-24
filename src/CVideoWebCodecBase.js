@@ -111,6 +111,28 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
         this._workerManager.init();
     }
 
+    /**
+     * Clear all pending decode timers to prevent orphaned timeouts
+     */
+    _clearAllDecodeTimers() {
+        if (this._activeGroupMap) {
+            for (const [, group] of this._activeGroupMap) {
+                if (group._decodeTimer) {
+                    clearTimeout(group._decodeTimer);
+                    group._decodeTimer = null;
+                }
+            }
+        }
+        if (this.groups) {
+            for (const group of this.groups) {
+                if (group._decodeTimer) {
+                    clearTimeout(group._decodeTimer);
+                    group._decodeTimer = null;
+                }
+            }
+        }
+    }
+
     configureWorker(config) {
         if (!this._workerManager) this.initWorker();
         this._workerConfig = config;
@@ -129,6 +151,7 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
             if (group.pending > 0) {
                 group.pending--;
                 if (group.pending === 0) {
+                    if (group._decodeTimer) { clearTimeout(group._decodeTimer); group._decodeTimer = null; }
                     group.loaded = true;
                     this.groupsPending--;
                     this.handleGroupComplete();
@@ -165,6 +188,7 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
         if (group.pending <= 0) return;
         group.pending--;
         if (group.pending === 0) {
+            if (group._decodeTimer) { clearTimeout(group._decodeTimer); group._decodeTimer = null; }
             group.loaded = true;
             this.groupsPending--;
             this.handleGroupComplete();
@@ -174,9 +198,17 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
     _onWorkerGroupFlushed(groupId) {
         const group = this._activeGroupMap.get(groupId);
         if (!group) return;
+        // Clear the safety timeout since group completed normally
+        if (group._decodeTimer) {
+            clearTimeout(group._decodeTimer);
+            group._decodeTimer = null;
+        }
         this.flushing = false;
         const droppedFrames = group._expectedLength - (group.decodeOrder ? group.decodeOrder.length : 0);
         if (droppedFrames > 0 && group.pending > 0) {
+            if (droppedFrames > 0) {
+                console.warn(`[Video] Group ${groupId}: ${droppedFrames} of ${group._expectedLength} frames were dropped by decoder`);
+            }
             group.pending = Math.max(0, group.pending - droppedFrames);
             if (group.pending === 0 && !group.loaded) {
                 group.loaded = true;
@@ -192,6 +224,12 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
         if (groupId !== undefined) {
             const group = this._activeGroupMap.get(groupId);
             if (group) {
+                // Clear the safety timeout
+                if (group._decodeTimer) {
+                    clearTimeout(group._decodeTimer);
+                    group._decodeTimer = null;
+                }
+                console.warn(`[Video] Worker error for group ${groupId}: ${message}`);
                 group.pending = 0;
                 group.loaded = false;
                 this.groupsPending = Math.max(0, this.groupsPending - 1);
@@ -266,6 +304,8 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
      */
     onRotationChanged() {
         super.onRotationChanged();
+        // Clear any pending decode timers before resetting groups
+        this._clearAllDecodeTimers();
         if (this.groups) {
             for (let group of this.groups) {
                 group.loaded = false;
@@ -728,10 +768,29 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
         group.loaded = false;
         group.decodeOrder = [];
         group._expectedLength = group.length;
+        group._decodeStartTime = performance.now();
         this.groupsPending++;
 
         const groupId = this._groupIdCounter++;
         this._activeGroupMap.set(groupId, group);
+
+        // Safety timeout: if worker never responds for this group, force-complete it
+        const GROUP_DECODE_TIMEOUT_MS = 45000; // 45 seconds (longer than worker's 30s flush timeout)
+        group._decodeTimer = setTimeout(() => {
+            if (this._activeGroupMap.has(groupId)) {
+                const elapsed = ((performance.now() - group._decodeStartTime) / 1000).toFixed(1);
+                console.error(`[Video] Group decode timeout: group ${groupId} (${group.length} frames) stuck for ${elapsed}s. Force-completing.`);
+                this.flushing = false;
+                group.pending = 0;
+                group.loaded = false;
+                this.groupsPending = Math.max(0, this.groupsPending - 1);
+                this._activeGroupMap.delete(groupId);
+                if (this._workerManager) {
+                    this._workerManager.busy = false;
+                }
+                this.handleGroupComplete();
+            }
+        }, GROUP_DECODE_TIMEOUT_MS);
 
         const decodeEnd = group.frame + group.length + (extraChunks > 0 ? extraChunks + 1 : 0);
         const chunksToSend = [];
@@ -762,13 +821,16 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
         }
 
         this.flushing = true;
+        console.debug(`[Video] Dispatching group ${groupId} to worker: ${chunksToSend.length} chunks, frames ${group.frame}-${group.frame + group.length - 1}`);
         const sent = this._workerManager.decodeGroup(groupId, chunksToSend, rawDataToSend, timestampMap);
         if (!sent) {
+            if (group._decodeTimer) { clearTimeout(group._decodeTimer); group._decodeTimer = null; }
             this.flushing = false;
             group.pending = 0;
             group.loaded = false;
             this.groupsPending--;
             this._activeGroupMap.delete(groupId);
+            console.warn(`[Video] Worker rejected group ${groupId} (busy or not configured). Queuing for retry.`);
             this.handleBusyDecoder(group);
         }
     }
@@ -788,6 +850,7 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
         group.decodePending = 0;
         group.loaded = false;
         group.decodeOrder = [];
+        group._decodeStartTime = performance.now();
         this.groupsPending++;
 
         try {
@@ -799,10 +862,25 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
             }
 
             this.flushing = true;
+            const MAIN_FLUSH_TIMEOUT_MS = 30000;
+            let mainFlushTimedOut = false;
+            const mainFlushTimer = setTimeout(() => {
+                mainFlushTimedOut = true;
+                this.flushing = false;
+                const elapsed = ((performance.now() - group._decodeStartTime) / 1000).toFixed(1);
+                console.error(`[Video] Main-thread decoder.flush() TIMED OUT after ${elapsed}s for group starting at frame ${group.frame} (${group.length} frames). Possible corrupt video data.`);
+                group.pending = 0;
+                group.loaded = false;
+                this.groupsPending = Math.max(0, this.groupsPending - 1);
+                this.handleGroupComplete();
+            }, MAIN_FLUSH_TIMEOUT_MS);
             this.decoder.flush().then(() => {
+                if (mainFlushTimedOut) return;
+                clearTimeout(mainFlushTimer);
                 this.flushing = false;
                 const droppedFrames = group.length - group.decodePending;
                 if (droppedFrames > 0) {
+                    console.warn(`[Video] Main-thread decode: ${droppedFrames} of ${group.length} frames dropped in group starting at frame ${group.frame}`);
                     group.pending -= droppedFrames;
                     if (group.pending <= 0) {
                         group.pending = 0;
@@ -811,8 +889,11 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
                     }
                 }
                 this.handleGroupComplete();
-            }).catch(() => {
+            }).catch((err) => {
+                if (mainFlushTimedOut) return;
+                clearTimeout(mainFlushTimer);
                 this.flushing = false;
+                console.warn(`[Video] Main-thread flush error for group at frame ${group.frame}: ${err.message || err}`);
             });
         } catch (error) {
             group.pending = 0;
@@ -1467,7 +1548,10 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
     dispose() {
         this.loadedCallback = null;
         this.errorCallback = null;
-        
+
+        // Clear all decode timers before clearing the maps
+        this._clearAllDecodeTimers();
+
         this.groupsPending = 0;
         this.nextRequest = null;
         this.requestQueue = [];

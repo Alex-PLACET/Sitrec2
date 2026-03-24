@@ -232,11 +232,23 @@ export class CVideoH264Data extends CVideoWebCodecBase {
             console.log("H.264 Stream Analysis:", analysis);
 
             if (!analysis.hasSPS || !analysis.hasPPS) {
+                const isTSExtract = this.filename && /\.(ts|m2ts|mts)/i.test(this.filename);
                 throw new Error(
                     `H.264 stream missing required parameters: ` +
-                    `${analysis.hasSPS ? 'has' : 'missing'} SPS, ` +
-                    `${analysis.hasPPS ? 'has' : 'missing'} PPS`
+                    `${analysis.hasSPS ? 'has' : 'MISSING'} SPS, ` +
+                    `${analysis.hasPPS ? 'has' : 'MISSING'} PPS. ` +
+                    (isTSExtract
+                        ? `This .TS file may have been split from a larger recording — the first part ` +
+                          `typically contains SPS/PPS headers. Try combining the parts with ffmpeg ` +
+                          `(e.g., "ffmpeg -i input.ts -c copy output.mp4") or use the original unsplit file.`
+                        : `The H.264 stream lacks decoder configuration data.`)
                 );
+            }
+
+            if (!analysis.hasIDR) {
+                console.warn(`⚠️ H.264 stream has SPS/PPS but NO IDR keyframe found!`);
+                console.warn(`   This typically happens when a .TS file was split mid-stream.`);
+                console.warn(`   Decoding will be attempted but may fail or produce no output.`);
             }
 
             // Set video dimensions from SPS if available
@@ -301,7 +313,17 @@ export class CVideoH264Data extends CVideoWebCodecBase {
             // Process chunks to create groups (similar to MP4 demuxer)
             this.processChunksIntoGroups(encodedChunks);
 
-
+            // Guard: If no groups were created, we have no keyframes to decode from
+            if (this.groups.length === 0) {
+                const totalChunks = encodedChunks.length;
+                const errMsg = totalChunks > 0
+                    ? `H.264 stream has ${totalChunks} frames but ZERO keyframes (IDR). ` +
+                      `All frames are delta frames that cannot be decoded without a preceding keyframe. ` +
+                      `This typically happens when a .TS file was chopped mid-stream — the keyframe is in the earlier part. ` +
+                      `Try combining the parts with ffmpeg (e.g., "ffmpeg -i input.ts -c copy output.mp4") or use the original unsplit file.`
+                    : `H.264 stream contains no decodable frames.`;
+                throw new Error(errMsg);
+            }
 
             let spsData = analysis.spsData;
             let ppsData = analysis.ppsData;
