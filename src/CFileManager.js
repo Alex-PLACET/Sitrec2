@@ -3363,6 +3363,13 @@ export class CFileManager extends CManager {
                     const file = new File([blob], filename, { type: mimeType });
                     videoNode.uploadFile(file, true);
                 }
+                else if (fileExt === "m2v" || fileExt === "m1v") {
+                    const codecName = fileExt === "m2v" ? "MPEG-2" : "MPEG-1";
+                    showError(`${codecName} video is not supported by browser WebCodecs. ` +
+                        `Re-encode to H.264 with: ffmpeg -i "${filename}" -c:v libx264 -preset fast output.mp4`);
+                    console.error(`[Video] ${codecName} video stream detected (${filename}). ` +
+                        `WebCodecs only supports H.264, VP8/VP9, and AV1.`);
+                }
                 else {
                     console.warn("Unknown video format for: " + filename);
                 }
