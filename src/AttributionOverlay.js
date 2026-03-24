@@ -3,6 +3,8 @@
 // and 3D tile data sources.  Renders as a small semi-transparent HTML overlay
 // positioned at the bottom-right of the viewport.
 
+import {getEnv, getEnvBool} from "./envUtils";
+
 let overlayDiv = null;
 let currentParts = {map: "", elevation: "", tiles: ""};
 
@@ -18,9 +20,15 @@ function createOverlay() {
 
     overlayDiv = document.createElement("div");
     overlayDiv.id = "sitrec-attribution";
+    // If the bottom banner is active, offset above it so attribution is visible
+    const bannerActive = getEnvBool("BANNER_ACTIVE", process.env.BANNER_ACTIVE);
+    const bannerHeight = bannerActive
+        ? (parseInt(getEnv("BANNER_HEIGHT", process.env.BANNER_HEIGHT)) || 20)
+        : 0;
+
     Object.assign(overlayDiv.style, {
         position: "fixed",
-        bottom: "2px",
+        bottom: (bannerHeight + 2) + "px",
         right: "2px",
         maxWidth: "60vw",
         padding: "1px 4px",
