@@ -437,10 +437,13 @@ export class CNodeTerrain extends CNode {
     }
 
     updateGreySphereVisibility() {
-        // Polar caps should only be visible when dynamic subdivision is on
-        // and 3D tiles are not active (they provide their own ground surface).
+        // Polar caps should only be visible when dynamic subdivision is on,
+        // 3D tiles are not active, and the map uses Web Mercator (3857).
+        // EPSG:4326 (equirectangular) covers full ±90° so needs no caps.
         const has3DTiles = !!(this.UI?.buildingsNode);
-        const visible = Globals.dynamicSubdivision === true && !has3DTiles;
+        const mapDef = this.UI?.mapSources?.[this.UI.mapType];
+        const is4326 = mapDef?.mapping === 4326;
+        const visible = Globals.dynamicSubdivision === true && !has3DTiles && !is4326;
         for (const cap of [this.polarCapNorth, this.polarCapSouth]) {
             if (cap) cap.visible = visible;
         }
