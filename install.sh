@@ -3,15 +3,26 @@
 # Usage: curl -sL https://raw.githubusercontent.com/MickWest/Sitrec2/main/install.sh | bash
 #   or:  curl -sL ... | bash -s -- --podman    (force Podman)
 #   or:  curl -sL ... | bash -s -- --docker    (force Docker)
-#   or:  ./install.sh --offline --podman        (air-gapped install, image pre-loaded)
+#   or:  ./install.sh --tarball                 (install from local .tar image)
+#   or:  ./install.sh --tarball sitrec-image.tar  (specify tarball path)
+#   or:  ./install.sh --offline                 (image already loaded, skip pull)
 #
 # Creates a sitrec/ directory with docker-compose.yml and .env template,
 # then pulls and starts the container.
 #
+# Air-gapped / tarball install:
+#   On a connected machine, export the image:
+#     docker save ghcr.io/mickwest/sitrec2:latest -o sitrec-image.tar
+#       (or: podman save ghcr.io/mickwest/sitrec2:latest -o sitrec-image.tar)
+#   Copy install.sh and sitrec-image.tar to the air-gapped machine, then:
+#     ./install.sh --tarball
+#   If the image is already loaded (e.g. via docker load), use --offline instead.
+#
 # Options:
 #   --podman      Force Podman (default: auto-detect)
 #   --docker      Force Docker
-#   --offline     Air-gapped install (skip pull/downloads, image pre-loaded)
+#   --tarball [path]  Load image from a .tar file (auto-detected if path omitted)
+#   --offline     Air-gapped install (skip pull, image must already be loaded)
 #   --videos      Mount sitrec-videos/ volume for legacy sitches
 #   --no-selinux  Skip :Z volume labels even on SELinux systems
 
@@ -20,17 +31,28 @@ set -e
 DIR="sitrec"
 FORCE_RUNTIME=""
 OFFLINE=false
+USE_TARBALL=false
+TARBALL_PATH=""
 NO_SELINUX=false
 MOUNT_VIDEOS=false
 
-for arg in "$@"; do
-    case "$arg" in
+while [ $# -gt 0 ]; do
+    case "$1" in
         --podman)     FORCE_RUNTIME="podman" ;;
         --docker)     FORCE_RUNTIME="docker" ;;
         --offline)    OFFLINE=true ;;
+        --tarball)
+            USE_TARBALL=true
+            # If the next arg exists and doesn't start with --, treat it as the path
+            if [ -n "${2:-}" ] && [ "${2#--}" = "$2" ]; then
+                TARBALL_PATH="$2"
+                shift
+            fi
+            ;;
         --no-selinux) NO_SELINUX=true ;;
         --videos)     MOUNT_VIDEOS=true ;;
     esac
+    shift
 done
 
 # ---------------------------------------------------------------------------
@@ -175,30 +197,61 @@ fi
 # ---------------------------------------------------------------------------
 echo "$COMPOSE" > .runtime
 
-if [ "$OFFLINE" = true ]; then
-    echo "[sitrec] Offline mode — skipping downloads and image pull"
-    # Copy sitrec.sh from alongside install.sh (assumes local copy of repo files)
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
-    if [ -f "$SCRIPT_DIR/sitrec.sh" ]; then
-        cp "$SCRIPT_DIR/sitrec.sh" sitrec.sh
+# ---------------------------------------------------------------------------
+# Detect local tarball — prompt interactively or honour --tarball flag
+# ---------------------------------------------------------------------------
+TARBALL=""
+if [ -n "$TARBALL_PATH" ]; then
+    # Explicit path given — resolve relative to original dir (parent of $DIR)
+    if [ "${TARBALL_PATH#/}" = "$TARBALL_PATH" ]; then
+        TARBALL="../$TARBALL_PATH"
     else
-        echo "[sitrec] WARNING: sitrec.sh not found next to install.sh — run ./sitrec.sh help to check"
+        TARBALL="$TARBALL_PATH"
     fi
-    if [ -f "$SCRIPT_DIR/shared.env.example" ]; then
-        cp "$SCRIPT_DIR/shared.env.example" shared.env.example
-    elif [ -f "$SCRIPT_DIR/config/shared.env.example" ]; then
-        cp "$SCRIPT_DIR/config/shared.env.example" shared.env.example
+elif [ "$USE_TARBALL" = true ] || [ "$OFFLINE" = false ]; then
+    # Auto-detect: look for .tar files in the parent dir (we've already cd'd into $DIR)
+    for f in ../*.tar; do
+        [ -f "$f" ] || continue
+        TARBALL="$f"
+        break
+    done
+fi
+
+if [ "$USE_TARBALL" = true ]; then
+    if [ -z "$TARBALL" ] || [ ! -f "$TARBALL" ]; then
+        echo "[sitrec] ERROR: --tarball specified but no .tar file found."
+        [ -n "$TARBALL_PATH" ] && echo "[sitrec]   path: $TARBALL_PATH"
+        exit 1
     fi
+    echo "[sitrec] Loading image from $TARBALL..."
+    $RUNTIME load -i "$TARBALL"
+    OFFLINE=true
+elif [ "$OFFLINE" = false ] && [ -n "$TARBALL" ] && [ -t 0 ]; then
+    # Interactive terminal and tarball found — ask the user
+    echo "[sitrec] Found local image tarball: $TARBALL"
+    printf "[sitrec] Load image from this file instead of pulling? [y/N] "
+    read -r answer
+    if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
+        echo "[sitrec] Loading image from $TARBALL..."
+        $RUNTIME load -i "$TARBALL"
+        OFFLINE=true
+    fi
+fi
+
+if [ "$OFFLINE" = true ]; then
+    echo "[sitrec] Offline mode — skipping image pull"
 else
-    echo "[sitrec] Downloading shared.env.example..."
-    curl -sL https://raw.githubusercontent.com/MickWest/Sitrec2/main/config/shared.env.example -o shared.env.example
-
-    echo "[sitrec] Downloading sitrec.sh management script..."
-    curl -sL https://raw.githubusercontent.com/MickWest/Sitrec2/main/sitrec.sh -o sitrec.sh
-
     echo "[sitrec] Pulling image..."
     $COMPOSE pull
 fi
+
+# Extract support files from the image
+echo "[sitrec] Extracting support files from image..."
+_cid=$($RUNTIME create ghcr.io/mickwest/sitrec2:latest --entrypoint /bin/true 2>/dev/null) || \
+_cid=$($RUNTIME create ghcr.io/mickwest/sitrec2:latest 2>/dev/null)
+$RUNTIME cp "$_cid":/usr/local/share/sitrec/sitrec.sh sitrec.sh
+$RUNTIME cp "$_cid":/usr/local/share/sitrec/shared.env.example shared.env.example
+$RUNTIME rm "$_cid" >/dev/null 2>&1 || true
 chmod +x sitrec.sh 2>/dev/null || true
 
 echo ""
