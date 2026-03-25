@@ -74,6 +74,79 @@ function getJP2EnumCS(bytes) {
 }
 
 /**
+ * Extract TRC (Tone Reproduction Curve) LUTs from an ICC profile embedded
+ * in a JP2 colr box (method=2). Returns an array of 3 LUTs [rTRC, gTRC, bTRC],
+ * each a Uint16Array of values 0-65535, or null if no ICC profile / no curves.
+ */
+function extractICCTRCs(bytes) {
+    if (bytes.length < 12 || bytes[4] !== 0x6A || bytes[5] !== 0x50) return null;
+
+    // Find colr box with method=2 (ICC profile)
+    let pos = 0;
+    let profileStart = -1, profileLen = 0;
+    const limit = Math.min(bytes.length, 50000); // ICC profiles can be large
+    while (pos < limit - 8) {
+        const boxLen = (bytes[pos] << 24) | (bytes[pos + 1] << 16) | (bytes[pos + 2] << 8) | bytes[pos + 3];
+        const boxType = String.fromCharCode(bytes[pos + 4], bytes[pos + 5], bytes[pos + 6], bytes[pos + 7]);
+        if (boxLen < 8 || boxLen > bytes.length - pos) break;
+
+        if (boxType === 'colr' && bytes[pos + 8] === 2) {
+            profileStart = pos + 11; // skip box header(8) + method(1) + prec(1) + approx(1)
+            profileLen = boxLen - 11;
+            break;
+        }
+        pos += (boxType === 'jp2h') ? 8 : boxLen;
+    }
+    if (profileStart < 0) return null;
+
+    const p = bytes.subarray(profileStart, profileStart + profileLen);
+    if (p.length < 132) return null;
+
+    const read32 = (off) => (p[off] << 24) | (p[off + 1] << 16) | (p[off + 2] << 8) | p[off + 3];
+    const read16 = (off) => (p[off] << 8) | p[off + 1];
+
+    const tagCount = read32(128);
+    const tags = {};
+    for (let i = 0; i < tagCount; i++) {
+        const off = 132 + i * 12;
+        const sig = String.fromCharCode(p[off], p[off + 1], p[off + 2], p[off + 3]);
+        tags[sig] = {offset: read32(off + 4), length: read32(off + 8)};
+    }
+
+    function parseTRC(tag) {
+        if (!tag || tag.offset + 12 > p.length) return null;
+        const type = String.fromCharCode(p[tag.offset], p[tag.offset + 1], p[tag.offset + 2], p[tag.offset + 3]);
+        if (type !== 'curv') return null;
+        const count = read32(tag.offset + 8);
+        if (count === 0) return null; // identity
+        if (count === 1) {
+            // Single gamma value (fixed 8.8)
+            const gamma = read16(tag.offset + 12) / 256;
+            const lut = new Uint16Array(256);
+            for (let i = 0; i < 256; i++) lut[i] = Math.round(Math.pow(i / 255, gamma) * 65535);
+            return lut;
+        }
+        // Full LUT
+        const lut = new Uint16Array(count);
+        for (let i = 0; i < count; i++) lut[i] = read16(tag.offset + 12 + i * 2);
+        return lut;
+    }
+
+    const rTRC = parseTRC(tags['rTRC']);
+    const gTRC = parseTRC(tags['gTRC']);
+    const bTRC = parseTRC(tags['bTRC']);
+    if (!rTRC) return null;
+
+    return [rTRC, gTRC || rTRC, bTRC || rTRC];
+}
+
+/** Linear light (0-1) to sRGB nonlinear (0-1) */
+function linearToSRGB(v) {
+    if (v <= 0.0031308) return 12.92 * v;
+    return 1.055 * Math.pow(v, 1 / 2.4) - 0.055;
+}
+
+/**
  * Convert sYCC (YCbCr) pixel data to RGB in-place.
  * componentMap: [indexOfY, indexOfCb, indexOfCr] or null for default [0,1,2].
  */
@@ -144,17 +217,39 @@ async function decodeJPEG2000ToCanvas(arrayBuffer, options) {
         const pixelCount = width * height;
 
         // For >8-bit images, OpenJPEG stores each sample in 2 bytes (little-endian).
-        // Convert to 8-bit by scaling to 0-255.
+        // Convert to 8-bit, applying ICC TRC curves if present for correct tonality.
         let decoded;
         if (bps > 8) {
             const maxVal = (1 << bps) - 1;
+            const trcs = nc >= 3 ? extractICCTRCs(inputData) : null;
             decoded = new Uint8Array(pixelCount * nc);
-            for (let i = 0; i < pixelCount * nc; i++) {
-                const lo = rawDecoded[i * 2];
-                const hi = rawDecoded[i * 2 + 1];
-                decoded[i] = Math.round((lo | (hi << 8)) * 255 / maxVal);
+
+            if (trcs) {
+                // Apply ICC TRC LUT → linear light → sRGB gamma
+                for (let i = 0; i < pixelCount; i++) {
+                    for (let c = 0; c < nc; c++) {
+                        const idx = (i * nc + c) * 2;
+                        const v16 = rawDecoded[idx] | (rawDecoded[idx + 1] << 8);
+                        const trc = trcs[Math.min(c, 2)];
+                        // Interpolate in TRC LUT
+                        const lutIdx = v16 * (trc.length - 1) / maxVal;
+                        const lo = Math.floor(lutIdx);
+                        const hi = Math.min(lo + 1, trc.length - 1);
+                        const frac = lutIdx - lo;
+                        const linear = (trc[lo] * (1 - frac) + trc[hi] * frac) / 65535;
+                        decoded[i * nc + c] = Math.max(0, Math.min(255, Math.round(linearToSRGB(linear) * 255)));
+                    }
+                }
+                console.log(`JPEG2000Utils: OpenJPEG decoded ${width}×${height}, ${nc} components, ${bps}-bit, ICC TRC applied`);
+            } else {
+                // Simple linear scale
+                for (let i = 0; i < pixelCount * nc; i++) {
+                    const lo = rawDecoded[i * 2];
+                    const hi = rawDecoded[i * 2 + 1];
+                    decoded[i] = Math.round((lo | (hi << 8)) * 255 / maxVal);
+                }
+                console.log(`JPEG2000Utils: OpenJPEG decoded ${width}×${height}, ${nc} components, ${bps}-bit → 8-bit`);
             }
-            console.log(`JPEG2000Utils: OpenJPEG decoded ${width}×${height}, ${nc} components, ${bps}-bit → 8-bit`);
         } else {
             decoded = rawDecoded;
             console.log(`JPEG2000Utils: OpenJPEG decoded ${width}×${height}, ${nc} components`);

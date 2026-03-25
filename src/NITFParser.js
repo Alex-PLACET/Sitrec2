@@ -726,12 +726,21 @@ export class NITFParser {
     static async _decodeJPEG2000(image) {
         const {rawData, irep, bands} = image;
 
-        // Find the J2K codestream start (skip any NITF padding before SOC marker)
-        const blocks = this._scanJ2KBlocks(rawData, 1);
-        const block = blocks[0];
-        const j2kData = block
-            ? rawData.subarray(block.start, block.start + block.length)
-            : rawData;
+        // Check if the image data contains a full JP2 container (starts with JP2
+        // signature box before the SOC marker). If so, pass it whole — OpenJPEG
+        // reads the colr/cdef boxes and our code extracts ICC TRC curves from it.
+        // Otherwise, scan for the J2K SOC marker to skip NITF padding.
+        const jp2Sig = this._findJP2Signature(rawData);
+        let j2kData;
+        if (jp2Sig >= 0) {
+            j2kData = rawData.subarray(jp2Sig);
+        } else {
+            const blocks = this._scanJ2KBlocks(rawData, 1);
+            const block = blocks[0];
+            j2kData = block
+                ? rawData.subarray(block.start, block.start + block.length)
+                : rawData;
+        }
 
         // Build color space options from NITF metadata.
         // IREP like "YCbCr601" means YCbCr; IREPBAND per band gives component mapping.
@@ -767,6 +776,23 @@ export class NITFParser {
      * Scan a multi-block C8 image data area for J2K codestream boundaries.
      * J2K codestreams start with SOC marker (0xFF4F) and end with EOC (0xFFD9).
      */
+    /**
+     * Find JP2 signature box (0x0000000C 6A502020) in raw data.
+     * Returns the offset or -1 if not found before any SOC marker.
+     */
+    static _findJP2Signature(rawData) {
+        // JP2 signature: 12-byte box [00 00 00 0C] [6A 50 20 20] [0D 0A 87 0A]
+        for (let i = 0; i < Math.min(rawData.length - 12, 4096); i++) {
+            if (rawData[i] === 0x00 && rawData[i + 1] === 0x00 &&
+                rawData[i + 2] === 0x00 && rawData[i + 3] === 0x0C &&
+                rawData[i + 4] === 0x6A && rawData[i + 5] === 0x50 &&
+                rawData[i + 6] === 0x20 && rawData[i + 7] === 0x20) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
     static _scanJ2KBlocks(rawData, expectedBlocks) {
         const ranges = [];
         let pos = 0;
