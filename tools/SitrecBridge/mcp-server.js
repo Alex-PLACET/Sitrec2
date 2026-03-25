@@ -562,23 +562,16 @@ const TOOLS = [
     {
         name: "sitrec_screenshot",
         description:
-            "Capture a screenshot of a Sitrec view. Forces a render then captures the canvas, " +
-            "so it works even with preserveDrawingBuffer=false. Returns a base64-encoded image (JPEG by default for smaller size, use quality='png' for lossless). " +
-            "Use fullWindow=true to capture the entire browser tab including HTML overlays (time display, UI labels).",
+            "Capture a screenshot of the Sitrec viewport. By default, composites all visible views " +
+            "and overlays into a single image (same as 'Render Viewport Video'). " +
+            "Pass view='mainView' or view='lookView' to capture a single view instead. " +
+            "Returns a base64-encoded image (JPEG by default, use quality='png' for lossless).",
         inputSchema: {
             type: "object",
             properties: {
                 view: {
                     type: "string",
-                    description: "View node name to capture (defaults to 'mainView'). Other options: 'lookView'.",
-                },
-                selector: {
-                    type: "string",
-                    description: "Fallback CSS selector if view is not found (defaults to 'canvas')",
-                },
-                fullWindow: {
-                    type: "boolean",
-                    description: "If true, captures the entire browser tab (including HTML overlays like time display) instead of just the WebGL canvas.",
+                    description: "Capture a single named view. Accepts 'main'/'mainView', 'look'/'lookView', 'video'/'videoView'. If omitted, composites all visible views.",
                 },
                 quality: {
                     type: ["number", "string"],
@@ -587,6 +580,33 @@ const TOOLS = [
                 maxWidth: {
                     type: "number",
                     description: "Maximum image width in pixels. If the captured image is wider, it will be downscaled (maintaining aspect ratio). Useful on high-DPI displays to reduce image size.",
+                },
+            },
+            required: [],
+        },
+    },
+    {
+        name: "sitrec_get_video_frame",
+        description:
+            "Capture the raw video frame at a given frame number from the loaded video source. " +
+            "Returns the decoded video image (before any view rendering, overlays, or effects). " +
+            "Useful for analyzing video content, comparing frames, or extracting stills. " +
+            "Returns a base64-encoded image (JPEG by default). " +
+            "Requires a sitch with a loaded video.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                frame: {
+                    type: "number",
+                    description: "Frame number to capture (0-based). Defaults to the current playback frame.",
+                },
+                quality: {
+                    type: ["number", "string"],
+                    description: "JPEG quality 1-100 (default 75). Use 'png' for lossless PNG output.",
+                },
+                maxWidth: {
+                    type: "number",
+                    description: "Maximum image width in pixels. Downscaled if wider (maintains aspect ratio).",
                 },
             },
             required: [],
@@ -737,25 +757,35 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             };
         }
 
-        // Screenshots: save to temp file AND return inline for Claude to see
-        if (name === "sitrec_screenshot" && response.result?.imageData) {
+        // Image responses: save to temp file AND return inline for Claude to see
+        const isImageResult = (name === "sitrec_screenshot" || name === "sitrec_get_video_frame")
+            && response.result?.imageData;
+        if (isImageResult) {
             const mimeType = response.result.mimeType || "image/jpeg";
             const ext = mimeType.includes("png") ? "png" : "jpg";
+            const prefix = name === "sitrec_get_video_frame" ? "sitrec-videoframe" : "sitrec-screenshot";
             const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
             const tmpDir = process.env.TMPDIR || "/tmp";
-            const filePath = join(tmpDir, `sitrec-screenshot-${timestamp}.${ext}`);
+            const filePath = join(tmpDir, `${prefix}-${timestamp}.${ext}`);
 
             // Save full-resolution image to temp file for persistence
             const {writeFileSync} = await import("fs");
             writeFileSync(filePath, Buffer.from(response.result.imageData, "base64"));
 
+            let caption = `Screenshot saved to: ${filePath}`;
+            if (name === "sitrec_get_video_frame") {
+                const f = response.result.frame;
+                const w = response.result.width;
+                const h = response.result.height;
+                caption = `Video frame ${f} (${w}×${h}) saved to: ${filePath}`;
+            }
             const content = [{
                 type: "image",
                 data: response.result.imageData,
                 mimeType,
             }, {
                 type: "text",
-                text: `Screenshot saved to: ${filePath}`,
+                text: caption,
             }];
             if (assertText) {
                 content.push({ type: "text", text: assertText });

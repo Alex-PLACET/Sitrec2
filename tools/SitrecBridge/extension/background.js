@@ -236,75 +236,7 @@ async function handleServerMessage(msg) {
 
     trackCommandStart(action, params);
 
-    // Full-window screenshot: capture the entire visible tab (including HTML overlays)
-    // using chrome.tabs.captureVisibleTab(), handled here in the background script.
-    if (action === "sitrec_screenshot" && params?.fullWindow) {
-        const tabId = await findSitrecTab();
-        if (!tabId) {
-            sendToServer({ id, error: "No Sitrec tab found." });
-            trackCommandEnd(false);
-            return;
-        }
-        try {
-            const usePng = params.quality === "png";
-            const jpegQuality = usePng ? undefined : Math.min(100, Math.max(1, Number(params.quality) || 75));
-            const format = usePng ? "png" : "jpeg";
-            const mimeType = usePng ? "image/png" : "image/jpeg";
-            const dataUrlPrefix = usePng ? /^data:image\/png;base64,/ : /^data:image\/jpeg;base64,/;
 
-            // Ensure the Sitrec tab is active so captureVisibleTab works
-            const tab = await chrome.tabs.get(tabId);
-            await chrome.tabs.update(tabId, { active: true });
-            // Small delay to let the tab render after activation
-            await new Promise(r => setTimeout(r, 100));
-            const captureOpts = { format };
-            if (format === "jpeg") captureOpts.quality = jpegQuality;
-            const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, captureOpts);
-
-            // Downscale via offscreen canvas if maxWidth is set
-            let imageData;
-            if (params.maxWidth) {
-                // Use content script to downscale since service workers lack canvas
-                const [result] = await chrome.scripting.executeScript({
-                    target: { tabId },
-                    func: (dataUrl, maxWidth, mimeType, jpegQuality) => {
-                        const img = new Image();
-                        return new Promise((resolve) => {
-                            img.onload = () => {
-                                if (img.width <= maxWidth) {
-                                    resolve(null); // no resize needed
-                                    return;
-                                }
-                                const scale = maxWidth / img.width;
-                                const c = document.createElement("canvas");
-                                c.width = Math.round(img.width * scale);
-                                c.height = Math.round(img.height * scale);
-                                c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-                                const quality = mimeType === "image/jpeg" ? jpegQuality / 100 : undefined;
-                                resolve(c.toDataURL(mimeType, quality));
-                            };
-                            img.src = dataUrl;
-                        });
-                    },
-                    args: [dataUrl, params.maxWidth, mimeType, jpegQuality || 75],
-                    world: "MAIN",
-                });
-                if (result?.result) {
-                    imageData = result.result.replace(dataUrlPrefix, "");
-                } else {
-                    imageData = dataUrl.replace(dataUrlPrefix, "");
-                }
-            } else {
-                imageData = dataUrl.replace(dataUrlPrefix, "");
-            }
-            sendToServer({ id, result: { imageData, mimeType } });
-            trackCommandEnd(true);
-        } catch (e) {
-            sendToServer({ id, error: `captureVisibleTab failed: ${e.message}` });
-            trackCommandEnd(false);
-        }
-        return;
-    }
 
     const tabId = await findSitrecTab();
     if (!tabId) {

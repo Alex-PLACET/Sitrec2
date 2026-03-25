@@ -180,7 +180,9 @@ Views are positioned using fractional coordinates (0-1) for `left`, `top`, `widt
 - `camera` — PerspectiveCamera (the view's own camera, e.g., CNodeCamera)
 - `renderSky()`, `renderCanvas()`, `renderTargetAndEffects()` — render pipeline
 
-**Screenshot capture:** Must call render pipeline then `toDataURL()` synchronously (preserveDrawingBuffer is false).
+**Screenshot capture:** `sitrec_screenshot` composites all visible views and overlays into a single image by default (same as "Render Viewport Video"). Pass `view: "mainView"` or `view: "lookView"` to capture a single view instead. Works with `preserveDrawingBuffer=false` because it re-renders synchronously before capture.
+
+**Video frame capture:** `sitrec_get_video_frame` captures the raw decoded video frame (before any view rendering, overlays, or effects) from the `video` node's `videoData.getImage()`. Useful for analyzing source video content. Defaults to the current playback frame; pass `frame` to capture a specific frame.
 
 ## Camera System
 

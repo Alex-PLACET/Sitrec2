@@ -220,7 +220,7 @@ const handlers = {
         return { paused: par.paused };
     },
 
-    sitrec_screenshot({ selector, view, quality, maxWidth } = {}) {
+    sitrec_screenshot({ view, quality, maxWidth } = {}) {
         // quality: JPEG quality 0-100 (default 75). Use 100 or "png" for lossless PNG.
         // maxWidth: if set, downscale the captured image to this width (maintains aspect ratio).
         const usePng = quality === "png";
@@ -245,34 +245,131 @@ const handlers = {
             return { imageData, mimeType };
         }
 
-        // If a view name is given (e.g. "mainView", "lookView"), render that
-        // view's renderer and capture its canvas directly. This works even when
-        // preserveDrawingBuffer is false because we capture synchronously after render.
-        const viewName = view || "mainView";
-        const viewNode = window.NodeMan?.get(viewName);
-        if (viewNode?.renderer) {
+        const frame = Math.floor(window.par?.frame ?? 0);
+
+        // If a specific view is requested, capture just that view's canvas
+        // Accept shorthand: "main" → "mainView", "look" → "lookView"
+        if (view) {
+            const viewAliases = { main: "mainView", look: "lookView", videoView: "video" };
+            const viewId = viewAliases[view] || view;
+            const viewNode = window.NodeMan?.get(viewId);
+            if (!viewNode) return { error: `View '${viewId}' not found` };
+            // 3D views have a WebGL renderer; 2D views (video, overlays) have a canvas directly
+            const captureCanvas = viewNode.renderer?.domElement || viewNode.canvas;
+            if (!captureCanvas) return { error: `View '${viewId}' has no renderer or canvas` };
             try {
-                // Run the full render pipeline: sky, main scene, then effects
-                const frame = Math.floor(window.par?.frame ?? 0);
                 if (typeof viewNode.renderSky === "function") viewNode.renderSky();
                 if (typeof viewNode.renderCanvas === "function") viewNode.renderCanvas(frame);
                 if (typeof viewNode.renderTargetAndEffects === "function") viewNode.renderTargetAndEffects();
             } catch (e) {
                 return { error: `Render error during screenshot: ${e.message}` };
             }
-            return exportCanvas(viewNode.renderer.domElement);
+            return exportCanvas(captureCanvas);
         }
 
-        // Fallback: try a CSS selector
-        const sel = selector || "canvas";
-        const canvas = document.querySelector(sel);
-        if (!canvas) return { error: `No element found for selector '${sel}'` };
+        // Default: composite all visible views (same as "Render Viewport Video")
+        const ViewMan = window.Globals?.ViewMan || window.ViewMan;
+        if (!ViewMan) return { error: "ViewMan not available" };
 
-        if (canvas.tagName === "CANVAS") {
-            return exportCanvas(canvas);
+        try {
+            ViewMan.computeEffectiveVisibility();
+            const nonOverlays = [];
+            const overlays = [];
+            ViewMan.iterate((id, v) => {
+                if (v._effectivelyVisible) {
+                    if (v.overlayView) overlays.push(v);
+                    else nonOverlays.push(v);
+                }
+            });
+
+            // Build capture bounds from visible base views
+            let minX = 0, minY = 0;
+            let maxX = ViewMan.widthPx, maxY = ViewMan.heightPx;
+            for (const v of nonOverlays) {
+                if (!v.canvas) continue;
+                const x = v.leftPx, y = v.topPx - ViewMan.topPx;
+                minX = Math.min(minX, x);
+                minY = Math.min(minY, y);
+                maxX = Math.max(maxX, x + v.widthPx);
+                maxY = Math.max(maxY, y + v.heightPx);
+            }
+
+            const srcW = Math.max(1, Math.ceil(maxX - minX));
+            const srcH = Math.max(1, Math.ceil(maxY - minY));
+            const fullCanvas = document.createElement("canvas");
+            fullCanvas.width = srcW;
+            fullCanvas.height = srcH;
+            const ctx = fullCanvas.getContext("2d");
+            ctx.fillStyle = "#000000";
+            ctx.fillRect(0, 0, srcW, srcH);
+
+            // Re-render and composite each view
+            for (const v of nonOverlays) {
+                v.renderCanvas(frame);
+                if (v.canvas) {
+                    ctx.drawImage(v.canvas, v.leftPx - minX, (v.topPx - ViewMan.topPx) - minY, v.widthPx, v.heightPx);
+                }
+            }
+            for (const v of overlays) {
+                const alpha = v.transparency !== undefined ? v.transparency : 1;
+                if (alpha <= 0 || !v.canvas) continue;
+                if (v.canvas.style.display === "none" || v.canvas.style.visibility === "hidden") continue;
+                v.renderCanvas(frame);
+                const parent = v.overlayView;
+                ctx.globalAlpha = alpha;
+                ctx.drawImage(v.canvas, parent.leftPx - minX, (parent.topPx - ViewMan.topPx) - minY, parent.widthPx, parent.heightPx);
+                ctx.globalAlpha = 1;
+            }
+
+            return exportCanvas(fullCanvas);
+        } catch (e) {
+            return { error: `Viewport composite error: ${e.message}` };
+        }
+    },
+
+    sitrec_get_video_frame({ frame, quality, maxWidth } = {}) {
+        const videoNode = window.NodeMan?.get("video", false);
+        if (!videoNode) return { error: "No 'video' node found in this sitch" };
+        const videoData = videoNode.videoData;
+        if (!videoData) return { error: "Video node has no videoData (no video loaded)" };
+
+        const targetFrame = (frame !== undefined) ? Math.floor(Number(frame)) : Math.floor(window.par?.frame ?? 0);
+        const frameImage = videoData.getImage(targetFrame);
+        if (!frameImage) return { error: `No image available for frame ${targetFrame}` };
+
+        // Draw to a temporary canvas
+        const w = frameImage.width || frameImage.videoWidth || videoData.videoWidth;
+        const h = frameImage.height || frameImage.videoHeight || videoData.videoHeight;
+        if (!w || !h) return { error: "Could not determine video frame dimensions" };
+
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(frameImage, 0, 0, w, h);
+
+        // Quality / format
+        const usePng = quality === "png";
+        const jpegQuality = usePng ? undefined : Math.min(100, Math.max(1, Number(quality) || 75)) / 100;
+        const mimeType = usePng ? "image/png" : "image/jpeg";
+        const dataUrlPrefix = usePng ? /^data:image\/png;base64,/ : /^data:image\/jpeg;base64,/;
+
+        // Optional downscale
+        let exportCanvas = canvas;
+        if (maxWidth && canvas.width > maxWidth) {
+            const scale = maxWidth / canvas.width;
+            const offscreen = document.createElement("canvas");
+            offscreen.width = Math.round(canvas.width * scale);
+            offscreen.height = Math.round(canvas.height * scale);
+            offscreen.getContext("2d").drawImage(canvas, 0, 0, offscreen.width, offscreen.height);
+            exportCanvas = offscreen;
         }
 
-        return { error: "Selected element is not a canvas. Use 'canvas' selector." };
+        const dataUrl = usePng
+            ? exportCanvas.toDataURL("image/png")
+            : exportCanvas.toDataURL("image/jpeg", jpegQuality);
+        const imageData = dataUrl.replace(dataUrlPrefix, "");
+        return { imageData, mimeType, frame: targetFrame, width: exportCanvas.width, height: exportCanvas.height };
     },
 
     sitrec_eval({ expression } = {}) {

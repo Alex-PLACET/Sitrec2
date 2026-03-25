@@ -126,3 +126,4 @@ document.getElementById("reconnect-btn").addEventListener("click", () => {
     wsDot.className = "dot yellow";
     chrome.runtime.sendMessage({ type: "reconnect" });
 });
+
