@@ -1,8 +1,8 @@
 // SondeFetch.js — Fetch radiosonde sounding data from UWYO via the PHP proxy
 // and import it into Sitrec as a track.
 
-import {SITREC_SERVER, isServerless} from "./configUtils";
-import {FileManager} from "./Globals";
+import {SITREC_SERVER, SITREC_APP, isServerless} from "./configUtils";
+import {FileManager, Sit} from "./Globals";
 import {promptForText} from "./TextPrompt";
 import {detectSondeFormat} from "./ParseSonde";
 
@@ -46,8 +46,126 @@ export async function fetchUWYOSounding(stationId, date, hour, format = "list") 
     return text;
 }
 
+// Station list cache
+let stationListCache = null;
+
 /**
- * Import Sounding dialog — prompts user for station/date/hour, fetches from UWYO,
+ * Load the IGRA2 station list JSON (cached after first load).
+ * @returns {Promise<Array<{id, wmo, name, lat, lon, elev, country, firstYear, lastYear}>>}
+ */
+async function loadStationList() {
+    if (stationListCache) return stationListCache;
+    const url = SITREC_APP + "data/igra2-stations.json";
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error("Failed to load station list");
+    stationListCache = await resp.json();
+    return stationListCache;
+}
+
+/**
+ * Haversine distance in km between two lat/lon points.
+ */
+function haversineKm(lat1, lon1, lat2, lon2) {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2
+        + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/**
+ * Show a searchable station picker dialog.
+ * Sorts by proximity to the current sitch center.
+ * @returns {Promise<{wmo: string, name: string}|null>} Selected station or null if cancelled.
+ */
+export async function pickStation() {
+    const stations = await loadStationList();
+
+    // Sort by distance to sitch center
+    const sitLat = Sit.lat || 0;
+    const sitLon = Sit.lon || 0;
+    const sorted = stations
+        .filter(s => s.wmo) // only stations with WMO numbers (needed for UWYO)
+        .map(s => ({ ...s, dist: haversineKm(sitLat, sitLon, s.lat, s.lon) }))
+        .sort((a, b) => a.dist - b.dist);
+
+    return new Promise((resolve) => {
+        // Build modal dialog
+        const overlay = document.createElement("div");
+        overlay.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:10000;display:flex;align-items:center;justify-content:center;";
+
+        const dialog = document.createElement("div");
+        dialog.style.cssText = "background:#1a1a2e;color:#e0e0e0;border-radius:8px;padding:20px;width:500px;max-height:70vh;display:flex;flex-direction:column;font-family:sans-serif;";
+
+        dialog.innerHTML = `
+            <h3 style="margin:0 0 10px 0;color:#fff;">Select Radiosonde Station</h3>
+            <input type="text" id="sonde-search" placeholder="Search by name, ID, or country..."
+                style="width:100%;padding:8px;margin-bottom:10px;background:#2a2a4a;color:#fff;border:1px solid #444;border-radius:4px;box-sizing:border-box;font-size:14px;">
+            <div style="font-size:11px;color:#888;margin-bottom:5px;">Sorted by distance from sitch center (${sitLat.toFixed(1)}°, ${sitLon.toFixed(1)}°)</div>
+            <div id="sonde-station-list" style="overflow-y:auto;flex:1;max-height:50vh;"></div>
+            <div style="margin-top:10px;text-align:right;">
+                <button id="sonde-cancel" style="padding:6px 16px;background:#444;color:#fff;border:none;border-radius:4px;cursor:pointer;">Cancel</button>
+            </div>
+        `;
+
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+
+        const searchInput = dialog.querySelector("#sonde-search");
+        const listDiv = dialog.querySelector("#sonde-station-list");
+        const cancelBtn = dialog.querySelector("#sonde-cancel");
+
+        function renderList(filter) {
+            const needle = (filter || "").toLowerCase();
+            const filtered = needle
+                ? sorted.filter(s => s.name.toLowerCase().includes(needle) || s.wmo.includes(needle) || s.id.toLowerCase().includes(needle) || s.country.toLowerCase().includes(needle))
+                : sorted.slice(0, 50); // show nearest 50 by default
+
+            listDiv.innerHTML = filtered.slice(0, 100).map(s =>
+                `<div class="sonde-station-item" data-wmo="${s.wmo}" data-name="${s.name}"
+                    style="padding:6px 8px;cursor:pointer;border-bottom:1px solid #333;font-size:13px;"
+                    onmouseover="this.style.background='#3a3a5a'" onmouseout="this.style.background='transparent'">
+                    <b>${s.wmo}</b> — ${s.name} <span style="color:#888;font-size:11px;">(${s.country}, ${s.dist.toFixed(0)} km, ${s.lat.toFixed(2)}° ${s.lon.toFixed(2)}°)</span>
+                </div>`
+            ).join("");
+        }
+
+        renderList("");
+        searchInput.focus();
+        searchInput.addEventListener("input", () => renderList(searchInput.value));
+
+        listDiv.addEventListener("click", (e) => {
+            const item = e.target.closest(".sonde-station-item");
+            if (item) {
+                document.body.removeChild(overlay);
+                resolve({ wmo: item.dataset.wmo, name: item.dataset.name });
+            }
+        });
+
+        cancelBtn.addEventListener("click", () => {
+            document.body.removeChild(overlay);
+            resolve(null);
+        });
+
+        overlay.addEventListener("click", (e) => {
+            if (e.target === overlay) {
+                document.body.removeChild(overlay);
+                resolve(null);
+            }
+        });
+
+        searchInput.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") {
+                document.body.removeChild(overlay);
+                resolve(null);
+            }
+        });
+    });
+}
+
+/**
+ * Import Sounding dialog — station picker + date/hour, fetches from UWYO,
  * and imports into the current sitch as a track.
  *
  * Called from the File menu.
@@ -59,23 +177,32 @@ export async function importSoundingDialog() {
         return;
     }
 
-    // Step 1: Station ID
-    const stationId = await promptForText({
-        title: "Import Sounding — Station",
-        message: "Enter WMO station number (5 digits).\n"
-            + "Examples: 72451 (Sterling VA), 72426 (Amarillo TX), 72681 (Boise ID)",
-        defaultValue: "72451",
-        validate: (val) => {
-            if (!/^\d{5}$/.test(val.trim())) return "Must be exactly 5 digits";
-            return "";
-        },
-    });
-    if (stationId === null) return; // cancelled
+    // Step 1: Station picker
+    let station;
+    try {
+        station = await pickStation();
+    } catch (e) {
+        // Fall back to manual entry if station list fails to load
+        console.warn("Station picker failed, falling back to manual entry:", e.message);
+        const stationId = await promptForText({
+            title: "Import Sounding — Station",
+            message: "Enter WMO station number (5 digits).\n"
+                + "Examples: 72451 (Sterling VA), 72426 (Amarillo TX), 72681 (Boise ID)",
+            defaultValue: "72451",
+            validate: (val) => {
+                if (!/^\d{5}$/.test(val.trim())) return "Must be exactly 5 digits";
+                return "";
+            },
+        });
+        if (stationId === null) return;
+        station = { wmo: stationId.trim(), name: stationId.trim() };
+    }
+    if (!station) return;
 
     // Step 2: Date
     const today = new Date().toISOString().slice(0, 10);
     const dateStr = await promptForText({
-        title: "Import Sounding — Date",
+        title: `Import Sounding — Date (${station.wmo} ${station.name})`,
         message: "Enter sounding date (YYYY-MM-DD).\n"
             + "Most stations launch at 00Z and 12Z daily.",
         defaultValue: today,
@@ -88,7 +215,7 @@ export async function importSoundingDialog() {
 
     // Step 3: Hour
     const hourStr = await promptForText({
-        title: "Import Sounding — Hour",
+        title: `Import Sounding — Hour (${station.wmo} ${station.name})`,
         message: "Enter UTC launch hour (0 or 12).\n"
             + "Standard radiosonde launches are at 00Z and 12Z.",
         defaultValue: "12",
@@ -104,11 +231,11 @@ export async function importSoundingDialog() {
 
     // Fetch the sounding data
     try {
-        console.log(`Fetching sounding: station=${stationId.trim()}, date=${dateStr.trim()}, hour=${hour}`);
-        const html = await fetchUWYOSounding(stationId.trim(), dateStr.trim(), hour, "list");
+        console.log(`Fetching sounding: station=${station.wmo}, date=${dateStr.trim()}, hour=${hour}`);
+        const html = await fetchUWYOSounding(station.wmo, dateStr.trim(), hour, "list");
 
-        // Feed it into the import pipeline as if it were a dropped file
-        const filename = `sounding_${stationId.trim()}_${dateStr.trim()}_${String(hour).padStart(2, '0')}Z.html`;
+        // Feed it into the import pipeline
+        const filename = `sounding_${station.wmo}_${dateStr.trim()}_${String(hour).padStart(2, '0')}Z.html`;
         const encoder = new TextEncoder();
         const arrayBuffer = encoder.encode(html).buffer;
 
