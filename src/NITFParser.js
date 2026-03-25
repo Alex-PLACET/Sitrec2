@@ -619,12 +619,14 @@ export class NITFParser {
                     rgba[i * 4 + 3] = 255;
                 }
             } else if (abpp <= 16) {
-                // 16-bit mono, big-endian (NITF standard byte order)
+                // >8-bit mono, big-endian (NITF standard byte order).
+                // Scale by actual bit depth (ABPP), not storage size (NBPP=16).
+                const maxVal = (1 << abpp) - 1;
                 for (let i = 0; i < pixelCount; i++) {
                     const hi = pixelData[i * 2] || 0;
                     const lo = pixelData[i * 2 + 1] || 0;
                     const val16 = (hi << 8) | lo;
-                    const val = Math.round(val16 * 255 / 65535);
+                    const val = Math.round(val16 * 255 / maxVal);
                     rgba[i * 4] = val;
                     rgba[i * 4 + 1] = val;
                     rgba[i * 4 + 2] = val;
