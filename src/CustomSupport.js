@@ -82,6 +82,7 @@ import {collectActiveTrackSourceFileIDs, shouldSerializeLoadedFileEntry} from ".
 import {encodeShareParam, resolveURLForFetch, toShareableCustomValue} from "./SitrecObjectResolver";
 import {getEnvBool} from "./envUtils";
 import {CNodeFloodSim} from "./nodes/CNodeFloodSim";
+import {importSoundingDialog} from "./SondeFetch";
 
 export class CCustomManager {
     constructor() {
@@ -557,6 +558,12 @@ export class CCustomManager {
         //
         //     this.serializeButton.moveToFirst();
         // }
+
+        // Import Sounding: fetch radiosonde data from UWYO and import as a track
+        this._importSounding = importSoundingDialog;
+        guiMenus.file.add(this, "_importSounding").name("Import Sounding...")
+            .tooltip("Fetch radiosonde (weather balloon) sounding data from the University of Wyoming.\n"
+                + "Enter a WMO station number, date, and hour to import the balloon trajectory as a track.");
 
         toggler('k', guiMenus.help.add(par, 'showKeyboardShortcuts').listen().name("[K]eyboard Shortcuts").onChange(value => {
             if (value) {
