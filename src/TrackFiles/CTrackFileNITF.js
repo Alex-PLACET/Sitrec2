@@ -38,9 +38,14 @@ export class CTrackFileNITF extends CTrackFile {
 
     /**
      * Calculate center point, ground dimensions, GSD, and estimated camera altitude.
+     * For satellite imagery the IGEOLO corners form a rotated quadrilateral (the
+     * sensor swath), so we derive image heading and true edge lengths rather than
+     * using axis-aligned lat/lon ranges.
      */
     _calculateGeometry() {
         if (!this.corners || this.corners.length < 4) return;
+
+        // Corners: [0]=UL, [1]=UR, [2]=LR, [3]=LL (image pixel order)
 
         // Center point (average of 4 corners)
         this.centerLat = (this.corners[0].lat + this.corners[1].lat +
@@ -48,16 +53,41 @@ export class CTrackFileNITF extends CTrackFile {
         this.centerLon = (this.corners[0].lon + this.corners[1].lon +
                           this.corners[2].lon + this.corners[3].lon) / 4;
 
-        // Ground dimensions in meters
+        // Conversion factors at center latitude
         const metersPerDegLat = 111319.9;
         const metersPerDegLon = 111319.9 * Math.cos(this.centerLat * Math.PI / 180);
 
-        // Use diagonal corners to get full extent
-        const latRange = Math.abs(this.corners[0].lat - this.corners[2].lat);
-        const lonRange = Math.abs(this.corners[1].lon - this.corners[0].lon);
+        // Compute image heading from corner geometry.
+        // The "up" direction of the image runs from bottom to top (LL→UL, LR→UR).
+        const leftUpDLat  = this.corners[0].lat - this.corners[3].lat;  // UL - LL
+        const leftUpDLon  = this.corners[0].lon - this.corners[3].lon;
+        const rightUpDLat = this.corners[1].lat - this.corners[2].lat;  // UR - LR
+        const rightUpDLon = this.corners[1].lon - this.corners[2].lon;
 
-        this.groundHeight = latRange * metersPerDegLat;
-        this.groundWidth = lonRange * metersPerDegLon;
+        const avgUpDLat = (leftUpDLat + rightUpDLat) / 2;
+        const avgUpDLon = (leftUpDLon + rightUpDLon) / 2;
+        const upEast  = avgUpDLon * metersPerDegLon;
+        const upNorth = avgUpDLat * metersPerDegLat;
+
+        // Bearing of image "up" from geographic north (= satellite heading)
+        this.imageHeading = Math.atan2(upEast, upNorth) * 180 / Math.PI;
+        if (this.imageHeading < 0) this.imageHeading += 360;
+
+        // Ground dimensions: actual edge lengths, not axis-aligned ranges.
+        // Width  = average of top (UL→UR) and bottom (LL→LR) edges
+        // Height = average of left (LL→UL) and right (LR→UR) edges
+        const edgeLen = (dLat, dLon) =>
+            Math.sqrt((dLon * metersPerDegLon) ** 2 + (dLat * metersPerDegLat) ** 2);
+
+        const topWidth = edgeLen(this.corners[1].lat - this.corners[0].lat,
+                                  this.corners[1].lon - this.corners[0].lon);
+        const botWidth = edgeLen(this.corners[2].lat - this.corners[3].lat,
+                                  this.corners[2].lon - this.corners[3].lon);
+        this.groundWidth = (topWidth + botWidth) / 2;
+
+        const leftHeight  = edgeLen(leftUpDLat, leftUpDLon);
+        const rightHeight = edgeLen(rightUpDLat, rightUpDLon);
+        this.groundHeight = (leftHeight + rightHeight) / 2;
 
         // Ground Sample Distance (meters per pixel)
         this.gsdX = this.imageWidth > 0 ? this.groundWidth / this.imageWidth : 1;
@@ -72,28 +102,57 @@ export class CTrackFileNITF extends CTrackFile {
             this.sensorLon = this.sensorData.imuLongitude;
             // ENGRDA altitude is typically in feet
             this.sensorAltitude = this.sensorData.imuAltitude * 0.3048;
-            this.platformHeading = this.sensorData.imuYaw || 0;
-            this.platformPitch = this.sensorData.imuPitch || 0;
-            this.platformRoll = this.sensorData.imuRoll || 0;
+
+            // Compute actual look direction from sensor position to image center
+            // rather than assuming body-fixed nadir camera
+            const lookAngles = this._computeLookAngles();
+            this.platformHeading = lookAngles.azimuth;
+            this.platformPitch = 0;
+            this.platformRoll = 0;
+            // Sensor elevation: depression below horizontal → negative elevation
+            this.sensorElevation = -lookAngles.depression;
+
             console.log(`CTrackFileNITF: ENGRDA sensor at (${this.sensorLat.toFixed(6)}, ${this.sensorLon.toFixed(6)}) ` +
-                `alt=${this.sensorAltitude.toFixed(0)}m heading=${this.platformHeading.toFixed(1)}° ` +
-                `pitch=${this.platformPitch.toFixed(1)}° roll=${this.platformRoll.toFixed(1)}°`);
+                `alt=${this.sensorAltitude.toFixed(0)}m → image center az=${lookAngles.azimuth.toFixed(1)}° ` +
+                `depression=${lookAngles.depression.toFixed(1)}°`);
         } else {
             // Fallback: assume satellite at 500 km, nadir view
             this.sensorLat = this.centerLat;
             this.sensorLon = this.centerLon;
             this.sensorAltitude = 500000;
-            this.platformHeading = 0;
+            this.platformHeading = this.imageHeading;  // derived from corner geometry
             this.platformPitch = 0;
             this.platformRoll = 0;
+            this.sensorElevation = -90;
         }
 
         this.sensorFOV = this._computeFOVFromAltitude();
 
         console.log(`CTrackFileNITF: center=(${this.centerLat.toFixed(6)}, ${this.centerLon.toFixed(6)}) ` +
+            `heading=${this.imageHeading.toFixed(1)}° ` +
             `ground=${this.groundWidth.toFixed(1)}x${this.groundHeight.toFixed(1)}m ` +
             `GSD=${this.gsdX.toFixed(3)}x${this.gsdY.toFixed(3)}m ` +
             `alt=${this.sensorAltitude.toFixed(0)}m FOV=${this.sensorFOV.toFixed(4)}°`);
+    }
+
+    /**
+     * Compute azimuth and depression angle from sensor position to image center.
+     * Returns {azimuth, depression} in degrees.
+     */
+    _computeLookAngles() {
+        const degToRad = Math.PI / 180;
+        const metersPerDegLat = 111319.9;
+        const metersPerDegLon = 111319.9 * Math.cos(this.sensorLat * degToRad);
+
+        const dx = (this.centerLon - this.sensorLon) * metersPerDegLon; // east
+        const dy = (this.centerLat - this.sensorLat) * metersPerDegLat; // north
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        let azimuth = Math.atan2(dx, dy) / degToRad; // bearing from north
+        if (azimuth < 0) azimuth += 360;
+
+        const depression = Math.atan2(this.sensorAltitude, dist) / degToRad;
+        return {azimuth, depression};
     }
 
     /**
@@ -181,9 +240,10 @@ export class CTrackFileNITF extends CTrackFile {
             row[MISB.PlatformPitchAngle] = this.platformPitch;
             row[MISB.PlatformRollAngle] = this.platformRoll;
 
-            // Sensor/gimbal points straight down from the platform body
+            // Sensor look direction: for ENGRDA, computed from sensor to image center;
+            // for satellite fallback, nadir (-90°)
             row[MISB.SensorRelativeAzimuthAngle] = 0;
-            row[MISB.SensorRelativeElevationAngle] = -90;
+            row[MISB.SensorRelativeElevationAngle] = this.sensorElevation;
             row[MISB.SensorRelativeRollAngle] = 0;
 
             // FOV scaled by aspect ratio
