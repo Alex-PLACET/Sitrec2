@@ -100,9 +100,13 @@ function convertSYCCtoRGB(items, nc, pixelCount, componentMap) {
 /**
  * Decode a JPEG 2000 buffer to a canvas.
  * @param {ArrayBuffer} arrayBuffer - Raw JP2/J2K file data
+ * @param {Object} [options] - Optional color space overrides (for raw codestreams
+ *   where the container metadata is external, e.g. NITF IREP/IREPBAND fields).
+ * @param {boolean} [options.isYCbCr] - True if data is in YCbCr color space
+ * @param {number[]} [options.componentMap] - Maps [Y, Cb, Cr] to codestream indices
  * @returns {{canvas: HTMLCanvasElement, width: number, height: number}}
  */
-function decodeJPEG2000ToCanvas(arrayBuffer) {
+function decodeJPEG2000ToCanvas(arrayBuffer, options) {
     const bytes = new Uint8Array(arrayBuffer);
     const data = Buffer.from(bytes);
 
@@ -113,12 +117,24 @@ function decodeJPEG2000ToCanvas(arrayBuffer) {
     const height = jpx.height;
     const nc = jpx.componentsCount;
 
-    // Parse JP2 container for color space and component mapping.
-    const colorInfo = parseJP2ColorInfo(bytes);
-    const needsYCbCrConvert = nc >= 3 && colorInfo && colorInfo.enumCS === 18;
-    const componentMap = colorInfo ? colorInfo.componentMap : null;
+    // Determine color handling from either:
+    // 1. Caller-provided options (NITF IREP/IREPBAND)
+    // 2. JP2 container colr/cdef boxes
+    let needsYCbCrConvert = false;
+    let componentMap = null;
 
-    // If no sYCC but cdef reorders components for sRGB, apply reorder
+    if (options && options.isYCbCr) {
+        needsYCbCrConvert = nc >= 3;
+        componentMap = options.componentMap || null;
+    } else {
+        const colorInfo = parseJP2ColorInfo(bytes);
+        if (colorInfo) {
+            needsYCbCrConvert = nc >= 3 && colorInfo.enumCS === 18;
+            componentMap = colorInfo.componentMap || null;
+        }
+    }
+
+    // If no sYCC but components are reordered for sRGB, apply reorder
     const needsReorder = !needsYCbCrConvert && componentMap &&
         (componentMap[0] !== 0 || componentMap[1] !== 1 || componentMap[2] !== 2);
 
@@ -185,8 +201,8 @@ function decodeJPEG2000ToCanvas(arrayBuffer) {
  * @param {ArrayBuffer} arrayBuffer - Raw JP2/J2K file data
  * @returns {Promise<HTMLImageElement>}
  */
-export async function decodeJPEG2000ToImage(arrayBuffer) {
-    const {canvas} = decodeJPEG2000ToCanvas(arrayBuffer);
+export async function decodeJPEG2000ToImage(arrayBuffer, options) {
+    const {canvas} = decodeJPEG2000ToCanvas(arrayBuffer, options);
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
     const pngBuffer = await blob.arrayBuffer();
     return createImageFromArrayBuffer(pngBuffer, 'image/png');
@@ -198,8 +214,8 @@ export async function decodeJPEG2000ToImage(arrayBuffer) {
  * @param {ArrayBuffer} arrayBuffer - Raw JP2/J2K file data
  * @returns {Promise<string>} Blob URL for the decoded PNG
  */
-export async function decodeJPEG2000ToBlobURL(arrayBuffer) {
-    const {canvas} = decodeJPEG2000ToCanvas(arrayBuffer);
+export async function decodeJPEG2000ToBlobURL(arrayBuffer, options) {
+    const {canvas} = decodeJPEG2000ToCanvas(arrayBuffer, options);
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
     return URL.createObjectURL(blob);
 }
