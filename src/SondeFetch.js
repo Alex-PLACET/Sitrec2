@@ -1,10 +1,11 @@
-// SondeFetch.js — Fetch radiosonde sounding data from UWYO via the PHP proxy
+// SondeFetch.js — Fetch radiosonde sounding data from UWYO or IGRA2 (NCEI)
 // and import it into Sitrec as a track.
 
 import {SITREC_SERVER, SITREC_APP, isServerless} from "./configUtils";
 import {FileManager, Sit} from "./Globals";
 import {promptForText} from "./TextPrompt";
-import {detectSondeFormat} from "./ParseSonde";
+import {detectSondeFormat, listIGRA2Soundings} from "./ParseSonde";
+import JSZip from "jszip";
 
 /**
  * Fetch a sounding from UWYO via the proxySounding.php CORS proxy.
@@ -44,6 +45,126 @@ export async function fetchUWYOSounding(stationId, date, hour, format = "list") 
     }
 
     return text;
+}
+
+// ── IGRA2 Fetch (NOAA NCEI) ──────────────────────────────────────────────
+
+const NCEI_BASE = "https://www.ncei.noaa.gov/data/integrated-global-radiosonde-archive/access/";
+
+/**
+ * Fetch IGRA2 sounding data from NCEI, decompress the zip, and return the text.
+ * Uses year-to-date file for the current year, full history for older years.
+ *
+ * @param {string} igra2Id - Full IGRA2 station ID (e.g. "USM00072451")
+ * @param {number} year - Year to fetch (determines y2d vs full file)
+ * @returns {Promise<string>} Raw IGRA2 text (may contain thousands of soundings)
+ */
+export async function fetchIGRA2Data(igra2Id, year) {
+    var currentYear = new Date().getFullYear();
+    var url;
+    if (year >= currentYear) {
+        url = NCEI_BASE + "data-y2d/" + igra2Id + "-data-beg" + currentYear + ".txt.zip";
+    } else {
+        url = NCEI_BASE + "data-por/" + igra2Id + "-data.txt.zip";
+    }
+
+    console.log("Fetching IGRA2 from: " + url);
+    var response = await fetch(url);
+    if (!response.ok) {
+        if (response.status === 404) {
+            throw new Error("IGRA2 data not found for station " + igra2Id + ". The station may not exist in the IGRA2 archive.");
+        }
+        throw new Error("IGRA2 fetch failed: HTTP " + response.status);
+    }
+
+    var arrayBuffer = await response.arrayBuffer();
+    var zip = new JSZip();
+    var contents = await zip.loadAsync(arrayBuffer);
+
+    // Find the .txt data file in the zip
+    var txtFile = null;
+    for (var name in contents.files) {
+        if (name.endsWith(".txt") && !contents.files[name].dir) {
+            txtFile = contents.files[name];
+            break;
+        }
+    }
+    if (!txtFile) throw new Error("No .txt file found in IGRA2 zip");
+
+    var text = await txtFile.async("text");
+    if (!text || text.trim().length === 0) throw new Error("IGRA2 data file is empty");
+
+    return text;
+}
+
+/**
+ * Show a sounding picker dialog for an IGRA2 multi-sounding file.
+ * Lists available soundings filtered near the target date.
+ *
+ * @param {string} igra2Text - Raw IGRA2 text with multiple soundings
+ * @param {string} targetDate - YYYY-MM-DD to center the filter on
+ * @returns {Promise<number|null>} Selected sounding index, or null if cancelled
+ */
+export async function pickIGRA2Sounding(igra2Text, targetDate) {
+    var soundings = listIGRA2Soundings(igra2Text);
+    if (soundings.length === 0) throw new Error("No soundings found in IGRA2 data");
+
+    // Sort by proximity to target date
+    var targetMs = new Date(targetDate + "T12:00:00Z").getTime();
+    var sorted = soundings.map(function(s) {
+        var sMs = new Date(s.date + "T" + String(s.hour != null ? s.hour : 12).padStart(2, "0") + ":00:00Z").getTime();
+        return { ...s, dist: Math.abs(sMs - targetMs) };
+    }).sort(function(a, b) { return a.dist - b.dist; });
+
+    return new Promise(function(resolve) {
+        var overlay = document.createElement("div");
+        overlay.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:10000;display:flex;align-items:center;justify-content:center;";
+
+        var dialog = document.createElement("div");
+        dialog.style.cssText = "background:#1a1a2e;color:#e0e0e0;border-radius:8px;padding:20px;width:450px;max-height:70vh;display:flex;flex-direction:column;font-family:sans-serif;";
+
+        dialog.innerHTML =
+            '<h3 style="margin:0 0 10px 0;color:#fff;">Select Sounding (' + soundings.length + ' available)</h3>' +
+            '<div style="font-size:11px;color:#888;margin-bottom:8px;">Nearest to ' + targetDate + ' shown first</div>' +
+            '<div id="igra2-sounding-list" style="overflow-y:auto;flex:1;max-height:50vh;"></div>' +
+            '<div style="margin-top:10px;text-align:right;">' +
+            '<button id="igra2-cancel" style="padding:6px 16px;background:#444;color:#fff;border:none;border-radius:4px;cursor:pointer;">Cancel</button></div>';
+
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+
+        var listDiv = dialog.querySelector("#igra2-sounding-list");
+        var cancelBtn = dialog.querySelector("#igra2-cancel");
+
+        // Show nearest 100 soundings
+        listDiv.innerHTML = sorted.slice(0, 100).map(function(s) {
+            var hourStr = s.hour != null ? String(s.hour).padStart(2, "0") + "Z" : "??Z";
+            var daysAway = Math.round(s.dist / 86400000);
+            var distLabel = daysAway === 0 ? "today" : daysAway + "d away";
+            return '<div class="igra2-item" data-index="' + s.index + '"' +
+                ' style="padding:6px 8px;cursor:pointer;border-bottom:1px solid #333;font-size:13px;"' +
+                ' onmouseover="this.style.background=\'#3a3a5a\'" onmouseout="this.style.background=\'transparent\'">' +
+                '<b>' + s.date + ' ' + hourStr + '</b>' +
+                ' <span style="color:#888;font-size:11px;">(' + s.numLevels + ' levels, ' + distLabel + ')</span></div>';
+        }).join("");
+
+        listDiv.addEventListener("click", function(e) {
+            var item = e.target.closest(".igra2-item");
+            if (item) {
+                document.body.removeChild(overlay);
+                resolve(parseInt(item.dataset.index));
+            }
+        });
+
+        cancelBtn.addEventListener("click", function() {
+            document.body.removeChild(overlay);
+            resolve(null);
+        });
+
+        overlay.addEventListener("click", function(e) {
+            if (e.target === overlay) { document.body.removeChild(overlay); resolve(null); }
+        });
+    });
 }
 
 // Station list cache
@@ -123,7 +244,7 @@ export async function pickStation() {
                 : sorted.slice(0, 50); // show nearest 50 by default
 
             listDiv.innerHTML = filtered.slice(0, 100).map(s =>
-                `<div class="sonde-station-item" data-wmo="${s.wmo}" data-name="${s.name}"
+                `<div class="sonde-station-item" data-wmo="${s.wmo}" data-name="${s.name}" data-igraid="${s.id}"
                     style="padding:6px 8px;cursor:pointer;border-bottom:1px solid #333;font-size:13px;"
                     onmouseover="this.style.background='#3a3a5a'" onmouseout="this.style.background='transparent'">
                     <b>${s.wmo}</b> — ${s.name} <span style="color:#888;font-size:11px;">(${s.country}, ${s.dist.toFixed(0)} km, ${s.lat.toFixed(2)}° ${s.lon.toFixed(2)}°)</span>
@@ -139,7 +260,7 @@ export async function pickStation() {
             const item = e.target.closest(".sonde-station-item");
             if (item) {
                 document.body.removeChild(overlay);
-                resolve({ wmo: item.dataset.wmo, name: item.dataset.name });
+                resolve({ wmo: item.dataset.wmo, name: item.dataset.name, id: item.dataset.igraid });
             }
         });
 
@@ -197,18 +318,11 @@ export async function importNearestSounding() {
  * Called from the File menu.
  */
 export async function importSoundingDialog() {
-    if (isServerless) {
-        alert("Import Sounding requires a server with PHP. "
-            + "In serverless mode, download the sounding HTML from weather.uwyo.edu and drag-drop it.");
-        return;
-    }
-
     // Step 1: Station picker
     let station;
     try {
         station = await pickStation();
     } catch (e) {
-        // Fall back to manual entry if station list fails to load
         console.warn("Station picker failed, falling back to manual entry:", e.message);
         const stationId = await promptForText({
             title: "Import Sounding — Station",
@@ -221,11 +335,26 @@ export async function importSoundingDialog() {
             },
         });
         if (stationId === null) return;
-        station = { wmo: stationId.trim(), name: stationId.trim() };
+        station = { wmo: stationId.trim(), name: stationId.trim(), id: "" };
     }
     if (!station) return;
 
-    // Step 2: Date
+    // Step 2: Source selection
+    const source = await promptForText({
+        title: `Import Sounding — Source (${station.wmo} ${station.name})`,
+        message: "Choose data source:\n"
+            + "  uwyo  — University of Wyoming (recent data, needs PHP proxy)\n"
+            + "  igra2 — NOAA NCEI archive (historical data, direct download)\n",
+        defaultValue: isServerless ? "igra2" : "uwyo",
+        validate: (val) => {
+            const v = val.trim().toLowerCase();
+            if (v !== "uwyo" && v !== "igra2") return "Enter 'uwyo' or 'igra2'";
+            return "";
+        },
+    });
+    if (source === null) return;
+
+    // Step 3: Date
     const today = new Date().toISOString().slice(0, 10);
     const dateStr = await promptForText({
         title: `Import Sounding — Date (${station.wmo} ${station.name})`,
@@ -238,12 +367,21 @@ export async function importSoundingDialog() {
         },
     });
     if (dateStr === null) return;
+    const date = dateStr.trim();
 
-    // Step 3: Hour
+    if (source.trim().toLowerCase() === "igra2") {
+        // IGRA2 path: fetch zip → decompress → pick sounding → import
+        await importViaIGRA2(station, date);
+    } else {
+        // UWYO path: fetch via PHP proxy
+        await importViaUWYO(station, date);
+    }
+}
+
+async function importViaUWYO(station, date) {
     const hourStr = await promptForText({
         title: `Import Sounding — Hour (${station.wmo} ${station.name})`,
-        message: "Enter UTC launch hour (0 or 12).\n"
-            + "Standard radiosonde launches are at 00Z and 12Z.",
+        message: "Enter UTC launch hour (0 or 12).",
         defaultValue: "12",
         validate: (val) => {
             const v = val.trim();
@@ -252,24 +390,82 @@ export async function importSoundingDialog() {
         },
     });
     if (hourStr === null) return;
-
     const hour = parseInt(hourStr.trim());
 
-    // Fetch the sounding data
     try {
-        console.log(`Fetching sounding: station=${station.wmo}, date=${dateStr.trim()}, hour=${hour}`);
-        const html = await fetchUWYOSounding(station.wmo, dateStr.trim(), hour, "list");
-
-        // Feed it into the import pipeline
-        const filename = `sounding_${station.wmo}_${dateStr.trim()}_${String(hour).padStart(2, '0')}Z.html`;
-        const encoder = new TextEncoder();
-        const arrayBuffer = encoder.encode(html).buffer;
-
-        await FileManager.parseResult(filename, arrayBuffer);
+        console.log(`Fetching UWYO sounding: station=${station.wmo}, date=${date}, hour=${hour}`);
+        const html = await fetchUWYOSounding(station.wmo, date, hour, "list");
+        const filename = `sounding_${station.wmo}_${date}_${String(hour).padStart(2, '0')}Z.html`;
+        await FileManager.parseResult(filename, new TextEncoder().encode(html).buffer);
         console.log("Sounding imported: " + filename);
-
     } catch (e) {
         alert("Failed to import sounding:\n" + e.message);
         console.error("Sounding import error:", e);
     }
+}
+
+async function importViaIGRA2(station, date) {
+    // Need the full IGRA2 ID (e.g. "USM00072451"), not just the WMO number
+    const igra2Id = station.id || "";
+    if (!igra2Id) {
+        alert("IGRA2 requires the full station ID (e.g. USM00072451). "
+            + "This station doesn't have one in the database. Try UWYO instead.");
+        return;
+    }
+
+    try {
+        const year = parseInt(date.split("-")[0]);
+        console.log(`Fetching IGRA2: station=${igra2Id}, year=${year}`);
+
+        const text = await fetchIGRA2Data(igra2Id, year);
+        console.log("IGRA2 data fetched, finding soundings...");
+
+        // Pick a sounding near the requested date
+        const selectedIndex = await pickIGRA2Sounding(text, date);
+        if (selectedIndex === null) return; // cancelled
+
+        // Import the selected sounding by feeding the FULL text + index into the pipeline.
+        // CTrackFileSonde will parse with soundingIndex=0 by default, but we need to
+        // extract just the selected sounding and feed it as a standalone file.
+        const soundings = listIGRA2Soundings(text);
+        const selected = soundings.find(s => s.index === selectedIndex);
+        const hourStr = selected && selected.hour != null ? String(selected.hour).padStart(2, "0") + "Z" : "00Z";
+        const dateStr = selected ? selected.date : date;
+
+        // Extract just this one sounding from the text
+        const singleSounding = extractSingleSounding(text, selectedIndex);
+
+        const filename = `igra2_${igra2Id}_${dateStr}_${hourStr}.txt`;
+        await FileManager.parseResult(filename, new TextEncoder().encode(singleSounding).buffer);
+        console.log("IGRA2 sounding imported: " + filename);
+
+    } catch (e) {
+        alert("Failed to import IGRA2 sounding:\n" + e.message);
+        console.error("IGRA2 import error:", e);
+    }
+}
+
+/**
+ * Extract a single sounding (header + data lines) from an IGRA2 multi-sounding file.
+ */
+function extractSingleSounding(text, soundingIndex) {
+    const lines = text.split("\n");
+    let headerCount = -1;
+    let start = -1;
+    let end = lines.length;
+
+    for (let i = 0; i < lines.length; i++) {
+        if (lines[i].startsWith("#")) {
+            headerCount++;
+            if (headerCount === soundingIndex) {
+                start = i;
+            } else if (headerCount === soundingIndex + 1) {
+                end = i;
+                break;
+            }
+        }
+    }
+
+    if (start < 0) return text; // fallback: return everything
+    return lines.slice(start, end).join("\n");
 }
