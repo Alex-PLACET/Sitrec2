@@ -1,82 +1,81 @@
 /**
- * JPEG2000Utils.js - Decode standalone JPEG 2000 files (.jp2, .j2k, .jpx, .jpc, .j2c)
+ * JPEG2000Utils.js - Decode JPEG 2000 files using OpenJPEG WebAssembly
  *
- * The jpeg2000 library handles both JP2 containers (box structure with metadata)
- * and raw J2K codestreams. Decoded pixel data is rendered to a canvas and
- * returned as an HTMLImageElement (PNG).
+ * Uses @cornerstonejs/codec-openjpeg (WASM port of OpenJPEG) for robust decoding.
  *
- * The jpeg2000 library ignores two JP2 container metadata boxes that affect color:
- *  - colr box: declares the output color space (e.g. sYCC = YCbCr)
- *  - cdef box: can reorder which codestream component maps to which color channel
- * We parse both and apply the necessary conversion after decoding.
+ * OpenJPEG handles:
+ *  - Inverse MCT (RCT/ICT) when codestream has MCT=1
+ *  - cdef box component reordering (JP2 containers)
+ *
+ * OpenJPEG does NOT handle:
+ *  - sYCC→RGB color conversion (colr box EnumCS=18)
+ *  - That's the application's responsibility (per the JPEG 2000 spec)
+ *
+ * So we detect sYCC from either:
+ *  - JP2 colr box (EnumCS=18) — for standalone JP2 files
+ *  - NITF IREP field (YCbCr601) — for NITF-wrapped J2K codestreams
+ * and apply the conversion ourselves, with a Cb-mean heuristic to catch
+ * mislabeled files that declare sYCC but actually contain RGB data.
+ *
+ * The WASM module is loaded lazily on first use and cached.
+ * The .wasm file is copied to libs/openjpeg/ by webpackCopyPatterns.js.
  */
 
-import {JpxImage} from "jpeg2000";
 import {createImageFromArrayBuffer} from "./FileUtils";
 
-/**
- * Parse JP2 container metadata relevant to color handling.
- * Returns {enumCS, componentMap} or null for raw J2K codestreams.
- *
- * componentMap: array where componentMap[association-1] = codestream index.
- * For sYCC: association 1=Y, 2=Cb, 3=Cr.
- * So componentMap = [indexOfY, indexOfCb, indexOfCr].
- */
-function parseJP2ColorInfo(bytes) {
-    // JP2 files start with a 12-byte signature box containing 'jP'
-    if (bytes.length < 12 || bytes[4] !== 0x6A || bytes[5] !== 0x50) return null;
+let _openjpegModule = null;
 
-    let enumCS = null;
-    let componentMap = null;
+/**
+ * Lazily load and cache the OpenJPEG WASM module.
+ * The Emscripten-generated JS is IIFE/UMD, loaded via script tag.
+ */
+async function getOpenJPEGModule() {
+    if (_openjpegModule) return _openjpegModule;
+
+    if (typeof window.OpenJPEGWASM === 'undefined') {
+        await new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = './libs/openjpeg/openjpegwasm_decode.js';
+            script.onload = resolve;
+            script.onerror = () => reject(new Error('Failed to load OpenJPEG WASM'));
+            document.head.appendChild(script);
+        });
+    }
+
+    _openjpegModule = await window.OpenJPEGWASM({
+        locateFile: (filename) => `./libs/openjpeg/${filename}`,
+    });
+
+    return _openjpegModule;
+}
+
+/**
+ * Parse JP2 container colr box to detect sYCC color space.
+ * Returns EnumCS (16=sRGB, 18=sYCC, etc.) or null for raw J2K codestreams.
+ */
+function getJP2EnumCS(bytes) {
+    if (bytes.length < 12 || bytes[4] !== 0x6A || bytes[5] !== 0x50) return null; // not JP2
 
     let pos = 0;
     const limit = Math.min(bytes.length, 1024);
     while (pos < limit - 8) {
         const boxLen = (bytes[pos] << 24) | (bytes[pos + 1] << 16) | (bytes[pos + 2] << 8) | bytes[pos + 3];
         const boxType = String.fromCharCode(bytes[pos + 4], bytes[pos + 5], bytes[pos + 6], bytes[pos + 7]);
-
         if (boxLen < 8 || boxLen > bytes.length - pos) break;
 
-        if (boxType === 'colr' && boxLen >= 15) {
-            const meth = bytes[pos + 8];
-            if (meth === 1) {
-                enumCS = (bytes[pos + 11] << 24) | (bytes[pos + 12] << 16) |
-                         (bytes[pos + 13] << 8) | bytes[pos + 14];
-            }
+        if (boxType === 'colr' && boxLen >= 15 && bytes[pos + 8] === 1) {
+            return (bytes[pos + 11] << 24) | (bytes[pos + 12] << 16) |
+                   (bytes[pos + 13] << 8) | bytes[pos + 14];
         }
 
-        if (boxType === 'cdef' && boxLen >= 14) {
-            // cdef: N(2) then N entries of [index(2), type(2), association(2)]
-            const n = (bytes[pos + 8] << 8) | bytes[pos + 9];
-            const map = [];
-            for (let i = 0; i < n; i++) {
-                const off = pos + 10 + i * 6;
-                if (off + 6 > pos + boxLen) break;
-                const idx = (bytes[off] << 8) | bytes[off + 1];
-                const assoc = (bytes[off + 4] << 8) | bytes[off + 5];
-                if (assoc >= 1 && assoc <= n) {
-                    map[assoc - 1] = idx; // association 1→slot 0, 2→slot 1, 3→slot 2
-                }
-            }
-            if (map.length >= 3) componentMap = map;
-        }
-
-        // Enter superboxes to find colr/cdef inside
-        if (boxType === 'jp2h') {
-            pos += 8;
-        } else {
-            pos += boxLen;
-        }
+        pos += (boxType === 'jp2h') ? 8 : boxLen;
     }
-
-    if (enumCS === null) return null;
-    return {enumCS, componentMap};
+    return null;
 }
 
 /**
- * Convert sYCC (YCbCr) pixel data to RGB in-place, respecting component reordering.
- * componentMap[0] = codestream index of Y, [1] = Cb, [2] = Cr.
- * If null, assumes standard [Y, Cb, Cr] order.
+ * Convert sYCC (YCbCr) pixel data to RGB in-place.
+ * componentMap: [indexOfY, indexOfCb, indexOfCr] or null for default [0,1,2].
  */
 function convertSYCCtoRGB(items, nc, pixelCount, componentMap) {
     const yIdx  = componentMap ? componentMap[0] : 0;
@@ -88,92 +87,109 @@ function convertSYCCtoRGB(items, nc, pixelCount, componentMap) {
         const y  = items[off + yIdx];
         const cb = items[off + cbIdx] - 128;
         const cr = items[off + crIdx] - 128;
-        const r = Math.max(0, Math.min(255, Math.round(y + 1.402 * cr)));
-        const g = Math.max(0, Math.min(255, Math.round(y - 0.34414 * cb - 0.71414 * cr)));
-        const b = Math.max(0, Math.min(255, Math.round(y + 1.772 * cb)));
-        items[off]     = r;
-        items[off + 1] = g;
-        items[off + 2] = b;
+        items[off]     = Math.max(0, Math.min(255, Math.round(y + 1.402 * cr)));
+        items[off + 1] = Math.max(0, Math.min(255, Math.round(y - 0.34414 * cb - 0.71414 * cr)));
+        items[off + 2] = Math.max(0, Math.min(255, Math.round(y + 1.772 * cb)));
     }
 }
 
 /**
- * Decode a JPEG 2000 buffer to a canvas.
- * @param {ArrayBuffer} arrayBuffer - Raw JP2/J2K file data
- * @param {Object} [options] - Optional color space overrides (for raw codestreams
- *   where the container metadata is external, e.g. NITF IREP/IREPBAND fields).
- * @param {boolean} [options.isYCbCr] - True if data is in YCbCr color space
- * @param {number[]} [options.componentMap] - Maps [Y, Cb, Cr] to codestream indices
- * @returns {{canvas: HTMLCanvasElement, width: number, height: number}}
+ * Check if decoded data actually contains YCbCr by examining the Cb channel.
+ * Real sYCC has Cb centered near 128 (neutral chrominance). RGB data
+ * mislabeled as sYCC will have Cb mean far from 128.
+ * Returns true if the data appears to be genuine YCbCr.
  */
-function decodeJPEG2000ToCanvas(arrayBuffer, options) {
-    const bytes = new Uint8Array(arrayBuffer);
-    const data = Buffer.from(bytes);
-
-    const jpx = new JpxImage();
-    jpx.parse(data);
-
-    const width = jpx.width;
-    const height = jpx.height;
-    const nc = jpx.componentsCount;
-
-    // Determine color handling from either:
-    // 1. Caller-provided options (NITF IREP/IREPBAND)
-    // 2. JP2 container colr/cdef boxes
-    let needsYCbCrConvert = false;
-    let componentMap = null;
-
-    if (options && options.isYCbCr) {
-        needsYCbCrConvert = nc >= 3;
-        componentMap = options.componentMap || null;
-    } else {
-        const colorInfo = parseJP2ColorInfo(bytes);
-        if (colorInfo) {
-            needsYCbCrConvert = nc >= 3 && colorInfo.enumCS === 18;
-            componentMap = colorInfo.componentMap || null;
-        }
+function looksLikeYCbCr(decoded, nc, pixelCount, cbIdx) {
+    // Sample uniformly across the image (not just the start, which may be
+    // biased by sky/ground regions with non-neutral chrominance).
+    const sampleCount = Math.min(pixelCount, 10000);
+    const step = Math.max(1, Math.floor(pixelCount / sampleCount));
+    let cbSum = 0;
+    let n = 0;
+    for (let i = 0; i < pixelCount; i += step) {
+        cbSum += decoded[i * nc + cbIdx];
+        n++;
     }
+    const cbMean = cbSum / n;
+    const offset = Math.abs(cbMean - 128);
+    return {isYCbCr: offset < 15, cbMean, offset};
+}
 
-    // If no sYCC but components are reordered for sRGB, apply reorder
-    const needsReorder = !needsYCbCrConvert && componentMap &&
-        (componentMap[0] !== 0 || componentMap[1] !== 1 || componentMap[2] !== 2);
+/**
+ * Decode a JPEG 2000 buffer to a canvas using OpenJPEG WASM.
+ *
+ * @param {ArrayBuffer} arrayBuffer - Raw JP2/J2K file data
+ * @param {Object} [options] - Color space overrides for raw J2K codestreams
+ *   (NITF IREP/IREPBAND). Not needed for JP2 containers — colr box is read.
+ * @param {boolean} [options.isYCbCr] - Data is in YCbCr color space
+ * @param {number[]} [options.componentMap] - [Y, Cb, Cr] → codestream indices
+ * @returns {Promise<{canvas: HTMLCanvasElement, width: number, height: number}>}
+ */
+async function decodeJPEG2000ToCanvas(arrayBuffer, options) {
+    const Module = await getOpenJPEGModule();
+    const inputData = new Uint8Array(arrayBuffer);
 
-    console.log(`JPEG2000Utils: Decoded ${width}×${height}, ${nc} components, ${jpx.tiles.length} tile(s)` +
-        (needsYCbCrConvert ? ', sYCC→RGB' : '') +
-        (componentMap ? ` cdef=[${componentMap}]` : ''));
+    const decoder = new Module.J2KDecoder();
+    try {
+        const encodedBuffer = decoder.getEncodedBuffer(inputData.length);
+        encodedBuffer.set(inputData);
+        decoder.decode();
 
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
+        const frameInfo = decoder.getFrameInfo();
+        const width = frameInfo.width;
+        const height = frameInfo.height;
+        const nc = frameInfo.componentCount;
+        const decoded = decoder.getDecodedBuffer();
+        const pixelCount = width * height;
 
-    for (const tile of jpx.tiles) {
-        const tw = tile.width;
-        const th = tile.height;
-        const imageData = ctx.createImageData(tw, th);
-        const rgba = imageData.data;
-        const items = tile.items;
-        const pixelCount = tw * th;
+        console.log(`JPEG2000Utils: OpenJPEG decoded ${width}×${height}, ${nc} components`);
 
-        if (needsYCbCrConvert) {
-            convertSYCCtoRGB(items, nc, pixelCount, componentMap);
+        // Determine if sYCC→RGB conversion is needed.
+        // Source 1: caller-provided options (NITF IREP)
+        // Source 2: JP2 colr box (EnumCS=18 = sYCC)
+        let needsConvert = false;
+        let componentMap = null;
+
+        if (options && options.isYCbCr) {
+            needsConvert = true;
+            componentMap = options.componentMap || null;
+        } else if (nc >= 3) {
+            const enumCS = getJP2EnumCS(inputData);
+            if (enumCS === 18) {
+                needsConvert = true;
+                // OpenJPEG already applied cdef reordering, so components
+                // are in standard [Y, Cb, Cr] order after decoding.
+            }
         }
+
+        if (needsConvert && nc >= 3) {
+            const cbIdx = componentMap ? componentMap[1] : 1;
+            const check = looksLikeYCbCr(decoded, nc, pixelCount, cbIdx);
+            if (check.isYCbCr) {
+                convertSYCCtoRGB(decoded, nc, pixelCount, componentMap);
+                console.log(`JPEG2000Utils: sYCC→RGB (Cb mean=${check.cbMean.toFixed(1)})`);
+            } else {
+                console.log(`JPEG2000Utils: Skipped sYCC→RGB — data is RGB despite metadata (Cb mean=${check.cbMean.toFixed(1)})`);
+            }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        const imageData = ctx.createImageData(width, height);
+        const rgba = imageData.data;
 
         if (nc >= 3) {
-            // After sYCC conversion, items are in RGB order.
-            // For non-sYCC with cdef reorder, apply the mapping.
-            const r = needsReorder ? componentMap[0] : 0;
-            const g = needsReorder ? componentMap[1] : 1;
-            const b = needsReorder ? componentMap[2] : 2;
             for (let i = 0; i < pixelCount; i++) {
-                rgba[i * 4]     = items[i * nc + r];
-                rgba[i * 4 + 1] = items[i * nc + g];
-                rgba[i * 4 + 2] = items[i * nc + b];
-                rgba[i * 4 + 3] = nc >= 4 ? items[i * nc + 3] : 255;
+                rgba[i * 4]     = decoded[i * nc];
+                rgba[i * 4 + 1] = decoded[i * nc + 1];
+                rgba[i * 4 + 2] = decoded[i * nc + 2];
+                rgba[i * 4 + 3] = nc >= 4 ? decoded[i * nc + 3] : 255;
             }
         } else {
             for (let i = 0; i < pixelCount; i++) {
-                const v = items[i];
+                const v = decoded[i];
                 rgba[i * 4] = v;
                 rgba[i * 4 + 1] = v;
                 rgba[i * 4 + 2] = v;
@@ -181,28 +197,18 @@ function decodeJPEG2000ToCanvas(arrayBuffer, options) {
             }
         }
 
-        if (tile.left === 0 && tile.top === 0 && tw === width && th === height) {
-            ctx.putImageData(imageData, 0, 0);
-        } else {
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = tw;
-            tempCanvas.height = th;
-            tempCanvas.getContext('2d').putImageData(imageData, 0, 0);
-            ctx.drawImage(tempCanvas, tile.left, tile.top);
-        }
+        ctx.putImageData(imageData, 0, 0);
+        return {canvas, width, height};
+    } finally {
+        decoder.delete();
     }
-
-    return {canvas, width, height};
 }
 
 /**
  * Decode a JPEG 2000 buffer and return an HTMLImageElement.
- * Note: the blob URL backing the image is revoked after load.
- * @param {ArrayBuffer} arrayBuffer - Raw JP2/J2K file data
- * @returns {Promise<HTMLImageElement>}
  */
 export async function decodeJPEG2000ToImage(arrayBuffer, options) {
-    const {canvas} = decodeJPEG2000ToCanvas(arrayBuffer, options);
+    const {canvas} = await decodeJPEG2000ToCanvas(arrayBuffer, options);
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
     const pngBuffer = await blob.arrayBuffer();
     return createImageFromArrayBuffer(pngBuffer, 'image/png');
@@ -210,12 +216,9 @@ export async function decodeJPEG2000ToImage(arrayBuffer, options) {
 
 /**
  * Decode a JPEG 2000 buffer and return a persistent blob URL.
- * The caller is responsible for revoking the URL when done.
- * @param {ArrayBuffer} arrayBuffer - Raw JP2/J2K file data
- * @returns {Promise<string>} Blob URL for the decoded PNG
  */
 export async function decodeJPEG2000ToBlobURL(arrayBuffer, options) {
-    const {canvas} = decodeJPEG2000ToCanvas(arrayBuffer, options);
+    const {canvas} = await decodeJPEG2000ToCanvas(arrayBuffer, options);
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
     return URL.createObjectURL(blob);
 }

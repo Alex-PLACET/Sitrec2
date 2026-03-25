@@ -129,4 +129,12 @@ patterns.push({
     to: './tools/libs/mediabunny.min.js'
 });
 
+// Copy OpenJPEG WASM decoder for JPEG 2000 support (JP2/J2K/NITF C8)
+// Uses require.resolve for symlinked node_modules compatibility (see CLAUDE.md)
+patterns.push({
+    from: path.dirname(require.resolve('@cornerstonejs/codec-openjpeg/decodewasmjs')),
+    to: './libs/openjpeg',
+    globOptions: { ignore: ['**/openjpegjs*', '**/openjpegwasm.js', '**/openjpegwasm.wasm'] },
+});
+
 module.exports = patterns;
