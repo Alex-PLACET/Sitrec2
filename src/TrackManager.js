@@ -38,6 +38,7 @@ import {CTrackFileSonde} from "./TrackFiles/CTrackFileSonde";
 import {CNodeDisplayBalloonSphere} from "./nodes/CNodeDisplayBalloonSphere";
 import {CNodeSondeColor} from "./nodes/CNodeSondeColor";
 import {CNodeDisplaySondeWind} from "./nodes/CNodeDisplaySondeWind";
+import {CNodeAtmosphericProfile} from "./nodes/CNodeAtmosphericProfile";
 import {detectRocketLikeTrack} from "./trackHeuristics";
 import {hasOtherTrackSourceReference} from "./trackSourceUtils";
 
@@ -774,6 +775,16 @@ class CTrackManager extends CManager {
                 },
                 arrowScale: 200, // 200m per m/s
                 arrowColor: 0xffff00, // yellow
+            });
+
+            // Atmospheric profile node for altitude-interpolated data lookup
+            trackOb.atmosphericProfile = new CNodeAtmosphericProfile({
+                id: "atmosphericProfile_" + shortName,
+                inputs: {
+                    dataTrack: "TrackData_" + shortName,
+                },
+                stationId: motionTrackFile.getSondeData(0)?.station?.id ?? "",
+                stationName: motionTrackFile.getSondeData(0)?.station?.name ?? "",
             });
         }
     }

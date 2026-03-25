@@ -165,6 +165,32 @@ export async function pickStation() {
 }
 
 /**
+ * Auto-import the nearest station's latest sounding. For quick testing.
+ * Uses today's date and 12Z by default.
+ */
+export async function importNearestSounding() {
+    if (isServerless) return;
+    try {
+        var stations = await loadStationList();
+        var sitLat = Sit.lat || 0;
+        var sitLon = Sit.lon || 0;
+        var nearest = stations
+            .filter(function(s) { return s.wmo; })
+            .sort(function(a, b) { return haversineKm(sitLat, sitLon, a.lat, a.lon) - haversineKm(sitLat, sitLon, b.lat, b.lon); })[0];
+        if (!nearest) { alert("No stations found"); return; }
+
+        var today = new Date().toISOString().slice(0, 10);
+        console.log("Auto-importing nearest station: " + nearest.wmo + " " + nearest.name + " (" + today + " 12Z)");
+        var html = await fetchUWYOSounding(nearest.wmo, today, 12, "list");
+        var filename = "sounding_" + nearest.wmo + "_" + today + "_12Z.html";
+        await FileManager.parseResult(filename, new TextEncoder().encode(html).buffer);
+        console.log("Imported: " + filename);
+    } catch (e) {
+        alert("Auto-import failed:\n" + e.message);
+    }
+}
+
+/**
  * Import Sounding dialog — station picker + date/hour, fetches from UWYO,
  * and imports into the current sitch as a track.
  *
