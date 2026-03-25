@@ -36,6 +36,7 @@ import {CNodeSplineEditor} from "./nodes/CNodeSplineEdit";
 import {CTrackFile} from "./TrackFiles/CTrackFile";
 import {CTrackFileSonde} from "./TrackFiles/CTrackFileSonde";
 import {CNodeDisplayBalloonSphere} from "./nodes/CNodeDisplayBalloonSphere";
+import {CNodeSondeColor} from "./nodes/CNodeSondeColor";
 import {detectRocketLikeTrack} from "./trackHeuristics";
 import {hasOtherTrackSourceReference} from "./trackSourceUtils";
 
@@ -621,15 +622,39 @@ class CTrackManager extends CManager {
         const motionTrackFile = FileManager.get(trackOb.trackFileName);
         const isSonde = motionTrackFile && motionTrackFile.isSondeTrack && motionTrackFile.isSondeTrack();
 
+        // For sonde tracks, use temperature-gradient coloring instead of constant white
+        if (isSonde) {
+            var misbLength = FileManager.get(trackOb.trackFileName).getTrajectory(0).length;
+            new CNodeSondeColor({
+                id: "colorData_" + shortName,
+                inputs: { dataTrack: "TrackData_" + shortName },
+                colorMode: "temperature",
+                totalFrames: misbLength, // full-data display iterates over MISB entries
+            });
+            new CNodeSondeColor({
+                id: "colorTrack_" + shortName,
+                inputs: { dataTrack: "TrackData_" + shortName },
+                colorMode: "temperature",
+                totalFrames: Sit.frames, // sitch-duration display iterates over Sit.frames
+            });
+        } else {
+            new CNodeConstant({
+                id: "colorData_" + shortName,
+                value: new Color(trackColor),
+                pruneIfUnused: true,
+            });
+            new CNodeConstant({
+                id: "colorTrack_" + shortName,
+                value: new Color(trackColor),
+                pruneIfUnused: true,
+            });
+        }
+
         // diplay the full track data as imported
         trackOb.trackDisplayDataNode = new CNodeDisplayTrack({
             id: "TrackDisplayData_" + shortName,
             track: "TrackData_" + shortName,
-            color: new CNodeConstant({
-                id: "colorData_" + shortName,
-                value: new Color(trackColor),
-                pruneIfUnused: true
-            }),
+            color: "colorData_" + shortName,
             dropColor: dropColor,
 
             width: 0.5,
@@ -649,11 +674,7 @@ class CTrackManager extends CManager {
             track: "Track_" + shortName,
             dataTrack: "TrackData_" + shortName,
             dataTrackDisplay: "TrackDisplayData_" + shortName,
-            color: new CNodeConstant({
-                id: "colorTrack_" + shortName,
-                value: new Color(trackColor),
-                pruneIfUnused: true
-            }),
+            color: "colorTrack_" + shortName,
             width: 2,
             //  toGround: 1, // spacing for lines to ground
             extendToGround: isSonde, // balloon tracks show wall to ground
