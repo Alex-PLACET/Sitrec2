@@ -378,13 +378,19 @@ class CDragDropHandler {
         let imageURL;
 
         const j2kExtensions = ['jp2', 'j2k', 'jpx', 'jpc', 'j2c'];
+        if (j2kExtensions.includes(ext)) {
+            // Browser can't decode JP2 natively — decode to Image directly
+            const {decodeJPEG2000ToImage} = await import("./JPEG2000Utils");
+            const img = await decodeJPEG2000ToImage(arrayBuffer);
+            videoNode.makeImageVideo(file.name, img, false, file.name);
+            videoNode.imageFileID = file.name;
+            console.log(`Loaded J2K image "${file.name}" as video source (${img.width}x${img.height})`);
+            markSitchDirty();
+            return;
+        }
+
         if (ext === 'tif' || ext === 'tiff') {
             imageURL = await convertTiffBufferToBlobURL(arrayBuffer);
-        } else if (j2kExtensions.includes(ext)) {
-            // Browser can't decode JP2 natively — decode via jpeg2000 library to PNG
-            const {decodeJPEG2000ToImage} = await import("./JPEG2000Utils");
-            const decodedImg = await decodeJPEG2000ToImage(arrayBuffer);
-            imageURL = decodedImg.src;
         } else {
             const blob = new Blob([arrayBuffer], { type: file.type });
             imageURL = URL.createObjectURL(blob);
@@ -424,9 +430,8 @@ class CDragDropHandler {
         if (ext === 'tif' || ext === 'tiff') {
             imageURL = await convertTiffBufferToBlobURL(arrayBuffer);
         } else if (j2kExts.includes(ext)) {
-            const {decodeJPEG2000ToImage} = await import("./JPEG2000Utils");
-            const decodedImg = await decodeJPEG2000ToImage(arrayBuffer);
-            imageURL = decodedImg.src;
+            const {decodeJPEG2000ToBlobURL} = await import("./JPEG2000Utils");
+            imageURL = await decodeJPEG2000ToBlobURL(arrayBuffer);
         } else {
             const blob = new Blob([arrayBuffer], { type: file.type });
             imageURL = URL.createObjectURL(blob);

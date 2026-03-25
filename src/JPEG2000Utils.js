@@ -10,11 +10,11 @@ import {JpxImage} from "jpeg2000";
 import {createImageFromArrayBuffer} from "./FileUtils";
 
 /**
- * Decode a JPEG 2000 buffer and return an HTMLImageElement.
+ * Decode a JPEG 2000 buffer to a canvas.
  * @param {ArrayBuffer} arrayBuffer - Raw JP2/J2K file data
- * @returns {Promise<HTMLImageElement>}
+ * @returns {{canvas: HTMLCanvasElement, width: number, height: number}}
  */
-export async function decodeJPEG2000ToImage(arrayBuffer) {
+function decodeJPEG2000ToCanvas(arrayBuffer) {
     const data = Buffer.from(new Uint8Array(arrayBuffer));
 
     const jpx = new JpxImage();
@@ -68,7 +68,30 @@ export async function decodeJPEG2000ToImage(arrayBuffer) {
         }
     }
 
+    return {canvas, width, height};
+}
+
+/**
+ * Decode a JPEG 2000 buffer and return an HTMLImageElement.
+ * Note: the blob URL backing the image is revoked after load.
+ * @param {ArrayBuffer} arrayBuffer - Raw JP2/J2K file data
+ * @returns {Promise<HTMLImageElement>}
+ */
+export async function decodeJPEG2000ToImage(arrayBuffer) {
+    const {canvas} = decodeJPEG2000ToCanvas(arrayBuffer);
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
     const pngBuffer = await blob.arrayBuffer();
     return createImageFromArrayBuffer(pngBuffer, 'image/png');
+}
+
+/**
+ * Decode a JPEG 2000 buffer and return a persistent blob URL.
+ * The caller is responsible for revoking the URL when done.
+ * @param {ArrayBuffer} arrayBuffer - Raw JP2/J2K file data
+ * @returns {Promise<string>} Blob URL for the decoded PNG
+ */
+export async function decodeJPEG2000ToBlobURL(arrayBuffer) {
+    const {canvas} = decodeJPEG2000ToCanvas(arrayBuffer);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    return URL.createObjectURL(blob);
 }
