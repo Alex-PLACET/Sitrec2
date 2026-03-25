@@ -552,6 +552,18 @@ export class NITFParser {
             return this._decodeJPEG2000(image);
         }
 
+        if (image.ic === 'C1' || image.ic === 'M1') {
+            // CCITT bi-level compression (fax-style 1-bit coding)
+            const msg = `This NITF image uses CCITT bi-level compression (IC=${image.ic}, COMRAT=${image.comrat || '?'}).\n\n`
+                + `CCITT (Group 3/4) is a fax-style codec for 1-bit black-and-white images, `
+                + `typically used for scanned documents, forms, and line drawings. `
+                + `It is not used for photographic or satellite imagery.\n\n`
+                + `Sitrec does not support CCITT decompression.`;
+            console.warn("NITFParser: " + msg);
+            alert(msg);
+            return null;
+        }
+
         if (image.ic === 'C4' || image.ic === 'M4') {
             // CADRG/CIB Vector Quantization — legacy military raster map format
             const msg = `This is a CADRG/RPF file using Vector Quantization (IC=${image.ic}).\n\n`
