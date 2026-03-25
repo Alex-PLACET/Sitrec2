@@ -493,9 +493,32 @@ export class NITFParser {
         return val;
     }
 
-    /** Parse NITF datetime string CCYYMMDDhhmmss → Date */
+    /**
+     * Parse NITF datetime string.
+     * NITF 2.1: CCYYMMDDhhmmss        (e.g. "20091021203858")
+     * NITF 2.0: DDhhmmssZMONYY        (e.g. "19210403ZOCT99")
+     */
     static parseDatetime(str) {
         if (!str || str.trim().length < 14) return null;
+
+        const months = {JAN:0, FEB:1, MAR:2, APR:3, MAY:4, JUN:5,
+                        JUL:6, AUG:7, SEP:8, OCT:9, NOV:10, DEC:11};
+
+        // Try NITF 2.0 format: DDhhmmssZMONYY (has a 'Z' at position 8 and alpha at 9-11)
+        const mon3 = str.substring(9, 12).toUpperCase();
+        if (str.charAt(8) === 'Z' && months[mon3] !== undefined) {
+            const day = parseInt(str.substring(0, 2), 10);
+            const hour = parseInt(str.substring(2, 4), 10);
+            const min = parseInt(str.substring(4, 6), 10);
+            const sec = parseInt(str.substring(6, 8), 10);
+            const yy = parseInt(str.substring(12, 14), 10);
+            const year = yy >= 50 ? 1900 + yy : 2000 + yy;
+            if (!isNaN(day) && !isNaN(hour)) {
+                return new Date(Date.UTC(year, months[mon3], day, hour, min, sec));
+            }
+        }
+
+        // NITF 2.1 format: CCYYMMDDhhmmss
         const year = parseInt(str.substring(0, 4), 10);
         const month = parseInt(str.substring(4, 6), 10) - 1;
         const day = parseInt(str.substring(6, 8), 10);
@@ -503,7 +526,10 @@ export class NITFParser {
         const min = parseInt(str.substring(10, 12), 10);
         const sec = parseInt(str.substring(12, 14), 10);
         if (isNaN(year) || isNaN(month) || isNaN(day)) return null;
-        return new Date(Date.UTC(year, month, day, hour, min, sec));
+        const d = new Date(Date.UTC(year, month, day, hour, min, sec));
+        // Reject invalid dates (e.g. NaN components produced garbage)
+        if (isNaN(d.getTime())) return null;
+        return d;
     }
 
     /**

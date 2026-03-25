@@ -295,13 +295,14 @@ export class CTrackFileNITF extends CTrackFile {
         // If the original date has an invalid year but a valid time-of-day,
         // we keep that time and only replace the date portion.
         let timestamp;
-        if (this.datetime && this.datetime.getTime() >= 0) {
+        const dtValid = this.datetime && !isNaN(this.datetime.getTime());
+        if (dtValid && this.datetime.getTime() >= 0) {
             timestamp = this.datetime.getTime();
         } else {
             // Local solar noon: UTC 12:00 minus longitude-based offset (15°/hr)
             const noonOffsetMs = (this.centerLon / 15) * 3600000;
             const baseDate = Date.UTC(2026, 2, 30, 12, 0, 0) - noonOffsetMs;
-            if (this.datetime) {
+            if (dtValid) {
                 // Keep original time-of-day if it looks valid (non-midnight)
                 const h = this.datetime.getUTCHours();
                 const m = this.datetime.getUTCMinutes();
