@@ -690,7 +690,7 @@ export class NITFParser {
      * Each block contains NPPBH × NPPBV pixels in row-major order.
      * For IMODE='B' with multiple bands, each block stores all bands sequentially.
      */
-    static _deblockData(rawData, nrows, ncols, nbpr, nbpc, nppbh, nppbv, nbands, abpp) {
+    static _deblockData(rawData, nrows, ncols, nbpr, nbpc, nppbh, nppbv, nbands, abpp, imode) {
         const bpp = Math.ceil(abpp / 8); // bytes per pixel per band
         const blockPixels = nppbh * nppbv;
         const blockBytes = blockPixels * bpp * nbands;
@@ -703,17 +703,32 @@ export class NITFParser {
                 const pixRowStart = bRow * nppbv;
                 const pixColStart = bCol * nppbh;
 
-                for (let band = 0; band < nbands; band++) {
-                    const bandOffset = blockOffset + band * blockPixels * bpp;
-                    const rasterBandOffset = band * nrows * ncols * bpp;
-
+                if (imode === 'P') {
+                    // Pixel interleaved: each row in block is [R0G0B0 R1G1B1 ...]
+                    const bytesPerPixel = nbands * bpp;
+                    const rowCols = Math.min(nppbh, ncols - pixColStart);
                     for (let ly = 0; ly < nppbv; ly++) {
                         const globalRow = pixRowStart + ly;
-                        if (globalRow >= nrows) break; // partial block at bottom edge
-                        const srcStart = bandOffset + ly * nppbh * bpp;
-                        const dstStart = rasterBandOffset + (globalRow * ncols + pixColStart) * bpp;
-                        const copyLen = Math.min(nppbh, ncols - pixColStart) * bpp;
+                        if (globalRow >= nrows) break;
+                        const srcStart = blockOffset + ly * nppbh * bytesPerPixel;
+                        const dstStart = (globalRow * ncols + pixColStart) * bytesPerPixel;
+                        const copyLen = rowCols * bytesPerPixel;
                         raster.set(rawData.subarray(srcStart, srcStart + copyLen), dstStart);
+                    }
+                } else {
+                    // Band sequential (S/B): each block stores full band planes
+                    for (let band = 0; band < nbands; band++) {
+                        const bandOffset = blockOffset + band * blockPixels * bpp;
+                        const rasterBandOffset = band * nrows * ncols * bpp;
+
+                        for (let ly = 0; ly < nppbv; ly++) {
+                            const globalRow = pixRowStart + ly;
+                            if (globalRow >= nrows) break;
+                            const srcStart = bandOffset + ly * nppbh * bpp;
+                            const dstStart = rasterBandOffset + (globalRow * ncols + pixColStart) * bpp;
+                            const copyLen = Math.min(nppbh, ncols - pixColStart) * bpp;
+                            raster.set(rawData.subarray(srcStart, srcStart + copyLen), dstStart);
+                        }
                     }
                 }
             }
