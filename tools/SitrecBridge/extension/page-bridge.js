@@ -372,6 +372,57 @@ const handlers = {
         return { imageData, mimeType, frame: targetFrame, width: exportCanvas.width, height: exportCanvas.height };
     },
 
+    sitrec_debug_log({ action } = {}) {
+        // Persistent console capture, independent of Sitrec's production-only debugLog.
+        // Uses window._mcpDebugLog so state survives across handler calls.
+        if (!window._mcpDebugLog) {
+            window._mcpDebugLog = { buffer: [], enabled: false, originals: {} };
+        }
+        const state = window._mcpDebugLog;
+
+        if (action === "enable") {
+            if (state.enabled) return { status: "already enabled", entries: state.buffer.length };
+            state.originals.log = console.log;
+            state.originals.error = console.error;
+            state.originals.warn = console.warn;
+            const capture = (level, args) => {
+                const msg = args.map(a => {
+                    if (a instanceof Error) return `${a.message}\n${a.stack}`;
+                    if (typeof a === "object") { try { return JSON.stringify(a); } catch { return "[Unserializable]"; } }
+                    return String(a);
+                }).join(" ");
+                state.buffer.push(`[${new Date().toISOString()}] ${level}: ${msg}`);
+                if (state.buffer.length > 10000) state.buffer.shift();
+            };
+            console.log = new Proxy(state.originals.log, { apply(t, ctx, args) { capture("LOG", args); return Reflect.apply(t, ctx, args); } });
+            console.error = new Proxy(state.originals.error, { apply(t, ctx, args) { capture("ERROR", args); return Reflect.apply(t, ctx, args); } });
+            console.warn = new Proxy(state.originals.warn, { apply(t, ctx, args) { capture("WARN", args); return Reflect.apply(t, ctx, args); } });
+            state.enabled = true;
+            return { status: "enabled" };
+        }
+
+        if (action === "disable") {
+            if (!state.enabled) return { status: "already disabled" };
+            console.log = state.originals.log;
+            console.error = state.originals.error;
+            console.warn = state.originals.warn;
+            state.enabled = false;
+            return { status: "disabled", entries: state.buffer.length };
+        }
+
+        if (action === "clear") {
+            state.buffer = [];
+            return { status: "cleared" };
+        }
+
+        if (action === "export") {
+            return { enabled: state.enabled, entries: state.buffer.length, log: state.buffer.join("\n") };
+        }
+
+        // Default: status
+        return { enabled: state.enabled, entries: state.buffer.length };
+    },
+
     sitrec_eval({ expression } = {}) {
         if (!expression) return { error: "Missing 'expression' parameter" };
         try {

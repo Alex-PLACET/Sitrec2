@@ -99,6 +99,7 @@ Then restart Claude Desktop.
 | Tool | Description |
 |------|-------------|
 | `sitrec_status` | Check bridge connection status |
+| `sitrec_list_tabs` | List all open Sitrec tabs (ID, URL, title) |
 | `sitrec_get_sitch` | Get current situation info (name, frames, FPS, coordinates) |
 | `sitrec_load_sitch` | Load a named sitch (e.g. `gimbal`, `chilean`) |
 | `sitrec_list_sitches` | List all available sitches |
@@ -109,6 +110,8 @@ Then restart Claude Desktop.
 | `sitrec_play_pause` | Toggle or set play/pause |
 | `sitrec_screenshot` | Capture the Sitrec canvas as PNG |
 | `sitrec_eval` | Evaluate JavaScript in the Sitrec page context |
+
+Most tools accept an optional `tab` parameter to target a specific Sitrec tab (by URL substring like `"build2"` or numeric Chrome tab ID). Omit to use the default (first) tab.
 
 ## MCP Resources
 
@@ -132,7 +135,8 @@ Then restart Claude Desktop.
 
 **"No Sitrec tab found":**
 - Open Sitrec in Chrome (not Firefox/Safari)
-- The URL must match: `metabunk.org/sitrec*`, `localhost:*`, or `127.0.0.1:*`
+- The URL must match: `metabunk.org/sitrec*`, `metabunk.org/build*`, `localhost:*/sitrec*`, `localhost:*/build*`, or `127.0.0.1:*`
+- If targeting a specific tab with `tab: "build2"`, make sure that tab is open
 
 **"Sitrec is not ready yet":**
 - Wait for the page to fully load (all assets, terrain, etc.)

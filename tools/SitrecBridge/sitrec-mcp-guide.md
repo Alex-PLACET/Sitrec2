@@ -13,6 +13,15 @@ Multiple Claude Code sessions can share one Sitrec instance simultaneously. The 
 
 Use `sitrec_status` to see which mode you're in (`"mode": "primary"` or `"mode": "secondary"`). If the primary exits, secondaries will reconnect automatically when a new primary starts.
 
+### Multi-tab support
+Multiple Sitrec tabs can be open simultaneously (e.g. `/sitrec` and `/build2`). Use `sitrec_list_tabs` to see all open Sitrec tabs with their IDs and URLs. Then pass the `tab` parameter on any tool to target a specific tab:
+
+- **By URL substring:** `tab: "build2"` — matches the first tab whose URL contains "build2"
+- **By numeric tab ID:** `tab: 361294686` — targets an exact Chrome tab ID
+- **Omit `tab`:** defaults to the first Sitrec tab found (current behavior)
+
+This allows different Claude Code sessions to control different Sitrec instances independently. The extension popup shows which Sitrec tab belongs to the current browser window.
+
 ## Key Globals (accessible via `sitrec_eval`)
 
 | Global | Type | Description |
