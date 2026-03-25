@@ -139,10 +139,26 @@ async function decodeJPEG2000ToCanvas(arrayBuffer, options) {
         const width = frameInfo.width;
         const height = frameInfo.height;
         const nc = frameInfo.componentCount;
-        const decoded = decoder.getDecodedBuffer();
+        const bps = frameInfo.bitsPerSample;
+        const rawDecoded = decoder.getDecodedBuffer();
         const pixelCount = width * height;
 
-        console.log(`JPEG2000Utils: OpenJPEG decoded ${width}×${height}, ${nc} components`);
+        // For >8-bit images, OpenJPEG stores each sample in 2 bytes (little-endian).
+        // Convert to 8-bit by scaling to 0-255.
+        let decoded;
+        if (bps > 8) {
+            const maxVal = (1 << bps) - 1;
+            decoded = new Uint8Array(pixelCount * nc);
+            for (let i = 0; i < pixelCount * nc; i++) {
+                const lo = rawDecoded[i * 2];
+                const hi = rawDecoded[i * 2 + 1];
+                decoded[i] = Math.round((lo | (hi << 8)) * 255 / maxVal);
+            }
+            console.log(`JPEG2000Utils: OpenJPEG decoded ${width}×${height}, ${nc} components, ${bps}-bit → 8-bit`);
+        } else {
+            decoded = rawDecoded;
+            console.log(`JPEG2000Utils: OpenJPEG decoded ${width}×${height}, ${nc} components`);
+        }
 
         // Determine if sYCC→RGB conversion is needed.
         // Source 1: caller-provided options (NITF IREP)
