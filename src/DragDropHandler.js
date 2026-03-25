@@ -377,8 +377,14 @@ class CDragDropHandler {
         const ext = file.name.split('.').pop().toLowerCase();
         let imageURL;
 
+        const j2kExtensions = ['jp2', 'j2k', 'jpx', 'jpc', 'j2c'];
         if (ext === 'tif' || ext === 'tiff') {
             imageURL = await convertTiffBufferToBlobURL(arrayBuffer);
+        } else if (j2kExtensions.includes(ext)) {
+            // Browser can't decode JP2 natively — decode via jpeg2000 library to PNG
+            const {decodeJPEG2000ToImage} = await import("./JPEG2000Utils");
+            const decodedImg = await decodeJPEG2000ToImage(arrayBuffer);
+            imageURL = decodedImg.src;
         } else {
             const blob = new Blob([arrayBuffer], { type: file.type });
             imageURL = URL.createObjectURL(blob);
@@ -414,8 +420,13 @@ class CDragDropHandler {
         let imageURL;
         const ext = file.name.split('.').pop().toLowerCase();
 
+        const j2kExts = ['jp2', 'j2k', 'jpx', 'jpc', 'j2c'];
         if (ext === 'tif' || ext === 'tiff') {
             imageURL = await convertTiffBufferToBlobURL(arrayBuffer);
+        } else if (j2kExts.includes(ext)) {
+            const {decodeJPEG2000ToImage} = await import("./JPEG2000Utils");
+            const decodedImg = await decodeJPEG2000ToImage(arrayBuffer);
+            imageURL = decodedImg.src;
         } else {
             const blob = new Blob([arrayBuffer], { type: file.type });
             imageURL = URL.createObjectURL(blob);
