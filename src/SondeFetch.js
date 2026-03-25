@@ -2,9 +2,9 @@
 // and import it into Sitrec as a track.
 
 import {SITREC_SERVER, SITREC_APP, isServerless} from "./configUtils";
-import {FileManager, Sit} from "./Globals";
+import {FileManager, GlobalDateTimeNode, NodeMan, Sit} from "./Globals";
 import {promptForText} from "./TextPrompt";
-import {detectSondeFormat, listIGRA2Soundings} from "./ParseSonde";
+import {detectSondeFormat, listIGRA2Soundings, parseIGRA2} from "./ParseSonde";
 import JSZip from "jszip";
 
 /**
@@ -289,26 +289,104 @@ export async function pickStation() {
  * Auto-import the nearest station's latest sounding. For quick testing.
  * Uses today's date and 12Z by default.
  */
-export async function importNearestSounding() {
-    if (isServerless) return;
-    try {
-        var stations = await loadStationList();
-        var sitLat = Sit.lat || 0;
-        var sitLon = Sit.lon || 0;
-        var nearest = stations
-            .filter(function(s) { return s.wmo; })
-            .sort(function(a, b) { return haversineKm(sitLat, sitLon, a.lat, a.lon) - haversineKm(sitLat, sitLon, b.lat, b.lon); })[0];
-        if (!nearest) { alert("No stations found"); return; }
+/**
+ * Import the N nearest weather balloon soundings to the camera position.
+ * Picks the most recent sounding launched before startTime + 1 hour.
+ *
+ * @param {number} count - Number of nearby stations to import (1-10)
+ * @param {string} source - "uwyo" or "igra2"
+ * @returns {Promise<Array>} Array of {station, filename, success, error?} results
+ */
+export async function getNearbyWeatherBalloons(count = 1, source = "uwyo") {
+    count = Math.max(1, Math.min(count, 10));
 
-        var today = new Date().toISOString().slice(0, 10);
-        console.log("Auto-importing nearest station: " + nearest.wmo + " " + nearest.name + " (" + today + " 12Z)");
-        var html = await fetchUWYOSounding(nearest.wmo, today, 12, "list");
-        var filename = "sounding_" + nearest.wmo + "_" + today + "_12Z.html";
-        await FileManager.parseResult(filename, new TextEncoder().encode(html).buffer);
-        console.log("Imported: " + filename);
-    } catch (e) {
-        alert("Auto-import failed:\n" + e.message);
+    const stations = await loadStationList();
+
+    // Get camera position for proximity sorting
+    let camLat, camLon;
+    try {
+        const camera = NodeMan.get("fixedCameraPosition");
+        const lla = camera._LLA;
+        camLat = lla[0];
+        camLon = lla[1];
+    } catch {
+        camLat = Sit.lat || 0;
+        camLon = Sit.lon || 0;
     }
+
+    // Target time: sitch start + 1 hour
+    let targetDate;
+    try {
+        targetDate = GlobalDateTimeNode.frameToDate(0);
+        targetDate = new Date(targetDate.getTime() + 3600000); // +1 hour
+    } catch {
+        targetDate = new Date();
+    }
+
+    // Find the most recent 00Z or 12Z launch before target
+    const targetHour = targetDate.getUTCHours();
+    let launchHour, launchDate;
+    if (targetHour >= 12) {
+        launchHour = 12;
+        launchDate = targetDate.toISOString().slice(0, 10);
+    } else {
+        // Before 12Z today → use 00Z today, or 12Z yesterday
+        launchHour = 0;
+        launchDate = targetDate.toISOString().slice(0, 10);
+    }
+
+    // Sort stations by proximity to camera
+    const sorted = stations
+        .filter(s => s.wmo)
+        .map(s => ({ ...s, dist: haversineKm(camLat, camLon, s.lat, s.lon) }))
+        .sort((a, b) => a.dist - b.dist);
+
+    const selected = sorted.slice(0, count);
+    const results = [];
+
+    for (const station of selected) {
+        try {
+            let filename;
+            if (source === "igra2" && station.id) {
+                // IGRA2 path
+                const year = parseInt(launchDate.split("-")[0]);
+                const text = await fetchIGRA2Data(station.id, year);
+                const soundings = listIGRA2Soundings(text);
+
+                // Find sounding closest to target but not after target + 1h
+                const targetMs = targetDate.getTime();
+                let bestIdx = 0;
+                let bestDist = Infinity;
+                for (const s of soundings) {
+                    const sHour = s.hour != null ? s.hour : 12;
+                    const sMs = new Date(s.date + "T" + String(sHour).padStart(2, "0") + ":00:00Z").getTime();
+                    if (sMs <= targetMs) {
+                        const dist = targetMs - sMs;
+                        if (dist < bestDist) { bestDist = dist; bestIdx = s.index; }
+                    }
+                }
+
+                const single = extractSingleSounding(text, bestIdx);
+                const sel = soundings.find(s => s.index === bestIdx);
+                const hourStr = sel && sel.hour != null ? String(sel.hour).padStart(2, "0") + "Z" : "00Z";
+                filename = `igra2_${station.id}_${sel ? sel.date : launchDate}_${hourStr}.txt`;
+                await FileManager.parseResult(filename, new TextEncoder().encode(single).buffer);
+            } else {
+                // UWYO path
+                const html = await fetchUWYOSounding(station.wmo, launchDate, launchHour, "list");
+                filename = `sounding_${station.wmo}_${launchDate}_${String(launchHour).padStart(2, "0")}Z.html`;
+                await FileManager.parseResult(filename, new TextEncoder().encode(html).buffer);
+            }
+
+            console.log(`Imported balloon: ${station.wmo} ${station.name} (${Math.round(station.dist)}km away)`);
+            results.push({ station: station.wmo, name: station.name, dist: Math.round(station.dist), filename, success: true });
+        } catch (e) {
+            console.error(`Failed to import ${station.wmo} ${station.name}: ${e.message}`);
+            results.push({ station: station.wmo, name: station.name, success: false, error: e.message });
+        }
+    }
+
+    return results;
 }
 
 /**
