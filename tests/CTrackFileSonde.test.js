@@ -270,3 +270,39 @@ describe('CTrackFileSonde data access', () => {
         expect(tf.getTrajectory(99)).toBeNull();
     });
 });
+
+// ─── Balloon sphere integration: MISB pressure data ─────────────────────
+
+describe('CTrackFileSonde MISB pressure for balloon scaling', () => {
+    test('MISB rows contain pressure data for balloon expansion', () => {
+        const tf = new CTrackFileSonde(sampleIGRA2);
+        const misb = tf.toMISB(0);
+        // Every IGRA2 row has pressure data which CNodeDisplayBalloonSphere uses
+        const pressures = misb.map(r => r[MISB.StaticPressure]).filter(p => p != null);
+        expect(pressures.length).toBeGreaterThan(0);
+        // Pressure should decrease with altitude (ascending balloon)
+        for (let i = 1; i < pressures.length; i++) {
+            expect(pressures[i]).toBeLessThanOrEqual(pressures[i - 1]);
+        }
+    });
+
+    test('MISB pressure spans surface to stratosphere range', () => {
+        const tf = new CTrackFileSonde(sampleIGRA2);
+        const misb = tf.toMISB(0);
+        const pressures = misb.map(r => r[MISB.StaticPressure]).filter(p => p != null);
+        const maxP = Math.max(...pressures);
+        const minP = Math.min(...pressures);
+        // Surface should be near 1013 hPa
+        expect(maxP).toBeGreaterThan(900);
+        // Top should be well below 100 hPa (stratosphere)
+        expect(minP).toBeLessThan(400);
+    });
+
+    test('UWYO CSV MISB also contains pressure for balloon scaling', () => {
+        const tf = new CTrackFileSonde(sampleUWYOCSV);
+        const misb = tf.toMISB(0);
+        const pressures = misb.map(r => r[MISB.StaticPressure]).filter(p => p != null);
+        expect(pressures.length).toBeGreaterThan(0);
+        expect(pressures[0]).toBeGreaterThan(900); // near surface
+    });
+});

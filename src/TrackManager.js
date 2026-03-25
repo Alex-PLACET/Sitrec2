@@ -34,6 +34,8 @@ import {CGeoJSON} from "./geoJSONUtils";
 import {CNodeSmoothedPositionTrack} from "./nodes/CNodeSmoothedPositionTrack";
 import {CNodeSplineEditor} from "./nodes/CNodeSplineEdit";
 import {CTrackFile} from "./TrackFiles/CTrackFile";
+import {CTrackFileSonde} from "./TrackFiles/CTrackFileSonde";
+import {CNodeDisplayBalloonSphere} from "./nodes/CNodeDisplayBalloonSphere";
 import {detectRocketLikeTrack} from "./trackHeuristics";
 import {hasOtherTrackSourceReference} from "./trackSourceUtils";
 
@@ -531,7 +533,13 @@ class CTrackManager extends CManager {
                     ];
 
                     if (trackColor === null) {
-                        trackColor = trackColors[trackNumber % trackColors.length];
+                        // Sonde tracks get white by default to distinguish from aircraft
+                        const loadedTrackFile = FileManager.get(trackFileName);
+                        if (loadedTrackFile && loadedTrackFile.isSondeTrack && loadedTrackFile.isSondeTrack()) {
+                            trackColor = new Color(1, 1, 1);
+                        } else {
+                            trackColor = trackColors[trackNumber % trackColors.length];
+                        }
                     }
                     // make dropcolor be the same as the track color bur reduced in brightness to 75%
                     const dropColor = trackColor.clone().multiplyScalar(0.75);
@@ -609,6 +617,10 @@ class CTrackManager extends CManager {
 
 
     makeMotionTrack(trackOb, shortName, trackColor, dropColor, trackID) {
+        // Check if this is a sonde track for display customization
+        const motionTrackFile = FileManager.get(trackOb.trackFileName);
+        const isSonde = motionTrackFile && motionTrackFile.isSondeTrack && motionTrackFile.isSondeTrack();
+
         // diplay the full track data as imported
         trackOb.trackDisplayDataNode = new CNodeDisplayTrack({
             id: "TrackDisplayData_" + shortName,
@@ -622,6 +634,7 @@ class CTrackManager extends CManager {
 
             width: 0.5,
             //  toGround: 1, // spacing for lines to ground
+            extendToGround: isSonde, // balloon tracks show wall to ground
             ignoreAB: true,
             layers: LAYER.MASK_HELPERS,
             skipGUI: true,
@@ -643,6 +656,7 @@ class CTrackManager extends CManager {
             }),
             width: 2,
             //  toGround: 1, // spacing for lines to ground
+            extendToGround: isSonde, // balloon tracks show wall to ground
             ignoreAB: true,
             layers: LAYER.MASK_HELPERS,
             trackDisplayStep: 10, // display every 10th point in the track as this is per-frame
@@ -668,8 +682,20 @@ class CTrackManager extends CManager {
 
         const sphereId = trackOb.menuText ?? shortName;
 
-
-        if (getEnv("DEFAULT_PLATFORM_MODEL", process.env.DEFAULT_PLATFORM_MODEL) && trackOb.trackFileName.endsWith(".klv")) {
+        // Sonde tracks get a pressure-scaling balloon sphere
+        if (isSonde) {
+            trackOb.displayTargetSphere = new CNodeDisplayBalloonSphere({
+                id: sphereId + "_ob",
+                inputs: {
+                    track: trackID,
+                    dataTrack: "TrackData_" + shortName,
+                },
+                color: "white",
+                baseDiameter: 1.5, // 1.5m launch diameter, typical radiosonde
+                layers: LAYER.MASK_HELPERS,
+                label: shortName,
+            });
+        } else if (getEnv("DEFAULT_PLATFORM_MODEL", process.env.DEFAULT_PLATFORM_MODEL) && trackOb.trackFileName.endsWith(".klv")) {
 
             // check if in the ModelFiles object, and use it if available
             if (ModelFiles[getEnv("DEFAULT_PLATFORM_MODEL", process.env.DEFAULT_PLATFORM_MODEL)]) {
@@ -682,7 +708,7 @@ class CTrackManager extends CManager {
             }
         }
 
-        // if we didn't make a model, then we use a default sphere
+        // if we didn't make a model or balloon, then we use a default sphere
         if (!trackOb.displayTargetSphere)
         {
 
@@ -701,17 +727,20 @@ class CTrackManager extends CManager {
             sourceTrack: trackID,
         });
 
-        const tiltDef = {
-            track: trackID,
-            tiltType: "banking",
-            guiFolder: trackOb.displayTargetSphere.gui,
-        }
-        const maybeWind = NodeMan.get("targetWind", false);
-        if (maybeWind) {
-            tiltDef.wind = maybeWind;
-        }
+        // Sonde tracks don't need banking tilt — they float vertically
+        if (!isSonde) {
+            const tiltDef = {
+                track: trackID,
+                tiltType: "banking",
+                guiFolder: trackOb.displayTargetSphere.gui,
+            }
+            const maybeWind = NodeMan.get("targetWind", false);
+            if (maybeWind) {
+                tiltDef.wind = maybeWind;
+            }
 
-        trackOb.displayTargetSphere.addController("ObjectTilt", tiltDef);
+            trackOb.displayTargetSphere.addController("ObjectTilt", tiltDef);
+        }
     }
 
     centerOnTrack(shortName, trackNumber, trackOb, hasAngles, trackIndex = 0) {
