@@ -3653,7 +3653,7 @@ export class CFileManager extends CManager {
                             for (const match of hrefMatches) {
                                 const href = match[1].trim();
                                 // Only add if it looks like an image file
-                                if (/\.(png|jpg|jpeg|gif|webp)$/i.test(href)) {
+                                if (/\.(png|jpg|jpeg|gif|webp|jp2|j2k|jpx)$/i.test(href)) {
                                     referencedImages.add(href);
                                     console.log("KMZ: Found referenced image in KML:", href);
                                 }
@@ -3860,6 +3860,18 @@ export class CFileManager extends CManager {
                 case "heic":
                     dataType = "image";
                     prom = createImageFromArrayBuffer(buffer, 'image/heic')
+                    break
+                case "jp2":
+                case "j2k":
+                case "jpx":
+                case "jpc":
+                case "j2c":
+                    // JPEG 2000 — decode via jpeg2000 library, then create image from PNG
+                    dataType = "image";
+                    prom = (async () => {
+                        const {decodeJPEG2000ToImage} = await import("./JPEG2000Utils");
+                        return decodeJPEG2000ToImage(buffer);
+                    })();
                     break
                 case "csv": {
                     const buffer2 = cleanCSVText(buffer)
