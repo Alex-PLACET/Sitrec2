@@ -1131,9 +1131,13 @@ export class CNodeView3D extends CNodeViewCanvas {
                         videoView = NodeMan.get("video");
                     }
 
+                    // Check if we should match the video's aspect ratio
+                    const frustum = NodeMan.get(this.cameraNode.id + "_Frustum", false);
+                    this._matchVideoAspect = frustum && frustum.matchVideoAspect;
+
                     // fovCoverage is the vertical fraction
-                    // of the video view windowthat is covered by the video
-                    // so we assume the fov
+                    // of the video view window that is covered by the video
+                    // Always compute fovOverride (matchVideoAspect preserves hFOV from it)
                     if (videoView !== null && videoView.fovCoverage !== undefined) {
                         this.fovOverride = 180 / Math.PI * 2 * Math.atan(Math.tan(this.camera.fov * Math.PI / 360) / videoView.fovCoverage);
                     }
@@ -1181,6 +1185,70 @@ export class CNodeView3D extends CNodeViewCanvas {
                 } else {
                     width = this.widthPx;
                     height = this.heightPx;
+                }
+
+                // When matchVideoAspect is on, preserve the current horizontal FOV
+                // and narrow the vertical FOV to match the ground footprint aspect.
+                // This effectively crops the view vertically (adding black bars)
+                // without changing any horizontal content.
+                if (this._matchVideoAspect) {
+                    const frustum = NodeMan.get(this.cameraNode.id + "_Frustum", false);
+                    const videoAspect = frustum && frustum.videoAspect;
+                    if (videoAspect) {
+                        // Compute the current effective hFOV (from fovOverride + viewport aspect)
+                        const currentVFOVRad = this.camera.fov * Math.PI / 180;
+                        const hFOVTanHalf = Math.tan(currentVFOVRad / 2) * this.camera.aspect;
+
+                        // Derive new vFOV that gives the same hFOV with the ground aspect
+                        const newVFOVRad = 2 * Math.atan(hFOVTanHalf / videoAspect);
+                        this.camera.fov = newVFOVRad * 180 / Math.PI;
+                        this.camera.aspect = videoAspect;
+                        this.camera.updateProjectionMatrix();
+                        this.camera.renderedFOV = this.camera.fov;
+
+                        // Store for re-application after renderSky() resets them
+                        this._matchVideoAspectFOV = this.camera.fov;
+                        this._matchVideoAspectAspect = videoAspect;
+
+                        // Adjust render target: keep width, derive height from ground aspect
+                        height = Math.floor(width / videoAspect);
+                    }
+                }
+                if (!this._matchVideoAspect) {
+                    this._matchVideoAspectFOV = undefined;
+                    this._matchVideoAspectAspect = undefined;
+                }
+
+                // Letterbox CSS: center the canvas within its div when aspect doesn't match
+                if (this._matchVideoAspect && !this._wasMatchingVideoAspect) {
+                    this.div.style.backgroundColor = '#000';
+                    this._wasMatchingVideoAspect = true;
+                } else if (!this._matchVideoAspect && this._wasMatchingVideoAspect) {
+                    this.canvas.style.width = '100%';
+                    this.canvas.style.height = '100%';
+                    this.canvas.style.left = '0px';
+                    this.canvas.style.top = '0px';
+                    this.div.style.backgroundColor = '';
+                    this._wasMatchingVideoAspect = false;
+                }
+                if (this._matchVideoAspect) {
+                    // Compute CSS dimensions from div size and video aspect
+                    const divW = this.div.clientWidth;
+                    const divH = this.div.clientHeight;
+                    const videoAspect = width / height;  // already adjusted to ground aspect
+                    const divAspect = divW / divH;
+                    let cssW, cssH;
+                    if (videoAspect > divAspect) {
+                        cssW = divW;
+                        cssH = Math.floor(divW / videoAspect);
+                    } else {
+                        cssH = divH;
+                        cssW = Math.floor(divH * videoAspect);
+                    }
+                    this.canvas.style.width = cssW + 'px';
+                    this.canvas.style.height = cssH + 'px';
+                    this.canvas.style.left = ((divW - cssW) / 2) + 'px';
+                    this.canvas.style.top = ((divH - cssH) / 2) + 'px';
                 }
 
                 // Skip rendering if computed dimensions are invalid (zero or NaN)
@@ -1288,6 +1356,14 @@ export class CNodeView3D extends CNodeViewCanvas {
                 // [DBG] Render sky
                 if (Globals.renderDebugFlags.dbg_renderSky) {
                     this.renderSky();
+                }
+                // renderSky() calls preRenderCameraUpdate() internally for the
+                // celestial sphere, which resets camera.aspect to the viewport aspect.
+                // Re-apply the matchVideoAspect overrides if active.
+                if (this._matchVideoAspectFOV !== undefined) {
+                    this.camera.fov = this._matchVideoAspectFOV;
+                    this.camera.aspect = this._matchVideoAspectAspect;
+                    this.camera.updateProjectionMatrix();
                 }
                 if (globalProfiler) globalProfiler.pop();
 

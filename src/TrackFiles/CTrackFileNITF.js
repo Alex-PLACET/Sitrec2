@@ -203,12 +203,13 @@ export class CTrackFileNITF extends CTrackFile {
 
     /**
      * Compute the FOV needed to see the image footprint from the estimated altitude.
-     * FOV = 2 * atan(groundHalfExtent / altitude)
+     * Computes both horizontal and vertical FOV independently from the actual
+     * ground dimensions (not pixel dimensions) to avoid non-square pixel distortion.
      */
     _computeFOVFromAltitude() {
-        const maxExtent = Math.max(this.groundWidth, this.groundHeight);
-        const fovRad = 2 * Math.atan((maxExtent / 2) / this.sensorAltitude);
-        return fovRad * 180 / Math.PI;
+        this.hFOV = 2 * Math.atan((this.groundWidth / 2) / this.sensorAltitude) * 180 / Math.PI;
+        this.vFOV = 2 * Math.atan((this.groundHeight / 2) / this.sensorAltitude) * 180 / Math.PI;
+        return Math.max(this.hFOV, this.vFOV);
     }
 
     doesContainTrack() {
@@ -246,15 +247,10 @@ export class CTrackFileNITF extends CTrackFile {
             row[MISB.SensorRelativeElevationAngle] = this.sensorElevation;
             row[MISB.SensorRelativeRollAngle] = 0;
 
-            // FOV scaled by aspect ratio
-            const aspect = this.imageWidth / this.imageHeight;
-            if (aspect >= 1) {
-                row[MISB.SensorHorizontalFieldofView] = this.sensorFOV;
-                row[MISB.SensorVerticalFieldofView] = this.sensorFOV / aspect;
-            } else {
-                row[MISB.SensorVerticalFieldofView] = this.sensorFOV;
-                row[MISB.SensorHorizontalFieldofView] = this.sensorFOV * aspect;
-            }
+            // FOV from ground dimensions (not pixel dimensions, to avoid
+            // distortion from non-square ground sample distances)
+            row[MISB.SensorHorizontalFieldofView] = this.hFOV;
+            row[MISB.SensorVerticalFieldofView] = this.vFOV;
 
             // Frame center on the ground
             row[MISB.FrameCenterLatitude] = this.centerLat;

@@ -133,6 +133,12 @@ export class CNodeDisplayCameraFrustum extends CNode3DGroup {
             unitType: "big",
         }, guiMenus.showhide);
 
+        this.matchVideoAspect = false;
+        guiMenus.camera.add(this, "matchVideoAspect").name("Match Video Aspect")
+            .tooltip("Crop the look view to match the video's aspect ratio, and adjust the frustum accordingly")
+            .listen().onChange(() => { setRenderOne(true); });
+        this.addSimpleSerial("matchVideoAspect")
+
         this.videoOpacity = 1.0;
         guiShowHide.add(this, "videoOpacity", 0, 1, 0.01).name("Video Opacity").tooltip("Opacity of the projected video overlay").listen().onChange(() => {
             if (this.videoQuadMaterial) {
@@ -357,8 +363,19 @@ export class CNodeDisplayCameraFrustum extends CNode3DGroup {
         const fov = this.camera.renderedFOV || this.camera.fov;
         var h = this.radius * tan(radians(fov/2))
         assert(!isNaN(h), "h is NaN, fov="+fov+" radius="+this.radius+" aspect="+this.camera.aspect+" units="+this.units+" step="+this.step);
-        // aspect is w/h so w = h * aspect
-        var w = h * this.camera.aspect;
+        // When matchVideoAspect is on, use the ground footprint aspect for the frustum.
+        // This comes from MISB hFOV/vFOV (computed from ground dimensions, not pixel dimensions)
+        // to ensure square-pixel rendering without distortion.
+        let effectiveAspect = this.camera.aspect;
+        this.videoAspect = undefined;
+        if (this.matchVideoAspect) {
+            const videoNode = NodeMan.get("video", false);
+            if (videoNode && videoNode.videoData && videoNode.videoData.videoWidth && videoNode.videoData.videoHeight) {
+                this.videoAspect = videoNode.videoData.videoWidth / videoNode.videoData.videoHeight;
+                effectiveAspect = this.videoAspect;
+            }
+        }
+        var w = h * effectiveAspect;
         var d = (this.radius - 2)
 //        console.log("REBUILDING FRUSTUM h="+h+" w="+w+" d="+d);
         const line_points = [
@@ -381,7 +398,7 @@ export class CNodeDisplayCameraFrustum extends CNode3DGroup {
 
             for (let r = step; r < this.radius; r += step) {
                 h = r * tan(radians(fov / 2))
-                w = h * this.camera.aspect;
+                w = h * effectiveAspect;
                 d = r;
                 line_points.push(
                     -w, -h, -d, w, -h, -d,
@@ -400,10 +417,10 @@ export class CNodeDisplayCameraFrustum extends CNode3DGroup {
         if (this.showQuad || this.showVideoOnGround) {
             this.camera.updateMatrixWorld();
             let frustumH = this.radius * tan(radians(fov / 2));
-            let frustumW = frustumH * this.camera.aspect;
+            let frustumW = frustumH * effectiveAspect;
             const frustumD = this.radius - 2;
 
-            if (this.showVideoOnGround) {
+            if (this.showVideoOnGround && !this.matchVideoAspect) {
                 const videoNode = NodeMan.get("video", false);
                 if (videoNode && videoNode.videoData) {
                     const videoWidth = videoNode.videoData.videoWidth;

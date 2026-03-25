@@ -737,12 +737,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             };
         }
 
-        // Screenshots return as image content
+        // Screenshots: save to temp file AND return inline for Claude to see
         if (name === "sitrec_screenshot" && response.result?.imageData) {
+            const mimeType = response.result.mimeType || "image/jpeg";
+            const ext = mimeType.includes("png") ? "png" : "jpg";
+            const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+            const tmpDir = process.env.TMPDIR || "/tmp";
+            const filePath = join(tmpDir, `sitrec-screenshot-${timestamp}.${ext}`);
+
+            // Save full-resolution image to temp file for persistence
+            const {writeFileSync} = await import("fs");
+            writeFileSync(filePath, Buffer.from(response.result.imageData, "base64"));
+
             const content = [{
                 type: "image",
                 data: response.result.imageData,
-                mimeType: response.result.mimeType || "image/png",
+                mimeType,
+            }, {
+                type: "text",
+                text: `Screenshot saved to: ${filePath}`,
             }];
             if (assertText) {
                 content.push({ type: "text", text: assertText });
