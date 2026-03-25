@@ -124,6 +124,10 @@ export class CTrackFileSonde extends CTrackFile {
         return this.trajectories.length;
     }
 
+    extractObjects() {
+        // No additional objects to extract for sonde data
+    }
+
     /**
      * Get the format type for display/debugging.
      * @returns {string}
