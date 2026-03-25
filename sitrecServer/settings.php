@@ -191,13 +191,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $aws = $s3Data['aws'];
             $s3Path = 'settings/' . $user_id . '.json';
 
-            $s3->putObject([
+            $putParams = [
                 'Bucket' => $aws['bucket'],
                 'Key' => $s3Path,
                 'Body' => $settingsJson,
                 'ContentType' => 'application/json',
-                'ACL' => 'private'
-            ]);
+            ];
+            if (!empty($aws['acl'])) {
+                $putParams['ACL'] = 'private';
+            }
+            $s3->putObject($putParams);
         } else {
             $localDir = $UPLOAD_PATH . 'settings/';
             if (!is_dir($localDir)) {

@@ -52,9 +52,17 @@ function buildObjectAccessUrl($key) {
 
 function getUploadAclForKey($key) {
     global $s3creds;
-    $publicAcl = getEnvString('S3_PUBLIC_OBJECT_ACL', $s3creds['acl'] ?? 'public-read');
-    $privateAcl = getEnvString('S3_PRIVATE_OBJECT_ACL', 'private');
-    return isObjectKeyPublic($key) ? $publicAcl : $privateAcl;
+    $baseAcl = $s3creds['acl'] ?? null;
+    if (!$baseAcl) {
+        // No ACL configured — don't use ACLs at all (e.g. Bucket Owner Enforced)
+        $publicAcl = getEnvString('S3_PUBLIC_OBJECT_ACL', '');
+        $privateAcl = getEnvString('S3_PRIVATE_OBJECT_ACL', '');
+    } else {
+        $publicAcl = getEnvString('S3_PUBLIC_OBJECT_ACL', $baseAcl);
+        $privateAcl = getEnvString('S3_PRIVATE_OBJECT_ACL', 'private');
+    }
+    $acl = isObjectKeyPublic($key) ? $publicAcl : $privateAcl;
+    return $acl ?: null;
 }
 
 function getGoogle3DRootDailyLimitForGroups($userGroups) {
@@ -238,11 +246,14 @@ if (isset($_GET['action']) && $_GET['action'] === 'getPresignedUrl') {
     
     try {
         $uploadAcl = getUploadAclForKey($s3Path);
-        $cmd = $s3->getCommand('PutObject', [
+        $putParams = [
             'Bucket' => $aws['bucket'],
             'Key' => $s3Path,
-            'ACL' => $uploadAcl
-        ]);
+        ];
+        if ($uploadAcl) {
+            $putParams['ACL'] = $uploadAcl;
+        }
+        $cmd = $s3->getCommand('PutObject', $putParams);
         
         $putExpirySeconds = getEnvIntSeconds('S3_PRESIGNED_PUT_EXPIRY_SECONDS', 900);
         $request = $s3->createPresignedRequest($cmd, '+' . $putExpirySeconds . ' seconds');
@@ -338,11 +349,14 @@ if (isset($_GET['action']) && $_GET['action'] === 'initiateMultipart') {
     
     try {
         $uploadAcl = getUploadAclForKey($s3Path);
-        $result = $s3->createMultipartUpload([
+        $multipartParams = [
             'Bucket' => $aws['bucket'],
             'Key' => $s3Path,
-            'ACL' => $uploadAcl
-        ]);
+        ];
+        if ($uploadAcl) {
+            $multipartParams['ACL'] = $uploadAcl;
+        }
+        $result = $s3->createMultipartUpload($multipartParams);
         
         $uploadId = $result['UploadId'];
         
@@ -606,7 +620,12 @@ if ($useAWS) {
     // putObject was giving odd timeout errors.
     try {
         $uploadAcl = getUploadAclForKey($s3Path);
-        $s3->upload($aws['bucket'], $s3Path, $fileStream, $uploadAcl);
+        if ($uploadAcl) {
+            $s3->upload($aws['bucket'], $s3Path, $fileStream, $uploadAcl);
+        } else {
+            // No ACL configured (e.g. Bucket Owner Enforced) — omit ACL param
+            $s3->upload($aws['bucket'], $s3Path, $fileStream);
+        }
         echo buildObjectAccessUrl($s3Path);
     } catch (Aws\Exception\S3Exception $e) {
         // Catch an S3 specific exception.

@@ -165,13 +165,16 @@ function readS3Json($s3, $aws, $key) {
 }
 
 function writeS3Json($s3, $aws, $key, $data) {
-    $s3->putObject([
+    $putParams = [
         'Bucket' => $aws['bucket'],
         'Key' => $key,
         'Body' => json_encode($data, JSON_PRETTY_PRINT),
         'ContentType' => 'application/json',
-        'ACL' => 'private'
-    ]);
+    ];
+    if (!empty($aws['acl'])) {
+        $putParams['ACL'] = 'private';
+    }
+    $s3->putObject($putParams);
 }
 
 // --- Local filesystem helpers ---

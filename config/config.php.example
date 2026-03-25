@@ -27,8 +27,11 @@ require_once __DIR__ . '/injectEnv.php';
         "secretAccessKey" => getenv("S3_SECRET_ACCESS_KEY"),
         "region"          => getenv("S3_REGION"),
         "bucket"          => getenv("S3_BUCKET"),
-        "acl"             => getenv("S3_ACL"),
     ];
+    $s3Acl = getenv("S3_ACL");
+    if ($s3Acl) {
+        $s3creds["acl"] = $s3Acl;
+    }
     $useAWS = getenv("SAVE_TO_S3");
 
     // NOTE: $request_url_map is now configured in shared.env
