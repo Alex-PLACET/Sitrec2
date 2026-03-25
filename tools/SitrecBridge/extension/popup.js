@@ -71,13 +71,27 @@ function update(state) {
         wsStatus.textContent = "Disconnected";
     }
 
-    if (state.sitrecTabId) {
-        tabDot.className = "dot green";
-        tabStatus.textContent = `Tab #${state.sitrecTabId}`;
-    } else {
-        tabDot.className = "dot yellow";
-        tabStatus.textContent = "Not found";
-    }
+    // Show the Sitrec tab in the current window (not the global default)
+    chrome.tabs.query({ currentWindow: true }, (tabs) => {
+        const sitrecTab = tabs.find(t => t.url && (
+            t.url.includes("metabunk.org/sitrec") ||
+            t.url.includes("metabunk.org/build") ||
+            /localhost:\d+\/sitrec/.test(t.url) ||
+            /localhost:\d+\/build/.test(t.url)
+        ));
+        if (sitrecTab) {
+            tabDot.className = "dot green";
+            // Show a short label from the URL path (e.g. "/sitrec" or "/build2")
+            const path = new URL(sitrecTab.url).pathname.split("/").filter(Boolean)[0] || "sitrec";
+            tabStatus.textContent = `/${path} (#${sitrecTab.id})`;
+        } else if (state.sitrecTabId) {
+            tabDot.className = "dot green";
+            tabStatus.textContent = `Tab #${state.sitrecTabId} (other window)`;
+        } else {
+            tabDot.className = "dot yellow";
+            tabStatus.textContent = "Not found";
+        }
+    });
 
     // Version display
     if (state.installedVersion) {
