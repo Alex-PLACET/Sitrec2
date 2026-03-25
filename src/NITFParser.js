@@ -42,6 +42,10 @@ export class NITFParser {
             // Create image virtual file as PNG
             try {
                 const pngBuffer = await this.imageToPNG(image);
+                if (pngBuffer === null) {
+                    // imageToPNG explicitly rejected (e.g. unsupported CADRG VQ)
+                    continue;
+                }
                 const imageFilename = `${filename}_image_${i}.png`;
                 const img = await createImageFromArrayBuffer(pngBuffer, 'image/png');
 
@@ -521,9 +525,21 @@ export class NITFParser {
             return this._decodeJPEG2000(image);
         }
 
+        if (image.ic === 'C4' || image.ic === 'M4') {
+            // CADRG/CIB Vector Quantization — legacy military raster map format
+            const msg = `This is a CADRG/RPF file using Vector Quantization (IC=${image.ic}).\n\n`
+                + `CADRG was the standard military digitized chart format from the 1990s–2010s, `
+                + `used for Tactical Pilotage Charts, Joint Operations Graphics, and similar products. `
+                + `It has been superseded by ECRG, which uses JPEG 2000 compression.\n\n`
+                + `Sitrec supports ECRG (.lf2) files but not the legacy CADRG VQ format. `
+                + `If you need this chart, look for an ECRG equivalent from NGA.`;
+            console.warn("NITFParser: " + msg);
+            alert(msg);
+            return null; // reject the file
+        }
+
         if (image.ic !== 'NC' && image.ic !== 'NM') {
             console.warn(`NITFParser: Compressed NITF images (IC=${image.ic}) are not yet supported`);
-            // Create a placeholder gray image
             return this._placeholderPNG(ncols, nrows, `Unsupported compression: ${image.ic}`);
         }
 
