@@ -5,65 +5,95 @@
  * and raw J2K codestreams. Decoded pixel data is rendered to a canvas and
  * returned as an HTMLImageElement (PNG).
  *
- * Note: the jpeg2000 library only applies the inverse MCT (YCbCr→RGB) when the
- * codestream's COD marker has MCT=1. Some JP2 files declare sYCC color space in
- * the container's colr box but set MCT=0 in the codestream, leaving the library
- * to output raw YCbCr. We detect this case via the colr box and convert manually.
+ * The jpeg2000 library ignores two JP2 container metadata boxes that affect color:
+ *  - colr box: declares the output color space (e.g. sYCC = YCbCr)
+ *  - cdef box: can reorder which codestream component maps to which color channel
+ * We parse both and apply the necessary conversion after decoding.
  */
 
 import {JpxImage} from "jpeg2000";
 import {createImageFromArrayBuffer} from "./FileUtils";
 
 /**
- * Check if a JP2 container declares sYCC (EnumCS=18) color space.
- * Parses the minimal JP2 box structure to find the colr box.
- * Returns true if sYCC, false otherwise (including for raw J2K codestreams).
+ * Parse JP2 container metadata relevant to color handling.
+ * Returns {enumCS, componentMap} or null for raw J2K codestreams.
+ *
+ * componentMap: array where componentMap[association-1] = codestream index.
+ * For sYCC: association 1=Y, 2=Cb, 3=Cr.
+ * So componentMap = [indexOfY, indexOfCb, indexOfCr].
  */
-function isJP2sYCC(bytes) {
-    // JP2 files start with a 12-byte signature box: [0x0000000C][jP  ][0x0D0A870A]
-    if (bytes.length < 12 || bytes[4] !== 0x6A || bytes[5] !== 0x50) return false; // 'jP'
+function parseJP2ColorInfo(bytes) {
+    // JP2 files start with a 12-byte signature box containing 'jP'
+    if (bytes.length < 12 || bytes[4] !== 0x6A || bytes[5] !== 0x50) return null;
+
+    let enumCS = null;
+    let componentMap = null;
 
     let pos = 0;
-    const len = Math.min(bytes.length, 512); // colr box is always near the start
-    while (pos < len - 8) {
+    const limit = Math.min(bytes.length, 1024);
+    while (pos < limit - 8) {
         const boxLen = (bytes[pos] << 24) | (bytes[pos + 1] << 16) | (bytes[pos + 2] << 8) | bytes[pos + 3];
         const boxType = String.fromCharCode(bytes[pos + 4], bytes[pos + 5], bytes[pos + 6], bytes[pos + 7]);
 
         if (boxLen < 8 || boxLen > bytes.length - pos) break;
 
         if (boxType === 'colr' && boxLen >= 15) {
-            const meth = bytes[pos + 8]; // 1 = enumerated CS
+            const meth = bytes[pos + 8];
             if (meth === 1) {
-                const enumCS = (bytes[pos + 11] << 24) | (bytes[pos + 12] << 16) |
-                               (bytes[pos + 13] << 8) | bytes[pos + 14];
-                return enumCS === 18; // 18 = sYCC
+                enumCS = (bytes[pos + 11] << 24) | (bytes[pos + 12] << 16) |
+                         (bytes[pos + 13] << 8) | bytes[pos + 14];
             }
-            return false;
         }
 
-        // Enter superboxes (jp2h) to find colr inside
+        if (boxType === 'cdef' && boxLen >= 14) {
+            // cdef: N(2) then N entries of [index(2), type(2), association(2)]
+            const n = (bytes[pos + 8] << 8) | bytes[pos + 9];
+            const map = [];
+            for (let i = 0; i < n; i++) {
+                const off = pos + 10 + i * 6;
+                if (off + 6 > pos + boxLen) break;
+                const idx = (bytes[off] << 8) | bytes[off + 1];
+                const assoc = (bytes[off + 4] << 8) | bytes[off + 5];
+                if (assoc >= 1 && assoc <= n) {
+                    map[assoc - 1] = idx; // association 1→slot 0, 2→slot 1, 3→slot 2
+                }
+            }
+            if (map.length >= 3) componentMap = map;
+        }
+
+        // Enter superboxes to find colr/cdef inside
         if (boxType === 'jp2h') {
             pos += 8;
         } else {
             pos += boxLen;
         }
     }
-    return false;
+
+    if (enumCS === null) return null;
+    return {enumCS, componentMap};
 }
 
 /**
- * Convert sYCC (YCbCr) pixel data to RGB in-place.
- * Standard ICT inverse: R = Y + 1.402·Cr, G = Y − 0.344·Cb − 0.714·Cr, B = Y + 1.772·Cb
+ * Convert sYCC (YCbCr) pixel data to RGB in-place, respecting component reordering.
+ * componentMap[0] = codestream index of Y, [1] = Cb, [2] = Cr.
+ * If null, assumes standard [Y, Cb, Cr] order.
  */
-function convertSYCCtoRGB(items, nc, pixelCount) {
+function convertSYCCtoRGB(items, nc, pixelCount, componentMap) {
+    const yIdx  = componentMap ? componentMap[0] : 0;
+    const cbIdx = componentMap ? componentMap[1] : 1;
+    const crIdx = componentMap ? componentMap[2] : 2;
+
     for (let i = 0; i < pixelCount; i++) {
         const off = i * nc;
-        const y  = items[off];
-        const cb = items[off + 1] - 128;
-        const cr = items[off + 2] - 128;
-        items[off]     = Math.max(0, Math.min(255, Math.round(y + 1.402 * cr)));
-        items[off + 1] = Math.max(0, Math.min(255, Math.round(y - 0.34414 * cb - 0.71414 * cr)));
-        items[off + 2] = Math.max(0, Math.min(255, Math.round(y + 1.772 * cb)));
+        const y  = items[off + yIdx];
+        const cb = items[off + cbIdx] - 128;
+        const cr = items[off + crIdx] - 128;
+        const r = Math.max(0, Math.min(255, Math.round(y + 1.402 * cr)));
+        const g = Math.max(0, Math.min(255, Math.round(y - 0.34414 * cb - 0.71414 * cr)));
+        const b = Math.max(0, Math.min(255, Math.round(y + 1.772 * cb)));
+        items[off]     = r;
+        items[off + 1] = g;
+        items[off + 2] = b;
     }
 }
 
@@ -83,12 +113,18 @@ function decodeJPEG2000ToCanvas(arrayBuffer) {
     const height = jpx.height;
     const nc = jpx.componentsCount;
 
-    // Detect sYCC color space from JP2 container colr box.
-    // The jpeg2000 library only applies YCbCr→RGB when the codestream MCT flag
-    // is set; JP2 files that declare sYCC in the container but omit MCT need
-    // manual conversion.
-    const needsYCbCrConvert = nc >= 3 && isJP2sYCC(bytes);
-    console.log(`JPEG2000Utils: Decoded ${width}×${height}, ${nc} components, ${jpx.tiles.length} tile(s)${needsYCbCrConvert ? ', sYCC→RGB' : ''}`);
+    // Parse JP2 container for color space and component mapping.
+    const colorInfo = parseJP2ColorInfo(bytes);
+    const needsYCbCrConvert = nc >= 3 && colorInfo && colorInfo.enumCS === 18;
+    const componentMap = colorInfo ? colorInfo.componentMap : null;
+
+    // If no sYCC but cdef reorders components for sRGB, apply reorder
+    const needsReorder = !needsYCbCrConvert && componentMap &&
+        (componentMap[0] !== 0 || componentMap[1] !== 1 || componentMap[2] !== 2);
+
+    console.log(`JPEG2000Utils: Decoded ${width}×${height}, ${nc} components, ${jpx.tiles.length} tile(s)` +
+        (needsYCbCrConvert ? ', sYCC→RGB' : '') +
+        (componentMap ? ` cdef=[${componentMap}]` : ''));
 
     const canvas = document.createElement('canvas');
     canvas.width = width;
@@ -104,14 +140,19 @@ function decodeJPEG2000ToCanvas(arrayBuffer) {
         const pixelCount = tw * th;
 
         if (needsYCbCrConvert) {
-            convertSYCCtoRGB(items, nc, pixelCount);
+            convertSYCCtoRGB(items, nc, pixelCount, componentMap);
         }
 
         if (nc >= 3) {
+            // After sYCC conversion, items are in RGB order.
+            // For non-sYCC with cdef reorder, apply the mapping.
+            const r = needsReorder ? componentMap[0] : 0;
+            const g = needsReorder ? componentMap[1] : 1;
+            const b = needsReorder ? componentMap[2] : 2;
             for (let i = 0; i < pixelCount; i++) {
-                rgba[i * 4]     = items[i * nc];
-                rgba[i * 4 + 1] = items[i * nc + 1];
-                rgba[i * 4 + 2] = items[i * nc + 2];
+                rgba[i * 4]     = items[i * nc + r];
+                rgba[i * 4 + 1] = items[i * nc + g];
+                rgba[i * 4 + 2] = items[i * nc + b];
                 rgba[i * 4 + 3] = nc >= 4 ? items[i * nc + 3] : 255;
             }
         } else {
@@ -124,7 +165,6 @@ function decodeJPEG2000ToCanvas(arrayBuffer) {
             }
         }
 
-        // Multi-tile: draw each tile at its offset
         if (tile.left === 0 && tile.top === 0 && tw === width && th === height) {
             ctx.putImageData(imageData, 0, 0);
         } else {
