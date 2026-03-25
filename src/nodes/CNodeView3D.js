@@ -1187,21 +1187,29 @@ export class CNodeView3D extends CNodeViewCanvas {
                     height = this.heightPx;
                 }
 
-                // When matchVideoAspect is on, preserve the current horizontal FOV
-                // and narrow the vertical FOV to match the ground footprint aspect.
-                // This effectively crops the view vertically (adding black bars)
-                // without changing any horizontal content.
+                // When matchVideoAspect is on, adjust the camera to show exactly
+                // the video's aspect ratio. Two cases:
+                // - Letterbox (video wider): preserve hFOV, narrow vFOV, reduce height
+                // - Pillarbox (video taller): preserve vFOV, narrow hFOV, reduce width
                 if (this._matchVideoAspect) {
                     const frustum = NodeMan.get(this.cameraNode.id + "_Frustum", false);
                     const videoAspect = frustum && frustum.videoAspect;
                     if (videoAspect) {
-                        // Compute the current effective hFOV (from fovOverride + viewport aspect)
-                        const currentVFOVRad = this.camera.fov * Math.PI / 180;
-                        const hFOVTanHalf = Math.tan(currentVFOVRad / 2) * this.camera.aspect;
+                        const viewAspect = width / height;
 
-                        // Derive new vFOV that gives the same hFOV with the ground aspect
-                        const newVFOVRad = 2 * Math.atan(hFOVTanHalf / videoAspect);
-                        this.camera.fov = newVFOVRad * 180 / Math.PI;
+                        if (videoAspect > viewAspect) {
+                            // Letterbox: video is wider → reduce height, preserve hFOV
+                            const currentVFOVRad = this.camera.fov * Math.PI / 180;
+                            const hFOVTanHalf = Math.tan(currentVFOVRad / 2) * this.camera.aspect;
+                            const newVFOVRad = 2 * Math.atan(hFOVTanHalf / videoAspect);
+                            this.camera.fov = newVFOVRad * 180 / Math.PI;
+                            height = Math.floor(width / videoAspect);
+                        } else {
+                            // Pillarbox: video is taller → reduce width, preserve vFOV
+                            // camera.fov (vFOV) stays unchanged
+                            width = Math.floor(height * videoAspect);
+                        }
+
                         this.camera.aspect = videoAspect;
                         this.camera.updateProjectionMatrix();
                         this.camera.renderedFOV = this.camera.fov;
@@ -1209,9 +1217,6 @@ export class CNodeView3D extends CNodeViewCanvas {
                         // Store for re-application after renderSky() resets them
                         this._matchVideoAspectFOV = this.camera.fov;
                         this._matchVideoAspectAspect = videoAspect;
-
-                        // Adjust render target: keep width, derive height from ground aspect
-                        height = Math.floor(width / videoAspect);
                     }
                 }
                 if (!this._matchVideoAspect) {
