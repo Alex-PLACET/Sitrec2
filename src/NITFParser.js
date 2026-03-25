@@ -9,6 +9,7 @@
 
 import {CTrackFileNITF} from "./TrackFiles/CTrackFileNITF";
 import {createImageFromArrayBuffer} from "./FileUtils";
+import {JpxImage} from "jpeg2000";
 
 export class NITFParser {
 
@@ -515,6 +516,11 @@ export class NITFParser {
             return this._decodeJPEGBlocked(image);
         }
 
+        if (image.ic === 'C8' || image.ic === 'M8') {
+            // JPEG 2000 — decode codestream with jpeg2000 library
+            return this._decodeJPEG2000(image);
+        }
+
         if (image.ic !== 'NC' && image.ic !== 'NM') {
             console.warn(`NITFParser: Compressed NITF images (IC=${image.ic}) are not yet supported`);
             // Create a placeholder gray image
@@ -666,6 +672,176 @@ export class NITFParser {
      * M3 = masked blocked JPEG: has a block offset table followed by per-block JPEG codestreams.
      * C3 = non-masked blocked JPEG: blocks stored contiguously, delimited by JPEG SOI/EOI markers.
      */
+    /**
+     * Decode a JPEG 2000 (IC=C8/M8) compressed NITF image.
+     * NITF stores raw J2K codestreams — one per block if multi-blocked,
+     * or a single codestream for the full image.
+     */
+    static async _decodeJPEG2000(image) {
+        const {nrows, ncols, rawData, nbpr, nbpc, nppbh, nppbv} = image;
+        const nblocks = nbpr * nbpc;
+
+        // Canvas size limits
+        const MAX_DIM = 16384;
+        let scale = 1;
+        if (nrows > MAX_DIM) scale = MAX_DIM / nrows;
+        if (ncols * scale > MAX_DIM) scale = MAX_DIM / ncols;
+
+        const outW = Math.round(ncols * scale);
+        const outH = Math.round(nrows * scale);
+        if (scale < 1) {
+            console.log(`NITFParser: J2K downscaling ${ncols}×${nrows} → ${outW}×${outH}`);
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = outW;
+        canvas.height = outH;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, outW, outH);
+
+        if (nblocks <= 1) {
+            // Single codestream — scan for SOC marker since rawData may have
+            // leading padding/alignment bytes before the actual J2K codestream.
+            const blocks = this._scanJ2KBlocks(rawData, 1);
+            const block = blocks[0];
+            const j2kData = block
+                ? rawData.subarray(block.start, block.start + block.length)
+                : rawData;
+            this._decodeJ2KToCanvas(j2kData, ctx, 0, 0, outW, outH);
+        } else {
+            // Multiple blocks — each block is a separate J2K codestream.
+            // For C8, codestreams are concatenated with no mask table;
+            // we scan for SOC (0xFF4F) markers to find block boundaries.
+            const blockRanges = this._scanJ2KBlocks(rawData, nblocks);
+
+            for (let i = 0; i < nblocks; i++) {
+                if (!blockRanges[i]) continue;
+                const {start, length} = blockRanges[i];
+                const blockData = rawData.subarray(start, start + length);
+                const bCol = i % nbpr;
+                const bRow = Math.floor(i / nbpr);
+                const x = Math.round(bCol * nppbh * scale);
+                const y = Math.round(bRow * nppbv * scale);
+                const w = Math.round(nppbh * scale);
+                const h = Math.round(nppbv * scale);
+                this._decodeJ2KToCanvas(blockData, ctx, x, y, w, h);
+            }
+        }
+
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        return await blob.arrayBuffer();
+    }
+
+    /**
+     * Decode a J2K codestream and draw it to a canvas region.
+     */
+    static _decodeJ2KToCanvas(data, ctx, dx, dy, dw, dh) {
+        try {
+            const jpx = new JpxImage();
+            // JpxImage expects Node.js Buffer methods (readUInt16BE, etc.)
+            // which don't exist on Uint8Array. Wrap in Buffer for compatibility.
+            const bufData = (typeof Buffer !== 'undefined') ? Buffer.from(data) : data;
+            jpx.parse(bufData);
+
+            // JpxImage.tiles[] contains decoded tile data.
+            // For a single-tile image, tiles[0] covers the whole image.
+            // For multi-tile, composite them.
+            const nc = jpx.componentsCount;
+
+            for (const tile of jpx.tiles) {
+                const tw = tile.width;
+                const th = tile.height;
+                const imageData = ctx.createImageData(tw, th);
+                const rgba = imageData.data;
+                const items = tile.items;
+                const pixelCount = tw * th;
+
+                if (nc >= 3) {
+                    // RGB (or RGBA)
+                    for (let i = 0; i < pixelCount; i++) {
+                        rgba[i * 4]     = items[i * nc];
+                        rgba[i * 4 + 1] = items[i * nc + 1];
+                        rgba[i * 4 + 2] = items[i * nc + 2];
+                        rgba[i * 4 + 3] = nc >= 4 ? items[i * nc + 3] : 255;
+                    }
+                } else {
+                    // Grayscale
+                    for (let i = 0; i < pixelCount; i++) {
+                        const v = items[i];
+                        rgba[i * 4] = v;
+                        rgba[i * 4 + 1] = v;
+                        rgba[i * 4 + 2] = v;
+                        rgba[i * 4 + 3] = 255;
+                    }
+                }
+
+                // Draw tile at its position, scaling to output dimensions
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = tw;
+                tempCanvas.height = th;
+                tempCanvas.getContext('2d').putImageData(imageData, 0, 0);
+
+                const tileX = dx + Math.round(tile.left * dw / jpx.width);
+                const tileY = dy + Math.round(tile.top * dh / jpx.height);
+                const tileW = Math.round(tw * dw / jpx.width);
+                const tileH = Math.round(th * dh / jpx.height);
+                ctx.drawImage(tempCanvas, tileX, tileY, tileW, tileH);
+            }
+
+            console.log(`NITFParser: Decoded J2K ${jpx.width}×${jpx.height}, ${nc} components, ${jpx.tiles.length} tile(s)`);
+        } catch (e) {
+            console.error('NITFParser: Failed to decode JPEG 2000 codestream:', e);
+        }
+    }
+
+    /**
+     * Scan a multi-block C8 image data area for J2K codestream boundaries.
+     * J2K codestreams start with SOC marker (0xFF4F) and end with EOC (0xFFD9).
+     */
+    static _scanJ2KBlocks(rawData, expectedBlocks) {
+        const ranges = [];
+        let pos = 0;
+
+        while (ranges.length < expectedBlocks && pos < rawData.length - 1) {
+            // Find SOC marker (0xFF 0x4F)
+            let socPos = -1;
+            for (let i = pos; i < rawData.length - 1; i++) {
+                if (rawData[i] === 0xFF && rawData[i + 1] === 0x4F) {
+                    socPos = i;
+                    break;
+                }
+            }
+            if (socPos < 0) break;
+
+            // Find EOC marker (0xFF 0xD9) after SOC
+            let eocPos = -1;
+            for (let i = socPos + 2; i < rawData.length - 1; i++) {
+                if (rawData[i] === 0xFF && rawData[i + 1] === 0xD9) {
+                    eocPos = i;
+                    break;
+                }
+            }
+
+            if (eocPos >= 0) {
+                const end = eocPos + 2;
+                ranges.push({start: socPos, length: end - socPos});
+                pos = end;
+            } else {
+                // No EOC found — assume rest of data is this block
+                ranges.push({start: socPos, length: rawData.length - socPos});
+                break;
+            }
+        }
+
+        // Pad with null for any missing blocks
+        while (ranges.length < expectedBlocks) {
+            ranges.push(null);
+        }
+
+        return ranges;
+    }
+
     static async _decodeJPEGBlocked(image) {
         const {nrows, ncols, rawData, nbpr, nbpc, nppbh, nppbv} = image;
         const isMasked = image.ic === 'M3';

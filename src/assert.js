@@ -20,10 +20,14 @@ export function assert(condition, message = false) {
 
         // MCP debugging: if the bridge is active, capture the assert instead of
         // hitting debugger (which would halt JS and cause an MCP timeout).
+        // Hard limit of 10 asserts before throwing to prevent runaway cascades.
         if (typeof window !== "undefined" && window._mcpDebug) {
             const stack = new Error().stack;
             if (!window._mcpAsserts) window._mcpAsserts = [];
             window._mcpAsserts.push({ message: String(message), stack });
+            if (window._mcpAsserts.length >= 10) {
+                throw new Error("MCP assert limit (10) reached. Last: " + message);
+            }
             return; // skip debugger so execution continues
         }
 

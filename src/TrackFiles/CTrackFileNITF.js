@@ -103,18 +103,18 @@ export class CTrackFileNITF extends CTrackFile {
             // ENGRDA altitude is typically in feet
             this.sensorAltitude = this.sensorData.imuAltitude * 0.3048;
 
-            // Compute actual look direction from sensor position to image center
-            // rather than assuming body-fixed nadir camera
-            const lookAngles = this._computeLookAngles();
-            this.platformHeading = lookAngles.azimuth;
+            // Compute look direction and FOV from actual angular geometry:
+            // find the angular centroid of the four corners as seen from the sensor,
+            // which correctly handles oblique views where the sensor is not above center.
+            const angularResult = this._computeAngularGeometry();
+            this.platformHeading = angularResult.azimuth;
             this.platformPitch = 0;
             this.platformRoll = 0;
-            // Sensor elevation: depression below horizontal → negative elevation
-            this.sensorElevation = -lookAngles.depression;
+            this.sensorElevation = -angularResult.depression;
 
             console.log(`CTrackFileNITF: ENGRDA sensor at (${this.sensorLat.toFixed(6)}, ${this.sensorLon.toFixed(6)}) ` +
-                `alt=${this.sensorAltitude.toFixed(0)}m → image center az=${lookAngles.azimuth.toFixed(1)}° ` +
-                `depression=${lookAngles.depression.toFixed(1)}°`);
+                `alt=${this.sensorAltitude.toFixed(0)}m → angular center az=${angularResult.azimuth.toFixed(1)}° ` +
+                `depression=${angularResult.depression.toFixed(1)}° hFOV=${angularResult.hFOV.toFixed(1)}° vFOV=${angularResult.vFOV.toFixed(1)}°`);
         } else {
             // Fallback: assume satellite at 500 km, nadir view
             this.sensorLat = this.centerLat;
@@ -126,18 +126,25 @@ export class CTrackFileNITF extends CTrackFile {
             this.sensorElevation = -90;
         }
 
-        this.sensorFOV = this._computeFOVFromAltitude();
+        // For ENGRDA, FOV was already computed by _computeAngularGeometry;
+        // for satellite fallback, use the altitude-based approximation (valid for nadir).
+        if (!this.hFOV) {
+            this.sensorFOV = this._computeFOVFromAltitude();
+        } else {
+            this.sensorFOV = Math.max(this.hFOV, this.vFOV);
+        }
 
         console.log(`CTrackFileNITF: center=(${this.centerLat.toFixed(6)}, ${this.centerLon.toFixed(6)}) ` +
             `heading=${this.imageHeading.toFixed(1)}° ` +
             `ground=${this.groundWidth.toFixed(1)}x${this.groundHeight.toFixed(1)}m ` +
             `GSD=${this.gsdX.toFixed(3)}x${this.gsdY.toFixed(3)}m ` +
-            `alt=${this.sensorAltitude.toFixed(0)}m FOV=${this.sensorFOV.toFixed(4)}°`);
+            `alt=${this.sensorAltitude.toFixed(0)}m hFOV=${this.hFOV.toFixed(2)}° vFOV=${this.vFOV.toFixed(2)}°`);
     }
 
     /**
      * Compute azimuth and depression angle from sensor position to image center.
      * Returns {azimuth, depression} in degrees.
+     * NOTE: only used by the satellite fallback path; ENGRDA uses _computeAngularGeometry().
      */
     _computeLookAngles() {
         const degToRad = Math.PI / 180;
@@ -153,6 +160,62 @@ export class CTrackFileNITF extends CTrackFile {
 
         const depression = Math.atan2(this.sensorAltitude, dist) / degToRad;
         return {azimuth, depression};
+    }
+
+    /**
+     * Compute look direction and FOV using actual 3D angular geometry from the
+     * sensor position to the four IGEOLO corners.  This correctly handles oblique
+     * views where the sensor is offset from image center and the nadir-based
+     * approximation (altitude / ground-extent) breaks down.
+     *
+     * Returns {azimuth, depression, hFOV, vFOV} in degrees, and also sets
+     * this.hFOV / this.vFOV as a side-effect.
+     */
+    _computeAngularGeometry() {
+        const degToRad = Math.PI / 180;
+        const metersPerDegLat = 111319.9;
+        const metersPerDegLon = 111319.9 * Math.cos(this.sensorLat * degToRad);
+
+        // Unit vectors from sensor to each corner (ENU, corners at ground level)
+        const cornerUnits = this.corners.map(c => {
+            const e = (c.lon - this.sensorLon) * metersPerDegLon;
+            const n = (c.lat - this.sensorLat) * metersPerDegLat;
+            const d = -this.sensorAltitude; // down to ground
+            const mag = Math.sqrt(e * e + n * n + d * d);
+            return {e: e / mag, n: n / mag, d: d / mag};
+        });
+
+        // Angular centroid: average of unit vectors, re-normalized.
+        // This is the direction that minimises total angular distance to all corners,
+        // which is the correct optical-axis direction for a symmetric camera.
+        let ae = 0, an = 0, ad = 0;
+        for (const u of cornerUnits) { ae += u.e; an += u.n; ad += u.d; }
+        const am = Math.sqrt(ae * ae + an * an + ad * ad);
+        ae /= am; an /= am; ad /= am;
+
+        let azimuth = Math.atan2(ae, an) / degToRad;
+        if (azimuth < 0) azimuth += 360;
+        const depression = Math.atan2(Math.abs(ad), Math.sqrt(ae * ae + an * an)) / degToRad;
+
+        // Horizontal FOV: angle between mid-left and mid-right edge vectors.
+        // Corners: [0]=UL, [1]=UR, [2]=LR, [3]=LL
+        const midOf = (a, b) => ({e: (a.e + b.e) / 2, n: (a.n + b.n) / 2, d: (a.d + b.d) / 2});
+        const angleBetween = (a, b) => {
+            const ma = Math.sqrt(a.e * a.e + a.n * a.n + a.d * a.d);
+            const mb = Math.sqrt(b.e * b.e + b.n * b.n + b.d * b.d);
+            const dot = (a.e * b.e + a.n * b.n + a.d * b.d) / (ma * mb);
+            return Math.acos(Math.min(1, Math.max(-1, dot))) / degToRad;
+        };
+
+        const midLeft  = midOf(cornerUnits[0], cornerUnits[3]); // avg(UL, LL)
+        const midRight = midOf(cornerUnits[1], cornerUnits[2]); // avg(UR, LR)
+        const midTop   = midOf(cornerUnits[0], cornerUnits[1]); // avg(UL, UR)
+        const midBot   = midOf(cornerUnits[3], cornerUnits[2]); // avg(LL, LR)
+
+        this.hFOV = angleBetween(midLeft, midRight);
+        this.vFOV = angleBetween(midTop, midBot);
+
+        return {azimuth, depression, hFOV: this.hFOV, vFOV: this.vFOV};
     }
 
     /**
@@ -226,7 +289,32 @@ export class CTrackFileNITF extends CTrackFile {
         if (trackIndex !== 0) return false;
         if (!this.doesContainTrack()) return false;
 
-        const timestamp = this.datetime ? this.datetime.getTime() : Date.now();
+        // Use the image datetime if valid (post-1970).  Pre-epoch dates like
+        // 1950-01-01 (ECRG placeholder) fail MISB validation, so we synthesise
+        // a stable fallback: 2026-03-30 at local solar noon based on longitude.
+        // If the original date has an invalid year but a valid time-of-day,
+        // we keep that time and only replace the date portion.
+        let timestamp;
+        if (this.datetime && this.datetime.getTime() >= 0) {
+            timestamp = this.datetime.getTime();
+        } else {
+            // Local solar noon: UTC 12:00 minus longitude-based offset (15°/hr)
+            const noonOffsetMs = (this.centerLon / 15) * 3600000;
+            const baseDate = Date.UTC(2026, 2, 30, 12, 0, 0) - noonOffsetMs;
+            if (this.datetime) {
+                // Keep original time-of-day if it looks valid (non-midnight)
+                const h = this.datetime.getUTCHours();
+                const m = this.datetime.getUTCMinutes();
+                const s = this.datetime.getUTCSeconds();
+                if (h !== 0 || m !== 0 || s !== 0) {
+                    timestamp = Date.UTC(2026, 2, 30, h, m, s);
+                } else {
+                    timestamp = baseDate;
+                }
+            } else {
+                timestamp = baseDate;
+            }
+        }
 
         const makeRow = (ts) => {
             const row = new Array(MISBFields).fill(null);
