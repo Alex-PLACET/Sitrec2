@@ -37,6 +37,7 @@ import {CTrackFile} from "./TrackFiles/CTrackFile";
 import {CTrackFileSonde} from "./TrackFiles/CTrackFileSonde";
 import {CNodeDisplayBalloonSphere} from "./nodes/CNodeDisplayBalloonSphere";
 import {CNodeSondeColor} from "./nodes/CNodeSondeColor";
+import {CNodeDisplaySondeWind} from "./nodes/CNodeDisplaySondeWind";
 import {detectRocketLikeTrack} from "./trackHeuristics";
 import {hasOtherTrackSourceReference} from "./trackSourceUtils";
 
@@ -761,6 +762,19 @@ class CTrackManager extends CManager {
             }
 
             trackOb.displayTargetSphere.addController("ObjectTilt", tiltDef);
+        }
+
+        // Wind arrows along sonde tracks showing wind direction/speed at each level
+        if (isSonde) {
+            trackOb.windArrows = new CNodeDisplaySondeWind({
+                id: shortName + "_windArrows",
+                inputs: {
+                    track: trackID,
+                    dataTrack: "TrackData_" + shortName,
+                },
+                arrowScale: 200, // 200m per m/s
+                arrowColor: 0xffff00, // yellow
+            });
         }
     }
 
