@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SitrecBridge",
-  "version": "1.0.18",
+  "version": "1.0.20",
   "description": "MCP bridge connecting AI assistants to a running Sitrec instance",
   "permissions": [
     "activeTab",
@@ -23,9 +23,12 @@
     {
       "matches": [
         "https://local.metabunk.org/sitrec*",
+        "https://local.metabunk.org/build*",
         "https://www.metabunk.org/sitrec*",
         "http://localhost:*/sitrec*",
-        "http://127.0.0.1:*/sitrec*"
+        "http://localhost:*/build*",
+        "http://127.0.0.1:*/sitrec*",
+        "http://127.0.0.1:*/build*"
       ],
       "js": ["content-script.js"],
       "run_at": "document_idle",

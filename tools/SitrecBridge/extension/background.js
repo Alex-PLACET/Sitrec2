@@ -165,12 +165,61 @@ async function findSitrecTab() {
     return null;
 }
 
+/**
+ * Find a Sitrec tab matching a target specifier.
+ * @param {string|number} target - Tab ID (number), or URL substring to match (string).
+ *   Examples: 456, "build2", "/sitrec", "localhost:4000"
+ * @returns {Promise<number|null>} Matching tab ID, or null if not found.
+ */
+async function findSitrecTabByTarget(target) {
+    if (target == null) return findSitrecTab();
+
+    // Numeric tab ID — direct lookup
+    if (typeof target === "number") {
+        try {
+            const tab = await chrome.tabs.get(target);
+            if (tab && isSitrecUrl(tab.url)) return tab.id;
+        } catch {}
+        return null;
+    }
+
+    // String — match against URL of all Sitrec tabs
+    if (typeof target === "string") {
+        const needle = target.toLowerCase();
+        const tabs = await chrome.tabs.query({});
+        for (const tab of tabs) {
+            if (isSitrecUrl(tab.url) && tab.url.toLowerCase().includes(needle)) {
+                return tab.id;
+            }
+        }
+    }
+    return null;
+}
+
+/**
+ * List all open Sitrec tabs with their IDs and URLs.
+ * Used by the sitrec_list_tabs MCP tool.
+ */
+async function findAllSitrecTabs() {
+    const tabs = await chrome.tabs.query({});
+    const results = [];
+    for (const tab of tabs) {
+        if (isSitrecUrl(tab.url)) {
+            results.push({ id: tab.id, url: tab.url, title: tab.title || "" });
+        }
+    }
+    return results;
+}
+
 function isSitrecUrl(url) {
     if (!url) return false;
     return (
         url.includes("metabunk.org/sitrec") ||
+        url.includes("metabunk.org/build") ||
         /localhost:\d+\/sitrec/.test(url) ||
-        /127\.0\.0\.1:\d+\/sitrec/.test(url)
+        /localhost:\d+\/build/.test(url) ||
+        /127\.0\.0\.1:\d+\/sitrec/.test(url) ||
+        /127\.0\.0\.1:\d+\/build/.test(url)
     );
 }
 
@@ -234,15 +283,32 @@ async function handleServerMessage(msg) {
         return;
     }
 
+    // List all Sitrec tabs — handled in background, no specific tab needed
+    if (action === "sitrec_list_tabs") {
+        trackCommandStart(action, params);
+        const tabs = await findAllSitrecTabs();
+        sendToServer({ id, result: tabs });
+        trackCommandEnd(true);
+        return;
+    }
+
     trackCommandStart(action, params);
 
+    // Tab targeting: use params.tab to select a specific tab by ID or URL substring.
+    // Extract and remove the tab param so it doesn't get forwarded to the content script.
+    const tabTarget = params?.tab;
+    if (params?.tab !== undefined) {
+        delete params.tab;
+    }
 
-
-    const tabId = await findSitrecTab();
+    const tabId = await findSitrecTabByTarget(tabTarget);
     if (!tabId) {
+        const hint = tabTarget
+            ? ` matching "${tabTarget}". Available tabs: use sitrec_list_tabs to see open Sitrec tabs.`
+            : ". Please open Sitrec in a browser tab.";
         sendToServer({
             id,
-            error: "No Sitrec tab found. Please open Sitrec in a browser tab.",
+            error: `No Sitrec tab found${hint}`,
         });
         trackCommandEnd(false);
         return;

@@ -458,6 +458,18 @@ start();
 
 // ── MCP Tool Definitions ────────────────────────────────────────────────────
 
+// Optional 'tab' parameter added to tools that relay to extension.
+// Allows targeting a specific Sitrec tab by numeric ID or URL substring.
+const TAB_PROPERTY = {
+    tab: {
+        type: ["string", "number"],
+        description:
+            "Target a specific Sitrec tab. Pass a URL substring (e.g. 'build2', '/sitrec') " +
+            "or a numeric Chrome tab ID. Omit to use the default (first) Sitrec tab. " +
+            "Use sitrec_list_tabs to see available tabs.",
+    },
+};
+
 const TOOLS = [
     {
         name: "sitrec_status",
@@ -467,11 +479,19 @@ const TOOLS = [
         inputSchema: { type: "object", properties: {}, required: [] },
     },
     {
+        name: "sitrec_list_tabs",
+        description:
+            "List all open Sitrec tabs in the browser. Returns each tab's numeric ID, URL, " +
+            "and title. Use the ID or a URL substring as the 'tab' parameter on other tools " +
+            "to target a specific Sitrec instance (e.g. 'build2' vs '/sitrec').",
+        inputSchema: { type: "object", properties: {}, required: [] },
+    },
+    {
         name: "sitrec_get_sitch",
         description:
             "Get information about the currently loaded situation (sitch): name, frame count, " +
             "FPS, center coordinates, time range, and whether it's a custom sitch.",
-        inputSchema: { type: "object", properties: {}, required: [] },
+        inputSchema: { type: "object", properties: { ...TAB_PROPERTY }, required: [] },
     },
     {
         name: "sitrec_load_sitch",
@@ -479,6 +499,7 @@ const TOOLS = [
         inputSchema: {
             type: "object",
             properties: {
+                ...TAB_PROPERTY,
                 name: {
                     type: "string",
                     description: "Sitch name, e.g. 'gimbal', 'chilean', 'gofast', 'agua', 'flir1'",
@@ -490,7 +511,7 @@ const TOOLS = [
     {
         name: "sitrec_list_sitches",
         description: "List all available sitches (situations) that can be loaded.",
-        inputSchema: { type: "object", properties: {}, required: [] },
+        inputSchema: { type: "object", properties: { ...TAB_PROPERTY }, required: [] },
     },
     {
         name: "sitrec_list_nodes",
@@ -500,6 +521,7 @@ const TOOLS = [
         inputSchema: {
             type: "object",
             properties: {
+                ...TAB_PROPERTY,
                 filter: {
                     type: "string",
                     description: "Substring filter on node ID (case-insensitive)",
@@ -520,6 +542,7 @@ const TOOLS = [
         inputSchema: {
             type: "object",
             properties: {
+                ...TAB_PROPERTY,
                 id: { type: "string", description: "Node ID" },
                 frame: {
                     type: "number",
@@ -532,7 +555,7 @@ const TOOLS = [
     {
         name: "sitrec_get_frame",
         description: "Get the current frame number, total frame count, FPS, and paused state.",
-        inputSchema: { type: "object", properties: {}, required: [] },
+        inputSchema: { type: "object", properties: { ...TAB_PROPERTY }, required: [] },
     },
     {
         name: "sitrec_set_frame",
@@ -540,6 +563,7 @@ const TOOLS = [
         inputSchema: {
             type: "object",
             properties: {
+                ...TAB_PROPERTY,
                 frame: { type: "number", description: "Frame number to jump to (0-based)" },
             },
             required: ["frame"],
@@ -551,6 +575,7 @@ const TOOLS = [
         inputSchema: {
             type: "object",
             properties: {
+                ...TAB_PROPERTY,
                 paused: {
                     type: "boolean",
                     description: "If provided, sets paused state. If omitted, toggles current state.",
@@ -569,6 +594,7 @@ const TOOLS = [
         inputSchema: {
             type: "object",
             properties: {
+                ...TAB_PROPERTY,
                 view: {
                     type: "string",
                     description: "Capture a single named view. Accepts 'main'/'mainView', 'look'/'lookView', 'video'/'videoView'. If omitted, composites all visible views.",
@@ -596,6 +622,7 @@ const TOOLS = [
         inputSchema: {
             type: "object",
             properties: {
+                ...TAB_PROPERTY,
                 frame: {
                     type: "number",
                     description: "Frame number to capture (0-based). Defaults to the current playback frame.",
@@ -613,6 +640,26 @@ const TOOLS = [
         },
     },
     {
+        name: "sitrec_debug_log",
+        description:
+            "Control debug log capture in the Sitrec page. Intercepts console.log/error/warn " +
+            "and stores them in a buffer. Works in both dev and production builds. " +
+            "Actions: 'enable' starts capture, 'disable' stops, 'export' returns the log text, " +
+            "'clear' empties the buffer, or omit for status.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                ...TAB_PROPERTY,
+                action: {
+                    type: "string",
+                    enum: ["enable", "disable", "export", "clear", "status"],
+                    description: "Action to perform. Omit for status.",
+                },
+            },
+            required: [],
+        },
+    },
+    {
         name: "sitrec_eval",
         description:
             "Evaluate a JavaScript expression in the Sitrec page context. Has access to all " +
@@ -622,6 +669,7 @@ const TOOLS = [
         inputSchema: {
             type: "object",
             properties: {
+                ...TAB_PROPERTY,
                 expression: {
                     type: "string",
                     description: "JavaScript expression to evaluate (must return JSON-serializable value)",
@@ -640,6 +688,7 @@ const TOOLS = [
         inputSchema: {
             type: "object",
             properties: {
+                ...TAB_PROPERTY,
                 fn: {
                     type: "string",
                     description: "API function name (e.g. 'gotoLLA', 'setDateTime', 'setFrame')",
@@ -657,7 +706,7 @@ const TOOLS = [
         description:
             "List all available Sitrec API functions with their documentation, parameters, " +
             "and available menu controls. Returns the full API reference.",
-        inputSchema: { type: "object", properties: {}, required: [] },
+        inputSchema: { type: "object", properties: { ...TAB_PROPERTY }, required: [] },
     },
     {
         name: "sitrec_reload_extension",
@@ -708,6 +757,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 }, null, 2),
             }],
         };
+    }
+
+    // sitrec_list_tabs is relayed to extension (needs chrome.tabs API)
+    if (name === "sitrec_list_tabs") {
+        try {
+            const response = await sendToExtension("sitrec_list_tabs", {});
+            return {
+                content: [{ type: "text", text: JSON.stringify(response.result, null, 2) }],
+            };
+        } catch (e) {
+            return {
+                content: [{ type: "text", text: `Error: ${e.message}` }],
+                isError: true,
+            };
+        }
     }
 
     // sitrec_guide is handled locally — returns the agent guide markdown
