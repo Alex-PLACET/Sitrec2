@@ -598,7 +598,17 @@ export class NITFParser {
         const rgba = imageData.data;
         const pixelCount = nrows * ncols;
 
-        if ((irep === 'MONO' || nbands === 1) && nbands <= 1) {
+        if (nbands === 1 && bands.length === 1 && bands[0].nluts > 0) {
+            // ── LUT-based (palettized color) ─────────────────────
+            const luts = bands[0].luts;
+            for (let i = 0; i < pixelCount; i++) {
+                const idx = pixelData[i] || 0;
+                rgba[i * 4] = luts[0] ? luts[0][idx] : idx;
+                rgba[i * 4 + 1] = luts[1] ? luts[1][idx] : (luts[0] ? luts[0][idx] : idx);
+                rgba[i * 4 + 2] = luts[2] ? luts[2][idx] : (luts[0] ? luts[0][idx] : idx);
+                rgba[i * 4 + 3] = 255;
+            }
+        } else if ((irep === 'MONO' || nbands === 1) && nbands <= 1) {
             // ── Monochrome ───────────────────────────────────────
             if (abpp <= 8) {
                 for (let i = 0; i < pixelCount; i++) {
@@ -654,16 +664,6 @@ export class NITFParser {
                     rgba[i * 4 + 2] = pixelData[2 * pixelCount * bpp + i * bpp];
                     rgba[i * 4 + 3] = 255;
                 }
-            }
-        } else if (nbands === 1 && bands.length === 1 && bands[0].nluts > 0) {
-            // ── LUT-based ────────────────────────────────────────
-            const luts = bands[0].luts;
-            for (let i = 0; i < pixelCount; i++) {
-                const idx = pixelData[i] || 0;
-                rgba[i * 4] = luts[0] ? luts[0][idx] : idx;
-                rgba[i * 4 + 1] = luts[1] ? luts[1][idx] : (luts[0] ? luts[0][idx] : idx);
-                rgba[i * 4 + 2] = luts[2] ? luts[2][idx] : (luts[0] ? luts[0][idx] : idx);
-                rgba[i * 4 + 3] = 255;
             }
         } else {
             // ── Fallback: first band as grayscale ────────────────
