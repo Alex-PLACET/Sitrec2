@@ -318,7 +318,8 @@ export class NITFParser {
         const icords = readStr(pos, 1);          pos += 1;
 
         let corners = null;
-        if (icords !== ' ' && icords !== '') {
+        // ICORDS: ' ' or 'N' = no coordinates (skip IGEOLO); 'G','D','U','S' = has IGEOLO
+        if (icords !== ' ' && icords !== '' && icords !== 'N') {
             const igeolo = readStr(pos, 60);
             pos += 60;
             corners = this.parseIGEOLO(igeolo, icords);
