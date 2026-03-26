@@ -554,48 +554,20 @@ async function _decodeWithWorkers(tileEntries, data, cs, numTilesX, totalTiles, 
     const numWorkers = Math.min(navigator.hardwareConcurrency || 4, 8);
     const baseUrl = location.href.replace(/[^/]*$/, '');
     const wasmScriptUrl = baseUrl + 'libs/openjpeg/openjpegwasm_decode.js';
-    const wasmUrl = baseUrl + 'libs/openjpeg/openjpegwasm_decode.wasm';
 
-    // Pre-compile WASM once on main thread, then share with all workers.
-    // This eliminates 8 parallel fetch+compile cycles (~2-3s savings).
-    console.log(`JPEG2000Utils: Pre-compiling WASM, starting ${numWorkers} workers`);
-    let compiledWasm = null;
-    try {
-        compiledWasm = await WebAssembly.compileStreaming(fetch(wasmUrl));
-    } catch (e) {
-        // Fallback: workers will fetch+compile individually
-        console.warn('JPEG2000Utils: WASM pre-compile failed, workers will compile individually');
-    }
+    console.log(`JPEG2000Utils: Starting ${numWorkers} decode workers`);
 
-    // Create and initialize worker pool
+    // Create workers and start them all compiling WASM in parallel.
+    // Don't wait for all to be ready — dispatch tiles as each worker reports ready.
     const workers = [];
-    const readyPromises = [];
     for (let i = 0; i < numWorkers; i++) {
-        const w = new Worker('./src/workers/J2KTileDecodeWorker.js');
-        workers.push(w);
-        readyPromises.push(new Promise((resolve, reject) => {
-            const handler = (e) => {
-                if (e.data.type === 'ready') { w.removeEventListener('message', handler); resolve(); }
-                else if (e.data.type === 'initError') { w.removeEventListener('message', handler); reject(new Error(e.data.error)); }
-            };
-            w.addEventListener('message', handler);
-        }));
-        w.postMessage({
-            type: 'init',
-            wasmScriptUrl,
-            compiledWasm, // WebAssembly.Module is transferable/cloneable
-            wasmLocateBase: baseUrl + 'libs/openjpeg/',
-            mainHeader: cs.mainHeader,
-            sizOffset: cs.sizOffset,
-            sizParams: cs.sizParams,
-            reduceLevel,
-        });
+        workers.push(new Worker('./src/workers/J2KTileDecodeWorker.js'));
     }
-    await Promise.all(readyPromises);
 
     return new Promise((resolve, reject) => {
         let nextIdx = 0;
         let decoded = 0, failed = 0;
+        let initFailed = 0;
 
         function dispatchNext(workerIdx) {
             if (nextIdx >= tileEntries.length) return;
@@ -611,9 +583,7 @@ async function _decodeWithWorkers(tileEntries, data, cs, numTilesX, totalTiles, 
 
         function onTileComplete() {
             const count = decoded + failed;
-            if (onProgress) {
-                onProgress(count, totalTiles);
-            }
+            if (onProgress) onProgress(count, totalTiles);
             if (count % 50 === 0 && count > 0) {
                 const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
                 const rate = (count / (performance.now() - startTime) * 1000).toFixed(0);
@@ -629,15 +599,27 @@ async function _decodeWithWorkers(tileEntries, data, cs, numTilesX, totalTiles, 
         workers.forEach((w, idx) => {
             w.onmessage = (e) => {
                 const msg = e.data;
-                if (msg.type === 'tileResult') {
+                if (msg.type === 'ready') {
+                    // Worker compiled WASM — immediately start it decoding
+                    dispatchNext(idx);
+                } else if (msg.type === 'initError') {
+                    console.warn(`JPEG2000Utils: Worker ${idx} init failed:`, msg.error);
+                    initFailed++;
+                    if (initFailed >= numWorkers) {
+                        workers.forEach(w2 => w2.terminate());
+                        reject(new Error('All workers failed to init'));
+                    }
+                } else if (msg.type === 'tileResult') {
                     drawTile(msg.tileIndex, msg.rgba, msg.width, msg.height);
                     decoded++;
+                    onTileComplete();
+                    dispatchNext(idx);
                 } else if (msg.type === 'tileError') {
                     if (failed === 0) console.warn(`JPEG2000Utils: Worker tile ${msg.tileIndex} failed:`, msg.error);
                     failed++;
+                    onTileComplete();
+                    dispatchNext(idx);
                 }
-                onTileComplete();
-                dispatchNext(idx);
             };
             w.onerror = (e) => {
                 console.warn('JPEG2000Utils: Worker error:', e.message);
@@ -645,7 +627,17 @@ async function _decodeWithWorkers(tileEntries, data, cs, numTilesX, totalTiles, 
                 onTileComplete();
                 dispatchNext(idx);
             };
-            dispatchNext(idx);
+
+            // Send init — worker starts compiling WASM immediately
+            w.postMessage({
+                type: 'init',
+                wasmScriptUrl,
+                wasmLocateBase: baseUrl + 'libs/openjpeg/',
+                mainHeader: cs.mainHeader,
+                sizOffset: cs.sizOffset,
+                sizParams: cs.sizParams,
+                reduceLevel,
+            });
         });
     });
 }
