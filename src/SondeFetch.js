@@ -4,8 +4,14 @@
 import {SITREC_SERVER, SITREC_APP, isServerless} from "./configUtils";
 import {FileManager, GlobalDateTimeNode, NodeMan, Sit} from "./Globals";
 import {promptForText} from "./TextPrompt";
-import {detectSondeFormat, listIGRA2Soundings, parseIGRA2} from "./ParseSonde";
+import {detectSondeFormat, listIGRA2Soundings, parseIGRA2, parseUWYOList, parseUWYOCSV} from "./ParseSonde";
+import {reconstructTrajectory} from "./SondeTrajectory";
 import JSZip from "jszip";
+
+// Escape HTML metacharacters to prevent XSS when interpolating into innerHTML
+function esc(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
 
 /**
  * Fetch a sounding from UWYO via the proxySounding.php CORS proxy.
@@ -124,8 +130,8 @@ export async function pickIGRA2Sounding(igra2Text, targetDate) {
         dialog.style.cssText = "background:#1a1a2e;color:#e0e0e0;border-radius:8px;padding:20px;width:450px;max-height:70vh;display:flex;flex-direction:column;font-family:sans-serif;";
 
         dialog.innerHTML =
-            '<h3 style="margin:0 0 10px 0;color:#fff;">Select Sounding (' + soundings.length + ' available)</h3>' +
-            '<div style="font-size:11px;color:#888;margin-bottom:8px;">Nearest to ' + targetDate + ' shown first</div>' +
+            '<h3 style="margin:0 0 10px 0;color:#fff;">Select Sounding (' + esc(soundings.length) + ' available)</h3>' +
+            '<div style="font-size:11px;color:#888;margin-bottom:8px;">Nearest to ' + esc(targetDate) + ' shown first</div>' +
             '<div id="igra2-sounding-list" style="overflow-y:auto;flex:1;max-height:50vh;"></div>' +
             '<div style="margin-top:10px;text-align:right;">' +
             '<button id="igra2-cancel" style="padding:6px 16px;background:#444;color:#fff;border:none;border-radius:4px;cursor:pointer;">Cancel</button></div>';
@@ -141,11 +147,11 @@ export async function pickIGRA2Sounding(igra2Text, targetDate) {
             var hourStr = s.hour != null ? String(s.hour).padStart(2, "0") + "Z" : "??Z";
             var daysAway = Math.round(s.dist / 86400000);
             var distLabel = daysAway === 0 ? "today" : daysAway + "d away";
-            return '<div class="igra2-item" data-index="' + s.index + '"' +
+            return '<div class="igra2-item" data-index="' + esc(s.index) + '"' +
                 ' style="padding:6px 8px;cursor:pointer;border-bottom:1px solid #333;font-size:13px;"' +
                 ' onmouseover="this.style.background=\'#3a3a5a\'" onmouseout="this.style.background=\'transparent\'">' +
-                '<b>' + s.date + ' ' + hourStr + '</b>' +
-                ' <span style="color:#888;font-size:11px;">(' + s.numLevels + ' levels, ' + distLabel + ')</span></div>';
+                '<b>' + esc(s.date) + ' ' + esc(hourStr) + '</b>' +
+                ' <span style="color:#888;font-size:11px;">(' + esc(s.numLevels) + ' levels, ' + esc(distLabel) + ')</span></div>';
         }).join("");
 
         listDiv.addEventListener("click", function(e) {
@@ -546,4 +552,128 @@ function extractSingleSounding(text, soundingIndex) {
 
     if (start < 0) return text; // fallback: return everything
     return lines.slice(start, end).join("\n");
+}
+
+/**
+ * Compare a wind-reconstructed sonde trajectory against GPS ground truth.
+ *
+ * Fetches both UWYO CSV (GPS) and LIST (wind-only) for the same station/date/hour,
+ * imports both as tracks, and computes error metrics.
+ *
+ * @param {string} stationId - 5-digit WMO station number
+ * @param {string} date - YYYY-MM-DD
+ * @param {number|string} hour - UTC hour (0 or 12)
+ * @returns {Promise<Object>} Comparison results with error metrics
+ */
+export async function compareSondeTrajectory(stationId, date, hour) {
+    // Fetch both formats for the same sounding
+    console.log(`Fetching UWYO CSV (GPS) for ${stationId} ${date} ${hour}Z...`);
+    const csvHtml = await fetchUWYOSounding(stationId, date, hour, "csv");
+
+    console.log(`Fetching UWYO LIST (wind) for ${stationId} ${date} ${hour}Z...`);
+    const listHtml = await fetchUWYOSounding(stationId, date, hour, "list");
+
+    // Parse both
+    const csvSonde = parseUWYOCSV(csvHtml);
+    const listSonde = parseUWYOList(listHtml);
+
+    if (!csvSonde || csvSonde.levels.length === 0) {
+        throw new Error("CSV (GPS) data not available for this sounding. Not all stations provide CSV format.");
+    }
+    if (!listSonde || listSonde.levels.length === 0) {
+        throw new Error("LIST (wind) data not available for this sounding.");
+    }
+
+    // Reconstruct trajectories
+    const gpsTrajectory = reconstructTrajectory(csvSonde);    // GPS ground truth
+    const windTrajectory = reconstructTrajectory(listSonde);  // wind-integrated estimate
+
+    if (gpsTrajectory.length < 2 || windTrajectory.length < 2) {
+        throw new Error("Insufficient trajectory points for comparison.");
+    }
+
+    // Import both as tracks
+    const csvFilename = `sonde_GPS_${stationId}_${date}_${String(hour).toString().padStart(2, '0')}Z.html`;
+    const listFilename = `sonde_WIND_${stationId}_${date}_${String(hour).toString().padStart(2, '0')}Z.html`;
+
+    await FileManager.parseResult(csvFilename, new TextEncoder().encode(csvHtml).buffer);
+    await FileManager.parseResult(listFilename, new TextEncoder().encode(listHtml).buffer);
+
+    // Compute error metrics: for each wind-reconstructed point, find nearest GPS point by time
+    const errors = [];
+    for (const wp of windTrajectory) {
+        // Binary-ish search for closest GPS point by time
+        let bestIdx = 0;
+        let bestDt = Math.abs(gpsTrajectory[0].time - wp.time);
+        for (let i = 1; i < gpsTrajectory.length; i++) {
+            const dt = Math.abs(gpsTrajectory[i].time - wp.time);
+            if (dt < bestDt) {
+                bestDt = dt;
+                bestIdx = i;
+            } else if (dt > bestDt) {
+                break; // GPS is sorted by time, so we've passed the closest
+            }
+        }
+
+        const gp = gpsTrajectory[bestIdx];
+        const horizDist = haversineKm(wp.lat, wp.lon, gp.lat, gp.lon) * 1000; // meters
+        const altDiff = Math.abs(wp.alt - gp.alt);
+        const timeDiff = Math.abs(wp.time - gp.time) / 1000; // seconds
+
+        errors.push({
+            altKm: wp.alt / 1000,
+            horizError_m: horizDist,
+            altError_m: altDiff,
+            timeDiff_s: timeDiff,
+            windLat: wp.lat,
+            windLon: wp.lon,
+            gpsLat: gp.lat,
+            gpsLon: gp.lon,
+        });
+    }
+
+    // Summary statistics
+    const horizErrors = errors.map(e => e.horizError_m);
+    const altErrors = errors.map(e => e.altError_m);
+    const sortedHoriz = [...horizErrors].sort((a, b) => a - b);
+
+    const stats = {
+        station: stationId,
+        date,
+        hour,
+        gpsPoints: gpsTrajectory.length,
+        windPoints: windTrajectory.length,
+        comparedPoints: errors.length,
+        horizontalError: {
+            mean_m: Math.round(horizErrors.reduce((a, b) => a + b, 0) / horizErrors.length),
+            median_m: Math.round(sortedHoriz[Math.floor(sortedHoriz.length / 2)]),
+            max_m: Math.round(Math.max(...horizErrors)),
+            max_km: (Math.max(...horizErrors) / 1000).toFixed(1),
+            atMaxAlt_km: errors[horizErrors.indexOf(Math.max(...horizErrors))].altKm.toFixed(1),
+        },
+        altitudeError: {
+            mean_m: Math.round(altErrors.reduce((a, b) => a + b, 0) / altErrors.length),
+            max_m: Math.round(Math.max(...altErrors)),
+        },
+        files: {
+            gps: csvFilename,
+            wind: listFilename,
+        },
+    };
+
+    // Log to console in a readable format
+    console.log("\n=== Sonde Trajectory Comparison ===");
+    console.log(`Station: ${stationId}, Date: ${date} ${hour}Z`);
+    console.log(`GPS track: ${gpsTrajectory.length} points, Wind-reconstructed: ${windTrajectory.length} points`);
+    console.log(`Horizontal error: mean=${stats.horizontalError.mean_m}m, median=${stats.horizontalError.median_m}m, max=${stats.horizontalError.max_km}km (at ${stats.horizontalError.atMaxAlt_km}km alt)`);
+    console.log(`Altitude error: mean=${stats.altitudeError.mean_m}m, max=${stats.altitudeError.max_m}m`);
+    console.log("===================================\n");
+
+    // Log per-level errors for detailed analysis
+    console.log("Per-level errors (altitude → horizontal error):");
+    for (const e of errors) {
+        console.log(`  ${e.altKm.toFixed(1)}km → ${e.horizError_m.toFixed(0)}m horiz, ${e.altError_m.toFixed(0)}m alt`);
+    }
+
+    return { stats, errors };
 }
