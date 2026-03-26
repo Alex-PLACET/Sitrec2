@@ -37,9 +37,19 @@ jobs:
       - name: Copy example configs for clean build
         run: |
           cp config/config.js.example config/config.js
-          cp config/config-install.js.example config/config-install.js
           cp config/shared.env.example config/shared.env
           cp config/config.php.example config/config.php
+          # Write CI-specific config-install.js that outputs directly to dist/
+          # (the example config uses a branch-based subdirectory like dist/sitrec/
+          # which doesn't match what Dockerfile.release expects)
+          cat > config/config-install.js << 'JSEOF'
+          const path = require('path');
+          module.exports = {
+              dev_path: path.resolve(__dirname, '..', 'dist'),
+              prod_path: path.resolve(__dirname, '..', 'dist'),
+              buildFolder: '',
+          };
+          JSEOF
 
       - uses: actions/setup-node@v6
         with:
