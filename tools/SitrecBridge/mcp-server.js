@@ -36,6 +36,7 @@ const __dirname = dirname(__filename);
 
 const WS_PORT = parseInt(process.env.SITREC_BRIDGE_PORT || "9780", 10);
 const WS_HOST = "127.0.0.1"; // Localhost only — avoids macOS firewall EPERM on 0.0.0.0
+const SITREC_CWD = process.cwd(); // Used to auto-match this MCP session to the correct Sitrec tab
 
 // Load the agent guide once at startup
 let agentGuide = "";
@@ -305,7 +306,8 @@ function relayPeerRequest(peerSocket, msg) {
     extensionSocket.send(JSON.stringify({
         id: primaryId,
         action: msg.action,
-        params: msg.params
+        params: msg.params,
+        _cwd: msg._cwd,
     }));
 }
 
@@ -409,7 +411,7 @@ function sendToExtension(action, params = {}, timeoutMs = REQUEST_TIMEOUT_MS) {
             }, timeoutMs);
 
             pendingRequests.set(id, { resolve, reject, timer });
-            extensionSocket.send(JSON.stringify({ id, action, params }));
+            extensionSocket.send(JSON.stringify({ id, action, params, _cwd: SITREC_CWD }));
 
         } else if (mode === "secondary") {
             if (!primarySocket || primarySocket.readyState !== WebSocket.OPEN) {
@@ -425,7 +427,7 @@ function sendToExtension(action, params = {}, timeoutMs = REQUEST_TIMEOUT_MS) {
             }, timeoutMs);
 
             pendingRequests.set(id, { resolve, reject, timer });
-            primarySocket.send(JSON.stringify({ id, action, params }));
+            primarySocket.send(JSON.stringify({ id, action, params, _cwd: SITREC_CWD }));
         }
     });
 }
@@ -754,6 +756,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     extensionConnected: connected,
                     wsPort: WS_PORT,
                     pendingRequests: pendingRequests.size,
+                    cwd: SITREC_CWD,
                 }, null, 2),
             }],
         };

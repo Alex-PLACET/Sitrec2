@@ -27,7 +27,7 @@ let ws = null;
 let reconnectTimer = null;
 let reconnectInterval = RECONNECT_INTERVAL_MS;
 let sitrecTabId = null;
-const knownSitrecTabs = new Set();  // Tab IDs confirmed as Sitrec by content script keepalive
+const knownSitrecTabs = new Map();  // Tab ID → { buildDir } — confirmed as Sitrec by content script keepalive
 let forceNextConnect = false;   // Set by popup "Reconnect" to override server rejection
 let rejectedByServer = false;   // True after server rejects us — suppresses ALL auto-reconnect
 let sourceVersion = null;       // Version from source manifest.json (sent by MCP server)
@@ -157,7 +157,7 @@ async function findSitrecTab() {
     }
 
     // Check any other known Sitrec tabs (registered via keepalive)
-    for (const tabId of knownSitrecTabs) {
+    for (const tabId of knownSitrecTabs.keys()) {
         try {
             await chrome.tabs.get(tabId);
             sitrecTabId = tabId;
@@ -174,31 +174,51 @@ async function findSitrecTab() {
  * Find a Sitrec tab matching a target specifier.
  * @param {string|number} target - Tab ID (number), or URL substring to match (string).
  *   Examples: 456, "build2", "/sitrec", "localhost:4000"
+ * @param {string|null} cwd - MCP server working directory. When no explicit target is
+ *   given, prefer the tab whose build directory matches this cwd.
  * @returns {Promise<number|null>} Matching tab ID, or null if not found.
  */
-async function findSitrecTabByTarget(target) {
-    if (target == null) return findSitrecTab();
+async function findSitrecTabByTarget(target, cwd) {
+    // Explicit target takes priority
+    if (target != null) {
+        // Numeric tab ID — direct lookup
+        if (typeof target === "number") {
+            try {
+                const tab = await chrome.tabs.get(target);
+                if (tab && knownSitrecTabs.has(tab.id)) return tab.id;
+            } catch {}
+            return null;
+        }
 
-    // Numeric tab ID — direct lookup
-    if (typeof target === "number") {
-        try {
-            const tab = await chrome.tabs.get(target);
-            if (tab && knownSitrecTabs.has(tab.id)) return tab.id;
-        } catch {}
+        // String — match against URL of known Sitrec tabs
+        if (typeof target === "string") {
+            const needle = target.toLowerCase();
+            const tabs = await chrome.tabs.query({});
+            for (const tab of tabs) {
+                if (knownSitrecTabs.has(tab.id) && tab.url.toLowerCase().includes(needle)) {
+                    return tab.id;
+                }
+            }
+        }
         return null;
     }
 
-    // String — match against URL of known Sitrec tabs
-    if (typeof target === "string") {
-        const needle = target.toLowerCase();
-        const tabs = await chrome.tabs.query({});
-        for (const tab of tabs) {
-            if (knownSitrecTabs.has(tab.id) && tab.url.toLowerCase().includes(needle)) {
-                return tab.id;
+    // No explicit target — try to match by build directory if cwd hint is provided
+    if (cwd) {
+        for (const [tabId, info] of knownSitrecTabs) {
+            if (info.buildDir && info.buildDir === cwd) {
+                try {
+                    await chrome.tabs.get(tabId);
+                    return tabId;
+                } catch {
+                    knownSitrecTabs.delete(tabId);
+                }
             }
         }
     }
-    return null;
+
+    // Fall back to default (first known Sitrec tab)
+    return findSitrecTab();
 }
 
 /**
@@ -210,7 +230,8 @@ async function findAllSitrecTabs() {
     const results = [];
     for (const tab of tabs) {
         if (knownSitrecTabs.has(tab.id)) {
-            results.push({ id: tab.id, url: tab.url, title: tab.title || "" });
+            const info = knownSitrecTabs.get(tab.id);
+            results.push({ id: tab.id, url: tab.url, title: tab.title || "", buildDir: info.buildDir || null });
         }
     }
     return results;
@@ -281,7 +302,7 @@ function trackCommandEnd(ok) {
 // -- Handle Incoming Server Messages ----------------------------------------
 
 async function handleServerMessage(msg) {
-    const { id, action, params } = msg;
+    const { id, action, params, _cwd } = msg;
 
     // Handle reload directly in the background script -- no tab needed
     if (action === "reload") {
@@ -310,7 +331,7 @@ async function handleServerMessage(msg) {
         delete params.tab;
     }
 
-    const tabId = await findSitrecTabByTarget(tabTarget);
+    const tabId = await findSitrecTabByTarget(tabTarget, _cwd);
     if (!tabId) {
         const hint = tabTarget
             ? ` matching "${tabTarget}". Available tabs: use sitrec_list_tabs to see open Sitrec tabs.`
@@ -374,9 +395,17 @@ chrome.runtime.onConnect.addListener((port) => {
     // If the port comes from a tab, remember it as our Sitrec tab
     const tabId = port.sender?.tab?.id;
     if (tabId) {
-        knownSitrecTabs.add(tabId);
+        knownSitrecTabs.set(tabId, { buildDir: null });
         sitrecTabId = tabId;
     }
+
+    // Listen for metadata (build directory) from the content script
+    port.onMessage.addListener((msg) => {
+        if (msg.type === "metadata" && tabId && knownSitrecTabs.has(tabId)) {
+            const info = knownSitrecTabs.get(tabId);
+            if (msg.buildDir) info.buildDir = msg.buildDir;
+        }
+    });
 
     // Ensure we're connected to the MCP server
     connect();

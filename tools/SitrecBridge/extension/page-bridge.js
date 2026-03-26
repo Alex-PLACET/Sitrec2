@@ -510,8 +510,9 @@ window.addEventListener("message", async (event) => {
 // so it can open the keepalive port and register the tab.
 
 function notifySitrecDetected() {
-    window.postMessage({ source: "sitrec-bridge-page", type: "sitrec-detected" }, "*");
-    console.log("[SitrecBridge] Page bridge loaded — Sitrec detected");
+    const buildDir = window.__sitrecBuildDir || null;
+    window.postMessage({ source: "sitrec-bridge-page", type: "sitrec-detected", buildDir }, "*");
+    console.log("[SitrecBridge] Page bridge loaded — Sitrec detected" + (buildDir ? ` (build: ${buildDir})` : ""));
 }
 
 if (window.Sit || document.getElementById("sitrec-objects-ready")) {

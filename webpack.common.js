@@ -250,6 +250,7 @@ ${bodyContent}
             'process.env.DOCKER_BUILD': JSON.stringify(process.env.DOCKER_BUILD === 'true'),
             'CAN_REQUIRE_CONTEXT': JSON.stringify(true),
             'INCLUDE_IWER_EMULATOR': JSON.stringify(env.includeIWER !== false),
+            '__SITREC_BUILD_DIR__': JSON.stringify(process.cwd()),
             // Collect all SITREC_CUSTOM_MAP_* and SITREC_CUSTOM_ELEVATION_* vars from shared.env
             // as a JSON blob so serverless builds can iterate them at runtime (dotenv-webpack
             // only replaces literal process.env.X references, not dynamic key access).

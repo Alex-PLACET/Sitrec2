@@ -339,6 +339,9 @@ if (INCLUDE_IWER_EMULATOR) {
 // Expose Globals to window for debugging
 window.Globals = Globals;
 
+// Expose the build directory so SitrecBridge can match MCP sessions to tabs
+window.__sitrecBuildDir = typeof __SITREC_BUILD_DIR__ !== 'undefined' ? __SITREC_BUILD_DIR__ : null;
+
 
 // we set Globals.wasPending to 5 so if we get to the render loop with no pending async actions
 // we will still get the "No pending actions" message

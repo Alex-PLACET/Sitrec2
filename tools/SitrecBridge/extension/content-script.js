@@ -36,10 +36,15 @@
 
 let keepalivePort = null;
 let sitrecDetected = false;
+let sitrecBuildDir = null;
 
 function openKeepalivePort() {
     try {
         keepalivePort = chrome.runtime.connect({ name: "sitrec-keepalive" });
+        // Send build directory metadata so background can match MCP sessions to tabs
+        if (sitrecBuildDir) {
+            keepalivePort.postMessage({ type: "metadata", buildDir: sitrecBuildDir });
+        }
         keepalivePort.onDisconnect.addListener(() => {
             keepalivePort = null;
             // Service worker may have restarted -- reconnect after a short delay
@@ -57,6 +62,7 @@ window.addEventListener("message", (event) => {
     if (event.data?.source === "sitrec-bridge-page" && event.data.type === "sitrec-detected") {
         if (!sitrecDetected) {
             sitrecDetected = true;
+            sitrecBuildDir = event.data.buildDir || null;
             openKeepalivePort();
         }
     }
