@@ -406,8 +406,55 @@ export async function decodeJ2KTiledToCanvas(arrayBuffer, options) {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, outW, outH);
 
-    // Get the WASM module once and reuse it for all tiles (big perf win).
-    // If WASM fails on the first tile, switch to JS for all remaining tiles.
+    // Prepare tile entries for dispatch
+    const tileEntries = [...tilePartsMap.entries()];
+
+    // Helper: concatenate tile-parts for a tile
+    function buildTileData(tileParts) {
+        const totalBytes = tileParts.reduce((s, tp) => s + tp.length, 0);
+        const tileData = new Uint8Array(totalBytes);
+        let off = 0;
+        for (const tp of tileParts) {
+            tileData.set(data.subarray(tp.start, tp.start + tp.length), off);
+            off += tp.length;
+        }
+        return tileData;
+    }
+
+    // Helper: draw decoded RGBA tile onto output canvas
+    const tileCanvas = document.createElement('canvas');
+    const tileCtx = tileCanvas.getContext('2d');
+    function drawTile(tileIndex, rgba, tileW, tileH) {
+        const tileCol = tileIndex % numTilesX;
+        const tileRow = Math.floor(tileIndex / numTilesX);
+        const tileX0 = XTOsiz + tileCol * XTsiz;
+        const tileY0 = YTOsiz + tileRow * YTsiz;
+        const actualW = Math.min(XTsiz, Xsiz - tileX0);
+        const actualH = Math.min(YTsiz, Ysiz - tileY0);
+        tileCanvas.width = tileW;
+        tileCanvas.height = tileH;
+        const imageData = new ImageData(new Uint8ClampedArray(rgba.buffer), tileW, tileH);
+        tileCtx.putImageData(imageData, 0, 0);
+        ctx.drawImage(tileCanvas,
+            Math.round(tileX0 * scale), Math.round(tileY0 * scale),
+            Math.round(actualW * scale), Math.round(actualH * scale));
+    }
+
+    const startTime = performance.now();
+
+    // ── Try parallel decode with Web Workers ──────────────────────
+    try {
+        const result = await _decodeWithWorkers(
+            tileEntries, data, cs, numTilesX, numUniqueTiles, drawTile, buildTileData, startTime);
+        const totalTime = ((performance.now() - startTime) / 1000).toFixed(1);
+        console.log(`JPEG2000Utils: Tiled decode complete: ${result.decoded}/${numUniqueTiles} tiles `
+            + `in ${totalTime}s (${result.failed} failed, ${result.workers} workers)`);
+        return {canvas, width: outW, height: outH};
+    } catch (workerError) {
+        console.warn('JPEG2000Utils: Worker decode failed, falling back to sequential:', workerError.message);
+    }
+
+    // ── Fallback: sequential main-thread decode ───────────────────
     let Module;
     try {
         Module = await getOpenJPEGWASM();
@@ -415,127 +462,151 @@ export async function decodeJ2KTiledToCanvas(arrayBuffer, options) {
         Module = await getOpenJPEGJS();
     }
 
-    // Reusable tile canvas for drawing decoded pixels
-    const tileCanvas = document.createElement('canvas');
-    const tileCtx = tileCanvas.getContext('2d');
-
     let decoded = 0, failed = 0;
-    const startTime = performance.now();
-
-    for (const [tileIndex, tileParts] of tilePartsMap) {
-        const tileCol = tileIndex % numTilesX;
-        const tileRow = Math.floor(tileIndex / numTilesX);
-
-        const tileX0 = XTOsiz + tileCol * XTsiz;
-        const tileY0 = YTOsiz + tileRow * YTsiz;
-        const tileW = Math.min(XTsiz, Xsiz - tileX0);
-        const tileH = Math.min(YTsiz, Ysiz - tileY0);
-        const x = Math.round(tileX0 * scale);
-        const y = Math.round(tileY0 * scale);
-        const w = Math.round(tileW * scale);
-        const h = Math.round(tileH * scale);
-
+    for (const [tileIndex, tileParts] of tileEntries) {
         try {
-            // Concatenate all tile-parts for this tile
-            const totalTileBytes = tileParts.reduce((s, tp) => s + tp.length, 0);
-            const tileData = new Uint8Array(totalTileBytes);
-            let off = 0;
-            for (const tp of tileParts) {
-                tileData.set(data.subarray(tp.start, tp.start + tp.length), off);
-                off += tp.length;
-            }
-
-            // Build a minimal single-tile J2K codestream
+            const tileData = buildTileData(tileParts);
+            const tileCol = tileIndex % numTilesX;
+            const tileRow = Math.floor(tileIndex / numTilesX);
             const miniJ2K = buildSingleTileJ2K(
                 cs.mainHeader, tileData, cs.sizOffset, cs.sizParams, tileCol, tileRow);
-
-            // Decode directly using the cached WASM/JS module
             const decoder = new Module.J2KDecoder();
             try {
-                const encodedBuffer = decoder.getEncodedBuffer(miniJ2K.length);
-                encodedBuffer.set(miniJ2K);
+                const buf = decoder.getEncodedBuffer(miniJ2K.length);
+                buf.set(miniJ2K);
                 decoder.decode();
-
                 const fi = decoder.getFrameInfo();
-                if (!fi.width || !fi.height) throw new Error('0×0 decode');
-
-                const rawDecoded = decoder.getDecodedBuffer();
+                if (!fi.width || !fi.height) throw new Error('0×0');
+                const raw = decoder.getDecodedBuffer();
                 const bps = fi.bitsPerSample;
                 const nc = fi.componentCount;
-                const pixelCount = fi.width * fi.height;
-
-                // Convert to 8-bit RGBA and draw onto output canvas
-                tileCanvas.width = fi.width;
-                tileCanvas.height = fi.height;
-                const imageData = tileCtx.createImageData(fi.width, fi.height);
-                const rgba = imageData.data;
-
+                const px = fi.width * fi.height;
+                const rgba = new Uint8Array(px * 4);
                 if (bps > 8) {
-                    const maxVal = (1 << bps) - 1;
-                    for (let i = 0; i < pixelCount; i++) {
-                        const lo = rawDecoded[i * 2];
-                        const hi = rawDecoded[i * 2 + 1];
-                        const val = Math.round((lo | (hi << 8)) * 255 / maxVal);
-                        rgba[i * 4] = val;
-                        rgba[i * 4 + 1] = val;
-                        rgba[i * 4 + 2] = val;
-                        rgba[i * 4 + 3] = 255;
+                    const mv = (1 << bps) - 1;
+                    for (let i = 0; i < px; i++) {
+                        const v = Math.round((raw[i*2] | (raw[i*2+1]<<8)) * 255 / mv);
+                        rgba[i*4] = rgba[i*4+1] = rgba[i*4+2] = v; rgba[i*4+3] = 255;
                     }
                 } else if (nc >= 3) {
-                    for (let i = 0; i < pixelCount; i++) {
-                        rgba[i * 4] = rawDecoded[i * nc];
-                        rgba[i * 4 + 1] = rawDecoded[i * nc + 1];
-                        rgba[i * 4 + 2] = rawDecoded[i * nc + 2];
-                        rgba[i * 4 + 3] = 255;
+                    for (let i = 0; i < px; i++) {
+                        rgba[i*4] = raw[i*nc]; rgba[i*4+1] = raw[i*nc+1];
+                        rgba[i*4+2] = raw[i*nc+2]; rgba[i*4+3] = 255;
                     }
                 } else {
-                    for (let i = 0; i < pixelCount; i++) {
-                        rgba[i * 4] = rawDecoded[i];
-                        rgba[i * 4 + 1] = rawDecoded[i];
-                        rgba[i * 4 + 2] = rawDecoded[i];
-                        rgba[i * 4 + 3] = 255;
+                    for (let i = 0; i < px; i++) {
+                        rgba[i*4] = rgba[i*4+1] = rgba[i*4+2] = raw[i]; rgba[i*4+3] = 255;
                     }
                 }
-
-                tileCtx.putImageData(imageData, 0, 0);
-                ctx.drawImage(tileCanvas, x, y, w, h);
+                drawTile(tileIndex, rgba, fi.width, fi.height);
                 decoded++;
-            } catch (e) {
-                // If WASM fails, switch module to JS for remaining tiles
-                if (Module === (await getOpenJPEGWASM())) {
-                    console.warn(`JPEG2000Utils: Tile WASM failed, switching to JS fallback`);
-                    Module = await getOpenJPEGJS();
-                } else if (decoded === 0 && failed === 0) {
-                    console.warn(`JPEG2000Utils: Tile ${tileIndex} failed:`, e.message);
-                }
-                failed++;
-            } finally {
-                decoder.delete();
-            }
+            } finally { decoder.delete(); }
         } catch (e) {
-            if (decoded === 0 && failed === 0) {
-                console.warn(`JPEG2000Utils: Tile ${tileIndex} setup failed:`, e.message);
-            }
+            if (decoded === 0 && failed === 0)
+                console.warn(`JPEG2000Utils: Tile ${tileIndex} failed:`, e.message);
             failed++;
         }
-
-        // Progress logging every 50 tiles + yield to browser event loop
         const count = decoded + failed;
         if (count % 50 === 0) {
             const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
-            const rate = (count / (performance.now() - startTime) * 1000).toFixed(0);
-            console.log(`JPEG2000Utils: Tiled decode: ${count}/${numUniqueTiles} `
-                + `(${elapsed}s, ~${rate} tiles/s)`);
-            // Yield to browser to keep UI responsive
+            console.log(`JPEG2000Utils: Sequential: ${count}/${numUniqueTiles} (${elapsed}s)`);
             await new Promise(r => setTimeout(r, 0));
         }
     }
-
     const totalTime = ((performance.now() - startTime) / 1000).toFixed(1);
-    console.log(`JPEG2000Utils: Tiled decode complete: ${decoded}/${numUniqueTiles} tiles `
+    console.log(`JPEG2000Utils: Sequential decode complete: ${decoded}/${numUniqueTiles} tiles `
         + `in ${totalTime}s (${failed} failed)`);
-
     return {canvas, width: outW, height: outH};
+}
+
+/**
+ * Decode tiles in parallel using a pool of Web Workers.
+ * Each worker loads its own OpenJPEG WASM instance.
+ */
+async function _decodeWithWorkers(tileEntries, data, cs, numTilesX, totalTiles, drawTile, buildTileData, startTime) {
+    const numWorkers = Math.min(navigator.hardwareConcurrency || 4, 8);
+    const baseUrl = location.href.replace(/[^/]*$/, '');
+    const wasmScriptUrl = baseUrl + 'libs/openjpeg/openjpegwasm_decode.js';
+    const wasmLocateBase = baseUrl + 'libs/openjpeg/';
+
+    console.log(`JPEG2000Utils: Starting ${numWorkers} decode workers`);
+
+    // Create and initialize worker pool
+    const workers = [];
+    const readyPromises = [];
+    for (let i = 0; i < numWorkers; i++) {
+        const w = new Worker('./src/workers/J2KTileDecodeWorker.js');
+        workers.push(w);
+        readyPromises.push(new Promise((resolve, reject) => {
+            const handler = (e) => {
+                if (e.data.type === 'ready') { w.removeEventListener('message', handler); resolve(); }
+                else if (e.data.type === 'initError') { w.removeEventListener('message', handler); reject(new Error(e.data.error)); }
+            };
+            w.addEventListener('message', handler);
+        }));
+        w.postMessage({
+            type: 'init',
+            wasmScriptUrl,
+            wasmLocateBase,
+            mainHeader: cs.mainHeader,
+            sizOffset: cs.sizOffset,
+            sizParams: cs.sizParams,
+        });
+    }
+    await Promise.all(readyPromises);
+
+    return new Promise((resolve, reject) => {
+        let nextIdx = 0;
+        let decoded = 0, failed = 0;
+
+        function dispatchNext(workerIdx) {
+            if (nextIdx >= tileEntries.length) return;
+            const [tileIndex, tileParts] = tileEntries[nextIdx++];
+            const tileCol = tileIndex % numTilesX;
+            const tileRow = Math.floor(tileIndex / numTilesX);
+            const tileData = buildTileData(tileParts);
+            workers[workerIdx].postMessage(
+                {type: 'decodeTile', tileIndex, tileData, tileCol, tileRow},
+                [tileData.buffer]
+            );
+        }
+
+        function onComplete() {
+            const count = decoded + failed;
+            if (count % 50 === 0 && count > 0) {
+                const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+                const rate = (count / (performance.now() - startTime) * 1000).toFixed(0);
+                console.log(`JPEG2000Utils: Tiled decode: ${count}/${totalTiles} `
+                    + `(${elapsed}s, ~${rate} tiles/s)`);
+            }
+            if (count >= totalTiles) {
+                workers.forEach(w => w.terminate());
+                resolve({decoded, failed, workers: numWorkers});
+            }
+        }
+
+        workers.forEach((w, idx) => {
+            w.onmessage = (e) => {
+                const msg = e.data;
+                if (msg.type === 'tileResult') {
+                    drawTile(msg.tileIndex, msg.rgba, msg.width, msg.height);
+                    decoded++;
+                } else if (msg.type === 'tileError') {
+                    if (failed === 0) console.warn(`JPEG2000Utils: Worker tile ${msg.tileIndex} failed:`, msg.error);
+                    failed++;
+                }
+                onComplete();
+                dispatchNext(idx);
+            };
+            w.onerror = (e) => {
+                console.warn('JPEG2000Utils: Worker error:', e.message);
+                failed++;
+                onComplete();
+                dispatchNext(idx);
+            };
+            dispatchNext(idx);
+        });
+    });
 }
 
 /**
