@@ -5,7 +5,7 @@ import {PNG} from "pngjs";
 
 const CUSTOM_URL = "?custom=99999999/PLY%20vs.%20GLB%20F35%20Brighness/20260317_235655.js&ignoreunload=1&regression=1";
 const REFERENCE_CUSTOM_URL = "?custom=99999999/PLY%20vs.%20GLB%20F35%20Brighness/20260318_002315.js&ignoreunload=1&regression=1";
-const OUTPUT_DIR = "/Users/mick/Dropbox/sitrec-dev/sitrec/test-results/f35-brightness";
+const OUTPUT_DIR = path.resolve(__dirname, "../../test-results/f35-brightness");
 
 function ensureOutputDir() {
     fs.mkdirSync(OUTPUT_DIR, {recursive: true});

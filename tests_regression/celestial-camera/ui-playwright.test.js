@@ -1,3 +1,4 @@
+import path from 'path';
 import {expect, test} from '@playwright/test';
 
 test('shared celestial bodies sync to the rendering view camera', async ({page}) => {
@@ -58,7 +59,7 @@ test('shared celestial bodies sync to the rendering view camera', async ({page})
     expect(result.moonDelta).toBeGreaterThan(0.01);
 
     await page.screenshot({
-        path: '/Users/mick/Dropbox/sitrec-dev/sitrec/test-results/celestial-camera-main-vs-look.png',
+        path: path.resolve(__dirname, '../../test-results/celestial-camera-main-vs-look.png'),
         fullPage: true,
     });
 });

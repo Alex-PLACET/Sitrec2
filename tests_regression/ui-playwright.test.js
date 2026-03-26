@@ -1,3 +1,4 @@
+import path from 'path';
 import {expect, test} from '@playwright/test';
 import {takeScreenshotOrCompare} from './snapshot-utils.js';
 
@@ -482,7 +483,7 @@ test.describe.serial('UI Interaction Tests - Playwright', () => {
             });
 
             const fileChooser = await fileChooserPromise;
-            await fileChooser.setFiles(['/Users/mick/Dropbox/sitrec-dev/sitrec/data/test/elevated_track.xml']);
+            await fileChooser.setFiles([path.resolve(__dirname, '../data/test/elevated_track.xml')]);
 
             await consolePromise;
 

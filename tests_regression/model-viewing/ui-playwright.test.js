@@ -3,7 +3,7 @@ import path from 'path';
 import {expect, test} from '@playwright/test';
 
 const CUSTOM_URL = '?custom=99999999/Model%20Viewing/20260315_235824.js&ignoreunload=1&regression=1';
-const OUTPUT_DIR = '/Users/mick/Dropbox/sitrec-dev/sitrec/test-results/model-viewing';
+const OUTPUT_DIR = path.resolve(__dirname, '../../test-results/model-viewing');
 
 function ensureOutputDir() {
     fs.mkdirSync(OUTPUT_DIR, {recursive: true});

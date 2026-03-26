@@ -3,7 +3,7 @@ import path from "path";
 import {expect, test} from "@playwright/test";
 
 const CUSTOM_URL = "?custom=99999999/splat%20bounding%20box/20260317_032018.js&ignoreunload=1&regression=1";
-const OUTPUT_DIR = "/Users/mick/Dropbox/sitrec-dev/sitrec/test-results/gaussian-splat-bounding-box";
+const OUTPUT_DIR = path.resolve(__dirname, "../../test-results/gaussian-splat-bounding-box");
 
 function ensureOutputDir() {
     fs.mkdirSync(OUTPUT_DIR, {recursive: true});
