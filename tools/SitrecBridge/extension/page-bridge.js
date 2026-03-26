@@ -434,12 +434,12 @@ const handlers = {
         }
     },
 
-    sitrec_api_call({ fn, args } = {}) {
+    async sitrec_api_call({ fn, args } = {}) {
         if (!fn) return { error: "Missing 'fn' parameter" };
         const api = window.sitrecAPI;
         if (!api) return { error: "sitrecAPI not available (page may need rebuilding)" };
         try {
-            const result = api.handleAPICall({ fn, args: args || {} });
+            const result = await api.handleAPICall({ fn, args: args || {} });
             return safeSerialize(result);
         } catch (e) {
             return { error: `API call error: ${e.message}` };
