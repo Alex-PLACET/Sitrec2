@@ -1,11 +1,6 @@
-// Paths for where we build the dev (development) and prod (production)
-// versions of Sitrec.
-//
-// The build folder is derived from the current git branch so that each
-// worktree automatically builds to its own directory:
-//   main          → dist/sitrec
-//   feature/foo   → dist/build-feature-foo
-//
+// Build folder is derived from the current git branch:
+//   main     → dist/sitrec
+//   weather  → dist/weather
 // Override buildFolder below if you want a fixed output location.
 
 const { execSync } = require('child_process');
@@ -18,13 +13,7 @@ try {
     branch = 'main';
 }
 
-// main (and detached HEAD) → 'sitrec', everything else → 'build-<branch-slug>'
-let buildFolder;
-if (branch === 'main' || branch === 'HEAD') {
-    buildFolder = 'sitrec';
-} else {
-    buildFolder = 'build-' + branch.replace(/\//g, '-');
-}
+const buildFolder = (branch === 'main' || branch === 'HEAD') ? 'sitrec' : branch;
 
 module.exports = {
     dev_path: path.resolve(__dirname, '..', 'dist', buildFolder),
