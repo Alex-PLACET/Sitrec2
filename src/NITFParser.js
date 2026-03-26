@@ -9,7 +9,7 @@
 
 import {CTrackFileNITF} from "./TrackFiles/CTrackFileNITF";
 import {createImageFromArrayBuffer} from "./FileUtils";
-import {decodeJPEG2000ToBlobURL} from "./JPEG2000Utils";
+import {decodeJPEG2000ToBlobURL, decodeJ2KTiledToCanvas} from "./JPEG2000Utils";
 
 export class NITFParser {
 
@@ -38,6 +38,17 @@ export class NITFParser {
 
         for (let i = 0; i < nitf.images.length; i++) {
             const image = nitf.images[i];
+            console.log(`NITFParser: Segment ${i}: ${image.ncols}×${image.nrows}, IC=${image.ic}, IREP=${image.irep}, `
+                + `IMODE=${image.imode}, NBANDS=${image.nbands}, ABPP=${image.abpp}, `
+                + `blocks=${image.nbpr}×${image.nbpc} (${image.nppbh}×${image.nppbv}), `
+                + `data=${image.dataLength} bytes`);
+
+            // Skip very small segments that are likely masks/thumbnails
+            // when a large primary image is present
+            if (nitf.images.length > 1 && image.nrows * image.ncols < 1024 * 1024) {
+                console.log(`NITFParser: Skipping segment ${i} (small, likely mask/thumbnail)`);
+                continue;
+            }
 
             // Create image virtual file as PNG
             try {
@@ -547,8 +558,13 @@ export class NITFParser {
             return this._decodeJPEGBlocked(image);
         }
 
-        if (image.ic === 'C8' || image.ic === 'M8') {
-            // JPEG 2000 — decode codestream with jpeg2000 library
+        if (image.ic === 'M8') {
+            // Masked JPEG 2000 — per-block decode with mask table
+            return this._decodeJPEG2000Blocked(image);
+        }
+
+        if (image.ic === 'C8') {
+            // Non-masked JPEG 2000 — single codestream
             return this._decodeJPEG2000(image);
         }
 
@@ -793,6 +809,22 @@ export class NITFParser {
 
         const arrayBuffer = j2kData.buffer.slice(
             j2kData.byteOffset, j2kData.byteOffset + j2kData.byteLength);
+
+        // For large tiled images, use per-tile decoding to avoid memory limits.
+        // The threshold is set conservatively: 64M pixels (~8K×8K) as the whole-decode
+        // needs to fit the compressed data + decoded pixels in WASM/JS heap.
+        const MAX_WHOLE_DECODE = 64 * 1024 * 1024;
+        if (image.nrows * image.ncols > MAX_WHOLE_DECODE) {
+            try {
+                const {canvas} = await decodeJ2KTiledToCanvas(arrayBuffer, options);
+                const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+                return await blob.arrayBuffer();
+            } catch (e) {
+                console.warn('NITFParser: Per-tile J2K decode failed, trying whole-codestream:', e.message);
+                // Fall through to whole-codestream decode as last resort
+            }
+        }
+
         const blobURL = await decodeJPEG2000ToBlobURL(arrayBuffer, options);
 
         // Convert blob URL to PNG ArrayBuffer for the caller
@@ -803,9 +835,116 @@ export class NITFParser {
     }
 
     /**
-     * Scan a multi-block C8 image data area for J2K codestream boundaries.
-     * J2K codestreams start with SOC marker (0xFF4F) and end with EOC (0xFFD9).
+     * Decode a masked JPEG 2000 (IC=M8) image with per-block decoding.
+     * M8 images have a block mask table followed by per-block J2K codestreams,
+     * similar to M3 (masked JPEG). Each block is decoded separately and
+     * composited onto a canvas.
      */
+    static async _decodeJPEG2000Blocked(image) {
+        const {nrows, ncols, rawData, nbpr, nbpc, nppbh, nppbv, irep, bands} = image;
+        const nblocks = nbpr * nbpc;
+
+        // Browser canvas limits — downscale if needed
+        const MAX_PIXELS = 128 * 1024 * 1024;
+        const MAX_DIM = 16384;
+        let scale = 1;
+        if (nrows * ncols > MAX_PIXELS) {
+            scale = Math.sqrt(MAX_PIXELS / (nrows * ncols));
+        }
+        if (nrows * scale > MAX_DIM) scale = MAX_DIM / nrows;
+        if (ncols * scale > MAX_DIM) scale = MAX_DIM / ncols;
+
+        const outW = Math.round(ncols * scale);
+        const outH = Math.round(nrows * scale);
+        if (scale < 1) {
+            console.log(`NITFParser: M8 downscaling ${ncols}×${nrows} → ${outW}×${outH} (scale ${scale.toFixed(3)})`);
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = outW;
+        canvas.height = outH;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, outW, outH);
+
+        // Parse block mask table (same format as M3)
+        const blockRanges = this._parseMaskedBlockTable(rawData, nblocks);
+
+        // Build color space options from NITF metadata (same as _decodeJPEG2000)
+        const options = {};
+        if (irep && irep.startsWith('YCbCr')) {
+            options.isYCbCr = true;
+            if (bands && bands.length >= 3) {
+                const labelToSlot = {'Y': 0, 'Cb': 1, 'Cr': 2};
+                const map = [0, 1, 2];
+                for (let i = 0; i < bands.length; i++) {
+                    const label = bands[i].irepband.trim();
+                    if (labelToSlot[label] !== undefined) {
+                        map[labelToSlot[label]] = i;
+                    }
+                }
+                options.componentMap = map;
+            }
+        }
+
+        let decoded = 0, failed = 0, masked = 0;
+
+        // Decode blocks sequentially to avoid memory pressure from parallel large decodes
+        for (let i = 0; i < nblocks; i++) {
+            if (!blockRanges[i]) {
+                masked++;
+                continue;
+            }
+
+            const {start, length} = blockRanges[i];
+            const bCol = i % nbpr;
+            const bRow = Math.floor(i / nbpr);
+            const x = Math.round(bCol * nppbh * scale);
+            const y = Math.round(bRow * nppbv * scale);
+            const w = Math.round(nppbh * scale);
+            const h = Math.round(nppbv * scale);
+
+            try {
+                // Extract J2K codestream from block data — scan for SOC marker
+                const blockData = rawData.subarray(start, start + length);
+                const blocks = this._scanJ2KBlocks(blockData, 1);
+                const j2kBlock = blocks[0];
+                const j2kData = j2kBlock
+                    ? blockData.subarray(j2kBlock.start, j2kBlock.start + j2kBlock.length)
+                    : blockData;
+
+                const arrayBuffer = j2kData.buffer.slice(
+                    j2kData.byteOffset, j2kData.byteOffset + j2kData.byteLength);
+                const blobURL = await decodeJPEG2000ToBlobURL(arrayBuffer, options);
+
+                // Draw decoded block onto canvas
+                const img = new Image();
+                await new Promise((resolve) => {
+                    img.onload = () => {
+                        ctx.drawImage(img, x, y, w, h);
+                        URL.revokeObjectURL(blobURL);
+                        resolve();
+                    };
+                    img.onerror = () => {
+                        console.warn(`NITFParser: M8 block ${i} image load failed`);
+                        URL.revokeObjectURL(blobURL);
+                        resolve();
+                    };
+                    img.src = blobURL;
+                });
+                decoded++;
+            } catch (e) {
+                console.warn(`NITFParser: M8 block ${i} decode failed:`, e.message);
+                failed++;
+            }
+        }
+
+        console.log(`NITFParser: M8 decode complete: ${decoded} decoded, ${failed} failed, ${masked} masked (of ${nblocks} blocks)`);
+
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        return await blob.arrayBuffer();
+    }
+
     /**
      * Find JP2 signature box (0x0000000C 6A502020) in raw data.
      * Returns the offset or -1 if not found before any SOC marker.

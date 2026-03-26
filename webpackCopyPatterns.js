@@ -134,7 +134,7 @@ patterns.push({
 patterns.push({
     from: path.dirname(require.resolve('@cornerstonejs/codec-openjpeg/decodewasmjs')),
     to: './libs/openjpeg',
-    globOptions: { ignore: ['**/openjpegjs*', '**/openjpegwasm.js', '**/openjpegwasm.wasm'] },
+    globOptions: { ignore: ['**/openjpegjs.js', '**/openjpegwasm.js', '**/openjpegwasm.wasm'] },
 });
 
 module.exports = patterns;
