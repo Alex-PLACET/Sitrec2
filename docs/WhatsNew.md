@@ -45,7 +45,123 @@ Example entry format:
 
 ---
 
-## Version 2.37.0 (unreleased)
+## Version 2.39.3 (unreleased)
+
+### New Features
+- **Sonde Trajectory Comparison**: New `compareSondeTrajectory` API compares wind-reconstructed trajectories against GPS ground truth from the same balloon flight, with per-level horizontal error metrics
+- **UWYO GPS CSV Support**: Proxy now uses the UWYO WSGI endpoint to fetch per-second GPS radiosonde data for recent soundings (2018+)
+
+### Improvements
+- Sonde import shows progress dialog at each stage with cancel button
+- UWYO rate limit (HTTP 429) triggers a 66-second cooldown with live countdown timer and automatic retry
+- Station coordinates refined from IGRA2 database (4-decimal precision, ~35m accuracy) instead of truncated UWYO LIST HTML values (~2 km error)
+- Station picker and auto-import use lookCamera position for proximity sorting
+- Decommissioned stations filtered out based on sim start time year
+- IGRA2 fetch falls back to previous year's y2d file when current year's doesn't exist
+- IGRA2 format detection allows preceding metadata lines; UWYO LIST detection accepts flexible whitespace
+- Escape HTML in sounding picker dialog to prevent DOM XSS
+
+### Bug Fixes
+- Fixed "Sync Time To" only recalculating the synced track instead of all tracks connected to the datetime node
+- Fixed SitrecBridge URL validation to use exact hostname matching
+
+---
+
+## Version 2.39.2 (2026-03-26)
+
+### Improvements
+- Run Playwright tests on version tags in CI
+- Replace hardcoded absolute paths in test files with `path.resolve(__dirname)`
+
+---
+
+## Version 2.39.1 (2026-03-26)
+
+### Bug Fixes
+- Fixed Docker CI build: use flat dist/ output instead of branch-based subdirectory
+
+---
+
+## Version 2.39.0 (2026-03-26)
+
+### New Features
+- **Weather Balloon / Radiosonde Support**: Import, reconstruct, and display radiosonde (weather balloon) trajectories from UWYO and IGRA2 (NOAA NCEI) data sources
+- **Station Picker**: Searchable station picker dialog sorted by proximity to camera position
+- **IGRA2 Direct Fetch**: Download and decompress IGRA2 sounding archives directly from NOAA NCEI
+- **Atmospheric Profile Node**: Altitude/pressure-interpolated temperature, humidity, and wind data from imported soundings
+- **Weather Balloons Menu**: Physics menu with auto-import of nearest station and API access
+- **Temperature-Gradient Coloring**: Sonde tracks colored by temperature gradient instead of constant white
+- **Wind Arrow Display**: Wind direction and magnitude arrows along sonde tracks
+- **Balloon Sphere Display**: Pressure-scaled balloon sphere that expands with altitude following ideal gas law
+
+---
+
+## Version 2.38.0 (2026-03-25)
+
+### New Features
+- **NITF Image Support**: Import NITF/NITF 2.0 images with JPEG, JPEG 2000, and blocked image decoding, sensor metadata extraction, and georeferencing
+- **JPEG 2000 Support**: Decode JP2/J2K/JPX files via OpenJPEG WebAssembly, including >8-bit monochrome, sYCC color space, and ICC TRC curves
+- **Multi-Tab MCP Support**: SitrecBridge can target specific Sitrec instances by URL or tab ID
+
+### Improvements
+- FOV corrections and "Match Video Aspect" pillarbox fix
+- Improved MCP screenshots and view captures
+- SitrecBridge popup shows current window's Sitrec tab
+
+### Bug Fixes
+- Fixed NITF 2.0 datetime parsing, ICORDS='N' subheader misalignment, and >8-bit mono images too dark
+- Fixed LUT-based NITF images showing as grayscale instead of color
+- Fixed JP2 drag-drop, component map handling, and JP2 inside NITF containers
+- Fixed `versions` command showing remote latest instead of actual installed version
+
+---
+
+## Version 2.37.3 (2026-03-24)
+
+### Improvements
+- More robust H.264 decoder: recovers from errors, better error reporting
+- More robust handling of canvas dimensions to avoid async startup issues
+- Basic NITF support (initial implementation)
+- Expanded MCP/AI-facing API for deeper access to Sitrec client internals
+- Added "Visible" checkbox to synth 3D objects
+- Suppress blocking dialogs when MCP debugging
+
+### Bug Fixes
+- Fixed multi-slice H.264 decode failure
+- Show clear error for MPEG-2 video in TS files
+
+---
+
+## Version 2.37.2 (2026-03-24)
+
+### Improvements
+- Updated tooltips for all menu items that were missing them
+- Move debug buttons to Debug menu, add Server/Local folder toggle
+- Replace grey sphere with polar caps for Mercator tile gaps
+- Custom map and elevation configurable via .env
+- Adjusted attribution position when banners shown
+- Docker: bundled installer files in image, improved offline install with automatic image detection
+
+### Bug Fixes
+- Fixed SELinux :Z detection to avoid false positives
+- Fixed `versions` command to correctly resolve 'latest' tag
+
+---
+
+## Version 2.37.1 (2026-03-23)
+
+### New Features
+- **Flood Sim**: Experimental flood simulation
+- **sitrec.sh Management Script**: Unified Docker/Podman management with `start`, `update`, `versions`, and `--offline` commands
+- **SitrecBridge Launcher Scripts**: Claude Desktop compatibility
+
+### Improvements
+- Podman compatibility for Docker install
+- SitrecBridge: show MCP command activity in popup, document time system
+
+---
+
+## Version 2.37.0 (2026-03-22)
 
 ### New Features
 - **SitrecBridge MCP Server**: AI assistants (Claude Code, Claude Desktop) can now control Sitrec in real-time via the SitrecBridge MCP server and Chrome extension — navigate, take screenshots, inspect nodes, and call API functions
