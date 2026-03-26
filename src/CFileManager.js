@@ -29,6 +29,7 @@ import {
     CTrackFileMISB,
     CTrackFileSRT,
     CTrackFileSTANAG,
+    CTrackFileSonde,
     parseXml
 } from "./KMLUtils";
 import {CRehoster} from "./CRehoster";
@@ -101,6 +102,7 @@ const trackFileClasses = [
     CTrackFileSRT,
     CTrackFileJSON,
     CTrackFileMISB,
+    CTrackFileSonde,  // Last: handles text files, content-detected to avoid false positives
 ];
 
 // ── IndexedDB helpers for persisting working folder handle ──────────────
@@ -3759,8 +3761,14 @@ export class CFileManager extends CManager {
                         }
                         dataType = "trackfile";
                     } else {
-                        parsed = text;
-                        dataType = "tle";
+                        // Try sonde format detection before falling back to TLE
+                        parsed = this.detectTrackFile(filename, text);
+                        if (parsed) {
+                            dataType = "trackfile";
+                        } else {
+                            parsed = text;
+                            dataType = "tle";
+                        }
                     }
                     break;
                 }
@@ -3876,6 +3884,14 @@ export class CFileManager extends CManager {
                 case "csv": {
                     const buffer2 = cleanCSVText(buffer)
                     var text = decoder.decode(buffer);
+
+                    // Try sonde CSV detection first (UWYO CSV has a distinctive header)
+                    const sondeTrackFile = this.detectTrackFile(filename, text);
+                    if (sondeTrackFile) {
+                        parsed = sondeTrackFile;
+                        dataType = "trackfile";
+                        break;
+                    }
 
                     parsed = csv.toArrays(text);
                     dataType = detectCSVType(parsed)
@@ -4010,6 +4026,20 @@ export class CFileManager extends CManager {
                         console.log("Parsed MPEG-2 stream: " + filename + " (" + buffer.byteLength + " bytes)");
                     }
                     break;
+
+                case "html":
+                case "htm": {
+                    // UWYO sounding pages saved as HTML files
+                    const htmlText = decoder.decode(buffer);
+                    parsed = this.detectTrackFile(filename, htmlText);
+                    if (parsed) {
+                        dataType = "trackfile";
+                    } else {
+                        parsed = htmlText;
+                        dataType = "unknown";
+                    }
+                    break;
+                }
 
                 case "mp4":
                 case "mov":

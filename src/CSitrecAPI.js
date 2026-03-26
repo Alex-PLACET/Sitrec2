@@ -1171,6 +1171,21 @@ class CSitrecAPI {
                 }
             },
 
+            getNearbyWeatherBalloons: {
+                doc: "Import the N nearest weather balloon (radiosonde) soundings to the camera position. "
+                    + "Picks the most recent launch before the sitch start time + 1 hour.",
+                params: {
+                    count: "Number of nearby stations to import, 1-10 (default 1)",
+                    source: "Data source: 'uwyo' (University of Wyoming, needs proxy) or 'igra2' (NOAA NCEI, direct) (default 'uwyo')",
+                },
+                fn: async (v) => {
+                    const { getNearbyWeatherBalloons } = await import("./SondeFetch");
+                    const count = v.count ?? 1;
+                    const source = v.source ?? "uwyo";
+                    return await getNearbyWeatherBalloons(count, source);
+                }
+            },
+
         }
 
         this._menuDocCache = null;
@@ -1555,7 +1570,7 @@ class CSitrecAPI {
         return coerced;
     }
 
-    handleAPICall(call) {
+    async handleAPICall(call) {
         console.log("Handling API call:", call);
         const apiFn = this.api[call.fn];
         if (!apiFn) {
@@ -1563,7 +1578,7 @@ class CSitrecAPI {
         }
         try {
             const args = this._coerceArgs(call.args, apiFn.params);
-            const result = apiFn.fn(args);
+            const result = await apiFn.fn(args);
             return { success: true, fn: call.fn, result };
         } catch (e) {
             return { success: false, fn: call.fn, error: e.message };
@@ -1598,6 +1613,7 @@ class CSitrecAPI {
             "play",
             "pause",
             "toggleDebug",
+            "getNearbyWeatherBalloons",
             "listViews",
             "showView",
             "hideView",

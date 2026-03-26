@@ -1,0 +1,73 @@
+// CNodeDisplayBalloonSphere.js
+// A sphere that follows a track and scales based on atmospheric pressure,
+// simulating weather balloon expansion during ascent.
+//
+// Balloon expansion follows the ideal gas law (constant temperature approx):
+//   Volume ∝ 1/P  →  radius ∝ (P₀/P)^(1/3)
+//
+// Typical weather balloon:
+//   - Launch: ~1.5m diameter at ~1013 hPa (surface)
+//   - Burst:  ~6-8m diameter at ~5-10 hPa (~30km)
+
+import {CNode3DObject} from "./CNode3DObject";
+import {MISB} from "../MISBFields";
+import {balloonDiameter} from "../SondeTrajectory";
+import {Globals, Sit} from "../Globals";
+import * as LAYER from "../LayerMasks";
+
+export class CNodeDisplayBalloonSphere extends CNode3DObject {
+    constructor(v) {
+        // Set sphere defaults before calling super
+        v.object = "sphere";
+        v.color ??= "white";
+        v.opacity ??= 1.0;
+        v.transparent ??= false;
+        v.radius ??= 1; // will be overridden by dynamic scaling
+        v.layers ??= LAYER.MASK_HELPERS;
+
+        super(v);
+
+        // Optional data track input for reading pressure per frame
+        this.input("dataTrack", true); // optional
+
+        // Balloon base diameter at surface pressure (meters)
+        this.baseDiameter = v.baseDiameter ?? 1.5;
+
+        // Surface pressure reference (hPa)
+        this.surfacePressure = v.surfacePressure ?? 1013.25;
+    }
+
+    // Override recalculate to prevent base class from applying static size
+    recalculate() {
+    }
+
+    update(f) {
+        // Let parent and controllers (TrackPosition) handle positioning
+        super.update(f);
+
+        // Compute balloon diameter from pressure at current frame
+        let diameter = this.baseDiameter;
+        let pressure = null;
+
+        // Get pressure from the data track's MISB array.
+        // The MISB array may have fewer entries than sitch frames (e.g. 11 sonde levels
+        // vs 900 frames), so map frame → MISB index proportionally.
+        if (this.in.dataTrack) {
+            const dataTrack = this.in.dataTrack;
+            if (dataTrack.misb && dataTrack.misb.length > 0) {
+                var idx = Math.round(f * (dataTrack.misb.length - 1) / Math.max(Sit.frames - 1, 1));
+                idx = Math.max(0, Math.min(idx, dataTrack.misb.length - 1));
+                var p = dataTrack.misb[idx][MISB.StaticPressure];
+                if (p != null && p > 0) pressure = p;
+            }
+        }
+
+        if (pressure != null && pressure > 0) {
+            diameter = balloonDiameter(this.baseDiameter, pressure, this.surfacePressure);
+        }
+
+        // Apply scale: diameter in meters, multiplied by the global object scale
+        const scale = diameter * Globals.objectScale;
+        this.group.scale.setScalar(scale);
+    }
+}

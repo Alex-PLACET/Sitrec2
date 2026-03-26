@@ -39,7 +39,8 @@ import {
     TrackManager,
     UndoManager,
     Units,
-    withTestUser
+    withTestUser,
+    addGUIFolder
 } from "./Globals";
 import {isKeyHeld, toggler} from "./KeyBoardHandler";
 import {ECEFToLLAVD_radii, LLAToECEF} from "./LLA-ECEF-ENU";
@@ -82,6 +83,7 @@ import {collectActiveTrackSourceFileIDs, shouldSerializeLoadedFileEntry} from ".
 import {encodeShareParam, resolveURLForFetch, toShareableCustomValue} from "./SitrecObjectResolver";
 import {getEnvBool} from "./envUtils";
 import {CNodeFloodSim} from "./nodes/CNodeFloodSim";
+import {importSoundingDialog, getNearbyWeatherBalloons} from "./SondeFetch";
 
 export class CCustomManager {
     constructor() {
@@ -557,6 +559,23 @@ export class CCustomManager {
         //
         //     this.serializeButton.moveToFirst();
         // }
+
+        // Weather Balloons subfolder under Physics
+        par.balloonCount = 1;
+        par.balloonSource = "uwyo";
+        this._getNearbyBalloons = () => getNearbyWeatherBalloons(par.balloonCount, par.balloonSource);
+        this._importSounding = importSoundingDialog;
+
+        const balloonFolder = addGUIFolder("weatherBalloons", "Weather Balloons", "physics");
+        balloonFolder.add(par, "balloonCount", 1, 10, 1).name("Count")
+            .tooltip("Number of nearby stations to import");
+        balloonFolder.add(par, "balloonSource", ["uwyo", "igra2"]).name("Source")
+            .tooltip("uwyo = University of Wyoming (needs PHP proxy)\nigra2 = NOAA NCEI archive (direct download)");
+        balloonFolder.add(this, "_getNearbyBalloons").name("Get Nearby Weather Balloons")
+            .tooltip("Import the N closest weather balloon soundings to the current camera position.\n"
+                + "Uses the most recent launch before the sitch start time + 1 hour.");
+        balloonFolder.add(this, "_importSounding").name("Import Sounding...")
+            .tooltip("Manual station picker: choose station, date, source, and import a specific sounding.");
 
         toggler('k', guiMenus.help.add(par, 'showKeyboardShortcuts').listen().name("[K]eyboard Shortcuts").onChange(value => {
             if (value) {

@@ -34,6 +34,11 @@ import {CGeoJSON} from "./geoJSONUtils";
 import {CNodeSmoothedPositionTrack} from "./nodes/CNodeSmoothedPositionTrack";
 import {CNodeSplineEditor} from "./nodes/CNodeSplineEdit";
 import {CTrackFile} from "./TrackFiles/CTrackFile";
+import {CTrackFileSonde} from "./TrackFiles/CTrackFileSonde";
+import {CNodeDisplayBalloonSphere} from "./nodes/CNodeDisplayBalloonSphere";
+import {CNodeSondeColor} from "./nodes/CNodeSondeColor";
+import {CNodeDisplaySondeWind} from "./nodes/CNodeDisplaySondeWind";
+import {CNodeAtmosphericProfile} from "./nodes/CNodeAtmosphericProfile";
 import {detectRocketLikeTrack} from "./trackHeuristics";
 import {hasOtherTrackSourceReference} from "./trackSourceUtils";
 
@@ -531,7 +536,13 @@ class CTrackManager extends CManager {
                     ];
 
                     if (trackColor === null) {
-                        trackColor = trackColors[trackNumber % trackColors.length];
+                        // Sonde tracks get white by default to distinguish from aircraft
+                        const loadedTrackFile = FileManager.get(trackFileName);
+                        if (loadedTrackFile && loadedTrackFile.isSondeTrack && loadedTrackFile.isSondeTrack()) {
+                            trackColor = new Color(1, 1, 1);
+                        } else {
+                            trackColor = trackColors[trackNumber % trackColors.length];
+                        }
                     }
                     // make dropcolor be the same as the track color bur reduced in brightness to 75%
                     const dropColor = trackColor.clone().multiplyScalar(0.75);
@@ -609,19 +620,48 @@ class CTrackManager extends CManager {
 
 
     makeMotionTrack(trackOb, shortName, trackColor, dropColor, trackID) {
+        // Check if this is a sonde track for display customization
+        const motionTrackFile = FileManager.get(trackOb.trackFileName);
+        const isSonde = motionTrackFile && motionTrackFile.isSondeTrack && motionTrackFile.isSondeTrack();
+
+        // For sonde tracks, use temperature-gradient coloring instead of constant white
+        if (isSonde) {
+            var misbLength = FileManager.get(trackOb.trackFileName).getTrajectory(0).length;
+            new CNodeSondeColor({
+                id: "colorData_" + shortName,
+                inputs: { dataTrack: "TrackData_" + shortName },
+                colorMode: "temperature",
+                totalFrames: misbLength, // full-data display iterates over MISB entries
+            });
+            new CNodeSondeColor({
+                id: "colorTrack_" + shortName,
+                inputs: { dataTrack: "TrackData_" + shortName },
+                colorMode: "temperature",
+                totalFrames: Sit.frames, // sitch-duration display iterates over Sit.frames
+            });
+        } else {
+            new CNodeConstant({
+                id: "colorData_" + shortName,
+                value: new Color(trackColor),
+                pruneIfUnused: true,
+            });
+            new CNodeConstant({
+                id: "colorTrack_" + shortName,
+                value: new Color(trackColor),
+                pruneIfUnused: true,
+            });
+        }
+
         // diplay the full track data as imported
         trackOb.trackDisplayDataNode = new CNodeDisplayTrack({
             id: "TrackDisplayData_" + shortName,
             track: "TrackData_" + shortName,
-            color: new CNodeConstant({
-                id: "colorData_" + shortName,
-                value: new Color(trackColor),
-                pruneIfUnused: true
-            }),
+            color: "colorData_" + shortName,
             dropColor: dropColor,
 
             width: 0.5,
             //  toGround: 1, // spacing for lines to ground
+            extendToGround: isSonde, // balloon tracks show wall to ground
             ignoreAB: true,
             layers: LAYER.MASK_HELPERS,
             skipGUI: true,
@@ -636,13 +676,10 @@ class CTrackManager extends CManager {
             track: "Track_" + shortName,
             dataTrack: "TrackData_" + shortName,
             dataTrackDisplay: "TrackDisplayData_" + shortName,
-            color: new CNodeConstant({
-                id: "colorTrack_" + shortName,
-                value: new Color(trackColor),
-                pruneIfUnused: true
-            }),
+            color: "colorTrack_" + shortName,
             width: 2,
             //  toGround: 1, // spacing for lines to ground
+            extendToGround: isSonde, // balloon tracks show wall to ground
             ignoreAB: true,
             layers: LAYER.MASK_HELPERS,
             trackDisplayStep: 10, // display every 10th point in the track as this is per-frame
@@ -668,8 +705,20 @@ class CTrackManager extends CManager {
 
         const sphereId = trackOb.menuText ?? shortName;
 
-
-        if (getEnv("DEFAULT_PLATFORM_MODEL", process.env.DEFAULT_PLATFORM_MODEL) && trackOb.trackFileName.endsWith(".klv")) {
+        // Sonde tracks get a pressure-scaling balloon sphere
+        if (isSonde) {
+            trackOb.displayTargetSphere = new CNodeDisplayBalloonSphere({
+                id: sphereId + "_ob",
+                inputs: {
+                    track: trackID,
+                    dataTrack: "TrackData_" + shortName,
+                },
+                color: "white",
+                baseDiameter: 1.5, // 1.5m launch diameter, typical radiosonde
+                layers: LAYER.MASK_HELPERS,
+                label: shortName,
+            });
+        } else if (getEnv("DEFAULT_PLATFORM_MODEL", process.env.DEFAULT_PLATFORM_MODEL) && trackOb.trackFileName.endsWith(".klv")) {
 
             // check if in the ModelFiles object, and use it if available
             if (ModelFiles[getEnv("DEFAULT_PLATFORM_MODEL", process.env.DEFAULT_PLATFORM_MODEL)]) {
@@ -682,7 +731,7 @@ class CTrackManager extends CManager {
             }
         }
 
-        // if we didn't make a model, then we use a default sphere
+        // if we didn't make a model or balloon, then we use a default sphere
         if (!trackOb.displayTargetSphere)
         {
 
@@ -701,17 +750,43 @@ class CTrackManager extends CManager {
             sourceTrack: trackID,
         });
 
-        const tiltDef = {
-            track: trackID,
-            tiltType: "banking",
-            guiFolder: trackOb.displayTargetSphere.gui,
-        }
-        const maybeWind = NodeMan.get("targetWind", false);
-        if (maybeWind) {
-            tiltDef.wind = maybeWind;
+        // Sonde tracks don't need banking tilt — they float vertically
+        if (!isSonde) {
+            const tiltDef = {
+                track: trackID,
+                tiltType: "banking",
+                guiFolder: trackOb.displayTargetSphere.gui,
+            }
+            const maybeWind = NodeMan.get("targetWind", false);
+            if (maybeWind) {
+                tiltDef.wind = maybeWind;
+            }
+
+            trackOb.displayTargetSphere.addController("ObjectTilt", tiltDef);
         }
 
-        trackOb.displayTargetSphere.addController("ObjectTilt", tiltDef);
+        // Wind arrows along sonde tracks showing wind direction/speed at each level
+        if (isSonde) {
+            trackOb.windArrows = new CNodeDisplaySondeWind({
+                id: shortName + "_windArrows",
+                inputs: {
+                    track: trackID,
+                    dataTrack: "TrackData_" + shortName,
+                },
+                arrowScale: 200, // 200m per m/s
+                arrowColor: 0xffff00, // yellow
+            });
+
+            // Atmospheric profile node for altitude-interpolated data lookup
+            trackOb.atmosphericProfile = new CNodeAtmosphericProfile({
+                id: "atmosphericProfile_" + shortName,
+                inputs: {
+                    dataTrack: "TrackData_" + shortName,
+                },
+                stationId: motionTrackFile.getSondeData(0)?.station?.id ?? "",
+                stationName: motionTrackFile.getSondeData(0)?.station?.name ?? "",
+            });
+        }
     }
 
     centerOnTrack(shortName, trackNumber, trackOb, hasAngles, trackIndex = 0) {
