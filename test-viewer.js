@@ -287,13 +287,14 @@ app.get('/', (req, res) => {
             text-decoration: underline;
         }
         .test-status {
-            width: 16px;
+            width: 20px;
             text-align: center;
-            font-size: 12px;
+            font-size: 18px;
+            font-weight: bold;
             margin-right: 4px;
         }
-        .test-status.passed { color: #6a9955; }
-        .test-status.failed { color: #f48771; }
+        .test-status.passed { color: #4ec9b0; }
+        .test-status.failed { color: #ff6b6b; }
         .test-status.running { color: #4ec9b0; }
         .reset-btn {
             padding: 2px 6px;
