@@ -50,22 +50,27 @@ export class NITFParser {
                 continue;
             }
 
-            // Create image virtual file as PNG
+            // Create image virtual file
             try {
-                const pngBuffer = await this.imageToPNG(image);
-                if (pngBuffer === null) {
+                const imageBuffer = await this.imageToPNG(image);
+                if (imageBuffer === null) {
                     // imageToPNG explicitly rejected (e.g. unsupported CADRG VQ)
                     continue;
                 }
-                const imageFilename = `${filename}_image_${i}.png`;
-                const img = await createImageFromArrayBuffer(pngBuffer, 'image/png');
+                // Detect format from magic bytes: JPEG=FFD8, PNG=8950
+                const head = new Uint8Array(imageBuffer, 0, 2);
+                const isJPEG = head[0] === 0xFF && head[1] === 0xD8;
+                const ext = isJPEG ? 'jpg' : 'png';
+                const mime = isJPEG ? 'image/jpeg' : 'image/png';
+                const imageFilename = `${filename}_image_${i}.${ext}`;
+                const img = await createImageFromArrayBuffer(imageBuffer, mime);
 
                 results.push({
                     filename: imageFilename,
                     parsed: img,
                     dataType: "image"
                 });
-                console.log(`NITFParser: Created image virtual file: ${imageFilename} (${image.ncols}x${image.nrows})`);
+                console.log(`NITFParser: Created image virtual file: ${imageFilename} (${img.width}x${img.height})`);
             } catch (e) {
                 console.error("NITFParser: Failed to create image:", e);
             }
@@ -817,7 +822,9 @@ export class NITFParser {
         if (image.nrows * image.ncols > MAX_WHOLE_DECODE) {
             try {
                 const {canvas} = await decodeJ2KTiledToCanvas(arrayBuffer, options);
-                const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+                console.log(`NITFParser: J2K tiled decode produced ${canvas.width}×${canvas.height} canvas`);
+                // Use JPEG for faster encoding of large canvases (PNG is very slow at this size)
+                const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92));
                 return await blob.arrayBuffer();
             } catch (e) {
                 console.warn('NITFParser: Per-tile J2K decode failed, trying whole-codestream:', e.message);

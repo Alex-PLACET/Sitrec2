@@ -381,22 +381,38 @@ export async function decodeJ2KTiledToCanvas(arrayBuffer, options) {
     }
 
     const numUniqueTiles = tilePartsMap.size;
+
+    // Calculate sub-resolution decode level to keep output under target size.
+    // Each level halves both dimensions (wavelet decomposition levels).
+    const MAX_EDGE = 10240; // max pixels per edge
+    let reduceLevel = 0;
+    let effW = Xsiz, effH = Ysiz;
+    while ((effW > MAX_EDGE || effH > MAX_EDGE) && reduceLevel < 6) {
+        reduceLevel++;
+        effW = Math.ceil(Xsiz / (1 << reduceLevel));
+        effH = Math.ceil(Ysiz / (1 << reduceLevel));
+    }
+    // Effective tile dimensions at this reduce level
+    const effTileW = Math.ceil(XTsiz / (1 << reduceLevel));
+    const effTileH = Math.ceil(YTsiz / (1 << reduceLevel));
+
     console.log(`JPEG2000Utils: Tiled decode: ${Xsiz}×${Ysiz}, ${numUniqueTiles} tiles `
         + `(${numTilesX}×${numTilesY} grid, ${XTsiz}×${YTsiz} each, `
-        + `${cs.tiles.length} tile-parts)`);
+        + `${cs.tiles.length} tile-parts)`
+        + (reduceLevel > 0 ? `, reduce level ${reduceLevel} → ${effW}×${effH} (tiles ${effTileW}×${effTileH})` : ''));
 
-    // Downscale output to fit browser canvas limits
+    // Further downscale output canvas if still exceeds browser limits
     const MAX_PIXELS = 128 * 1024 * 1024;
     const MAX_DIM = 16384;
     let scale = 1;
-    if (Xsiz * Ysiz > MAX_PIXELS) scale = Math.sqrt(MAX_PIXELS / (Xsiz * Ysiz));
-    if (Xsiz * scale > MAX_DIM) scale = MAX_DIM / Xsiz;
-    if (Ysiz * scale > MAX_DIM) scale = MAX_DIM / Ysiz;
+    if (effW * effH > MAX_PIXELS) scale = Math.sqrt(MAX_PIXELS / (effW * effH));
+    if (effW * scale > MAX_DIM) scale = MAX_DIM / effW;
+    if (effH * scale > MAX_DIM) scale = MAX_DIM / effH;
 
-    const outW = Math.round(Xsiz * scale);
-    const outH = Math.round(Ysiz * scale);
+    const outW = Math.round(effW * scale);
+    const outH = Math.round(effH * scale);
     if (scale < 1) {
-        console.log(`JPEG2000Utils: Tiled output scaled: ${Xsiz}×${Ysiz} → ${outW}×${outH}`);
+        console.log(`JPEG2000Utils: Tiled output scaled: ${effW}×${effH} → ${outW}×${outH}`);
     }
 
     const canvas = document.createElement('canvas');
@@ -421,23 +437,26 @@ export async function decodeJ2KTiledToCanvas(arrayBuffer, options) {
         return tileData;
     }
 
-    // Helper: draw decoded RGBA tile onto output canvas
+    // Helper: draw decoded RGBA tile onto output canvas.
+    // Tile pixel coordinates are in the reduced-resolution space.
     const tileCanvas = document.createElement('canvas');
     const tileCtx = tileCanvas.getContext('2d');
     function drawTile(tileIndex, rgba, tileW, tileH) {
         const tileCol = tileIndex % numTilesX;
         const tileRow = Math.floor(tileIndex / numTilesX);
+        const x = Math.round(tileCol * effTileW * scale);
+        const y = Math.round(tileRow * effTileH * scale);
+        // Edge tiles may be smaller
         const tileX0 = XTOsiz + tileCol * XTsiz;
         const tileY0 = YTOsiz + tileRow * YTsiz;
-        const actualW = Math.min(XTsiz, Xsiz - tileX0);
-        const actualH = Math.min(YTsiz, Ysiz - tileY0);
+        const actualW = Math.ceil(Math.min(XTsiz, Xsiz - tileX0) / (1 << reduceLevel));
+        const actualH = Math.ceil(Math.min(YTsiz, Ysiz - tileY0) / (1 << reduceLevel));
         tileCanvas.width = tileW;
         tileCanvas.height = tileH;
         const imageData = new ImageData(new Uint8ClampedArray(rgba.buffer), tileW, tileH);
         tileCtx.putImageData(imageData, 0, 0);
         ctx.drawImage(tileCanvas,
-            Math.round(tileX0 * scale), Math.round(tileY0 * scale),
-            Math.round(actualW * scale), Math.round(actualH * scale));
+            x, y, Math.round(actualW * scale), Math.round(actualH * scale));
     }
 
     const startTime = performance.now();
@@ -445,7 +464,7 @@ export async function decodeJ2KTiledToCanvas(arrayBuffer, options) {
     // ── Try parallel decode with Web Workers ──────────────────────
     try {
         const result = await _decodeWithWorkers(
-            tileEntries, data, cs, numTilesX, numUniqueTiles, drawTile, buildTileData, startTime);
+            tileEntries, data, cs, numTilesX, numUniqueTiles, drawTile, buildTileData, startTime, reduceLevel);
         const totalTime = ((performance.now() - startTime) / 1000).toFixed(1);
         console.log(`JPEG2000Utils: Tiled decode complete: ${result.decoded}/${numUniqueTiles} tiles `
             + `in ${totalTime}s (${result.failed} failed, ${result.workers} workers)`);
@@ -474,13 +493,20 @@ export async function decodeJ2KTiledToCanvas(arrayBuffer, options) {
             try {
                 const buf = decoder.getEncodedBuffer(miniJ2K.length);
                 buf.set(miniJ2K);
-                decoder.decode();
+                if (reduceLevel > 0 && typeof decoder.decodeSubResolution === 'function') {
+                    decoder.decodeSubResolution(reduceLevel, 0);
+                } else {
+                    decoder.decode();
+                }
                 const fi = decoder.getFrameInfo();
-                if (!fi.width || !fi.height) throw new Error('0×0');
+                // decodeSubResolution does NOT update frameInfo — always use calculated dims
+                const useW = reduceLevel > 0 ? Math.ceil(XTsiz / (1 << reduceLevel)) : fi.width;
+                const useH = reduceLevel > 0 ? Math.ceil(YTsiz / (1 << reduceLevel)) : fi.height;
+                if (!useW || !useH) throw new Error('0×0');
                 const raw = decoder.getDecodedBuffer();
                 const bps = fi.bitsPerSample;
                 const nc = fi.componentCount;
-                const px = fi.width * fi.height;
+                const px = useW * useH;
                 const rgba = new Uint8Array(px * 4);
                 if (bps > 8) {
                     const mv = (1 << bps) - 1;
@@ -498,7 +524,7 @@ export async function decodeJ2KTiledToCanvas(arrayBuffer, options) {
                         rgba[i*4] = rgba[i*4+1] = rgba[i*4+2] = raw[i]; rgba[i*4+3] = 255;
                     }
                 }
-                drawTile(tileIndex, rgba, fi.width, fi.height);
+                drawTile(tileIndex, rgba, useW, useH);
                 decoded++;
             } finally { decoder.delete(); }
         } catch (e) {
@@ -523,7 +549,7 @@ export async function decodeJ2KTiledToCanvas(arrayBuffer, options) {
  * Decode tiles in parallel using a pool of Web Workers.
  * Each worker loads its own OpenJPEG WASM instance.
  */
-async function _decodeWithWorkers(tileEntries, data, cs, numTilesX, totalTiles, drawTile, buildTileData, startTime) {
+async function _decodeWithWorkers(tileEntries, data, cs, numTilesX, totalTiles, drawTile, buildTileData, startTime, reduceLevel) {
     const numWorkers = Math.min(navigator.hardwareConcurrency || 4, 8);
     const baseUrl = location.href.replace(/[^/]*$/, '');
     const wasmScriptUrl = baseUrl + 'libs/openjpeg/openjpegwasm_decode.js';
@@ -551,6 +577,7 @@ async function _decodeWithWorkers(tileEntries, data, cs, numTilesX, totalTiles, 
             mainHeader: cs.mainHeader,
             sizOffset: cs.sizOffset,
             sizParams: cs.sizParams,
+            reduceLevel,
         });
     }
     await Promise.all(readyPromises);

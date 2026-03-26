@@ -19,6 +19,7 @@ let Module = null;
 let mainHeader = null;
 let sizOffset = 0;
 let sizParams = null;
+let reduceLevel = 0;
 
 /**
  * Build a single-tile J2K codestream from the main header + one tile's data.
@@ -73,15 +74,23 @@ function decodeTile(tileIndex, tileData, tileCol, tileRow) {
     try {
         const encodedBuffer = decoder.getEncodedBuffer(miniJ2K.length);
         encodedBuffer.set(miniJ2K);
-        decoder.decode();
+
+        if (reduceLevel > 0 && typeof decoder.decodeSubResolution === 'function') {
+            decoder.decodeSubResolution(reduceLevel, 0);
+        } else {
+            decoder.decode();
+        }
 
         const fi = decoder.getFrameInfo();
-        if (!fi.width || !fi.height) throw new Error('0×0 decode');
+        // decodeSubResolution does NOT update frameInfo — always use calculated dims
+        const width = reduceLevel > 0 ? Math.ceil(sizParams.XTsiz / (1 << reduceLevel)) : fi.width;
+        const height = reduceLevel > 0 ? Math.ceil(sizParams.YTsiz / (1 << reduceLevel)) : fi.height;
+        if (!width || !height) throw new Error('0×0 decode');
 
         const rawDecoded = decoder.getDecodedBuffer();
         const bps = fi.bitsPerSample;
         const nc = fi.componentCount;
-        const pixelCount = fi.width * fi.height;
+        const pixelCount = width * height;
 
         const rgba = new Uint8Array(pixelCount * 4);
 
@@ -112,7 +121,7 @@ function decodeTile(tileIndex, tileData, tileCol, tileRow) {
             }
         }
 
-        return {rgba, width: fi.width, height: fi.height};
+        return {rgba, width, height};
     } finally {
         decoder.delete();
     }
@@ -133,6 +142,7 @@ self.onmessage = async (e) => {
             mainHeader = new Uint8Array(msg.mainHeader);
             sizOffset = msg.sizOffset;
             sizParams = msg.sizParams;
+            reduceLevel = msg.reduceLevel || 0;
             self.postMessage({type: 'ready'});
         } catch (err) {
             self.postMessage({type: 'initError', error: err.message});
