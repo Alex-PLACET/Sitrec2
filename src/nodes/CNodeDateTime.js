@@ -540,9 +540,9 @@ export class CNodeDateTime extends CNode {
 
         this.setStartDateTime(new Date(startTime));
 
-        // rebuild anything the depends on that track
+        // rebuild all nodes that depend on the start time (all tracks, not just the synced one)
         if (recalculating) {
-            timedTrackNode.recalculateCascade(0);
+            this.recalculateCascade(0);
         }
     }
 
