@@ -553,9 +553,18 @@ async function _decodeWithWorkers(tileEntries, data, cs, numTilesX, totalTiles, 
     const numWorkers = Math.min(navigator.hardwareConcurrency || 4, 8);
     const baseUrl = location.href.replace(/[^/]*$/, '');
     const wasmScriptUrl = baseUrl + 'libs/openjpeg/openjpegwasm_decode.js';
-    const wasmLocateBase = baseUrl + 'libs/openjpeg/';
+    const wasmUrl = baseUrl + 'libs/openjpeg/openjpegwasm_decode.wasm';
 
-    console.log(`JPEG2000Utils: Starting ${numWorkers} decode workers`);
+    // Pre-compile WASM once on main thread, then share with all workers.
+    // This eliminates 8 parallel fetch+compile cycles (~2-3s savings).
+    console.log(`JPEG2000Utils: Pre-compiling WASM, starting ${numWorkers} workers`);
+    let compiledWasm = null;
+    try {
+        compiledWasm = await WebAssembly.compileStreaming(fetch(wasmUrl));
+    } catch (e) {
+        // Fallback: workers will fetch+compile individually
+        console.warn('JPEG2000Utils: WASM pre-compile failed, workers will compile individually');
+    }
 
     // Create and initialize worker pool
     const workers = [];
@@ -573,7 +582,8 @@ async function _decodeWithWorkers(tileEntries, data, cs, numTilesX, totalTiles, 
         w.postMessage({
             type: 'init',
             wasmScriptUrl,
-            wasmLocateBase,
+            compiledWasm, // WebAssembly.Module is transferable/cloneable
+            wasmLocateBase: baseUrl + 'libs/openjpeg/',
             mainHeader: cs.mainHeader,
             sizOffset: cs.sizOffset,
             sizParams: cs.sizParams,

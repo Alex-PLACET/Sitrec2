@@ -132,13 +132,24 @@ self.onmessage = async (e) => {
 
     if (msg.type === 'init') {
         try {
-            // Load OpenJPEG WASM via importScripts
+            // Load OpenJPEG WASM — use pre-compiled module if provided
             importScripts(msg.wasmScriptUrl);
-            Module = await self.OpenJPEGWASM({
-                locateFile: (filename) => msg.wasmLocateBase + filename,
+            const opts = {
                 print: () => {},
                 printErr: () => {},
-            });
+            };
+            if (msg.compiledWasm) {
+                // Skip fetch+compile: instantiate from pre-compiled WebAssembly.Module
+                opts.instantiateWasm = (imports, callback) => {
+                    WebAssembly.instantiate(msg.compiledWasm, imports).then(instance => {
+                        callback(instance);
+                    });
+                    return {};
+                };
+            } else {
+                opts.locateFile = (filename) => msg.wasmLocateBase + filename;
+            }
+            Module = await self.OpenJPEGWASM(opts);
             mainHeader = new Uint8Array(msg.mainHeader);
             sizOffset = msg.sizOffset;
             sizParams = msg.sizParams;
