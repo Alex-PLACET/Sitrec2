@@ -711,7 +711,6 @@ class CTrackManager extends CManager {
                 id: sphereId + "_ob",
                 inputs: {
                     track: trackID,
-                    dataTrack: "TrackData_" + shortName,
                 },
                 color: "white",
                 baseDiameter: 1.5, // 1.5m launch diameter, typical radiosonde

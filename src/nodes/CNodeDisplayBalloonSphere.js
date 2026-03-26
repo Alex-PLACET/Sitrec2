@@ -12,7 +12,7 @@
 import {CNode3DObject} from "./CNode3DObject";
 import {MISB} from "../MISBFields";
 import {balloonDiameter} from "../SondeTrajectory";
-import {Globals, Sit} from "../Globals";
+import {Globals} from "../Globals";
 import * as LAYER from "../LayerMasks";
 
 export class CNodeDisplayBalloonSphere extends CNode3DObject {
@@ -26,9 +26,6 @@ export class CNodeDisplayBalloonSphere extends CNode3DObject {
         v.layers ??= LAYER.MASK_HELPERS;
 
         super(v);
-
-        // Optional data track input for reading pressure per frame
-        this.input("dataTrack", true); // optional
 
         // Balloon base diameter at surface pressure (meters)
         this.baseDiameter = v.baseDiameter ?? 1.5;
@@ -45,19 +42,16 @@ export class CNodeDisplayBalloonSphere extends CNode3DObject {
         // Let parent and controllers (TrackPosition) handle positioning
         super.update(f);
 
-        // Compute balloon diameter from pressure at current frame
+        // Compute balloon diameter from pressure at current frame.
+        // Use the misbRow stored by CNodeTrackFromMISB for this frame,
+        // which is the actual data row used for the interpolated position.
         let diameter = this.baseDiameter;
         let pressure = null;
 
-        // Get pressure from the data track's MISB array.
-        // The MISB array may have fewer entries than sitch frames (e.g. 11 sonde levels
-        // vs 900 frames), so map frame → MISB index proportionally.
-        if (this.in.dataTrack) {
-            const dataTrack = this.in.dataTrack;
-            if (dataTrack.misb && dataTrack.misb.length > 0) {
-                var idx = Math.round(f * (dataTrack.misb.length - 1) / Math.max(Sit.frames - 1, 1));
-                idx = Math.max(0, Math.min(idx, dataTrack.misb.length - 1));
-                var p = dataTrack.misb[idx][MISB.StaticPressure];
+        if (this.in.track) {
+            const trackValue = this.in.track.getValueFrame(f);
+            if (trackValue && trackValue.misbRow) {
+                const p = trackValue.misbRow[MISB.StaticPressure];
                 if (p != null && p > 0) pressure = p;
             }
         }
