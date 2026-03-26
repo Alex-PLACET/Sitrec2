@@ -89,23 +89,26 @@ $month = $dateParts[1];
 $day   = $dateParts[2];
 $hourPad = str_pad($hour, 2, '0', STR_PAD_LEFT);
 
-// UWYO FROM/TO format: DDHH (day + hour)
-$fromTo = $day . $hourPad;
-
-$typeMap = [
-    'csv'  => 'TEXT%3ACSV',
-    'list' => 'TEXT%3ALIST',
-];
-$type = $typeMap[$format];
-
-$url = "https://weather.uwyo.edu/cgi-bin/sounding?"
-     . "region=naconf"
-     . "&TYPE=" . $type
-     . "&YEAR=" . $year
-     . "&MONTH=" . $month
-     . "&FROM=" . $fromTo
-     . "&TO=" . $fromTo
-     . "&STNM=" . $station;
+if ($format === 'csv') {
+    // WSGI endpoint: returns actual per-second GPS CSV for recent soundings (2018+).
+    // The old cgi-bin endpoint ignores TEXT:CSV and returns LIST format instead.
+    // The '+' in the datetime is URL-space (UWYO expects "YYYY-MM-DD HH:MM:SS").
+    $url = "https://weather.uwyo.edu/wsgi/sounding?"
+         . "datetime=" . $date . "+" . $hourPad . "%3A00%3A00"
+         . "&id=" . $station
+         . "&type=TEXT%3ACSV";
+} else {
+    // Legacy cgi-bin endpoint for TEXT:LIST (fixed-width table)
+    $fromTo = $day . $hourPad;
+    $url = "https://weather.uwyo.edu/cgi-bin/sounding?"
+         . "region=naconf"
+         . "&TYPE=TEXT%3ALIST"
+         . "&YEAR=" . $year
+         . "&MONTH=" . $month
+         . "&FROM=" . $fromTo
+         . "&TO=" . $fromTo
+         . "&STNM=" . $station;
+}
 
 // ── Check cache ─────────────────────────────────────────────────────────
 $cacheLifetime = 60 * 60 * 24; // 24 hours
@@ -135,7 +138,11 @@ if ($httpStatus >= 400) {
 }
 
 // Check for UWYO error pages
-if (strpos($data, "Can't get") !== false || strpos($data, "Please try again") !== false) {
+// cgi-bin errors: "Can't get ...", "Please try again"
+// WSGI errors: "Unable to retrieve the data for ..."
+if (strpos($data, "Can't get") !== false
+    || strpos($data, "Please try again") !== false
+    || strpos($data, "Unable to retrieve") !== false) {
     http_response_code(404);
     header("Content-Type: text/plain");
     exit("No sounding data available for station " . htmlspecialchars($station)

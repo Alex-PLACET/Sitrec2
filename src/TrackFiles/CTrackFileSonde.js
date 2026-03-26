@@ -2,6 +2,7 @@ import {CTrackFile} from "./CTrackFile";
 import {MISB, MISBFields} from "../MISBFields";
 import {detectSondeFormat, parseIGRA2, parseUWYOList, parseUWYOCSV, countIGRA2Soundings} from "../ParseSonde";
 import {reconstructTrajectory} from "../SondeTrajectory";
+import {lookupStationPosition} from "../SondeFetch";
 
 /**
  * Track file handler for radiosonde (weather balloon) sounding data.
@@ -58,6 +59,14 @@ export class CTrackFileSonde extends CTrackFile {
             case "uwyo-list": {
                 const sonde = parseUWYOList(this.data);
                 if (sonde && sonde.levels.length > 0) {
+                    // UWYO LIST HTML truncates station coords to 2 decimals (~1-2 km error).
+                    // Use precise IGRA2 database coordinates if available.
+                    const precise = lookupStationPosition(sonde.station.id);
+                    if (precise) {
+                        sonde.station.lat = precise.lat;
+                        sonde.station.lon = precise.lon;
+                        if (precise.elev) sonde.station.elev = precise.elev;
+                    }
                     this.soundings.push(sonde);
                     this.trajectories.push(reconstructTrajectory(sonde));
                 }

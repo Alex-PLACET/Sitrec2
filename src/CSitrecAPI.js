@@ -1186,6 +1186,26 @@ class CSitrecAPI {
                 }
             },
 
+            compareSondeTrajectory: {
+                doc: "Compare a wind-reconstructed sonde trajectory against GPS ground truth. "
+                    + "Fetches the same sounding from UWYO in both CSV (GPS) and LIST (wind-only) formats, "
+                    + "imports both as tracks, and computes error metrics. Requires the PHP proxy (not serverless).",
+                params: {
+                    station: "5-digit WMO station number (e.g. '72451' for Sterling VA)",
+                    date: "Sounding date as YYYY-MM-DD",
+                    hour: "UTC launch hour: 0 or 12 (default 12)",
+                },
+                fn: async (v) => {
+                    const { compareSondeTrajectory } = await import("./SondeFetch");
+                    const station = v.station;
+                    const date = v.date;
+                    const hour = v.hour ?? 12;
+                    if (!station) throw new Error("station is required (5-digit WMO number)");
+                    if (!date) throw new Error("date is required (YYYY-MM-DD)");
+                    return await compareSondeTrajectory(station, date, hour);
+                }
+            },
+
         }
 
         this._menuDocCache = null;
@@ -1614,6 +1634,7 @@ class CSitrecAPI {
             "pause",
             "toggleDebug",
             "getNearbyWeatherBalloons",
+            "compareSondeTrajectory",
             "listViews",
             "showView",
             "hideView",

@@ -190,6 +190,22 @@ async function loadStationList() {
 }
 
 /**
+ * Look up precise station coordinates from the IGRA2 station database.
+ * UWYO LIST HTML truncates coordinates to 2 decimal places (~1-2 km error).
+ * The IGRA2 database has 4-decimal precision (~10 m accuracy).
+ *
+ * Synchronous — uses the cached station list if already loaded.
+ * @param {string} wmoId - 5-digit WMO station number
+ * @returns {{lat: number, lon: number, elev: number, name: string}|null}
+ */
+export function lookupStationPosition(wmoId) {
+    if (!stationListCache || !wmoId) return null;
+    const station = stationListCache.find(s => s.wmo === wmoId);
+    if (!station) return null;
+    return { lat: station.lat, lon: station.lon, elev: station.elev, name: station.name };
+}
+
+/**
  * Haversine distance in km between two lat/lon points.
  */
 function haversineKm(lat1, lon1, lat2, lon2) {
@@ -566,6 +582,9 @@ function extractSingleSounding(text, soundingIndex) {
  * @returns {Promise<Object>} Comparison results with error metrics
  */
 export async function compareSondeTrajectory(stationId, date, hour) {
+    // Ensure station list is loaded so lookupStationPosition works
+    await loadStationList();
+
     // Fetch both formats for the same sounding
     console.log(`Fetching UWYO CSV (GPS) for ${stationId} ${date} ${hour}Z...`);
     const csvHtml = await fetchUWYOSounding(stationId, date, hour, "csv");
@@ -586,45 +605,48 @@ export async function compareSondeTrajectory(stationId, date, hour) {
 
     // Reconstruct trajectories
     const gpsTrajectory = reconstructTrajectory(csvSonde);    // GPS ground truth
+
+    // Use precise IGRA2 coordinates if available, otherwise fall back to GPS start position.
+    // UWYO LIST HTML truncates coords to 2 decimals (~2 km error);
+    // IGRA2 database has 4-decimal precision (~35m from actual launch site).
+    const precise = lookupStationPosition(stationId);
+    if (precise) {
+        listSonde.station.lat = precise.lat;
+        listSonde.station.lon = precise.lon;
+    } else if (gpsTrajectory.length > 0) {
+        listSonde.station.lat = gpsTrajectory[0].lat;
+        listSonde.station.lon = gpsTrajectory[0].lon;
+    }
     const windTrajectory = reconstructTrajectory(listSonde);  // wind-integrated estimate
 
     if (gpsTrajectory.length < 2 || windTrajectory.length < 2) {
         throw new Error("Insufficient trajectory points for comparison.");
     }
 
-    // Import both as tracks
-    const csvFilename = `sonde_GPS_${stationId}_${date}_${String(hour).toString().padStart(2, '0')}Z.html`;
-    const listFilename = `sonde_WIND_${stationId}_${date}_${String(hour).toString().padStart(2, '0')}Z.html`;
-
-    await FileManager.parseResult(csvFilename, new TextEncoder().encode(csvHtml).buffer);
-    await FileManager.parseResult(listFilename, new TextEncoder().encode(listHtml).buffer);
-
-    // Compute error metrics: for each wind-reconstructed point, find nearest GPS point by time
+    // Compute error metrics FIRST (before import, which may fail during rendering)
+    // For each wind-reconstructed point, find nearest GPS point by time
+    // Match by ALTITUDE, not time. The LIST format uses a nominal 12Z epoch while
+    // the CSV has the actual launch time (~11:09Z), so time-matching produces huge
+    // offsets. Altitude is the common axis for both sounding types.
     const errors = [];
     for (const wp of windTrajectory) {
-        // Binary-ish search for closest GPS point by time
         let bestIdx = 0;
-        let bestDt = Math.abs(gpsTrajectory[0].time - wp.time);
+        let bestDa = Math.abs(gpsTrajectory[0].alt - wp.alt);
         for (let i = 1; i < gpsTrajectory.length; i++) {
-            const dt = Math.abs(gpsTrajectory[i].time - wp.time);
-            if (dt < bestDt) {
-                bestDt = dt;
+            const da = Math.abs(gpsTrajectory[i].alt - wp.alt);
+            if (da < bestDa) {
+                bestDa = da;
                 bestIdx = i;
-            } else if (dt > bestDt) {
-                break; // GPS is sorted by time, so we've passed the closest
             }
         }
 
         const gp = gpsTrajectory[bestIdx];
         const horizDist = haversineKm(wp.lat, wp.lon, gp.lat, gp.lon) * 1000; // meters
-        const altDiff = Math.abs(wp.alt - gp.alt);
-        const timeDiff = Math.abs(wp.time - gp.time) / 1000; // seconds
 
         errors.push({
             altKm: wp.alt / 1000,
             horizError_m: horizDist,
-            altError_m: altDiff,
-            timeDiff_s: timeDiff,
+            altMatchDiff_m: Math.round(bestDa),
             windLat: wp.lat,
             windLon: wp.lon,
             gpsLat: gp.lat,
@@ -634,8 +656,8 @@ export async function compareSondeTrajectory(stationId, date, hour) {
 
     // Summary statistics
     const horizErrors = errors.map(e => e.horizError_m);
-    const altErrors = errors.map(e => e.altError_m);
     const sortedHoriz = [...horizErrors].sort((a, b) => a - b);
+    const maxIdx = horizErrors.indexOf(Math.max(...horizErrors));
 
     const stats = {
         station: stationId,
@@ -649,15 +671,7 @@ export async function compareSondeTrajectory(stationId, date, hour) {
             median_m: Math.round(sortedHoriz[Math.floor(sortedHoriz.length / 2)]),
             max_m: Math.round(Math.max(...horizErrors)),
             max_km: (Math.max(...horizErrors) / 1000).toFixed(1),
-            atMaxAlt_km: errors[horizErrors.indexOf(Math.max(...horizErrors))].altKm.toFixed(1),
-        },
-        altitudeError: {
-            mean_m: Math.round(altErrors.reduce((a, b) => a + b, 0) / altErrors.length),
-            max_m: Math.round(Math.max(...altErrors)),
-        },
-        files: {
-            gps: csvFilename,
-            wind: listFilename,
+            atMaxAlt_km: errors[maxIdx].altKm.toFixed(1),
         },
     };
 
@@ -666,13 +680,26 @@ export async function compareSondeTrajectory(stationId, date, hour) {
     console.log(`Station: ${stationId}, Date: ${date} ${hour}Z`);
     console.log(`GPS track: ${gpsTrajectory.length} points, Wind-reconstructed: ${windTrajectory.length} points`);
     console.log(`Horizontal error: mean=${stats.horizontalError.mean_m}m, median=${stats.horizontalError.median_m}m, max=${stats.horizontalError.max_km}km (at ${stats.horizontalError.atMaxAlt_km}km alt)`);
-    console.log(`Altitude error: mean=${stats.altitudeError.mean_m}m, max=${stats.altitudeError.max_m}m`);
     console.log("===================================\n");
 
     // Log per-level errors for detailed analysis
     console.log("Per-level errors (altitude → horizontal error):");
     for (const e of errors) {
-        console.log(`  ${e.altKm.toFixed(1)}km → ${e.horizError_m.toFixed(0)}m horiz, ${e.altError_m.toFixed(0)}m alt`);
+        console.log(`  ${e.altKm.toFixed(1)}km → ${e.horizError_m.toFixed(0)}m horiz (alt match: ±${e.altMatchDiff_m}m)`);
+    }
+
+    // Import both as tracks for visual comparison (may fail if sitch isn't set up for it)
+    const csvFilename = `sonde_GPS_${stationId}_${date}_${String(hour).toString().padStart(2, '0')}Z.html`;
+    const listFilename = `sonde_WIND_${stationId}_${date}_${String(hour).toString().padStart(2, '0')}Z.html`;
+    try {
+        // CTrackFileSonde now uses precise IGRA2 coordinates (~35m accuracy)
+        // instead of the truncated UWYO LIST HTML values (~2 km error)
+        await FileManager.parseResult(listFilename, new TextEncoder().encode(listHtml).buffer);
+        await FileManager.parseResult(csvFilename, new TextEncoder().encode(csvHtml).buffer);
+        stats.files = { gps: csvFilename, wind: listFilename };
+    } catch (e) {
+        console.warn("Track import failed (comparison metrics still valid):", e.message);
+        stats.files = { error: e.message };
     }
 
     return { stats, errors };
