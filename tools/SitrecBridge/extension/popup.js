@@ -6,6 +6,7 @@ const wsDot = document.getElementById("ws-dot");
 const wsStatus = document.getElementById("ws-status");
 const tabDot = document.getElementById("tab-dot");
 const tabStatus = document.getElementById("tab-status");
+const tabListEl = document.getElementById("tab-list");
 const info = document.getElementById("info");
 const versionEl = document.getElementById("version");
 const updateBanner = document.getElementById("update-banner");
@@ -71,28 +72,45 @@ function update(state) {
         wsStatus.textContent = "Disconnected";
     }
 
-    // Show the Sitrec tab status using the background's tab tracking
-    if (state.sitrecTabId) {
-        chrome.tabs.get(state.sitrecTabId, (tab) => {
-            if (chrome.runtime.lastError || !tab) {
-                tabDot.className = "dot yellow";
-                tabStatus.textContent = "Not found";
-                return;
-            }
-            const path = new URL(tab.url).pathname.split("/").filter(Boolean)[0] || "sitrec";
-            chrome.windows.getCurrent((currentWin) => {
-                if (tab.windowId === currentWin.id) {
-                    tabDot.className = "dot green";
-                    tabStatus.textContent = `/${path} (#${tab.id})`;
-                } else {
-                    tabDot.className = "dot green";
-                    tabStatus.textContent = `/${path} (#${tab.id}, other window)`;
+    // Show all known Sitrec tabs
+    const knownTabs = state.knownTabs || [];
+    if (knownTabs.length === 0) {
+        tabDot.className = "dot yellow";
+        tabStatus.textContent = "None found";
+        tabListEl.innerHTML = "";
+    } else {
+        tabDot.className = "dot green";
+        tabStatus.textContent = `${knownTabs.length} tab${knownTabs.length > 1 ? "s" : ""}`;
+        // Resolve tab details and render list
+        chrome.windows.getCurrent((currentWin) => {
+            const promises = knownTabs.map(kt =>
+                new Promise(resolve => {
+                    chrome.tabs.get(kt.id, (tab) => {
+                        if (chrome.runtime.lastError || !tab) {
+                            resolve(null);
+                        } else {
+                            resolve({ ...kt, url: tab.url, windowId: tab.windowId });
+                        }
+                    });
+                })
+            );
+            Promise.all(promises).then(tabs => {
+                const valid = tabs.filter(Boolean);
+                if (valid.length === 0) {
+                    tabListEl.innerHTML = "";
+                    return;
                 }
+                tabListEl.innerHTML = valid.map(t => {
+                    const path = new URL(t.url).pathname.split("/").filter(Boolean)[0] || "sitrec";
+                    const here = t.windowId === currentWin.id;
+                    const buildLabel = t.buildDir
+                        ? t.buildDir.split("/").pop()
+                        : "<span style='color:#ccc'>no buildDir</span>";
+                    const style = here ? "font-weight:600;" : "color:#888;";
+                    return `<div style="${style}">/${path} #${t.id}${here ? " \u25C0" : ""} — ${buildLabel}</div>`;
+                }).join("");
             });
         });
-    } else {
-        tabDot.className = "dot yellow";
-        tabStatus.textContent = "Not found";
     }
 
     // Version display

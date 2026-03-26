@@ -441,11 +441,17 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 function updatePopupState() {
     const installedVersion = chrome.runtime.getManifest().version;
+    // Build tab list for popup
+    const tabList = [];
+    for (const [tabId, info] of knownSitrecTabs) {
+        tabList.push({ id: tabId, buildDir: info.buildDir || null });
+    }
     // Best-effort -- popup may not be open
     chrome.runtime.sendMessage({
         type: "stateUpdate",
         wsConnected: ws && ws.readyState === WebSocket.OPEN,
         sitrecTabId,
+        knownTabs: tabList,
         rejectedByServer,
         installedVersion,
         sourceVersion,
@@ -457,9 +463,14 @@ function updatePopupState() {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.type === "getState") {
         findSitrecTab().then((tabId) => {
+            const tabList = [];
+            for (const [tid, info] of knownSitrecTabs) {
+                tabList.push({ id: tid, buildDir: info.buildDir || null });
+            }
             sendResponse({
                 wsConnected: ws && ws.readyState === WebSocket.OPEN,
                 sitrecTabId: tabId,
+                knownTabs: tabList,
                 wsUrl: WS_URL,
                 rejectedByServer,
                 installedVersion: chrome.runtime.getManifest().version,
