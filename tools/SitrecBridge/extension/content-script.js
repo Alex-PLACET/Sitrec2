@@ -29,8 +29,13 @@
 // Opening a long-lived port to the background service worker prevents Chrome
 // from suspending it (MV3 service worker lifecycle). The port stays open as
 // long as this content script is alive (i.e., the Sitrec tab is open).
+//
+// The keepalive is only opened AFTER page-bridge.js confirms that Sitrec is
+// actually running on this page.  This lets the manifest use broad localhost
+// match patterns without falsely registering non-Sitrec tabs.
 
 let keepalivePort = null;
+let sitrecDetected = false;
 
 function openKeepalivePort() {
     try {
@@ -38,7 +43,7 @@ function openKeepalivePort() {
         keepalivePort.onDisconnect.addListener(() => {
             keepalivePort = null;
             // Service worker may have restarted -- reconnect after a short delay
-            setTimeout(openKeepalivePort, 1000);
+            if (sitrecDetected) setTimeout(openKeepalivePort, 1000);
         });
     } catch {
         // Extension context invalidated (e.g., extension was reloaded)
@@ -46,7 +51,16 @@ function openKeepalivePort() {
     }
 }
 
-openKeepalivePort();
+// Wait for page-bridge to confirm Sitrec is present before registering
+window.addEventListener("message", (event) => {
+    if (event.source !== window) return;
+    if (event.data?.source === "sitrec-bridge-page" && event.data.type === "sitrec-detected") {
+        if (!sitrecDetected) {
+            sitrecDetected = true;
+            openKeepalivePort();
+        }
+    }
+});
 
 // -- Message relay: background <-> page-bridge ------------------------------
 

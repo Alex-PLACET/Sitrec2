@@ -27,6 +27,7 @@ let ws = null;
 let reconnectTimer = null;
 let reconnectInterval = RECONNECT_INTERVAL_MS;
 let sitrecTabId = null;
+const knownSitrecTabs = new Set();  // Tab IDs confirmed as Sitrec by content script keepalive
 let forceNextConnect = false;   // Set by popup "Reconnect" to override server rejection
 let rejectedByServer = false;   // True after server rejects us — suppresses ALL auto-reconnect
 let sourceVersion = null;       // Version from source manifest.json (sent by MCP server)
@@ -148,20 +149,24 @@ async function findSitrecTab() {
     if (sitrecTabId != null) {
         try {
             const tab = await chrome.tabs.get(sitrecTabId);
-            if (tab && isSitrecUrl(tab.url)) return sitrecTabId;
+            if (tab && knownSitrecTabs.has(tab.id)) return sitrecTabId;
         } catch {
+            knownSitrecTabs.delete(sitrecTabId);
             sitrecTabId = null;
         }
     }
 
-    // Search all tabs for a Sitrec page
-    const tabs = await chrome.tabs.query({});
-    for (const tab of tabs) {
-        if (isSitrecUrl(tab.url)) {
-            sitrecTabId = tab.id;
-            return tab.id;
+    // Check any other known Sitrec tabs (registered via keepalive)
+    for (const tabId of knownSitrecTabs) {
+        try {
+            await chrome.tabs.get(tabId);
+            sitrecTabId = tabId;
+            return tabId;
+        } catch {
+            knownSitrecTabs.delete(tabId);
         }
     }
+
     return null;
 }
 
@@ -178,17 +183,17 @@ async function findSitrecTabByTarget(target) {
     if (typeof target === "number") {
         try {
             const tab = await chrome.tabs.get(target);
-            if (tab && isSitrecUrl(tab.url)) return tab.id;
+            if (tab && knownSitrecTabs.has(tab.id)) return tab.id;
         } catch {}
         return null;
     }
 
-    // String — match against URL of all Sitrec tabs
+    // String — match against URL of known Sitrec tabs
     if (typeof target === "string") {
         const needle = target.toLowerCase();
         const tabs = await chrome.tabs.query({});
         for (const tab of tabs) {
-            if (isSitrecUrl(tab.url) && tab.url.toLowerCase().includes(needle)) {
+            if (knownSitrecTabs.has(tab.id) && tab.url.toLowerCase().includes(needle)) {
                 return tab.id;
             }
         }
@@ -204,7 +209,7 @@ async function findAllSitrecTabs() {
     const tabs = await chrome.tabs.query({});
     const results = [];
     for (const tab of tabs) {
-        if (isSitrecUrl(tab.url)) {
+        if (knownSitrecTabs.has(tab.id)) {
             results.push({ id: tab.id, url: tab.url, title: tab.title || "" });
         }
     }
@@ -214,12 +219,10 @@ async function findAllSitrecTabs() {
 function isSitrecUrl(url) {
     if (!url) return false;
     return (
-        url.includes("metabunk.org/sitrec") ||
-        url.includes("metabunk.org/build") ||
-        /localhost:\d+\/sitrec/.test(url) ||
-        /localhost:\d+\/build/.test(url) ||
-        /127\.0\.0\.1:\d+\/sitrec/.test(url) ||
-        /127\.0\.0\.1:\d+\/build/.test(url)
+        url.includes("local.metabunk.org/") ||
+        url.includes("www.metabunk.org/sitrec") ||
+        /^https?:\/\/localhost:\d+\//.test(url) ||
+        /^https?:\/\/127\.0\.0\.1:\d+\//.test(url)
     );
 }
 
@@ -343,12 +346,13 @@ async function handleServerMessage(msg) {
 // -- Track Tab Changes ------------------------------------------------------
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-    if (changeInfo.status === "complete" && isSitrecUrl(tab.url)) {
+    if (changeInfo.status === "complete" && knownSitrecTabs.has(tabId)) {
         sitrecTabId = tabId;
     }
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
+    knownSitrecTabs.delete(tabId);
     if (tabId === sitrecTabId) {
         sitrecTabId = null;
     }
@@ -362,16 +366,23 @@ chrome.runtime.onConnect.addListener((port) => {
     if (port.name !== "sitrec-keepalive") return;
 
     // If the port comes from a tab, remember it as our Sitrec tab
-    if (port.sender?.tab?.id) {
-        sitrecTabId = port.sender.tab.id;
+    const tabId = port.sender?.tab?.id;
+    if (tabId) {
+        knownSitrecTabs.add(tabId);
+        sitrecTabId = tabId;
     }
 
     // Ensure we're connected to the MCP server
     connect();
+    updatePopupState();
 
     port.onDisconnect.addListener(() => {
-        // Tab closed or navigated away -- service worker may now suspend.
-        // The alarm will keep us reconnecting if needed.
+        // Tab closed or navigated away
+        if (tabId) {
+            knownSitrecTabs.delete(tabId);
+            if (sitrecTabId === tabId) sitrecTabId = null;
+        }
+        updatePopupState();
     });
 });
 

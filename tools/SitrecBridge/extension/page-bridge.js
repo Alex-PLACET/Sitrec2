@@ -505,4 +505,24 @@ window.addEventListener("message", async (event) => {
     }
 });
 
-console.log("[SitrecBridge] Page bridge loaded");
+// ── Sitrec Detection ────────────────────────────────────────────────────────
+// Tell the content script that this page is actually running Sitrec,
+// so it can open the keepalive port and register the tab.
+
+function notifySitrecDetected() {
+    window.postMessage({ source: "sitrec-bridge-page", type: "sitrec-detected" }, "*");
+    console.log("[SitrecBridge] Page bridge loaded — Sitrec detected");
+}
+
+if (window.Sit || document.getElementById("sitrec-objects-ready")) {
+    notifySitrecDetected();
+} else {
+    const detectInterval = setInterval(() => {
+        if (window.Sit || document.getElementById("sitrec-objects-ready")) {
+            clearInterval(detectInterval);
+            notifySitrecDetected();
+        }
+    }, 500);
+    // Stop polling after 30 seconds — not a Sitrec page
+    setTimeout(() => clearInterval(detectInterval), 30000);
+}

@@ -10,7 +10,6 @@ import {Line2} from "three/addons/lines/Line2.js";
 import {LineGeometry} from "three/addons/lines/LineGeometry.js";
 import {LineMaterial} from "three/addons/lines/LineMaterial.js";
 import {MISB} from "../MISBFields";
-import {Sit} from "../Globals";
 import {getLocalNorthVector, getLocalEastVector} from "../SphericalMath";
 import * as LAYER from "../LayerMasks";
 import {GlobalScene} from "../LocalFrame";
@@ -19,7 +18,6 @@ import {setLayerMaskRecursive} from "../threeExt";
 export class CNodeDisplaySondeWind extends CNode {
     constructor(v) {
         super(v);
-        this.input("track");     // position track
         this.input("dataTrack"); // CNodeMISBDataTrack with wind data
 
         this.arrowScale = v.arrowScale ?? 200; // meters per m/s of wind speed
@@ -27,6 +25,7 @@ export class CNodeDisplaySondeWind extends CNode {
         this.lineWidth = v.lineWidth ?? 3; // screen-space line width
 
         this.group = new Group();
+        this.group.visible = v.visible ?? true;
         GlobalScene.add(this.group);
         this.lines = [];
         // Arrows built in recalculate() after track data is ready
@@ -41,11 +40,9 @@ export class CNodeDisplaySondeWind extends CNode {
         }
         this.lines = [];
 
-        var misb = this.in.dataTrack.misb;
+        var dataTrack = this.in.dataTrack;
+        var misb = dataTrack.misb;
         if (!misb || misb.length === 0) return;
-
-        var track = this.in.track;
-        var numFrames = track.frames || Sit.frames;
 
         // Collect all arrow line segments into one geometry for efficiency
         var positions = [];
@@ -56,11 +53,8 @@ export class CNodeDisplaySondeWind extends CNode {
             var windSpeed = misb[i][MISB.WindSpeed];
             if (windDir == null || windSpeed == null || windSpeed <= 0) continue;
 
-            // Map MISB index to frame
-            var frame = Math.round(i * (numFrames - 1) / Math.max(misb.length - 1, 1));
-            frame = Math.max(0, Math.min(frame, numFrames - 1));
-
-            var pos = track.p(frame);
+            // Use the actual data track position for each sounding level
+            var pos = dataTrack.getPosition(i);
             if (!pos || isNaN(pos.x)) continue;
 
             // Wind blows FROM windDir; balloon drifts TO (windDir + 180)

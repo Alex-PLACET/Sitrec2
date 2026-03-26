@@ -715,7 +715,7 @@ class CTrackManager extends CManager {
                 },
                 color: "white",
                 baseDiameter: 1.5, // 1.5m launch diameter, typical radiosonde
-                layers: LAYER.MASK_HELPERS,
+                layers: LAYER.MASK_TARGET,
                 label: shortName,
             });
         } else if (getEnv("DEFAULT_PLATFORM_MODEL", process.env.DEFAULT_PLATFORM_MODEL) && trackOb.trackFileName.endsWith(".klv")) {
@@ -770,11 +770,11 @@ class CTrackManager extends CManager {
             trackOb.windArrows = new CNodeDisplaySondeWind({
                 id: shortName + "_windArrows",
                 inputs: {
-                    track: trackID,
                     dataTrack: "TrackData_" + shortName,
                 },
                 arrowScale: 200, // 200m per m/s
                 arrowColor: 0xffff00, // yellow
+                visible: false, // hidden by default
             });
 
             // Atmospheric profile node for altitude-interpolated data lookup
