@@ -52,7 +52,11 @@ function renderHistory(history) {
         const iconColor = cmd.ok ? "#22c55e" : "#ef4444";
         const dur = formatDuration(cmd.endTime - cmd.startTime);
         const detail = cmd.detail ? cmd.detail : "";
-        return `<li><span class="icon" style="color:${iconColor}">${icon}</span><span class="action">${stripPrefix(cmd.action)}</span><span class="detail">${escHtml(detail)}</span><span class="dur">${dur}</span></li>`;
+        // Show routing info: cwd → tab
+        const cwdLabel = cmd.cwd ? cmd.cwd.split("/").pop() : "?";
+        const tabLabel = cmd.tabId ? `#${cmd.tabId}` : "?";
+        const routing = cmd.tabId ? `<span class="routing">${escHtml(cwdLabel)}→${tabLabel}</span>` : "";
+        return `<li><span class="icon" style="color:${iconColor}">${icon}</span><span class="action">${stripPrefix(cmd.action)}</span><span class="detail">${escHtml(detail)}</span>${routing}<span class="dur">${dur}</span></li>`;
     }).join("");
 }
 

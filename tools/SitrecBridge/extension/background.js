@@ -277,11 +277,13 @@ function commandDetail(action, params) {
     }
 }
 
-function trackCommandStart(action, params) {
+function trackCommandStart(action, params, cwd, tabId) {
     currentCommand = {
         action,
         detail: commandDetail(action, params),
         startTime: Date.now(),
+        cwd: cwd || null,
+        tabId: tabId || null,
     };
     updatePopupState();
 }
@@ -303,6 +305,7 @@ function trackCommandEnd(ok) {
 
 async function handleServerMessage(msg) {
     const { id, action, params, _cwd } = msg;
+    console.log(`[SitrecBridge] RAW msg keys: ${Object.keys(msg).join(',')}, _cwd=${JSON.stringify(msg._cwd)}`);
 
     // Handle reload directly in the background script -- no tab needed
     if (action === "reload") {
@@ -322,8 +325,6 @@ async function handleServerMessage(msg) {
         return;
     }
 
-    trackCommandStart(action, params);
-
     // Tab targeting: use params.tab to select a specific tab by ID or URL substring.
     // Extract and remove the tab param so it doesn't get forwarded to the content script.
     const tabTarget = params?.tab;
@@ -332,6 +333,10 @@ async function handleServerMessage(msg) {
     }
 
     const tabId = await findSitrecTabByTarget(tabTarget, _cwd);
+    console.log(`[SitrecBridge] ${action}: _cwd=${_cwd || 'none'}, tabTarget=${tabTarget || 'none'}, → tab ${tabId}`);
+
+    trackCommandStart(action, params, _cwd, tabId);
+
     if (!tabId) {
         const hint = tabTarget
             ? ` matching "${tabTarget}". Available tabs: use sitrec_list_tabs to see open Sitrec tabs.`

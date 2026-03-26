@@ -38,6 +38,10 @@ const WS_PORT = parseInt(process.env.SITREC_BRIDGE_PORT || "9780", 10);
 const WS_HOST = "127.0.0.1"; // Localhost only — avoids macOS firewall EPERM on 0.0.0.0
 const SITREC_CWD = process.cwd(); // Used to auto-match this MCP session to the correct Sitrec tab
 
+// Protocol version — bump when the wire format changes (e.g., adding _cwd).
+// Secondaries check this against the primary and force-replace stale primaries.
+const PROTOCOL_VERSION = 2;
+
 // Load the agent guide once at startup
 let agentGuide = "";
 try {
@@ -92,7 +96,7 @@ function startAsPrimary(port) {
                 if (msg.type === "peer") {
                     identified = true;
                     ws.removeListener("message", earlyHandler);
-                    setupPeerConnection(ws);
+                    setupPeerConnection(ws, msg.version);
                     return;
                 }
                 if (msg.type === "force-extension") {
@@ -238,8 +242,11 @@ function handleExtensionMessage(raw) {
     }
 }
 
-function setupPeerConnection(ws) {
-    log("Primary: Peer MCP server connected");
+function setupPeerConnection(ws, peerVersion) {
+    log(`Primary: Peer MCP server connected (protocol v${peerVersion || '?'})`);
+
+    // Send our protocol version so the peer can detect mismatches
+    ws.send(JSON.stringify({ type: "protocol-version", version: PROTOCOL_VERSION }));
 
     ws.on("message", (raw) => {
         try {
@@ -320,15 +327,40 @@ function startAsSecondary(port) {
     function connect() {
         primarySocket = new WebSocket(`ws://localhost:${port}`);
 
+        let primaryVersionConfirmed = false;
+
         primarySocket.on("open", () => {
             log("Secondary: Connected to primary server");
-            // Identify ourselves as a peer
-            primarySocket.send(JSON.stringify({ type: "peer" }));
+            // Identify ourselves as a peer, include protocol version
+            primarySocket.send(JSON.stringify({ type: "peer", version: PROTOCOL_VERSION }));
+
+            // If the primary doesn't respond with its version within 2s, it's too old
+            setTimeout(() => {
+                if (!primaryVersionConfirmed && primarySocket) {
+                    log("Secondary: Primary did not send protocol version — assuming stale, disconnecting to promote");
+                    primarySocket.close();
+                }
+            }, 2000);
         });
 
         primarySocket.on("message", (raw) => {
             try {
                 const msg = JSON.parse(raw.toString());
+
+                // Protocol version check — detect stale primaries
+                if (msg.type === "protocol-version") {
+                    primaryVersionConfirmed = true;
+                    if (msg.version !== PROTOCOL_VERSION) {
+                        log(`Secondary: Primary has protocol v${msg.version}, we need v${PROTOCOL_VERSION} — disconnecting to promote`);
+                        primarySocket.close();
+                        primarySocket = null;
+                        setTimeout(tryPromote, 500);
+                    } else {
+                        log(`Secondary: Primary protocol v${msg.version} matches ✓`);
+                    }
+                    return;
+                }
+
                 if (msg.id != null && pendingRequests.has(msg.id)) {
                     const { resolve, timer } = pendingRequests.get(msg.id);
                     clearTimeout(timer);
@@ -753,6 +785,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 type: "text",
                 text: JSON.stringify({
                     mode,
+                    protocolVersion: PROTOCOL_VERSION,
                     extensionConnected: connected,
                     wsPort: WS_PORT,
                     pendingRequests: pendingRequests.size,
