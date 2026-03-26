@@ -1,8 +1,7 @@
 import {CTrackFile} from "./CTrackFile";
 import {MISB, MISBFields} from "../MISBFields";
-import {detectSondeFormat, parseIGRA2, parseUWYOList, parseUWYOCSV, countIGRA2Soundings} from "../ParseSonde";
+import {detectSondeFormat, parseIGRA2, parseUWYOList, parseUWYOCSV, countIGRA2Soundings, stripIGRA2Preamble} from "../ParseSonde";
 import {reconstructTrajectory} from "../SondeTrajectory";
-import {lookupStationPosition} from "../SondeFetch";
 
 /**
  * Track file handler for radiosonde (weather balloon) sounding data.
@@ -38,6 +37,11 @@ export class CTrackFileSonde extends CTrackFile {
         this.format = detectSondeFormat(this.data);
         if (!this.format) return;
 
+        // Strip any preamble lines before the first IGRA2 header
+        if (this.format === "igra2") {
+            this.data = stripIGRA2Preamble(this.data);
+        }
+
         switch (this.format) {
             case "igra2": {
                 // For now, import all soundings (capped at reasonable limit)
@@ -59,14 +63,6 @@ export class CTrackFileSonde extends CTrackFile {
             case "uwyo-list": {
                 const sonde = parseUWYOList(this.data);
                 if (sonde && sonde.levels.length > 0) {
-                    // UWYO LIST HTML truncates station coords to 2 decimals (~1-2 km error).
-                    // Use precise IGRA2 database coordinates if available.
-                    const precise = lookupStationPosition(sonde.station.id);
-                    if (precise) {
-                        sonde.station.lat = precise.lat;
-                        sonde.station.lon = precise.lon;
-                        if (precise.elev) sonde.station.elev = precise.elev;
-                    }
                     this.soundings.push(sonde);
                     this.trajectories.push(reconstructTrajectory(sonde));
                 }
@@ -79,6 +75,27 @@ export class CTrackFileSonde extends CTrackFile {
                     this.trajectories.push(reconstructTrajectory(sonde));
                 }
                 break;
+            }
+        }
+    }
+
+    /**
+     * Async refinement: load the IGRA2 station database and re-reconstruct
+     * UWYO LIST trajectories with precise coordinates.
+     * Called from handleParsedFile before the track is added to TrackManager.
+     */
+    async refineStationCoords() {
+        if (this.format !== "uwyo-list") return;
+        const {loadStationList} = await import("../SondeFetch");
+        const stations = await loadStationList();
+        for (let i = 0; i < this.soundings.length; i++) {
+            const sonde = this.soundings[i];
+            const match = stations.find(s => s.wmo === sonde.station.id);
+            if (match) {
+                sonde.station.lat = match.lat;
+                sonde.station.lon = match.lon;
+                if (match.elev) sonde.station.elev = match.elev;
+                this.trajectories[i] = reconstructTrajectory(sonde);
             }
         }
     }

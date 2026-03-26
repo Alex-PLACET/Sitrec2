@@ -6,6 +6,8 @@ import {FileManager, GlobalDateTimeNode, NodeMan, Sit} from "./Globals";
 import {promptForText} from "./TextPrompt";
 import {detectSondeFormat, listIGRA2Soundings, parseIGRA2, parseUWYOList, parseUWYOCSV} from "./ParseSonde";
 import {reconstructTrajectory} from "./SondeTrajectory";
+import {initProgress, updateProgress, hideProgress} from "./CProgressIndicator";
+import {ECEFToLLAVD_radii} from "./LLA-ECEF-ENU";
 import JSZip from "jszip";
 
 // Escape HTML metacharacters to prevent XSS when interpolating into innerHTML
@@ -22,7 +24,39 @@ function esc(s) {
  * @param {string} format - "csv" or "list"
  * @returns {Promise<string>} Raw HTML response from UWYO
  */
+// Rate limit state: shared across all UWYO requests
+let uwyoRateLimitUntil = 0; // epoch ms when rate limit expires
+const RATE_LIMIT_DELAY_MS = 66000; // 1.1 minutes
+
+/**
+ * Wait until the UWYO rate limit expires, showing a countdown in the progress UI.
+ * Returns a promise that resolves when the wait is over, or rejects if cancelled.
+ */
+function waitForRateLimit(cancelledRef) {
+    return new Promise((resolve, reject) => {
+        const tick = () => {
+            if (cancelledRef.cancelled) {
+                reject(new Error("Cancelled"));
+                return;
+            }
+            const remaining = Math.max(0, uwyoRateLimitUntil - Date.now());
+            if (remaining <= 0) {
+                resolve();
+                return;
+            }
+            updateProgress({ status: `UWYO rate limit — waiting ${Math.ceil(remaining / 1000)}s...` });
+            setTimeout(tick, 1000);
+        };
+        tick();
+    });
+}
+
 export async function fetchUWYOSounding(stationId, date, hour, format = "list") {
+    // If rate-limited, wait before making the request
+    if (Date.now() < uwyoRateLimitUntil) {
+        await waitForRateLimit({ cancelled: false });
+    }
+
     const url = SITREC_SERVER + "proxySounding.php"
         + "?source=uwyo"
         + "&station=" + encodeURIComponent(stationId)
@@ -33,6 +67,10 @@ export async function fetchUWYOSounding(stationId, date, hour, format = "list") 
     const response = await fetch(url);
 
     if (!response.ok) {
+        if (response.status === 429) {
+            uwyoRateLimitUntil = Date.now() + RATE_LIMIT_DELAY_MS;
+            throw new Error("UWYO rate limit hit — will retry after " + Math.ceil(RATE_LIMIT_DELAY_MS / 1000) + "s");
+        }
         const errorText = await response.text();
         throw new Error(errorText || `HTTP ${response.status}`);
     }
@@ -67,20 +105,32 @@ const NCEI_BASE = "https://www.ncei.noaa.gov/data/integrated-global-radiosonde-a
  */
 export async function fetchIGRA2Data(igra2Id, year) {
     var currentYear = new Date().getFullYear();
-    var url;
+    var urls;
     if (year >= currentYear) {
-        url = NCEI_BASE + "data-y2d/" + igra2Id + "-data-beg" + currentYear + ".txt.zip";
+        // Try current year's y2d first, then previous year's (NCEI may not have
+        // rolled over the filename yet — beg2025 can contain early 2026 data),
+        // then fall back to full period-of-record.
+        urls = [
+            NCEI_BASE + "data-y2d/" + igra2Id + "-data-beg" + currentYear + ".txt.zip",
+            NCEI_BASE + "data-y2d/" + igra2Id + "-data-beg" + (currentYear - 1) + ".txt.zip",
+            NCEI_BASE + "data-por/" + igra2Id + "-data.txt.zip",
+        ];
     } else {
-        url = NCEI_BASE + "data-por/" + igra2Id + "-data.txt.zip";
+        urls = [
+            NCEI_BASE + "data-por/" + igra2Id + "-data.txt.zip",
+        ];
     }
 
-    console.log("Fetching IGRA2 from: " + url);
-    var response = await fetch(url);
-    if (!response.ok) {
-        if (response.status === 404) {
-            throw new Error("IGRA2 data not found for station " + igra2Id + ". The station may not exist in the IGRA2 archive.");
-        }
-        throw new Error("IGRA2 fetch failed: HTTP " + response.status);
+    var response = null;
+    for (var url of urls) {
+        console.log("Fetching IGRA2 from: " + url);
+        response = await fetch(url);
+        if (response.ok) break;
+        console.log("IGRA2 " + response.status + " for " + url + ", trying next...");
+        response = null;
+    }
+    if (!response) {
+        throw new Error("IGRA2 data not found for station " + igra2Id + ". Tried " + urls.length + " URLs.");
     }
 
     var arrayBuffer = await response.arrayBuffer();
@@ -180,7 +230,7 @@ let stationListCache = null;
  * Load the IGRA2 station list JSON (cached after first load).
  * @returns {Promise<Array<{id, wmo, name, lat, lon, elev, country, firstYear, lastYear}>>}
  */
-async function loadStationList() {
+export async function loadStationList() {
     if (stationListCache) return stationListCache;
     const url = SITREC_APP + "data/igra2-stations.json";
     const resp = await fetch(url);
@@ -188,6 +238,7 @@ async function loadStationList() {
     stationListCache = await resp.json();
     return stationListCache;
 }
+
 
 /**
  * Look up precise station coordinates from the IGRA2 station database.
@@ -225,11 +276,25 @@ function haversineKm(lat1, lon1, lat2, lon2) {
 export async function pickStation() {
     const stations = await loadStationList();
 
-    // Sort by distance to sitch center
-    const sitLat = Sit.lat || 0;
-    const sitLon = Sit.lon || 0;
+    // Sort by distance to lookCamera position
+    let sitLat, sitLon;
+    try {
+        const lookCamera = NodeMan.get("lookCamera").camera;
+        const lla = ECEFToLLAVD_radii(lookCamera.position);
+        sitLat = lla.x;
+        sitLon = lla.y;
+    } catch {
+        sitLat = Sit.lat || 0;
+        sitLon = Sit.lon || 0;
+    }
+    let simYear;
+    try {
+        simYear = GlobalDateTimeNode.frameToDate(0).getUTCFullYear();
+    } catch {
+        simYear = new Date().getFullYear();
+    }
     const sorted = stations
-        .filter(s => s.wmo) // only stations with WMO numbers (needed for UWYO)
+        .filter(s => s.wmo && s.lastYear >= simYear)
         .map(s => ({ ...s, dist: haversineKm(sitLat, sitLon, s.lat, s.lon) }))
         .sort((a, b) => a.dist - b.dist);
 
@@ -322,15 +387,24 @@ export async function pickStation() {
 export async function getNearbyWeatherBalloons(count = 1, source = "uwyo") {
     count = Math.max(1, Math.min(count, 10));
 
+    const cancelledRef = { cancelled: false };
+
+    initProgress({
+        title: "Loading Weather Balloons",
+        showAbort: true,
+        onAbort: () => { cancelledRef.cancelled = true; },
+    });
+    updateProgress({ status: "Loading station list..." });
+
     const stations = await loadStationList();
 
-    // Get camera position for proximity sorting
+    // Get lookCamera position for proximity sorting
     let camLat, camLon;
     try {
-        const camera = NodeMan.get("fixedCameraPosition");
-        const lla = camera._LLA;
-        camLat = lla[0];
-        camLon = lla[1];
+        const lookCamera = NodeMan.get("lookCamera").camera;
+        const lla = ECEFToLLAVD_radii(lookCamera.position);
+        camLat = lla.x;
+        camLon = lla.y;
     } catch {
         camLat = Sit.lat || 0;
         camLon = Sit.lon || 0;
@@ -357,21 +431,32 @@ export async function getNearbyWeatherBalloons(count = 1, source = "uwyo") {
         launchDate = targetDate.toISOString().slice(0, 10);
     }
 
-    // Sort stations by proximity to camera
+    // Sort stations by proximity to camera, excluding inactive stations
+    const targetYear = targetDate.getUTCFullYear();
     const sorted = stations
-        .filter(s => s.wmo)
+        .filter(s => s.wmo && s.lastYear >= targetYear)
         .map(s => ({ ...s, dist: haversineKm(camLat, camLon, s.lat, s.lon) }))
         .sort((a, b) => a.dist - b.dist);
 
     const selected = sorted.slice(0, count);
     const results = [];
 
-    for (const station of selected) {
+    for (let idx = 0; idx < selected.length; idx++) {
+        if (cancelledRef.cancelled) {
+            console.log("Weather balloon import cancelled by user");
+            break;
+        }
+
+        const station = selected[idx];
+        const label = `${station.wmo} ${station.name} (${Math.round(station.dist)}km)`;
+        updateProgress({ status: `Fetching ${idx + 1}/${selected.length}: ${label}` });
+
         try {
             let filename;
             if (source === "igra2" && station.id) {
                 // IGRA2 path
                 const year = parseInt(launchDate.split("-")[0]);
+                updateProgress({ status: `Downloading IGRA2 archive for ${label}...` });
                 const text = await fetchIGRA2Data(station.id, year);
                 const soundings = listIGRA2Soundings(text);
 
@@ -392,22 +477,41 @@ export async function getNearbyWeatherBalloons(count = 1, source = "uwyo") {
                 const sel = soundings.find(s => s.index === bestIdx);
                 const hourStr = sel && sel.hour != null ? String(sel.hour).padStart(2, "0") + "Z" : "00Z";
                 filename = `igra2_${station.id}_${sel ? sel.date : launchDate}_${hourStr}.txt`;
+                updateProgress({ status: `Importing ${label}...` });
                 await FileManager.parseResult(filename, new TextEncoder().encode(single).buffer);
             } else {
-                // UWYO path
+                // UWYO path — check for rate limit before fetching
+                if (Date.now() < uwyoRateLimitUntil) {
+                    await waitForRateLimit(cancelledRef);
+                    if (cancelledRef.cancelled) break;
+                }
+                updateProgress({ status: `Fetching UWYO for ${label}...` });
                 const html = await fetchUWYOSounding(station.wmo, launchDate, launchHour, "list");
                 filename = `sounding_${station.wmo}_${launchDate}_${String(launchHour).padStart(2, "0")}Z.html`;
+                updateProgress({ status: `Importing ${label}...` });
                 await FileManager.parseResult(filename, new TextEncoder().encode(html).buffer);
             }
 
             console.log(`Imported balloon: ${station.wmo} ${station.name} (${Math.round(station.dist)}km away)`);
             results.push({ station: station.wmo, name: station.name, dist: Math.round(station.dist), filename, success: true });
         } catch (e) {
-            console.error(`Failed to import ${station.wmo} ${station.name}: ${e.message}`);
-            results.push({ station: station.wmo, name: station.name, success: false, error: e.message });
+            if (e.message.includes("rate limit")) {
+                // Rate limit hit — wait and retry this station
+                updateProgress({ status: `Rate limited — waiting...` });
+                try {
+                    await waitForRateLimit(cancelledRef);
+                    if (!cancelledRef.cancelled) {
+                        idx--; // retry this station
+                    }
+                } catch { /* cancelled */ }
+            } else {
+                console.error(`Failed to import ${station.wmo} ${station.name}: ${e.message}`);
+                results.push({ station: station.wmo, name: station.name, success: false, error: e.message });
+            }
         }
     }
 
+    hideProgress();
     return results;
 }
 

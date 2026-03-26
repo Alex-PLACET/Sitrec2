@@ -56,18 +56,38 @@ export function detectSondeFormat(text) {
     if (!text || typeof text !== 'string') return null;
     const trimmed = text.trimStart();
 
-    // IGRA2: starts with # followed by station ID pattern like USM00072451
-    if (/^#[A-Z]{2}[A-Z0-9]\d{8}\s/.test(trimmed)) return "igra2";
+    // IGRA2: # followed by station ID pattern like USM00072451
+    // Allow up to 20 preceding lines (metadata/headers) before the first # line
+    if (/^#[A-Z]{2}[A-Z0-9]\d{8}\s/m.test(trimmed)) {
+        const lines = trimmed.split('\n');
+        for (let i = 0; i < Math.min(lines.length, 20); i++) {
+            if (/^#[A-Z]{2}[A-Z0-9]\d{8}\s/.test(lines[i])) return "igra2";
+        }
+    }
 
     // UWYO CSV: contains the CSV header signature (may be inside HTML <pre> tags)
     if (trimmed.includes('time,longitude,latitude,pressure') ||
         trimmed.includes('time, longitude, latitude, pressure')) return "uwyo-csv";
 
-    // UWYO LIST: contains the fixed-width table header
-    if (trimmed.includes('PRES   HGHT   TEMP') ||
+    // UWYO LIST: contains the table header with PRES, HGHT, TEMP (any whitespace separation)
+    if (/PRES\s+HGHT\s+TEMP/.test(trimmed) ||
         (trimmed.includes('University of Wyoming') && trimmed.includes('PRES'))) return "uwyo-list";
 
     return null;
+}
+
+/**
+ * Strip any preceding lines before the first IGRA2 header line.
+ * Returns the text starting from the first # header line.
+ */
+export function stripIGRA2Preamble(text) {
+    const lines = text.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+        if (/^#[A-Z]{2}[A-Z0-9]\d{8}\s/.test(lines[i])) {
+            return lines.slice(i).join('\n');
+        }
+    }
+    return text;
 }
 
 // ─── IGRA2 Parser ────────────────────────────────────────────────────────

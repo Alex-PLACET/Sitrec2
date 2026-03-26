@@ -3282,6 +3282,10 @@ export class CFileManager extends CManager {
             
             // Use polymorphic doesContainTrack() for all CTrackFile types (KML, XML, SRT, etc.)
             if (parsedFile instanceof CTrackFile) {
+                // Sonde tracks: refine station coords from IGRA2 database (async)
+                if (parsedFile.refineStationCoords) {
+                    await parsedFile.refineStationCoords();
+                }
                 isATrack = parsedFile.doesContainTrack();
             } else if (fileManagerEntry.dataType === "json"
                 || ( fileExt === "csv" && fileManagerEntry.dataType !== "Unknown")
