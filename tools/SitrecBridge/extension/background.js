@@ -218,12 +218,18 @@ async function findAllSitrecTabs() {
 
 function isSitrecUrl(url) {
     if (!url) return false;
-    return (
-        url.includes("local.metabunk.org/") ||
-        url.includes("www.metabunk.org/sitrec") ||
-        /^https?:\/\/localhost:\d+\//.test(url) ||
-        /^https?:\/\/127\.0\.0\.1:\d+\//.test(url)
-    );
+    try {
+        const parsed = new URL(url);
+        const host = parsed.hostname;
+        return (
+            host === "local.metabunk.org" ||
+            host === "www.metabunk.org" ||
+            host === "localhost" ||
+            host === "127.0.0.1"
+        );
+    } catch {
+        return false;
+    }
 }
 
 // -- Command Tracking -------------------------------------------------------
