@@ -1,12 +1,33 @@
 // Paths for where we build the dev (development) and prod (production)
-// versions of Sitrec
-// For dev, this is a folder in the local web server
-// for prod, it's a temporary folder that is then uploaded to the production server
+// versions of Sitrec.
+//
+// The build folder is derived from the current git branch so that each
+// worktree automatically builds to its own directory:
+//   main          → dist/sitrec
+//   feature/foo   → dist/build-feature-foo
+//
+// Override buildFolder below if you want a fixed output location.
 
+const { execSync } = require('child_process');
 const path = require('path');
 
-module.exports = {
-    dev_path: path.resolve(__dirname, '../dist'),
-    prod_path: path.resolve(__dirname, '../dist')
+let branch;
+try {
+    branch = execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf-8' }).trim();
+} catch {
+    branch = 'main';
 }
 
+// main (and detached HEAD) → 'sitrec', everything else → 'build-<branch-slug>'
+let buildFolder;
+if (branch === 'main' || branch === 'HEAD') {
+    buildFolder = 'sitrec';
+} else {
+    buildFolder = 'build-' + branch.replace(/\//g, '-');
+}
+
+module.exports = {
+    dev_path: path.resolve(__dirname, '..', 'dist', buildFolder),
+    prod_path: path.resolve(__dirname, '..', 'dist', buildFolder),
+    buildFolder: buildFolder,
+}

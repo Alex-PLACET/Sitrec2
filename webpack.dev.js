@@ -15,7 +15,7 @@ module.exports = merge(common({ includeIWER: true }), {
     devServer: {
         static: {
             directory: InstallPaths.dev_path,
-            publicPath: '/sitrec', // Public path to access the static files
+            publicPath: '/' + InstallPaths.buildFolder,
         },
         hot: true, // Hot reload enabled - "Reload site" dialog is handled in index.js via HMR detection
         open: false, // Don't auto-open browser
