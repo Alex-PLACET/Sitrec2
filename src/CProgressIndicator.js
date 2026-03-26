@@ -51,25 +51,28 @@ export function initProgress(options = {}) {
 }
 
 export function updateProgress(options = {}) {
-    const { status, loaded, total, filename, retryInfo } = options;
-    
+    const { status, loaded, total, filename, retryInfo, percent } = options;
+
     const filenameDiv = document.getElementById('input-blocker-filename');
     const progressBar = document.getElementById('input-blocker-progress-bar');
     const progressText = document.getElementById('input-blocker-progress-text');
-    
+
     if (filename && filenameDiv) {
         filenameDiv.textContent = filename;
         filenameDiv.style.display = 'block';
     }
-    
+
     if (progressBar && progressText) {
         let text = status || '';
-        
+
         if (retryInfo) {
             text = `Retry ${retryInfo.attempt}/${retryInfo.maxRetries}: Going back ${retryInfo.daysBack} days...`;
         }
-        
-        if (loaded !== undefined && total !== undefined && total > 0) {
+
+        if (percent !== undefined) {
+            // Direct percentage control with custom status text
+            progressBar.style.width = Math.min(100, Math.max(0, percent)) + '%';
+        } else if (loaded !== undefined && total !== undefined && total > 0) {
             const percentage = (loaded / total * 100).toFixed(1);
             progressBar.style.width = percentage + '%';
             const loadedKB = (loaded / 1024).toFixed(0);
@@ -78,7 +81,7 @@ export function updateProgress(options = {}) {
         } else if (status) {
             progressBar.style.width = '0%';
         }
-        
+
         progressText.textContent = text;
     }
 }

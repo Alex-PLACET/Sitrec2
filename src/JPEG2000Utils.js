@@ -463,8 +463,9 @@ export async function decodeJ2KTiledToCanvas(arrayBuffer, options) {
 
     // ── Try parallel decode with Web Workers ──────────────────────
     try {
+        const onProgress = options && options.onProgress;
         const result = await _decodeWithWorkers(
-            tileEntries, data, cs, numTilesX, numUniqueTiles, drawTile, buildTileData, startTime, reduceLevel);
+            tileEntries, data, cs, numTilesX, numUniqueTiles, drawTile, buildTileData, startTime, reduceLevel, onProgress);
         const totalTime = ((performance.now() - startTime) / 1000).toFixed(1);
         console.log(`JPEG2000Utils: Tiled decode complete: ${result.decoded}/${numUniqueTiles} tiles `
             + `in ${totalTime}s (${result.failed} failed, ${result.workers} workers)`);
@@ -549,7 +550,7 @@ export async function decodeJ2KTiledToCanvas(arrayBuffer, options) {
  * Decode tiles in parallel using a pool of Web Workers.
  * Each worker loads its own OpenJPEG WASM instance.
  */
-async function _decodeWithWorkers(tileEntries, data, cs, numTilesX, totalTiles, drawTile, buildTileData, startTime, reduceLevel) {
+async function _decodeWithWorkers(tileEntries, data, cs, numTilesX, totalTiles, drawTile, buildTileData, startTime, reduceLevel, onProgress) {
     const numWorkers = Math.min(navigator.hardwareConcurrency || 4, 8);
     const baseUrl = location.href.replace(/[^/]*$/, '');
     const wasmScriptUrl = baseUrl + 'libs/openjpeg/openjpegwasm_decode.js';
@@ -608,8 +609,11 @@ async function _decodeWithWorkers(tileEntries, data, cs, numTilesX, totalTiles, 
             );
         }
 
-        function onComplete() {
+        function onTileComplete() {
             const count = decoded + failed;
+            if (onProgress) {
+                onProgress(count, totalTiles);
+            }
             if (count % 50 === 0 && count > 0) {
                 const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
                 const rate = (count / (performance.now() - startTime) * 1000).toFixed(0);
@@ -632,13 +636,13 @@ async function _decodeWithWorkers(tileEntries, data, cs, numTilesX, totalTiles, 
                     if (failed === 0) console.warn(`JPEG2000Utils: Worker tile ${msg.tileIndex} failed:`, msg.error);
                     failed++;
                 }
-                onComplete();
+                onTileComplete();
                 dispatchNext(idx);
             };
             w.onerror = (e) => {
                 console.warn('JPEG2000Utils: Worker error:', e.message);
                 failed++;
-                onComplete();
+                onTileComplete();
                 dispatchNext(idx);
             };
             dispatchNext(idx);

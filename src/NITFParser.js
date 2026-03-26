@@ -10,6 +10,7 @@
 import {CTrackFileNITF} from "./TrackFiles/CTrackFileNITF";
 import {createImageFromArrayBuffer} from "./FileUtils";
 import {decodeJPEG2000ToBlobURL, decodeJ2KTiledToCanvas} from "./JPEG2000Utils";
+import {initProgress, updateProgress, hideProgress} from "./CProgressIndicator";
 
 export class NITFParser {
 
@@ -26,8 +27,13 @@ export class NITFParser {
     static async parseNITFFile(filename, id, buffer) {
         console.log(`NITFParser: Parsing ${filename} (${buffer.byteLength} bytes)`);
 
+        const shortName = filename.replace(/^.*[\\/]/, '');
+        initProgress({title: 'Loading NITF', filename: shortName});
+        updateProgress({status: 'Parsing NITF header...'});
+
         const nitf = this.parseNITF(buffer);
         if (!nitf) {
+            hideProgress();
             console.error("NITFParser: Failed to parse NITF file: " + filename);
             return [];
         }
@@ -52,6 +58,7 @@ export class NITFParser {
 
             // Create image virtual file
             try {
+                updateProgress({status: `Decoding segment ${i} (${image.ncols}×${image.nrows}, ${image.ic})...`});
                 const imageBuffer = await this.imageToPNG(image);
                 if (imageBuffer === null) {
                     // imageToPNG explicitly rejected (e.g. unsupported CADRG VQ)
@@ -100,6 +107,7 @@ export class NITFParser {
             }
         }
 
+        hideProgress();
         return results;
     }
 
@@ -821,9 +829,17 @@ export class NITFParser {
         const MAX_WHOLE_DECODE = 64 * 1024 * 1024;
         if (image.nrows * image.ncols > MAX_WHOLE_DECODE) {
             try {
+                options.onProgress = (done, total) => {
+                    const pct = (done / total * 100).toFixed(0);
+                    updateProgress({
+                        status: `Decoding tiles: ${done}/${total} (${pct}%)`,
+                        percent: done / total * 100,
+                    });
+                };
+                updateProgress({status: 'Starting decode workers...'});
                 const {canvas} = await decodeJ2KTiledToCanvas(arrayBuffer, options);
                 console.log(`NITFParser: J2K tiled decode produced ${canvas.width}×${canvas.height} canvas`);
-                // Use JPEG for faster encoding of large canvases (PNG is very slow at this size)
+                updateProgress({status: `Encoding ${canvas.width}×${canvas.height} image...`, percent: 100});
                 const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92));
                 return await blob.arrayBuffer();
             } catch (e) {
