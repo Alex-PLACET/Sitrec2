@@ -179,13 +179,72 @@ function makeButton(text, bgColor, onClick) {
     return btn;
 }
 
-function makeOverlayAndDialog() {
+// makeOverlayAndDialog creates either a blocking modal (with overlay) or a
+// modeless draggable panel, controlled by the `modeless` option.
+function makeOverlayAndDialog(options = {}) {
+    if (options.modeless) {
+        // Modeless: floating draggable panel, no overlay — scene remains interactive
+        const dialog = document.createElement('div');
+        dialog.style.cssText = DIALOG_STYLE + `
+            position: fixed; top: 80px; left: 50%; transform: translateX(-50%);
+            z-index: 10000; cursor: default;
+        `;
+        // Prevent events on the dialog from reaching Sitrec
+        for (const evt of ['dblclick', 'mousedown', 'mouseup', 'click', 'wheel', 'contextmenu']) {
+            dialog.addEventListener(evt, (e) => e.stopPropagation());
+        }
+
+        // Draggable title bar
+        const titleBar = document.createElement('div');
+        titleBar.style.cssText = `
+            cursor: move; margin: -20px -20px 10px -20px; padding: 10px 20px;
+            background: #333; border-radius: 8px 8px 0 0; user-select: none;
+        `;
+        dialog.appendChild(titleBar);
+
+        let dragging = false, dragX = 0, dragY = 0;
+        const onMouseMove = (e) => {
+            if (!dragging) return;
+            dialog.style.left = (e.clientX - dragX) + 'px';
+            dialog.style.top = (e.clientY - dragY) + 'px';
+        };
+        const stopDrag = () => {
+            dragging = false;
+            window.removeEventListener('mousemove', onMouseMove, true);
+            window.removeEventListener('mouseup', stopDrag, true);
+        };
+        titleBar.addEventListener('mousedown', (e) => {
+            dragging = true;
+            // Remove the centering transform on first drag
+            if (dialog.style.transform) {
+                const rect = dialog.getBoundingClientRect();
+                dialog.style.left = rect.left + 'px';
+                dialog.style.top = rect.top + 'px';
+                dialog.style.transform = '';
+            }
+            dragX = e.clientX - dialog.offsetLeft;
+            dragY = e.clientY - dialog.offsetTop;
+            // Capture at window level to catch mouseup even outside the dialog
+            window.addEventListener('mousemove', onMouseMove, true);
+            window.addEventListener('mouseup', stopDrag, true);
+            e.preventDefault();
+        });
+
+        document.body.appendChild(dialog);
+        // Return dialog as both overlay and dialog — cleanup removes the dialog itself
+        return {overlay: dialog, dialog, titleBar};
+    }
+
+    // Modal: full-screen overlay blocks scene interaction
     const overlay = document.createElement('div');
     overlay.style.cssText = OVERLAY_STYLE;
+    for (const evt of ['dblclick', 'mousedown', 'mouseup', 'click', 'wheel', 'contextmenu']) {
+        overlay.addEventListener(evt, (e) => e.stopPropagation());
+    }
     const dialog = document.createElement('div');
     dialog.style.cssText = DIALOG_STYLE;
     overlay.appendChild(dialog);
-    return {overlay, dialog};
+    return {overlay, dialog, titleBar: null};
 }
 
 function cleanup(overlay) {
@@ -288,14 +347,23 @@ function showCheckboxList(previewInfos, initialChecked) {
 // ─── Filter Panel ────────────────────────────────────────────────────────────
 
 // Shows the filter UI. Returns Promise<boolean[]|null> (pass/fail per track, or null for cancel).
-export function showFilterPanel(previewInfos, hasFrustum, cameraPosition) {
+// onPreview: optional callback(boolean[]) called when Preview is on and filters change.
+// onPreviewRestore: optional callback() called to restore original state on cancel/preview-off.
+export function showFilterPanel(previewInfos, hasFrustum, cameraPosition, onPreview, onPreviewRestore) {
+    const isModeless = !!onPreview; // modeless when used from Contents menu (post-load)
     return new Promise(resolve => {
-        const {overlay, dialog} = makeOverlayAndDialog();
+        const {overlay, dialog, titleBar} = makeOverlayAndDialog({modeless: isModeless});
 
         const title = document.createElement('h3');
         title.textContent = 'Filter Tracks';
         title.style.cssText = TITLE_STYLE;
-        dialog.appendChild(title);
+        if (titleBar) {
+            // Put title inside the draggable title bar
+            title.style.margin = '0';
+            titleBar.appendChild(title);
+        } else {
+            dialog.appendChild(title);
+        }
 
         // Compute global altitude range across all tracks for defaults
         let globalMinFt = Infinity, globalMaxFt = -Infinity;
@@ -307,9 +375,36 @@ export function showFilterPanel(previewInfos, hasFrustum, cameraPosition) {
         if (globalMaxFt === -Infinity) globalMaxFt = 50000;
 
         const fieldStyle = `margin-bottom: 12px;`;
-        const labelStyle = `display: block; margin-bottom: 4px; font-size: 13px; color: #ccc;`;
         const inputStyle = `background: #1a1a1a; border: 1px solid #555; border-radius: 3px; color: #eee; padding: 4px 8px; width: 80px; font-size: 13px;`;
         const disabledColor = '#666';
+
+        // Get camera object for frustum filter
+        let camera = null;
+        if (hasFrustum && NodeMan.exists("lookCamera")) {
+            camera = NodeMan.get("lookCamera").camera;
+        }
+
+        // Helper: build current filter options from UI state
+        function getFilterOptions() {
+            return {
+                altitudeEnabled: altCb.checked,
+                altLowFt: parseFloat(altLow.value),
+                altHighFt: parseFloat(altHigh.value),
+                frustumEnabled: frustumCb.checked,
+                camera: camera,
+                towardsEnabled: towardsCb.checked,
+                awayEnabled: awayCb.checked,
+                cameraPosition: cameraPosition,
+            };
+        }
+
+        // Helper: run preview if enabled
+        function runPreview() {
+            if (previewCb && previewCb.checked && onPreview) {
+                const results = applyFilters(previewInfos, getFilterOptions());
+                onPreview(results);
+            }
+        }
 
         // --- Altitude ---
         const altDiv = document.createElement('div');
@@ -317,6 +412,7 @@ export function showFilterPanel(previewInfos, hasFrustum, cameraPosition) {
         const altCb = document.createElement('input');
         altCb.type = 'checkbox';
         altCb.id = 'filter-alt-cb';
+        altCb.addEventListener('change', runPreview);
         const altLabel = document.createElement('label');
         altLabel.htmlFor = 'filter-alt-cb';
         altLabel.textContent = ' Altitude Range (ft)';
@@ -330,6 +426,7 @@ export function showFilterPanel(previewInfos, hasFrustum, cameraPosition) {
         altLow.type = 'number';
         altLow.value = globalMinFt;
         altLow.style.cssText = inputStyle;
+        altLow.addEventListener('input', runPreview);
         const altDash = document.createElement('span');
         altDash.textContent = '–';
         altDash.style.color = '#999';
@@ -337,6 +434,7 @@ export function showFilterPanel(previewInfos, hasFrustum, cameraPosition) {
         altHigh.type = 'number';
         altHigh.value = globalMaxFt;
         altHigh.style.cssText = inputStyle;
+        altHigh.addEventListener('input', runPreview);
         const altUnit = document.createElement('span');
         altUnit.textContent = 'ft';
         altUnit.style.cssText = 'color: #999; font-size: 13px;';
@@ -354,6 +452,7 @@ export function showFilterPanel(previewInfos, hasFrustum, cameraPosition) {
         frustumCb.type = 'checkbox';
         frustumCb.id = 'filter-frustum-cb';
         frustumCb.disabled = !hasFrustum;
+        frustumCb.addEventListener('change', runPreview);
         const frustumLabel = document.createElement('label');
         frustumLabel.htmlFor = 'filter-frustum-cb';
         frustumLabel.textContent = ' Crosses Frustum';
@@ -370,6 +469,7 @@ export function showFilterPanel(previewInfos, hasFrustum, cameraPosition) {
         towardsCb.type = 'checkbox';
         towardsCb.id = 'filter-towards-cb';
         towardsCb.disabled = !hasCam;
+        towardsCb.addEventListener('change', runPreview);
         const towardsLabel = document.createElement('label');
         towardsLabel.htmlFor = 'filter-towards-cb';
         towardsLabel.textContent = ' Towards Camera';
@@ -385,6 +485,7 @@ export function showFilterPanel(previewInfos, hasFrustum, cameraPosition) {
         awayCb.type = 'checkbox';
         awayCb.id = 'filter-away-cb';
         awayCb.disabled = !hasCam;
+        awayCb.addEventListener('change', runPreview);
         const awayLabel = document.createElement('label');
         awayLabel.htmlFor = 'filter-away-cb';
         awayLabel.textContent = ' Away From Camera';
@@ -393,32 +494,42 @@ export function showFilterPanel(previewInfos, hasFrustum, cameraPosition) {
         awayDiv.appendChild(awayLabel);
         dialog.appendChild(awayDiv);
 
+        // --- Preview (only when callbacks provided, i.e. post-load mode) ---
+        let previewCb = null;
+        if (onPreview) {
+            const previewDiv = document.createElement('div');
+            previewDiv.style.cssText = 'margin-bottom: 12px; border-top: 1px solid #444; padding-top: 10px;';
+            previewCb = document.createElement('input');
+            previewCb.type = 'checkbox';
+            previewCb.checked = true;
+            previewCb.id = 'filter-preview-cb';
+            previewCb.addEventListener('change', () => {
+                if (previewCb.checked) {
+                    runPreview();
+                } else if (onPreviewRestore) {
+                    onPreviewRestore();
+                }
+            });
+            const previewLabel = document.createElement('label');
+            previewLabel.htmlFor = 'filter-preview-cb';
+            previewLabel.textContent = ' Preview';
+            previewLabel.style.cssText = `font-size: 14px; color: #eee; cursor: pointer;`;
+            previewDiv.appendChild(previewCb);
+            previewDiv.appendChild(previewLabel);
+            dialog.appendChild(previewDiv);
+        }
+
         // --- Buttons ---
         const btnRow = document.createElement('div');
         btnRow.style.cssText = 'display: flex; gap: 8px; margin-top: 10px;';
 
-        // Get camera object for frustum filter
-        let camera = null;
-        if (hasFrustum && NodeMan.exists("lookCamera")) {
-            camera = NodeMan.get("lookCamera").camera;
-        }
-
         btnRow.appendChild(makeButton('Apply Filter', '#1976d2', () => {
-            const filterOptions = {
-                altitudeEnabled: altCb.checked,
-                altLowFt: parseFloat(altLow.value),
-                altHighFt: parseFloat(altHigh.value),
-                frustumEnabled: frustumCb.checked,
-                camera: camera,
-                towardsEnabled: towardsCb.checked,
-                awayEnabled: awayCb.checked,
-                cameraPosition: cameraPosition,
-            };
-            const results = applyFilters(previewInfos, filterOptions);
+            const results = applyFilters(previewInfos, getFilterOptions());
             cleanup(overlay);
             resolve(results);
         }));
         btnRow.appendChild(makeButton('Cancel', '#757575', () => {
+            if (onPreviewRestore) onPreviewRestore();
             cleanup(overlay);
             resolve(null);
         }));
@@ -434,8 +545,8 @@ export function showFilterPanel(previewInfos, hasFrustum, cameraPosition) {
 // Main entry point for the multi-track dialog.
 // Returns Promise<number[]|null> — selected track indices, all indices, or null (cancel).
 export function showMultiTrackLoadDialog(previewInfos, hasFrustum, cameraPosition) {
-    // Skip dialog in regression/MCP mode
-    if (Globals.regression || window._mcpDebug) {
+    // Skip dialog only in automated regression tests
+    if (Globals.regression) {
         return Promise.resolve(previewInfos.map(info => info.trackIndex));
     }
 
@@ -586,30 +697,48 @@ export async function showPostLoadFilterDialog() {
 
     if (previewInfos.length === 0) return;
 
-    const {hasFrustum, cameraPosition} = getCameraFilterState();
-    const filterResults = await showFilterPanel(previewInfos, hasFrustum, cameraPosition);
-    if (filterResults === null) return; // cancelled
-
-    // Apply visibility to each track
-    for (let i = 0; i < trackEntries.length; i++) {
-        const {id} = trackEntries[i];
-        const visible = filterResults[i];
-
-        // Find the display node for this track
+    // Save original visibility so we can restore on cancel
+    const originalVisibility = [];
+    for (const {id} of trackEntries) {
+        let vis = true;
         NodeMan.iterate((nodeId, node) => {
             if (node instanceof CNodeDisplayTrack && node.in.track && node.in.track.id === id) {
-                node.visible = visible;
-                node.show(visible);
-                if (node.in.dataTrackDisplay !== undefined) {
-                    node.in.dataTrackDisplay.visible = visible;
-                    node.in.dataTrackDisplay.show(visible);
-                }
-                if (node.metaTrack !== undefined) {
-                    node.metaTrack.show(visible);
-                }
+                vis = node.visible;
             }
         });
+        originalVisibility.push(vis);
     }
 
-    setRenderOne(true);
+    // Apply a boolean[] to track visibility
+    function applyVisibility(results) {
+        for (let i = 0; i < trackEntries.length; i++) {
+            const {id} = trackEntries[i];
+            const visible = results[i];
+            NodeMan.iterate((nodeId, node) => {
+                if (node instanceof CNodeDisplayTrack && node.in.track && node.in.track.id === id) {
+                    node.visible = visible;
+                    node.show(visible);
+                    if (node.in.dataTrackDisplay !== undefined) {
+                        node.in.dataTrackDisplay.visible = visible;
+                        node.in.dataTrackDisplay.show(visible);
+                    }
+                    if (node.metaTrack !== undefined) {
+                        node.metaTrack.show(visible);
+                    }
+                }
+            });
+        }
+        setRenderOne(true);
+    }
+
+    const {hasFrustum, cameraPosition} = getCameraFilterState();
+    const filterResults = await showFilterPanel(
+        previewInfos, hasFrustum, cameraPosition,
+        (results) => applyVisibility(results),               // onPreview
+        () => applyVisibility(originalVisibility),            // onPreviewRestore
+    );
+
+    if (filterResults === null) return; // cancelled (visibility already restored)
+
+    applyVisibility(filterResults);
 }
