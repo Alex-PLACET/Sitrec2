@@ -58,6 +58,65 @@ function log(...args) {
     console.error("[SitrecBridge]", ...args);
 }
 
+// ── Orphan Detection & Graceful Shutdown ─────────────────────────────────────
+// When Claude Code exits, stdin closes. The MCP SDK's StdioServerTransport
+// handles the protocol side, but the WebSocket server/client keeps the process
+// alive. We detect stdin close and shut down cleanly.
+
+let wsServer = null;  // reference to WebSocket server (primary only), set in startAsPrimary
+
+function shutdownGracefully(reason) {
+    log(`Shutting down: ${reason}`);
+
+    // Close WebSocket server (primary) or client (secondary)
+    if (wsServer) {
+        wsServer.close();
+        wsServer = null;
+    }
+    if (primarySocket) {
+        primarySocket.close();
+        primarySocket = null;
+    }
+    if (extensionSocket) {
+        extensionSocket.close();
+        extensionSocket = null;
+    }
+
+    // Clear timers
+    if (keepaliveTimer) {
+        clearInterval(keepaliveTimer);
+        keepaliveTimer = null;
+    }
+
+    // Reject pending requests
+    for (const [id, req] of pendingRequests) {
+        clearTimeout(req.timer);
+        req.reject(new Error(`Server shutting down: ${reason}`));
+    }
+    pendingRequests.clear();
+
+    // Give a moment for cleanup, then exit
+    setTimeout(() => process.exit(0), 200);
+}
+
+// Detect stdin close (Claude Code exited)
+process.stdin.on("end", () => shutdownGracefully("stdin closed (parent exited)"));
+process.stdin.on("close", () => shutdownGracefully("stdin closed (parent exited)"));
+
+// Handle signals
+process.on("SIGTERM", () => shutdownGracefully("SIGTERM"));
+process.on("SIGINT", () => shutdownGracefully("SIGINT"));
+
+// Safety net: if stdin becomes unreadable and the event loop only has WebSocket
+// timers, detect it with a periodic check. This catches edge cases where the
+// stdin "end" event doesn't fire (e.g., parent killed with SIGKILL).
+const ORPHAN_CHECK_INTERVAL_MS = 30000;
+setInterval(() => {
+    if (process.stdin.destroyed || process.stdin.readableEnded) {
+        shutdownGracefully("stdin destroyed (orphan detected)");
+    }
+}, ORPHAN_CHECK_INTERVAL_MS).unref();  // unref so this timer alone doesn't keep process alive
+
 // ── WebSocket Relay ─────────────────────────────────────────────────────────
 // Supports two modes:
 //   "primary" — owns the WebSocket server, extension connects here, relays for peers
@@ -76,6 +135,7 @@ let keepaliveTimer = null;
 function startAsPrimary(port) {
     mode = "primary";
     const wss = new WebSocketServer({ host: WS_HOST, port });
+    wsServer = wss;  // store reference for graceful shutdown
 
     wss.on("listening", () => {
         log(`Primary: WebSocket server listening on ws://localhost:${port}`);
