@@ -342,8 +342,12 @@ export class NITFParser {
         const icords = readStr(pos, 1);          pos += 1;
 
         let corners = null;
-        // ICORDS: ' ' or 'N' = no coordinates (skip IGEOLO); 'G','D','U','S' = has IGEOLO
-        if (icords !== ' ' && icords !== '' && icords !== 'N') {
+        // ICORDS determines whether 60-byte IGEOLO follows:
+        //   NITF 2.0: ' '=none, 'N'=none → skip; 'G','U','C' → has IGEOLO
+        //   NITF 2.1: ' '=none → skip; 'G','D','N','S','U' → has IGEOLO
+        // In NITF 2.1, 'N'=UTM/UPS Northern and 'S'=UTM/UPS Southern (both have IGEOLO)
+        const hasIGEOLO = icords !== ' ' && icords !== '' && !(isV20 && icords === 'N');
+        if (hasIGEOLO) {
             const igeolo = readStr(pos, 60);
             pos += 60;
             corners = this.parseIGEOLO(igeolo, icords);
@@ -357,6 +361,25 @@ export class NITFParser {
 
         // Compression
         const ic = readStr(pos, 2).trim(); pos += 2;
+
+        const validIC = ['NC', 'NM', 'C1', 'M1', 'C3', 'M3', 'C4', 'M4', 'C5', 'M5',
+                         'C6', 'M6', 'C7', 'M7', 'C8', 'M8', 'I1'];
+        if (!validIC.includes(ic)) {
+            // Dump context around the IC field to help diagnose offset errors
+            const icPos = pos - 2;
+            const ctxStart = Math.max(offset, icPos - 20);
+            const ctxEnd = Math.min(offset + length, icPos + 20);
+            const ctxHex = Array.from(bytes.slice(ctxStart, ctxEnd))
+                .map(b => b.toString(16).padStart(2, '0')).join(' ');
+            const ctxAscii = readStr(ctxStart, ctxEnd - ctxStart).replace(/[^\x20-\x7E]/g, '.');
+            console.warn(`NITFParser: Unexpected IC value "${ic}" (0x${ic.charCodeAt(0)?.toString(16) ?? '??'} `
+                + `0x${ic.charCodeAt(1)?.toString(16) ?? '??'}) at subheader offset ${icPos - offset}. `
+                + `This likely indicates a header parsing offset error.\n`
+                + `  Context bytes [${ctxStart - offset}..${ctxEnd - offset}]: ${ctxHex}\n`
+                + `  Context ASCII: "${ctxAscii}"\n`
+                + `  ICORDS='${icords}', NICOM=${nicom}, isV21=${isV21}, isV20=${isV20}`);
+        }
+
         let comrat = null;
         if (ic !== 'NC' && ic !== 'NM') {
             comrat = readStr(pos, 4).trim(); pos += 4;
@@ -415,6 +438,14 @@ export class NITFParser {
             const treLen = ixshdl - 3;
             tres = {...tres, ...this.parseTREs(bytes, pos, treLen)};
             pos += treLen;
+        }
+
+        // Validate parsed length matches declared subheader length
+        const parsedLen = pos - offset;
+        if (parsedLen !== length) {
+            console.warn(`NITFParser: Image subheader length mismatch: parsed ${parsedLen} bytes, `
+                + `declared ${length} bytes (diff=${parsedLen - length}). `
+                + `ICORDS='${icords}', NICOM=${nicom}, IC='${ic}', NBANDS=${nbands}, isV21=${isV21}`);
         }
 
         return {
@@ -491,6 +522,15 @@ export class NITFParser {
                 corners.push({lat, lon});
             }
             return corners;
+        } else if (icords === 'N' || icords === 'S') {
+            // Plain UTM: zzeeeeeennnnnnn × 4 corners (15 chars each)
+            // zz=zone(2), eeeeee=easting in meters(6), nnnnnnn=northing in meters(7)
+            // Hemisphere (N or S) is indicated by the ICORDS field itself
+            return this.parsePlainUTM(igeolo, icords === 'N');
+        } else if (icords === 'U') {
+            // MGRS: zzBJKeeeeeNNNNN × 4 corners (15 chars each)
+            // zz=zone(2), B=band(1), JK=100km square(2), eeeee=easting(5), NNNNN=northing(5)
+            return this.parseMGRS(igeolo);
         }
         console.warn('NITFParser: Unsupported ICORDS type: ' + icords);
         return null;
@@ -516,6 +556,108 @@ export class NITFParser {
         let val = d + m / 60 + s / 3600;
         if (hem === 'W') val = -val;
         return val;
+    }
+
+    /**
+     * Parse plain UTM IGEOLO to lat/lon corners (ICORDS 'N' or 'S').
+     * Format per corner (15 chars): zzeeeeeennnnnnn
+     *   zz = UTM zone (01-60), eeeeee = easting in meters, nnnnnnn = northing in meters.
+     *   Hemisphere is given by the ICORDS field (N=north, S=south).
+     */
+    static parsePlainUTM(igeolo, isNorth) {
+        const corners = [];
+        for (let i = 0; i < 4; i++) {
+            const part = igeolo.substring(i * 15, (i + 1) * 15);
+            const zone = parseInt(part.substring(0, 2), 10);
+            const easting = parseInt(part.substring(2, 8), 10);
+            const northing = parseInt(part.substring(8, 15), 10);
+            corners.push(this._utmToLatLon(zone, easting, northing, isNorth));
+        }
+        return corners;
+    }
+
+    /**
+     * Parse MGRS (Military Grid Reference System) IGEOLO to lat/lon corners (ICORDS 'U').
+     * Format per corner (15 chars): zzBJKeeeeeNNNNN
+     *   zz = UTM zone (01-60), B = latitude band (C-X excluding I,O),
+     *   JK = 100km grid square, eeeee = easting residual (m), NNNNN = northing residual (m).
+     * Approximate: uses band center latitude since full MGRS→lat/lon requires grid square tables.
+     */
+    static parseMGRS(igeolo) {
+        const bandLatBase = {
+            'C': -80, 'D': -72, 'E': -64, 'F': -56, 'G': -48,
+            'H': -40, 'J': -32, 'K': -24, 'L': -16, 'M': -8,
+            'N': 0,   'P': 8,   'Q': 16,  'R': 24,  'S': 32,
+            'T': 40,  'U': 48,  'V': 56,  'W': 64,  'X': 72,
+        };
+
+        const corners = [];
+        for (let i = 0; i < 4; i++) {
+            const part = igeolo.substring(i * 15, (i + 1) * 15);
+            const zone = parseInt(part.substring(0, 2), 10);
+            const band = part.charAt(2);
+            const easting = parseInt(part.substring(5, 10), 10);
+            const northing = parseInt(part.substring(10, 15), 10);
+
+            const baseLat = bandLatBase[band];
+            if (baseLat !== undefined) {
+                const lat = baseLat + 4 + (northing / 100000) * 8;
+                const centralMeridian = (zone - 1) * 6 - 180 + 3;
+                const lon = centralMeridian + ((easting - 50000) / 100000) * 6;
+                corners.push({lat, lon});
+            } else {
+                console.warn(`NITFParser: Unknown MGRS band letter '${band}' in IGEOLO`);
+                corners.push({lat: 0, lon: 0});
+            }
+        }
+        return corners;
+    }
+
+    /** Convert UTM coordinates to lat/lon (WGS84). */
+    static _utmToLatLon(zone, easting, northing, isNorth) {
+        const a = 6378137;
+        const f = 1 / 298.257223563;
+        const k0 = 0.9996;
+        const e2 = 2 * f - f * f;
+        const e = Math.sqrt(e2);
+        const ep2 = e2 / (1 - e2);
+
+        const x = easting - 500000;
+        const y = isNorth ? northing : northing - 10000000;
+
+        const M = y / k0;
+        const mu = M / (a * (1 - e2 / 4 - 3 * e2 * e2 / 64 - 5 * e2 * e2 * e2 / 256));
+        const e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
+
+        const phi1 = mu
+            + (3 * e1 / 2 - 27 * e1 * e1 * e1 / 32) * Math.sin(2 * mu)
+            + (21 * e1 * e1 / 16 - 55 * e1 * e1 * e1 * e1 / 32) * Math.sin(4 * mu)
+            + (151 * e1 * e1 * e1 / 96) * Math.sin(6 * mu);
+
+        const sinPhi = Math.sin(phi1);
+        const cosPhi = Math.cos(phi1);
+        const tanPhi = sinPhi / cosPhi;
+        const N1 = a / Math.sqrt(1 - e2 * sinPhi * sinPhi);
+        const T1 = tanPhi * tanPhi;
+        const C1 = ep2 * cosPhi * cosPhi;
+        const R1 = a * (1 - e2) / Math.pow(1 - e2 * sinPhi * sinPhi, 1.5);
+        const D = x / (N1 * k0);
+
+        const lat = phi1 - (N1 * tanPhi / R1) * (D * D / 2
+            - (5 + 3 * T1 + 10 * C1 - 4 * C1 * C1 - 9 * ep2) * D * D * D * D / 24
+            + (61 + 90 * T1 + 298 * C1 + 45 * T1 * T1 - 252 * ep2 - 3 * C1 * C1)
+              * D * D * D * D * D * D / 720);
+
+        const lon = (D - (1 + 2 * T1 + C1) * D * D * D / 6
+            + (5 - 2 * C1 + 28 * T1 - 3 * C1 * C1 + 8 * ep2 + 24 * T1 * T1)
+              * D * D * D * D * D / 120) / cosPhi;
+
+        const centralMeridian = ((zone - 1) * 6 - 180 + 3) * Math.PI / 180;
+
+        return {
+            lat: lat * 180 / Math.PI,
+            lon: (centralMeridian + lon) * 180 / Math.PI
+        };
     }
 
     /**
