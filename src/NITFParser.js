@@ -112,7 +112,8 @@ export class NITFParser {
     }
 
     /**
-     * Check if buffer contains NITF data (magic bytes check)
+     * Check if buffer contains NITF or NSIF data (magic bytes check).
+     * NSIF (NATO Secondary Imagery Format) 1.0 is structurally identical to NITF 2.1.
      * @param {ArrayBuffer} buffer
      * @returns {boolean}
      */
@@ -120,8 +121,12 @@ export class NITFParser {
         if (buffer.byteLength < 9) return false;
         const bytes = new Uint8Array(buffer, 0, 9);
         // "NITF" at offset 0
-        return bytes[0] === 0x4E && bytes[1] === 0x49 &&
-               bytes[2] === 0x54 && bytes[3] === 0x46;
+        if (bytes[0] === 0x4E && bytes[1] === 0x49 &&
+            bytes[2] === 0x54 && bytes[3] === 0x46) return true;
+        // "NSIF" at offset 0 (NATO Secondary Imagery Format, same structure as NITF 2.1)
+        if (bytes[0] === 0x4E && bytes[1] === 0x53 &&
+            bytes[2] === 0x49 && bytes[3] === 0x46) return true;
+        return false;
     }
 
     /**
@@ -147,13 +152,15 @@ export class NITFParser {
 
         // ── File Header ──────────────────────────────────────────
         const fhdr = readStr(0, 4);
-        if (fhdr !== 'NITF') {
-            console.error('NITFParser: Not a NITF file (magic: ' + fhdr + ')');
+        if (fhdr !== 'NITF' && fhdr !== 'NSIF') {
+            console.error('NITFParser: Not a NITF/NSIF file (magic: ' + fhdr + ')');
             return null;
         }
 
         const fver = readStr(4, 5);
-        const isV21 = (fver === '02.10');
+        const isNSIF = (fhdr === 'NSIF');
+        // NSIF 1.0 (version "01.00") is structurally identical to NITF 2.1
+        const isV21 = (fver === '02.10') || (isNSIF && fver === '01.00');
         const isV20 = (fver === '02.00');
 
         if (!isV21 && !isV20) {

@@ -869,3 +869,6 @@ export async function decodeJPEG2000ToBlobURL(arrayBuffer, options) {
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
     return URL.createObjectURL(blob);
 }
+
+// Export pure functions for unit testing
+export {linearToSRGB, convertSYCCtoRGB, looksLikeYCbCr, parseJ2KCodestream};

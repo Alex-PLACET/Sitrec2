@@ -3612,8 +3612,8 @@ export class CFileManager extends CManager {
         // NITF files contain imagery + geolocation metadata, producing
         // virtual image (→ video) and track (→ camera position) files
         const fnLower = filename.toLowerCase();
-        if (fnLower.endsWith('.ntf') || fnLower.endsWith('.nitf') || NITFParser.isNITF(buffer)) {
-            console.log("NITF file detected: " + filename);
+        if (fnLower.endsWith('.ntf') || fnLower.endsWith('.nitf') || fnLower.endsWith('.nsf') || NITFParser.isNITF(buffer)) {
+            console.log("NITF/NSIF file detected: " + filename);
             return NITFParser.parseNITFFile(filename, id, buffer);
         }
 
