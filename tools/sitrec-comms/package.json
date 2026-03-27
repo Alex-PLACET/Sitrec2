@@ -1,0 +1,18 @@
+{
+  "name": "sitrec-comms",
+  "version": "1.0.0",
+  "description": "Shared MCP server for inter-agent communication across Claude Code sessions",
+  "type": "module",
+  "bin": {
+    "sitrec-comms": "./mcp-server.js"
+  },
+  "scripts": {
+    "start": "node mcp-server.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.5"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
