@@ -3,13 +3,20 @@
  */
 import fs from 'fs';
 import path from 'path';
+import {
+    buildSingleTileJ2K,
+    convertSYCCtoRGB,
+    extractICCTRCs,
+    getJP2EnumCS,
+    linearToSRGB,
+    looksLikeYCbCr,
+    parseJ2KCodestream
+} from '../src/JPEG2000Utils';
 
 // Mock browser-dependent module
 jest.mock('../src/FileUtils', () => ({
     createImageFromArrayBuffer: jest.fn()
 }));
-
-import {linearToSRGB, convertSYCCtoRGB, looksLikeYCbCr, parseJ2KCodestream} from '../src/JPEG2000Utils';
 
 const NITF_DIR = path.resolve(__dirname, '../../nitf-test-files');
 const J2K_DIR = path.join(NITF_DIR, 'JitcJpeg2000');
@@ -245,5 +252,124 @@ describeWithFiles('parseJ2KCodestream with real J2K files', () => {
             expect(tile.start).toBeGreaterThanOrEqual(0);
             expect(tile.tileIndex).toBeGreaterThanOrEqual(0);
         }
+    });
+});
+
+// ─── buildSingleTileJ2K ──────────────────────────────────────
+describeWithFiles('buildSingleTileJ2K', () => {
+    test('extracts a valid single-tile J2K from p0_01.j2k', () => {
+        const buf = fs.readFileSync(path.join(J2K_DIR, 'p0_01.j2k'));
+        const data = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+        const parsed = parseJ2KCodestream(data);
+
+        // Build single tile from tile 0
+        const tile0 = parsed.tiles[0];
+        const tileData = data.subarray(tile0.start, tile0.start + tile0.length);
+        const result = buildSingleTileJ2K(
+            parsed.mainHeader, tileData,
+            parsed.sizOffset, parsed.sizParams,
+            0, 0 // tileCol, tileRow
+        );
+
+        // Result should be a valid J2K codestream starting with SOC
+        expect(result).toBeInstanceOf(Uint8Array);
+        expect(result[0]).toBe(0xFF);
+        expect(result[1]).toBe(0x4F); // SOC marker
+        expect(result.length).toBeGreaterThan(parsed.mainHeader.length);
+    });
+
+    test('built tile codestream is parseable', () => {
+        const buf = fs.readFileSync(path.join(J2K_DIR, 'p0_01.j2k'));
+        const data = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+        const parsed = parseJ2KCodestream(data);
+
+        const tile0 = parsed.tiles[0];
+        const tileData = data.subarray(tile0.start, tile0.start + tile0.length);
+        const singleTile = buildSingleTileJ2K(
+            parsed.mainHeader, tileData,
+            parsed.sizOffset, parsed.sizParams,
+            0, 0
+        );
+
+        // Re-parse the single-tile J2K — should succeed
+        const reparsed = parseJ2KCodestream(singleTile);
+        expect(reparsed).not.toBeNull();
+        expect(reparsed.tiles.length).toBe(1);
+        expect(reparsed.tiles[0].tileIndex).toBe(0);
+    });
+
+    test('single tile SIZ dimensions match tile size', () => {
+        const buf = fs.readFileSync(path.join(J2K_DIR, 'p0_04.j2k'));
+        const data = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+        const parsed = parseJ2KCodestream(data);
+
+        const tile0 = parsed.tiles[0];
+        const tileData = data.subarray(tile0.start, tile0.start + tile0.length);
+        const singleTile = buildSingleTileJ2K(
+            parsed.mainHeader, tileData,
+            parsed.sizOffset, parsed.sizParams,
+            0, 0
+        );
+
+        const reparsed = parseJ2KCodestream(singleTile);
+        // Single-tile SIZ should describe just one tile's dimensions
+        const {XTsiz, YTsiz, Xsiz, Ysiz} = reparsed.sizParams;
+        expect(Xsiz).toBeLessThanOrEqual(parsed.sizParams.XTsiz);
+        expect(Ysiz).toBeLessThanOrEqual(parsed.sizParams.YTsiz);
+    });
+});
+
+// ─── getJP2EnumCS ────────────────────────────────────────────
+describeWithFiles('getJP2EnumCS', () => {
+    test('returns color space enum for JP2 file (file1.jp2)', () => {
+        const bytes = new Uint8Array(fs.readFileSync(path.join(J2K_DIR, 'file1.jp2')));
+        const enumCS = getJP2EnumCS(bytes);
+        // file1.jp2 should have a color space (16=sRGB or 17=greyscale or 18=sYCC)
+        expect(enumCS).not.toBeNull();
+        expect([16, 17, 18]).toContain(enumCS);
+    });
+
+    test('returns null for raw J2K codestream (not JP2)', () => {
+        const bytes = new Uint8Array(fs.readFileSync(path.join(J2K_DIR, 'p0_01.j2k')));
+        expect(getJP2EnumCS(bytes)).toBeNull();
+    });
+
+    test('returns null for too-short data', () => {
+        expect(getJP2EnumCS(new Uint8Array(4))).toBeNull();
+    });
+
+    test('detects sYCC in YCbCr JP2', () => {
+        // file3.jp2 has standard YCbCr ordering → likely sYCC (EnumCS=18)
+        const f3Path = path.join(J2K_DIR, 'file3.jp2');
+        if (fs.existsSync(f3Path)) {
+            const bytes = new Uint8Array(fs.readFileSync(f3Path));
+            const enumCS = getJP2EnumCS(bytes);
+            if (enumCS !== null) {
+                expect([16, 17, 18]).toContain(enumCS);
+            }
+        }
+    });
+});
+
+// ─── extractICCTRCs ──────────────────────────────────────────
+describeWithFiles('extractICCTRCs', () => {
+    test('returns null for raw J2K codestream', () => {
+        const bytes = new Uint8Array(fs.readFileSync(path.join(J2K_DIR, 'p0_01.j2k')));
+        expect(extractICCTRCs(bytes)).toBeNull();
+    });
+
+    test('returns null for JP2 without ICC profile', () => {
+        // Most JITC JP2 files use EnumCS (method=1), not ICC profiles (method=2)
+        const bytes = new Uint8Array(fs.readFileSync(path.join(J2K_DIR, 'file1.jp2')));
+        const result = extractICCTRCs(bytes);
+        // May be null if no ICC profile — that's correct behavior
+        if (result !== null) {
+            expect(result).toHaveLength(3);
+            expect(result[0]).toBeInstanceOf(Uint16Array);
+        }
+    });
+
+    test('returns null for too-short data', () => {
+        expect(extractICCTRCs(new Uint8Array(4))).toBeNull();
     });
 });

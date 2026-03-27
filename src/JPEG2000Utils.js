@@ -871,4 +871,5 @@ export async function decodeJPEG2000ToBlobURL(arrayBuffer, options) {
 }
 
 // Export pure functions for unit testing
-export {linearToSRGB, convertSYCCtoRGB, looksLikeYCbCr, parseJ2KCodestream};
+export {linearToSRGB, convertSYCCtoRGB, looksLikeYCbCr, parseJ2KCodestream,
+        buildSingleTileJ2K, getJP2EnumCS, extractICCTRCs};
