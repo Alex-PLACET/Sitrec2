@@ -2,12 +2,25 @@ import {assert} from "./assert";
 import * as satellite from 'satellite.js';
 import {showError} from "./showError";
 
+interface SatRec {
+    epochyr: number;
+    epochdays: number;
+    satnum: string;
+    [key: string]: unknown;
+}
+
+interface SatData {
+    name: string;
+    number: number;
+    visible: boolean;
+    satrecs: SatRec[];
+}
 
 // given an array of satrecs, return the one that best matches the date
 // ie the one that is closest to the date, but before it
 // if there are none before it, then return the first one after
 
-export function bestSat(sats, date) {
+export function bestSat(sats: SatRec[], date: Date): SatRec {
     assert(sats !== undefined && sats.length > 0, "No satellite records provided");
 
     // if it's the only one, then return it
@@ -21,9 +34,9 @@ export function bestSat(sats, date) {
     const tleDate = dateToTLE(date);
     const dateNum = Number(tleDate);
 
-    let bestBefore = null;
+    let bestBefore: SatRec | null = null;
     let bestBeforeDate = -Infinity; // So that any valid satDate will be greater.
-    let bestAfter = null;
+    let bestAfter: SatRec | null = null;
     let bestAfterDate = Infinity;
 
     for (const sat of sats) {
@@ -50,7 +63,7 @@ export function bestSat(sats, date) {
  * @param {Date} date - The date to convert.
  * @returns {string} A string representing the TLE epoch.
  */
-export function dateToTLE(date) {
+export function dateToTLE(date: Date): string {
     // Extract the last two digits of the UTC full year.
     const year = date.getUTCFullYear() % 100;
 
@@ -58,7 +71,7 @@ export function dateToTLE(date) {
     // Create a Date object representing the start of the year in UTC.
     const startOfYear = new Date(Date.UTC(date.getUTCFullYear(), 0, 0));
     // Compute the difference in milliseconds.
-    const diff = date - startOfYear;
+    const diff = date.getTime() - startOfYear.getTime();
     const oneDay = 1000 * 60 * 60 * 24;
     // Floor the result to get an integer day count. (January 1st will yield 1.)
     const dayOfYear = Math.floor(diff / oneDay);
@@ -89,7 +102,7 @@ export function dateToTLE(date) {
 const tleComboFieldEnds1 = [1, 8, 17, 32, 43, 52, 61, 63, 69]
 const tleComboFieldEnds2 = [1, 7, 16, 25, 33, 42, 51, 69]
 
-function fixTLELine(line, ends) {
+function fixTLELine(line: string, ends: number[]): string {
 
     assert(line !== undefined, "TLE line is undefined");
 
@@ -170,7 +183,7 @@ function fixTLELine(line, ends) {
 }
 
 
-function tleEpochToDate(epochYr, epochDays) {
+function tleEpochToDate(epochYr: number, epochDays: number): Date {
     // Convert 2-digit year to 4-digit year
     const fullYear = (epochYr < 57) ? 2000 + epochYr : 1900 + epochYr;
 
@@ -182,7 +195,7 @@ function tleEpochToDate(epochYr, epochDays) {
     return new Date(startOfYear.getTime() + msSinceStart);
 }
 
-export function satRecToDate(satrec) {
+export function satRecToDate(satrec: SatRec): Date {
     // Convert the TLE epoch to a Date object
     return tleEpochToDate(satrec.epochyr, satrec.epochdays);
 }
@@ -195,9 +208,15 @@ export function satRecToDate(satrec) {
 // there can be several satrecs with the same name, so we need to store them in an array
 // and pick the best one based on the playback date/time
 export class CTLEData {
+    satData: SatData[];
+    noradIndex: (SatData | undefined)[];
+    startDate: Date;
+    endDate: Date;
+    loadError?: string;
+
     // constructor is passed in a string that contains the TLE file as \n separated lines
     // extracts in into
-    constructor(fileData) {
+    constructor(fileData: string) {
 
         // fileData is a string that contains the TLE file as \n separated lines
         assert(fileData !== undefined, "CTLEData: fileData is undefined");
@@ -227,27 +246,26 @@ export class CTLEData {
             lines.pop();
         }
 
-        this.satData = []
-        let satrec = null;
-        let satrecName = null;
+        const satDataByKey: Record<string | number, SatData> = {};
+        let satrecName: string | null = null;
         // determine if it's a two line element (no names, lines are labeled 1 and 2) or three (line 0 = name)
         if (lines.length < 3 || !lines[1].startsWith("1") || !lines[2].startsWith("2")) {
             for (let i = 0; i < lines.length; i += 2) {
                 const tleLine1 = lines[i + 0];
                 const tleLine2 = lines[i + 1];
                 if (tleLine1 !== undefined && tleLine2 !== undefined) {
-                    const satrec = satellite.twoline2satrec(tleLine1, tleLine2);
+                    const satrec = satellite.twoline2satrec(tleLine1, tleLine2) as unknown as SatRec;
                     // no name in a two line element, so create one.
                     satrecName = "TLE_" + i
 
                     // a "satrec" is a satellite record created from a single line of a TLE file
                     // there might be multiple satrecs with the same name, so we need to store them in an array
                     // and later pick the best one based on the playback date/time
-                    // each entry in this.satData is an object that has an array of satrecs with the same name
-                    if (this.satData[satrecName] === undefined) {
+                    // each entry in satDataByKey is an object that has an array of satrecs with the same name
+                    if (satDataByKey[satrecName] === undefined) {
                         // it's a new satData entry
                         // so create a new one with the name and the satrec array, which has one satrec
-                        this.satData[satrecName] = {
+                        satDataByKey[satrecName] = {
                             name: satrecName,
                             number: parseInt(satrec.satnum),
                             visible: true,
@@ -255,7 +273,7 @@ export class CTLEData {
                         };
                     } else {
                         // entry already exists, so just add the satrec to the array
-                        this.satData[satrecName].satrecs.push(satrec);
+                        satDataByKey[satrecName].satrecs.push(satrec);
                     }
 
                 }
@@ -265,17 +283,13 @@ export class CTLEData {
 
 
             for (let i = 0; i < lines.length; i += 3) {
-                // const tleLine1 = lines[i + 1];
-                // const tleLine2 = lines[i + 2];
-
-    //            if (i === 80475) debugger;
 
                 if (lines[i + 1] !== undefined && lines[i + 2] !== undefined) {
                     //console.log(lines[i])
                     const tleLine1 = fixTLELine(lines[i + 1], tleComboFieldEnds1);
                     const tleLine2 = fixTLELine(lines[i + 2], tleComboFieldEnds2);
 
-                    const satrec = satellite.twoline2satrec(tleLine1, tleLine2);
+                    const satrec = satellite.twoline2satrec(tleLine1, tleLine2) as unknown as SatRec;
                     satrecName = lines[i]
 
                     // if it starts with "0 ", then strip that off
@@ -291,11 +305,11 @@ export class CTLEData {
                     // is 40978, 39575, and 31702
                     // So we need to use the NORAD number as the key
 
-                    if (this.satData[satrecNumber] === undefined) {
+                    if (satDataByKey[satrecNumber] === undefined) {
                         //console.log(satrecName + " " + satrec.satnum + " ");
                         // it's a new satData entry
                         // so create a new one with the name and the satrec array, which has one satrec
-                        this.satData[satrecNumber] = {
+                        satDataByKey[satrecNumber] = {
                             name: satrecName,
                             number: satrecNumber,
                             visible: true,
@@ -303,7 +317,7 @@ export class CTLEData {
                         };
                     } else {
                         // entry already exists, so just add the satrec to the array
-                        this.satData[satrecNumber].satrecs.push(satrec);
+                        satDataByKey[satrecNumber].satrecs.push(satrec);
                     }
 
 
@@ -314,12 +328,7 @@ export class CTLEData {
         // after building the arrays of multiple satrecs using the number as the key,
         // convert to an indexed array (i.e. just and array with no keys other than the position in the array, which is meaningless)
         // we do this so that we can iterate over the satData array easily
-        const indexedSatData = []
-        for (const [index, satData] of Object.entries(this.satData)) {
-            indexedSatData.push(satData)
-        }
-
-        this.satData = indexedSatData;
+        this.satData = Object.values(satDataByKey);
 
         // we are going to find the start and end dates of the TLE data
         this.startDate = new Date("2100");
@@ -367,7 +376,7 @@ export class CTLEData {
     // given a satellite name or number in s, convert it into a valid NORAD number that
     // exists in the TLE database
     // return null if it doesn't exist
-    getNORAD(s) {
+    getNORAD(s: string | number | null | undefined): number | null {
         if (s === undefined || s === null || s === "") {
             return null
         }
@@ -388,8 +397,8 @@ export class CTLEData {
         // which have a name (string) and a number (integer number)
 
         // if it's a number or a string that resolves into a number, the use that number
-        if (typeof s === "number" || typeof s === "string" && !isNaN(s)) {
-            const satNum = parseInt(s)
+        if (typeof s === "number" || typeof s === "string" && !isNaN(Number(s))) {
+            const satNum = typeof s === "number" ? s : parseInt(s)
             // now see if it exists in the TLE database
             for (let i = 0; i < numSatData; i++) {
                 const satData = satDataArray[i]
@@ -450,14 +459,14 @@ export class CTLEData {
 
     }
 
-    getRecordFromNORAD(norad) {
+    getRecordFromNORAD(norad: number): SatData | null {
         if (this.noradIndex[norad] === undefined) {
             return null;
         }
-        return this.noradIndex[norad];
+        return this.noradIndex[norad]!;
     }
 
-    getRecordFromName(name) {
+    getRecordFromName(name: string): SatData | null {
         const NORAD = this.getNORAD(name);
         if (NORAD === null) {
             return null;
@@ -466,7 +475,7 @@ export class CTLEData {
     }
 
     // get array of NORAD numbers that start with the given name
-    getMatchingRecords(name) {
+    getMatchingRecords(name: string): number[] {
         if (this.satData === null) {
             return [];
         }

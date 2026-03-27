@@ -79,6 +79,13 @@ module.exports = (env = {}) => ({
     module: {
         rules: [
             {
+                test: /\.ts$/,
+                loader: 'esbuild-loader',
+                options: {
+                    target: 'es2020',
+                },
+            },
+            {
                 test: /\.css$/,
                 use: [
                     MiniCssExtractPlugin.loader,
@@ -88,7 +95,7 @@ module.exports = (env = {}) => ({
         ],
     },
     resolve: {
-        extensions: ['.js'],
+        extensions: ['.ts', '.js'],
         alias: {
             'three/src': 'three',
         },
