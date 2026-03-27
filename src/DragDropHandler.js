@@ -11,6 +11,7 @@ import {MP4_DEMUXER_EXTENSIONS, WEBAUDIO_SUPPORTED_EXTENSIONS} from "./AudioForm
 import {ViewMan} from "./CViewManager";
 import {quickFetch} from "./quickFetch";
 import {convertTiffBufferToBlobURL} from "./TIFFUtils";
+import {applyImportedImageMetadata, extractJPEGImportMetadata} from "./EXIFUtils";
 
 // Image file extensions
 const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'jp2', 'j2k', 'jpx', 'jpc', 'j2c'];
@@ -363,6 +364,10 @@ class CDragDropHandler {
 
         // Read file as ArrayBuffer for FileManager registration
         const arrayBuffer = await file.arrayBuffer();
+        const importMetadata = await extractJPEGImportMetadata(arrayBuffer, file.name).catch(error => {
+            console.warn(`[EXIF] Failed to parse metadata for ${file.name}:`, error);
+            return null;
+        });
 
         // Register with FileManager so it persists across saves
         FileManager.list[file.name] = {
@@ -382,8 +387,11 @@ class CDragDropHandler {
             // Browser can't decode JP2 natively — decode to Image directly
             const {decodeJPEG2000ToImage} = await import("./JPEG2000Utils");
             const img = await decodeJPEG2000ToImage(arrayBuffer);
-            videoNode.makeImageVideo(file.name, img, false, file.name);
+            videoNode.makeImageVideo(file.name, img, false, file.name, importMetadata, true);
             videoNode.imageFileID = file.name;
+            if (importMetadata) {
+                importMetadata.applied = applyImportedImageMetadata(importMetadata, file.name);
+            }
             console.log(`Loaded J2K image "${file.name}" as video source (${img.width}x${img.height})`);
             markSitchDirty();
             return;
@@ -399,8 +407,11 @@ class CDragDropHandler {
         return new Promise((resolve, reject) => {
             const img = new Image();
             img.onload = () => {
-                videoNode.makeImageVideo(file.name, img, false, file.name);
+                videoNode.makeImageVideo(file.name, img, false, file.name, importMetadata, true);
                 videoNode.imageFileID = file.name;
+                if (importMetadata) {
+                    importMetadata.applied = applyImportedImageMetadata(importMetadata, file.name);
+                }
                 console.log(`Loaded image "${file.name}" as video source (${img.width}x${img.height})`);
                 markSitchDirty();
                 resolve();
