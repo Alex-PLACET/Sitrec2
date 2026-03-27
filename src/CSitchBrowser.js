@@ -6,7 +6,8 @@
  * Right-click context menu with label checkboxes.
  */
 import {isAdmin, SITREC_APP, SITREC_SERVER} from "./configUtils";
-import {getEffectiveUserID, Globals, withTestUser} from "./Globals";
+import {getEffectiveUserID, setNewSitchObject, SitchMan, withTestUser} from "./Globals";
+import {DragDropHandler} from "./DragDropHandler";
 
 const LABEL_COLORS = [
     "#4285f4", "#34a853", "#fbbc04", "#24c1e0",
@@ -528,6 +529,10 @@ export class CSitchBrowser {
         // Keyboard handler
         this._keyHandler = (e) => this._handleKeyDown(e);
         document.addEventListener("keydown", this._keyHandler);
+
+        // File drag-and-drop: allow dropping files onto the sitch browser
+        // to create a new custom sitch with those files
+        this._setupFileDragDrop(overlay);
 
         this.rebuildContent();
     }
@@ -1941,6 +1946,67 @@ export class CSitchBrowser {
         }).catch(err => {
             console.error("Failed to save featured:", err);
             return this._reloadFeaturedFromServer(previousFeatured);
+        });
+    }
+
+    // ==================== FILE DRAG & DROP ====================
+
+    _setupFileDragDrop(overlay) {
+        // Visual feedback element for file drags
+        const dropHint = document.createElement("div");
+        Object.assign(dropHint.style, {
+            position: "absolute", top: "0", left: "0", width: "100%", height: "100%",
+            display: "none", alignItems: "center", justifyContent: "center",
+            backgroundColor: "rgba(46, 160, 67, 0.3)", border: "3px dashed #3fb950",
+            zIndex: "1", pointerEvents: "none", fontSize: "32px", color: "#3fb950",
+            fontWeight: "700",
+        });
+        dropHint.textContent = "Drop files to create a new sitch";
+        overlay.appendChild(dropHint);
+
+        let dragCounter = 0; // track nested dragenter/dragleave pairs
+
+        overlay.addEventListener("dragenter", (e) => {
+            // Only show hint for external file drags, not internal sitch-card drags
+            if (!e.dataTransfer || !e.dataTransfer.types.includes("Files")) return;
+            e.preventDefault();
+            dragCounter++;
+            dropHint.style.display = "flex";
+        });
+
+        overlay.addEventListener("dragover", (e) => {
+            if (!e.dataTransfer || !e.dataTransfer.types.includes("Files")) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+        });
+
+        overlay.addEventListener("dragleave", (e) => {
+            dragCounter--;
+            if (dragCounter <= 0) {
+                dragCounter = 0;
+                dropHint.style.display = "none";
+            }
+        });
+
+        overlay.addEventListener("drop", (e) => {
+            e.preventDefault();
+            e.stopPropagation(); // prevent body-level drop handlers
+            dragCounter = 0;
+            dropHint.style.display = "none";
+
+            const files = e.dataTransfer?.files;
+            if (!files || files.length === 0) return;
+
+            // Stash files for DragDropHandler to process after SitCustom loads
+            for (const file of files) {
+                DragDropHandler.pendingDropFiles.push(file);
+            }
+            console.log("Sitch browser: queued " + files.length + " file(s), loading custom sitch");
+
+            // Close the browser and load SitCustom
+            this.close();
+            const customSitchData = SitchMan.findFirstData(s => s.data.name === "custom");
+            setNewSitchObject(customSitchData);
         });
     }
 

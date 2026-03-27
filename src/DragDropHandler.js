@@ -21,6 +21,7 @@ class CDragDropHandler {
     constructor() {
         this.dropAreas = [];
         this.dropQueue = []; // Queue for dropped files that need parsing
+        this.pendingDropFiles = []; // Files dropped before a sitch was loaded (e.g. on sitch browser)
     }
 
     /**
@@ -207,6 +208,16 @@ class CDragDropHandler {
         });
 
         document.body.addEventListener('drop', this.onDrop.bind(this));
+
+        // Process any files that were dropped on the sitch browser before this sitch loaded
+        if (this.pendingDropFiles.length > 0) {
+            const pending = this.pendingDropFiles;
+            this.pendingDropFiles = [];
+            console.log("Processing " + pending.length + " deferred drop file(s)");
+            for (const file of pending) {
+                this.uploadDroppedFile(file, file.name);
+            }
+        }
     }
 
     showDropZone(message) {
