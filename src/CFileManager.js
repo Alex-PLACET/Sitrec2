@@ -3075,7 +3075,7 @@ export class CFileManager extends CManager {
 
         // Handle FlightClub JSON files - convert to CSV tracks
         if (fileManagerEntry.dataType === "flightclub") {
-            this.handleFlightClubJSON(filename, parsedFile, fileManagerEntry);
+            await this.handleFlightClubJSON(filename, parsedFile, fileManagerEntry);
             return true;
         }
 
@@ -3298,7 +3298,7 @@ export class CFileManager extends CManager {
             }
 
             if (isATrack) {
-                TrackManager.addTracks([filename], true)
+                await TrackManager.addTracks([filename], true)
                 // Call extractObjects for all CTrackFile types (no-op for most, extracts features for KML)
                 if (parsedFile instanceof CTrackFile) {
                     parsedFile.extractObjects()
@@ -3533,7 +3533,7 @@ export class CFileManager extends CManager {
         }
     }
 
-    handleFlightClubJSON(filename, jsonData, fileManagerEntry) {
+    async handleFlightClubJSON(filename, jsonData, fileManagerEntry) {
         console.log("Processing FlightClub JSON: " + filename);
 
         fileManagerEntry.skipSerialization = true;
@@ -3564,7 +3564,7 @@ export class CFileManager extends CManager {
             console.log(`Created track file "${result.stageName}" as ${csvFilename}`);
         });
 
-        TrackManager.addTracks(trackFilenames, true);
+        await TrackManager.addTracks(trackFilenames, true);
 
         if (NodeMan.exists("notesView")) {
             const notesView = NodeMan.get("notesView");

@@ -41,6 +41,7 @@ import {CNodeDisplaySondeWind} from "./nodes/CNodeDisplaySondeWind";
 import {CNodeAtmosphericProfile} from "./nodes/CNodeAtmosphericProfile";
 import {detectRocketLikeTrack} from "./trackHeuristics";
 import {hasOtherTrackSourceReference} from "./trackSourceUtils";
+import {extractTrackPreviewInfo, showMultiTrackLoadDialog, getCameraFilterState} from "./TrackFilterDialog";
 
 function disposeDirectTrackDependentControllers(trackNode) {
     if (!trackNode?.outputs?.length) {
@@ -354,10 +355,10 @@ class CTrackManager extends CManager {
 
 // tracks = array of filenames of files that have been loaded and that
 // we want to make tracks from
-    addTracks(trackFiles, removeDuplicates = false, sphereMask = LAYER.MASK_HELPERS) {
+    async addTracks(trackFiles, removeDuplicates = false, sphereMask = LAYER.MASK_HELPERS, options = {}) {
 
         let settingSitchEstablished = false;
-
+        const showDialog = options.showDialog !== false;
 
         console.log("-----------------------------------------------------")
         console.log("addTracks called with ", trackFiles)
@@ -376,6 +377,35 @@ class CTrackManager extends CManager {
             )
         }
 
+        // Pre-scan: for files with 3+ tracks, show selection dialog
+        const selectedIndicesMap = new Map(); // filename -> Set<number>
+        if (showDialog) {
+            for (const trackFileName of trackFiles) {
+                const file = FileManager.get(trackFileName);
+                if (file instanceof CTrackFile) {
+                    const trackCount = file.getTrackCount();
+                    if (trackCount >= 3) {
+                        // Build preview info for all tracks
+                        const previewInfos = [];
+                        for (let i = 0; i < trackCount; i++) {
+                            const info = extractTrackPreviewInfo(file, i, trackFileName);
+                            if (info) previewInfos.push(info);
+                        }
+                        if (previewInfos.length >= 3) {
+                            const {hasFrustum, cameraPosition} = getCameraFilterState();
+                            const selected = await showMultiTrackLoadDialog(previewInfos, hasFrustum, cameraPosition);
+                            if (selected === null) {
+                                // User cancelled — skip this file entirely
+                                selectedIndicesMap.set(trackFileName, new Set());
+                                continue;
+                            }
+                            selectedIndicesMap.set(trackFileName, new Set(selected));
+                        }
+                    }
+                }
+            }
+        }
+
         for (const trackFileName of trackFiles) {
             ////////////////////////////////////////////////////
 
@@ -384,6 +414,7 @@ class CTrackManager extends CManager {
             // for example the ADSB-Exchange files can have an array of tracks
             // to handle this we pass in an index to the parsing function
 
+            const selectedSet = selectedIndicesMap.get(trackFileName);
 
             let moreTracks = true;
             let trackIndex = 0;
@@ -402,6 +433,12 @@ class CTrackManager extends CManager {
                 const __ret = this.findShortName(trackFileName, trackIndex, moreTracks);
                 let shortName = __ret.shortName;
                 moreTracks = __ret.moreTracks;
+
+                // Skip tracks not selected by the user in the multi-track dialog
+                if (selectedSet && !selectedSet.has(trackIndex)) {
+                    trackIndex++;
+                    continue;
+                }
 
                 const trackDataID = "TrackData_" + shortName;
                 const trackID = "Track_" + shortName;

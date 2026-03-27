@@ -62,6 +62,7 @@ import {CNodeTrackGUI} from "./nodes/CNodeControllerTrackGUI";
 import {forceUpdateUIText} from "./nodes/CNodeViewUI";
 import {configParams} from "./runtimeConfig";
 import {showError} from "./showError";
+import {showPostLoadFilterDialog} from "./TrackFilterDialog";
 import {textSitchToObject} from "./RegisterSitches";
 import {waitForExportFrameSettled} from "./ExportFrameSettler";
 import {parseObjectInput as parseObjectInputUtil} from "./utils/parseObjectInput";
@@ -614,6 +615,11 @@ export class CCustomManager {
                 })
                 .listen();
         }
+
+        guiMenus.contents.add(this, "filterTracks")
+            .name("Filter Tracks")
+            .moveToFirst()
+            .tooltip("Show/hide tracks based on altitude, direction, or frustum intersection")
 
         guiMenus.contents.add(this, "removeAllTracks")
             .name("Remove All Tracks")
@@ -3084,6 +3090,9 @@ export class CCustomManager {
 
     }
 
+    async filterTracks() {
+        await showPostLoadFilterDialog();
+    }
 
     calculateBestPairs() {
         // given the camera position for lookCamera at point A and B

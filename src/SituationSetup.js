@@ -1070,7 +1070,7 @@ export async function SetupFromKeyAndData(key, _data, depth=0) {
             SSLog();
             const sphereMask = data.sphereMask ?? LAYER.MASK_HELPERS;
             const removeDuplicates = data.removeDuplicates ?? false;
-            TrackManager.addTracks(data.tracks, removeDuplicates, sphereMask);
+            await TrackManager.addTracks(data.tracks, removeDuplicates, sphereMask, { showDialog: false });
             break;
 
         case "targetWind":
