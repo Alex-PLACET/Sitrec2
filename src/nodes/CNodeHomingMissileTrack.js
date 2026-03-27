@@ -188,7 +188,7 @@ export class CNodeHomingMissileTrack extends CNodeTrack {
         }
 
         // patch, not working missiles disabled for now.
-        showObject("missileObect")
+        showObject("missileObject")
         showObject("displayMissileTrack")
         showObject("speedGraphForMissile")
         showObject("moveMissileAlongPath")

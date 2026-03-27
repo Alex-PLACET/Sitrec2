@@ -1,6 +1,5 @@
 import {CNodeViewUI} from "./CNodeViewUI";
 import {Vector2} from "three";
-import {par} from "../par";
 import {mouseToCanvas} from "../ViewUtils";
 import {setRenderOne} from "../Globals";
 
@@ -137,7 +136,7 @@ export class CNodeDDI extends CNodeViewUI {
     }
 
     setButtonText(n, text) {
-        this.buttons[number].textObject.text = text
+        this.buttons[n].textObject.text = text
     }
 
     update() {

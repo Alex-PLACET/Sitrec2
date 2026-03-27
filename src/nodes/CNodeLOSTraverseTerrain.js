@@ -111,5 +111,4 @@ function interpolateSteppedPositions(a, frames, step) {
             a[f + i] = {position: pos.clone()}
         }
     }
-    ``
 }
