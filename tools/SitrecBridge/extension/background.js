@@ -29,7 +29,8 @@ let reconnectInterval = RECONNECT_INTERVAL_MS;
 let sitrecTabId = null;
 const knownSitrecTabs = new Map();  // Tab ID → { buildDir } — confirmed as Sitrec by content script keepalive
 let forceNextConnect = false;   // Set by popup "Reconnect" to override server rejection
-let rejectedByServer = false;   // True after server rejects us — suppresses ALL auto-reconnect
+let rejectedByServer = false;   // True after max retries — suppresses auto-reconnect until popup Reconnect
+let rejectionRetries = 0;       // Count of consecutive rejections before giving up
 let sourceVersion = null;       // Version from source manifest.json (sent by MCP server)
 let currentCommand = null;      // Currently executing MCP command {action, detail, startTime}
 let commandHistory = [];        // Recent commands [{action, detail, startTime, endTime, ok}]
@@ -82,24 +83,36 @@ async function connect() {
             const msg = JSON.parse(event.data);
 
             // Server rejected us — another extension is already connected.
-            // Stop all auto-reconnect. Only the popup Reconnect button can clear this.
-            // We close the WebSocket ourselves (server leaves it open for us to close
-            // cleanly, avoiding race conditions with close-before-message delivery).
+            // Server rejected us — another extension is connected.
+            // Retry a few times with backoff (the existing connection may be stale
+            // from an extension reload, and the server's liveness probe will clear it).
+            // After max retries, stop and require manual Reconnect from popup.
             if (msg.type === "rejected") {
-                rejectedByServer = true;
-                console.log("[SitrecBridge] Server rejected: " + (msg.reason || "another extension active"));
-                // Close our end — onclose will fire but rejectedByServer is already set,
-                // so it won't scheduleReconnect.
+                rejectionRetries = (rejectionRetries || 0) + 1;
+                const MAX_REJECTION_RETRIES = 3;
+                console.log("[SitrecBridge] Server rejected (" + rejectionRetries + "/" + MAX_REJECTION_RETRIES + "): " + (msg.reason || "another extension active"));
                 if (ws) {
                     ws.close();
+                }
+                if (rejectionRetries >= MAX_REJECTION_RETRIES) {
+                    rejectedByServer = true;
+                    rejectionRetries = 0;
+                    console.log("[SitrecBridge] Max rejection retries reached — stopping auto-reconnect");
+                } else {
+                    // Retry after a delay — the server may clear the stale connection
+                    reconnectInterval = 3000;
+                    scheduleReconnect();
                 }
                 updatePopupState();
                 return;
             }
 
             // Version info from the server (source manifest version)
+            // This confirms the server accepted us — reset rejection state
             if (msg.type === "version-info") {
                 sourceVersion = msg.sourceVersion || null;
+                rejectedByServer = false;
+                rejectionRetries = 0;
                 updatePopupState();
                 return;
             }
