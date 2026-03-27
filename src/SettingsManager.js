@@ -353,9 +353,13 @@ export async function initializeSettings() {
  */
 export async function saveSettings() {
 
+    if (Globals.regression) {
+        return true;
+    }
+
     const settings = Globals.settings;
     const currentJSON = JSON.stringify(sanitizeSettings(settings));
-    
+
     if (currentJSON === Globals.lastSettingsJSON) {
         // console.log("Settings unchanged, skipping save");
         return true;
