@@ -140,16 +140,16 @@ describe("ModelLoader", () => {
         expect(isSupportedModelFile("model.glb")).toBe(true);
         expect(isSupportedModelFile("model.ply")).toBe(true);
         expect(isSupportedModelFile("model.PLY?cache=1")).toBe(true);
-        expect(isSupportedModelFile("shahad_#L24.5#_.glb")).toBe(true);
+        expect(isSupportedModelFile("shahad_~L24.5~_.glb")).toBe(true);
         expect(isSupportedModelFile("model.obj")).toBe(false);
     });
 
     test("extracts model-length metadata from filename parameters", () => {
-        expect(extractModelFilenameParameters("shahad_#L24.5#_.glb")).toEqual({modelLength: 24.5});
-        expect(extractModelFilenameParameters("shahad#L24.5ft#.glb")).toEqual({modelLength: 24.5});
-        expect(extractModelFilenameParameters("shahad#L24.5FEET#.glb")).toEqual({modelLength: 24.5});
-        expect(extractModelFilenameParameters("shahad#L3.5m#.glb").modelLength).toBeCloseTo(11.4829396325);
-        expect(extractModelFilenameParameters("shahad#L3.5MeTeRs#.glb").modelLength).toBeCloseTo(11.4829396325);
+        expect(extractModelFilenameParameters("shahad_~L24.5~_.glb")).toEqual({modelLength: 24.5});
+        expect(extractModelFilenameParameters("shahad~L24.5ft~.glb")).toEqual({modelLength: 24.5});
+        expect(extractModelFilenameParameters("shahad~L24.5FEET~.glb")).toEqual({modelLength: 24.5});
+        expect(extractModelFilenameParameters("shahad~L3.5m~.glb").modelLength).toBeCloseTo(11.4829396325);
+        expect(extractModelFilenameParameters("shahad~L3.5MeTeRs~.glb").modelLength).toBeCloseTo(11.4829396325);
         expect(extractModelFilenameParameters("plain-model.glb")).toEqual({});
     });
 
@@ -181,14 +181,14 @@ describe("ModelLoader", () => {
     });
 
     test("attaches filename parameters to loaded model assets", async () => {
-        const modelAsset = await parseModelData("shahad_#L24.5#_.glb", new ArrayBuffer(0));
+        const modelAsset = await parseModelData("shahad_~L24.5~_.glb", new ArrayBuffer(0));
 
         expect(modelAsset.filenameParameters).toEqual({modelLength: 24.5});
         expect(modelAsset.scene.userData.sitrecFilenameParameters).toEqual({modelLength: 24.5});
     });
 
     test("converts meter filename suffixes to feet for model-length scaling", async () => {
-        const modelAsset = await parseModelData("shahad#L3.5m#.glb", new ArrayBuffer(0));
+        const modelAsset = await parseModelData("shahad~L3.5m~.glb", new ArrayBuffer(0));
 
         expect(modelAsset.filenameParameters.modelLength).toBeCloseTo(11.4829396325);
         expect(modelAsset.scene.userData.sitrecFilenameParameters.modelLength).toBeCloseTo(11.4829396325);

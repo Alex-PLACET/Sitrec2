@@ -50,14 +50,14 @@ Both formats can be dragged and dropped into the Model Inspector or any moddable
 
 ### Filename Length Parameter
 
-You can embed the real-world length of a model directly in its filename using the format `#L<value><units>#`. When Sitrec loads the model, it reads this parameter and automatically sets the model scale so the longest dimension matches the specified length.
+You can embed the real-world length of a model directly in its filename using the format `~L<value><units>~`. When Sitrec loads the model, it reads this parameter and automatically sets the model scale so the longest dimension matches the specified length.
 
-**Format:** `modelname#L<number><units>#.glb` (or `.ply`)
+**Format:** `modelname~L<number><units>~.glb` (or `.ply`)
 
 **Supported units:**
-- Meters: `m`, `meter`, `meters` — e.g. `shahed#L3.5m#.glb` (3.5 meters)
-- Feet: `f`, `ft`, `feet` — e.g. `drone#L24.5ft#.glb` (24.5 feet)
-- No unit defaults to feet — e.g. `thing#L100#.glb` (100 feet)
+- Meters: `m`, `meter`, `meters` — e.g. `shahed~L3.5m~.glb` (3.5 meters)
+- Feet: `f`, `ft`, `feet` — e.g. `drone~L24.5ft~.glb` (24.5 feet)
+- No unit defaults to feet — e.g. `thing~L100~.glb` (100 feet)
 
 This is particularly useful for models that don't have a consistent internal scale, or when you want to quickly try different sizes without editing the model. The length parameter is applied when the model loads — you can still adjust the "Model Length" slider in the Objects menu afterward.
 
@@ -97,7 +97,7 @@ To export a file, use File->Export-> glTF 2.0 (.glb/.gltf).
 Click on "Remember Export Settings" and then ensure the following are set:
 ![Blender-glb-export.jpg](docimages/Blender-glb-export.jpg)
 
-Then export the file. If you want to embed a known real-world length, rename the file to include a length parameter (e.g. `my-drone#L3.5m#.glb`). You should now be able to drag and drop this into the Sitrec model inspector, or any moddable sitch that supports it (e.g. FLIR1).
+Then export the file. If you want to embed a known real-world length, rename the file to include a length parameter (e.g. `my-drone~L3.5m~.glb`). You should now be able to drag and drop this into the Sitrec model inspector, or any moddable sitch that supports it (e.g. FLIR1).
 
 ### PLY Files
 
@@ -108,5 +108,5 @@ PLY files don't go through the Blender export pipeline. They are typically produ
 
 Sitrec auto-detects which type of PLY it is by inspecting the file header. If the PLY has face elements, it's loaded as a mesh. If it has `scale_0`/`rot_0` attributes, it's treated as a Gaussian splat. Otherwise it's rendered as a point cloud.
 
-Gaussian splat PLY files are rendered with proper elliptical splatting and per-frame back-to-front sorting for correct transparency. The filename length parameter (`#L...#`) works with PLY files too.
+Gaussian splat PLY files are rendered with proper elliptical splatting and per-frame back-to-front sorting for correct transparency. The filename length parameter (`~L...~`) works with PLY files too.
 

@@ -472,8 +472,8 @@ export function isHttpOrHttps(url) {
 export function stripURLSuffixPreservingHashParameters(filename) {
     let stripped = String(filename).split("?")[0];
 
-    // Preserve paired hash sections used as in-filename metadata (for example #L24.5#),
-    // while still trimming a trailing URL fragment like "model.glb#cache".
+    // Trim trailing URL fragment (e.g. "model.glb#cache").
+    // Tilde-delimited metadata sections (e.g. ~L24.5~) are not affected.
     const lastDotIndex = stripped.lastIndexOf(".");
     const hashAfterExtensionIndex = lastDotIndex >= 0 ? stripped.indexOf("#", lastDotIndex) : -1;
     if (hashAfterExtensionIndex !== -1) {

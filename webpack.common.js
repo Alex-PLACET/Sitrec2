@@ -273,10 +273,15 @@ ${bodyContent}
         // Write build-version.txt so the app can detect stale cached index.html
         {
             apply: (compiler) => {
-                compiler.hooks.emit.tap('WriteBuildVersion', (compilation) => {
-                    const version = buildVersionString;
-                    compilation.emitAsset('build-version.txt',
-                        new webpack.sources.RawSource(version));
+                compiler.hooks.compilation.tap('WriteBuildVersion', (compilation) => {
+                    compilation.hooks.processAssets.tap(
+                        { name: 'WriteBuildVersion', stage: webpack.Compilation.PROCESS_ASSETS_STAGE_ADDITIONAL },
+                        () => {
+                            const version = buildVersionString;
+                            compilation.emitAsset('build-version.txt',
+                                new webpack.sources.RawSource(version));
+                        }
+                    );
                 });
             }
         },
