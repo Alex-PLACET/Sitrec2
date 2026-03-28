@@ -74,7 +74,11 @@
     "roots": [
       "<rootDir>"
     ],
-    "moduleFileExtensions": ["ts", "js", "json"],
+    "moduleFileExtensions": [
+      "ts",
+      "js",
+      "json"
+    ],
     "transform": {
       "\\.[jt]s$": "babel-jest"
     }
@@ -117,7 +121,6 @@
     "copy-webpack-plugin": "^14.0.0",
     "css-loader": "^7.1.2",
     "dotenv-webpack": "^8.1.1",
-    "esbuild-jest": "^0.5.0",
     "esbuild-loader": "^4.4.2",
     "express": "^5.2.1",
     "html-webpack-plugin": "^5.6.4",
