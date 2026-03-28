@@ -3039,7 +3039,7 @@ export class CFileManager extends CManager {
      * @param {string} filename - The name of the file
      * @param {*} parsedFile - The parsed file data (type varies by file format)
      */
-    async handleParsedFile(filename, parsedFile) {
+    async handleParsedFile(filename, parsedFile, trackOptions = {}) {
         console.log("handleParsedFile: Handling parsed file " + filename)
 
 
@@ -3298,7 +3298,7 @@ export class CFileManager extends CManager {
             }
 
             if (isATrack) {
-                await TrackManager.addTracks([filename], true)
+                await TrackManager.addTracks([filename], true, undefined, trackOptions)
                 // Call extractObjects for all CTrackFile types (no-op for most, extracts features for KML)
                 if (parsedFile instanceof CTrackFile) {
                     parsedFile.extractObjects()

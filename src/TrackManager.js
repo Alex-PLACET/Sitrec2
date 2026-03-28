@@ -67,10 +67,11 @@ function disposeDirectTrackDependentControllers(trackNode) {
 
 
 class CMetaTrack {
-    constructor(trackFileName, trackDataNode, trackNode) {
+    constructor(trackFileName, trackDataNode, trackNode, trackIndex = 0) {
         this.trackNode = trackNode;
         this.trackDataNode = trackDataNode;
         this.trackFileName = trackFileName;
+        this.trackIndex = trackIndex;
         this.isSynthetic = false; // Flag to identify synthetic tracks
     }
 
@@ -358,7 +359,7 @@ class CTrackManager extends CManager {
     async addTracks(trackFiles, removeDuplicates = false, sphereMask = LAYER.MASK_HELPERS, options = {}) {
 
         let settingSitchEstablished = false;
-        const showDialog = options.showDialog !== false;
+        const showDialog = options.showDialog !== false && !Globals.deserializing;
 
         console.log("-----------------------------------------------------")
         console.log("addTracks called with ", trackFiles)
@@ -379,7 +380,13 @@ class CTrackManager extends CManager {
 
         // Pre-scan: for files with 3+ tracks, show selection dialog
         const selectedIndicesMap = new Map(); // filename -> Set<number>
-        if (showDialog) {
+
+        // If pre-selected track indices are provided (e.g. from saved sitch), use them directly
+        if (options.selectedTracks) {
+            for (const trackFileName of trackFiles) {
+                selectedIndicesMap.set(trackFileName, new Set(options.selectedTracks));
+            }
+        } else if (showDialog) {
             for (const trackFileName of trackFiles) {
                 const file = FileManager.get(trackFileName);
                 if (file instanceof CTrackFile) {
@@ -497,7 +504,7 @@ class CTrackManager extends CManager {
                     const misb = trackDataNode.misb;
 
                     // Create the track object
-                    const trackOb = TrackManager.add(trackID, new CMetaTrack(trackFileName, trackDataNode, trackNode));
+                    const trackOb = TrackManager.add(trackID, new CMetaTrack(trackFileName, trackDataNode, trackNode, trackIndex));
                     trackOb.trackID = trackID;
                     trackOb.menuText = shortName;
                     trackNode.shortName = shortName;

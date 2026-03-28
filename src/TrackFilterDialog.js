@@ -36,6 +36,8 @@ export function extractTrackPreviewInfo(trackFile, trackIndex, filename) {
     let altMaxM = -Infinity;
     const ecefSamples = [];
     let sampleCount = 0;
+    let firstECEF = null;
+    let lastECEF = null;
 
     for (let i = 0; i < misb.length; i++) {
         const t = misb[i][MISB.UnixTimeStamp];
@@ -47,16 +49,27 @@ export function extractTrackPreviewInfo(trackFile, trackIndex, filename) {
             if (alt > altMaxM) altMaxM = alt;
         }
 
-        // Sample every 10th in-window point for ECEF
-        if (sampleCount % 10 === 0) {
-            const lat = misb[i][MISB.SensorLatitude];
-            const lon = misb[i][MISB.SensorLongitude];
+        const lat = misb[i][MISB.SensorLatitude];
+        const lon = misb[i][MISB.SensorLongitude];
+        if (lat !== null && lat !== undefined && lon !== null && lon !== undefined && isFinite(lat) && isFinite(lon)) {
             const a = alt ?? 0;
-            if (lat !== null && lat !== undefined && lon !== null && lon !== undefined && isFinite(lat) && isFinite(lon)) {
-                ecefSamples.push(LLAToECEF(lat, lon, a));
+            const ecef = LLAToECEF(lat, lon, a);
+            // Always track first and last valid in-window points
+            if (!firstECEF) firstECEF = ecef;
+            lastECEF = ecef;
+            // Sample every 10th in-window point for frustum checks
+            if (sampleCount % 10 === 0) {
+                ecefSamples.push(ecef);
             }
         }
         sampleCount++;
+    }
+    // Ensure first and last in-window points are included (needed for towards/away filters)
+    if (firstECEF && (ecefSamples.length === 0 || ecefSamples[0] !== firstECEF)) {
+        ecefSamples.unshift(firstECEF);
+    }
+    if (lastECEF && lastECEF !== firstECEF && ecefSamples[ecefSamples.length - 1] !== lastECEF) {
+        ecefSamples.push(lastECEF);
     }
 
     if (altMinM === Infinity) altMinM = 0;
@@ -655,6 +668,8 @@ export async function showPostLoadFilterDialog() {
         let altMinM = Infinity, altMaxM = -Infinity;
         const ecefSamples = [];
         let sampleCount = 0;
+        let firstECEF = null;
+        let lastECEF = null;
 
         for (let i = 0; i < misb.length; i++) {
             const t = misb[i][MISB.UnixTimeStamp];
@@ -666,15 +681,25 @@ export async function showPostLoadFilterDialog() {
                 if (alt > altMaxM) altMaxM = alt;
             }
 
-            if (sampleCount % 10 === 0) {
-                const lat = misb[i][MISB.SensorLatitude];
-                const lon = misb[i][MISB.SensorLongitude];
+            const lat = misb[i][MISB.SensorLatitude];
+            const lon = misb[i][MISB.SensorLongitude];
+            if (lat !== null && lat !== undefined && lon !== null && lon !== undefined && isFinite(lat) && isFinite(lon)) {
                 const a = alt ?? 0;
-                if (lat !== null && lat !== undefined && lon !== null && lon !== undefined && isFinite(lat) && isFinite(lon)) {
-                    ecefSamples.push(LLAToECEF(lat, lon, a));
+                const ecef = LLAToECEF(lat, lon, a);
+                if (!firstECEF) firstECEF = ecef;
+                lastECEF = ecef;
+                if (sampleCount % 10 === 0) {
+                    ecefSamples.push(ecef);
                 }
             }
             sampleCount++;
+        }
+        // Ensure first and last in-window points are included (needed for towards/away filters)
+        if (firstECEF && (ecefSamples.length === 0 || ecefSamples[0] !== firstECEF)) {
+            ecefSamples.unshift(firstECEF);
+        }
+        if (lastECEF && lastECEF !== firstECEF && ecefSamples[ecefSamples.length - 1] !== lastECEF) {
+            ecefSamples.push(lastECEF);
         }
 
         if (altMinM === Infinity) altMinM = 0;

@@ -3781,6 +3781,22 @@ export class CCustomManager {
                     filesMetadata[id] = { dataType: file.dataType };
                 }
             }
+
+            // Save which track indices are loaded from each multi-track file
+            // so we can skip the selection dialog on reload
+            const trackIndicesPerFile = {};
+            TrackManager.iterate((trackId, metaTrack) => {
+                if (metaTrack.isSynthetic || !metaTrack.trackFileName) return;
+                if (!trackIndicesPerFile[metaTrack.trackFileName]) {
+                    trackIndicesPerFile[metaTrack.trackFileName] = [];
+                }
+                trackIndicesPerFile[metaTrack.trackFileName].push(metaTrack.trackIndex);
+            });
+            for (const [fileId, indices] of Object.entries(trackIndicesPerFile)) {
+                if (!filesMetadata[fileId]) filesMetadata[fileId] = {};
+                filesMetadata[fileId].selectedTracks = indices;
+            }
+
             if (Object.keys(filesMetadata).length > 0) {
                 out.loadedFilesMetadata = filesMetadata;
             }
@@ -4299,7 +4315,13 @@ export class CCustomManager {
                                     FileManager.kmzImageMap[metadata.kmzHref] = FileManager.list[fileID].blobURL;
                                 }
                             }
-                            FileManager.handleParsedFile(fileID, parsedFile);
+                            // Pass saved track selections to skip the multi-track dialog on reload
+                            const trackOptions = {};
+                            if (metadata?.selectedTracks) {
+                                trackOptions.showDialog = false;
+                                trackOptions.selectedTracks = metadata.selectedTracks;
+                            }
+                            FileManager.handleParsedFile(fileID, parsedFile, trackOptions);
                         }
 
                         Globals.dontAutoZoom = false;
