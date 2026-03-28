@@ -10,16 +10,19 @@ const isServerlessBuild = process.env.IS_SERVERLESS_BUILD === 'true';
 
 const patterns = [];
 
+// Global ignore list applied to all copy patterns that use globs
+const globalIgnore = ['**/.DS_Store'];
+
 // Data directory handling
 if (isServerlessBuild) {
     // For serverless: only copy essential data directories
     const serverlessDataDirs = ['custom', 'images', 'models', 'modelInspector', 'nightsky'];
     serverlessDataDirs.forEach(dir => {
-        patterns.push({ from: `data/${dir}`, to: `./data/${dir}` });
+        patterns.push({ from: `data/${dir}`, to: `./data/${dir}`, globOptions: { ignore: globalIgnore } });
     });
 } else {
     // For non-serverless: copy entire data directory
-    patterns.push({ from: "data", to: "./data" });
+    patterns.push({ from: "data", to: "./data", globOptions: { ignore: globalIgnore } });
 }
 
 // Web worker source code needs to be loaded at run time
@@ -30,14 +33,14 @@ patterns.push({ from: "./src/PixelFilters.js", to:"./src" });
 
 // Copy tools directory (exclude SitrecBridge dev artifacts — only the dist zip is needed)
 patterns.push({ from: "tools", to: "./tools", globOptions: {
-    ignore: ["**/SitrecBridge/node_modules/**", "**/SitrecBridge/package-lock.json"],
+    ignore: [...globalIgnore, "**/SitrecBridge/node_modules/**", "**/SitrecBridge/package-lock.json"],
 } });
 patterns.push({ from: "assets/install", to: "./install" });
 
 // Copy tests directory (for browser-based benchmarks/tests) - dev only
 // DOCKER_BUILD is set in Dockerfile for production builds
 if (!process.env.DOCKER_BUILD && !isServerlessBuild) {
-    patterns.push({ from: "tests", to: "./tests" });
+    patterns.push({ from: "tests", to: "./tests", globOptions: { ignore: globalIgnore } });
 }
 
 // Only copy sitrecServer and config.php in non-serverless, non-Docker environments
@@ -52,7 +55,7 @@ if (!isDockerDev && !isServerlessBuild) {
             from: "sitrecServer", 
             to: "./sitrecServer",
             globOptions: {
-                ignore: ['**/config.php']
+                ignore: [...globalIgnore, '**/config.php']
             }
         }
     );
@@ -134,7 +137,7 @@ patterns.push({
 patterns.push({
     from: path.dirname(require.resolve('@cornerstonejs/codec-openjpeg/decodewasmjs')),
     to: './libs/openjpeg',
-    globOptions: { ignore: ['**/openjpegjs.js', '**/openjpegwasm.js', '**/openjpegwasm.wasm'] },
+    globOptions: { ignore: [...globalIgnore, '**/openjpegjs.js', '**/openjpegwasm.js', '**/openjpegwasm.wasm'] },
 });
 
 module.exports = patterns;

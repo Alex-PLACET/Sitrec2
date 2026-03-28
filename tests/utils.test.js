@@ -366,8 +366,8 @@ describe('cleanFloat', () => {
 });
 
 describe("getFileExtension", () => {
-    test("preserves paired hash filename parameters before the extension", () => {
-        expect(getFileExtension("shahad_#L24.5#_.glb")).toBe("glb");
+    test("preserves tilde-delimited filename parameters before the extension", () => {
+        expect(getFileExtension("shahad_~L24.5~_.glb")).toBe("glb");
     });
 
     test("strips trailing URL fragments that come after the extension", () => {

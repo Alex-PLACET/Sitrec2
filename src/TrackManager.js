@@ -841,7 +841,7 @@ class CTrackManager extends CManager {
         const trackFile = FileManager.get(trackOb.trackFileName);
         const forceCenter = trackFile && trackFile.autoSelectAsCamera;
 
-        if (Sit.centerOnLoadedTracks && !Globals.dontAutoZoom && (!Globals.sitchEstablished || forceCenter)) {
+        if (Sit.centerOnLoadedTracks && (!Globals.dontAutoZoom || forceCenter) && (!Globals.sitchEstablished || forceCenter)) {
 
 
 //            console.log("Centering on loaded track ", shortName)
@@ -1147,12 +1147,14 @@ class CTrackManager extends CManager {
             lookCamera.addControllerNode(anglesController)
 
             const dropTargets = Sit.dropTargets["angles"]
+            const autoTrackFile = FileManager.get(trackOb.trackFileName);
+            const forceAngles = autoTrackFile && autoTrackFile.autoSelectAsCamera;
             for (const dropTargetSwitch of dropTargets) {
                 if (NodeMan.exists(dropTargetSwitch)) {
                     const switchNode = NodeMan.get(dropTargetSwitch);
                     switchNode.removeOption(anglesID)
                     switchNode.addOption(anglesID, NodeMan.get(anglesID))
-                    if (!Globals.sitchEstablished) {
+                    if (!Globals.sitchEstablished || forceAngles) {
                         switchNode.selectOption(anglesID)
                     }
                 }

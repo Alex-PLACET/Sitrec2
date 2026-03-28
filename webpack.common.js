@@ -124,6 +124,9 @@ module.exports = (env = {}) => ({
         new HtmlWebpackPlugin({
             title: "Sitrec - Metabunk's Situation Recreation Tool",
             meta: {
+                'Cache-Control': { 'http-equiv': 'Cache-Control', content: 'no-cache, no-store, must-revalidate' },
+                'Pragma': { 'http-equiv': 'Pragma', content: 'no-cache' },
+                'Expires': { 'http-equiv': 'Expires', content: '0' },
                 'apple-touch-icon': {
                     rel: 'apple-touch-icon',
                     sizes: '180x180',
@@ -270,13 +273,30 @@ ${bodyContent}
             )),
         }),
 
+        // Print build success with version string after webpack's summary line
+        {
+            apply: (compiler) => {
+                compiler.hooks.done.tap('PrintBuildTime', (stats) => {
+                    setImmediate(() => {
+                        const duration = (stats.endTime - stats.startTime) / 1000;
+                        console.log(`SUCCESS: ${buildVersionString} in ${duration.toFixed(1)}s`);
+                    });
+                });
+            }
+        },
+
         // Write build-version.txt so the app can detect stale cached index.html
         {
             apply: (compiler) => {
-                compiler.hooks.emit.tap('WriteBuildVersion', (compilation) => {
-                    const version = buildVersionString;
-                    compilation.emitAsset('build-version.txt',
-                        new webpack.sources.RawSource(version));
+                compiler.hooks.compilation.tap('WriteBuildVersion', (compilation) => {
+                    compilation.hooks.processAssets.tap(
+                        { name: 'WriteBuildVersion', stage: webpack.Compilation.PROCESS_ASSETS_STAGE_ADDITIONAL },
+                        () => {
+                            const version = buildVersionString;
+                            compilation.emitAsset('build-version.txt',
+                                new webpack.sources.RawSource(version));
+                        }
+                    );
                 });
             }
         },
