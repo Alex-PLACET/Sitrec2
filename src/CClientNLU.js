@@ -8,6 +8,11 @@ const GEOMETRY_TYPES = ["sphere", "ellipsoid", "box", "capsule", "circle", "cone
     "dodecahedron", "icosahedron", "octahedron", "ring", "tictac",
     "tetrahedron", "torus", "torusknot", "superegg"];
 
+// Fallback for alias keys that don't appear in any ModelFiles key name
+const ALIAS_MODELS = {
+    jet: "F/A-18F",
+};
+
 const ALIASES = {
     fov: ["fov", "vfov", "hfov", "field of view", "fieldofview"],
     satellites: ["sats", "satellites", "satellite", "sat"],
@@ -327,6 +332,7 @@ class CClientNLU {
             if (variants.includes(lower)) {
                 const aliasModel = modelKeys.find(m => m.toLowerCase().includes(alias));
                 if (aliasModel) return aliasModel;
+                if (ALIAS_MODELS[alias]) return ALIAS_MODELS[alias];
             }
         }
         return modelName || null;

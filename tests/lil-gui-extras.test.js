@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 
-import {CGuiMenuBar} from '../src/lil-gui-extras.js';
+import {CGuiMenuBar} from '../src/lil-gui-extras';
 import {addMenuToRightSidebar, getRightSidebar, hideLeftSidebar, hideRightSidebar} from '../src/PageStructure';
 
 // Polyfill PointerEvent for jsdom environment

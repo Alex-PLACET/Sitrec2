@@ -9,7 +9,7 @@ import {
     RLLAToECEF,
     RLLAToECEFV_Sphere,
     wgs84
-} from '../src/LLA-ECEF-ENU.js';
+} from '../src/LLA-ECEF-ENU';
 import {Vector3} from 'three';
 
 describe('wgs84 constants', () => {

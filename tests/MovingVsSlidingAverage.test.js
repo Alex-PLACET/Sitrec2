@@ -1,4 +1,4 @@
-import {RollingAverage, RollingAveragePolyEdge, SavitzkyGolay, SlidingAverage} from "../src/smoothing.js";
+import {RollingAverage, RollingAveragePolyEdge, SavitzkyGolay, SlidingAverage} from "../src/smoothing";
 
 function makePowerCurve(length, exponent) {
     return Array.from({length}, (_, i) => Math.pow(i + 1, exponent));

@@ -5,7 +5,7 @@ import {
     getSiderealTime,
     raDec2Celestial,
     raDecToAltAz
-} from '../src/CelestialMath.js';
+} from '../src/CelestialMath';
 
 describe('getJulianDate', () => {
     test('converts J2000.0 epoch correctly', () => {

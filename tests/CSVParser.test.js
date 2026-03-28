@@ -1,4 +1,4 @@
-import CSV from '../src/utils/CSVParser.js';
+import CSV from '../src/utils/CSVParser';
 
 describe('CSVParser', () => {
     describe('toArrays', () => {

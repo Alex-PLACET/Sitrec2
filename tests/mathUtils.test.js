@@ -1,4 +1,4 @@
-import {abs, acos, asin, atan, atan2, cos, degrees, floor, radians, sin, tan} from '../src/mathUtils.js';
+import {abs, acos, asin, atan, atan2, cos, degrees, floor, radians, sin, tan} from '../src/mathUtils';
 
 describe('mathUtils', () => {
     describe('radians', () => {

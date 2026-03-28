@@ -1,4 +1,4 @@
-import {hexColor, intersectSphere2, MV3, perpendicularVector, V2, V3} from '../src/threeUtils.js';
+import {hexColor, intersectSphere2, MV3, perpendicularVector, V2, V3} from '../src/threeUtils';
 import {Color, Ray, Sphere, Vector2, Vector3} from 'three';
 
 describe('V2', () => {

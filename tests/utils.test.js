@@ -1,4 +1,4 @@
-import {cleanFloat, f2m, getFileExtension, metersFromNM, scaleF2M, unitsToMeters} from "../src/utils.js";
+import {cleanFloat, f2m, getFileExtension, metersFromNM, scaleF2M, unitsToMeters} from "../src/utils";
 
 describe('unitsToMeters', () => {
     
