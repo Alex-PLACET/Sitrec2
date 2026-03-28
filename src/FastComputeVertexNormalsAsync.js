@@ -5,7 +5,7 @@
  * the calculation to a web worker, preventing main thread blocking.
  * 
  * Usage:
- *   import { fastComputeVertexNormalsAsync } from './FastComputeVertexNormalsAsync.js';
+ *   import { fastComputeVertexNormalsAsync } from './FastComputeVertexNormalsAsync';
  *   await fastComputeVertexNormalsAsync(geometry);
  */
 

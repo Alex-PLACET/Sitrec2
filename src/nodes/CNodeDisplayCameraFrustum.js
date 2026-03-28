@@ -22,7 +22,7 @@ import {earthCenterECEF, getLocalUpVector} from "../SphericalMath";
 import {ECEFToLLAVD_radii} from "../LLA-ECEF-ENU";
 import {CNodeGroundOverlay} from "./CNodeGroundOverlay";
 import * as LAYER from "../LayerMasks";
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 import {intersectSphere2} from "../threeUtils";
 import {CNodeGUIValue} from "./CNodeGUIValue";
 

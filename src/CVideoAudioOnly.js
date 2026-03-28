@@ -1,9 +1,9 @@
-import {CVideoAndAudio} from "./CVideoAndAudio.js";
+import {CVideoAndAudio} from "./CVideoAndAudio";
 import {MP4Demuxer, MP4Source} from "./js/mp4-decode/mp4_demuxer";
-import {Sit} from "./Globals.js";
-import {EventManager} from "./CEventManager.js";
+import {Sit} from "./Globals";
+import {EventManager} from "./CEventManager";
 import {updateSitFrames} from "./UpdateSitFrames";
-import {isWebAudioFormat} from "./AudioFormats.js";
+import {isWebAudioFormat} from "./AudioFormats";
 import {quickFetch} from "./quickFetch";
 
 /**

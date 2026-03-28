@@ -41,10 +41,10 @@ import {DebugSphere, testColorCube, testTextureCube} from "./threeExt";
 import {makeLOSNodeFromTrackAngles} from "./nodes/CNodeMISBData";
 import {CNodeLOSTargetAtDistance} from "./nodes/CNodeLOSTargetAtDistance";
 import {makeArrayNodeFromMISBColumn} from "./nodes/CNodeArrayFromMISBColumn";
-import {assert} from "./assert.js";
+import {assert} from "./assert";
 import {makePositionLLA} from "./nodes/CNodePositionLLA";
 import {MV3} from "./threeUtils";
-import {registerNodeConsole} from "./RegisterNodes.js"
+import {registerNodeConsole} from "./RegisterNodes"
 import {Frame2Az} from "./JetUtils";
 import {isConsole} from "./configUtils";
 import {CNodeMirrorVideoView} from "./nodes/CNodeMirrorVideoView";

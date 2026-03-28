@@ -5,7 +5,7 @@ import {NodeMan, Sit, Units} from "./Globals";
 import {acos, degrees, m2f, NMFromMeters} from "./utils";
 import {altitudeHAE, getLocalUpVector} from "./SphericalMath";
 import {CNodeTrackScreenAngle} from "./nodes/CNodeJetTrack";
-import {assert} from "./assert.js";
+import {assert} from "./assert";
 import {getGlareAngleFromFrame} from "./JetUtils";
 
 // add a graph of the subtended size of the target

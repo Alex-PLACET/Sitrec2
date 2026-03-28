@@ -7,7 +7,7 @@
  */
 import {infoDiv, Sit, SitchMan} from "./Globals";
 import * as LAYER from "./LayerMasks";
-import {assert} from "./assert.js";
+import {assert} from "./assert";
 import {par} from "./par";
 import {abs, acos, asin, atan, atan2, cos, degrees, floor, radians, sin, tan} from "./mathUtils";
 

@@ -1,6 +1,6 @@
 import {degrees, metersPerSecondFromKnots, radians, tan} from "../utils";
 import {CNode} from "./CNode";
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 
 
 // rate of turn is [(g * Tan(Bank Angle)) / V]

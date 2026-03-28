@@ -17,7 +17,7 @@
 
 import {FileManager, NodeMan, Sit} from "../Globals";
 import {raDec2Celestial} from "../CelestialMath";
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 import {CPointLightCloud} from "./CPointLightCloud";
 
 export class CStarField {

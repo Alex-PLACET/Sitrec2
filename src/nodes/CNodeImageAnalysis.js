@@ -5,7 +5,7 @@ import {FileManager, gui, NodeMan, setRenderOne, Sit} from "../Globals";
 import {RollingAverage} from "../smoothing";
 import {CNodeArray} from "./CNodeArray";
 import {CNodeGraphSeries} from "./CNodeGraphSeries";
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 
 
 function getPixelData(image) {

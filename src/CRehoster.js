@@ -7,7 +7,7 @@
  * - Surface upload progress and normalize server responses.
  * - Return stable object references (preferred) or compatibility URLs to callers.
  */
-import {assert} from "./assert.js";
+import {assert} from "./assert";
 import {SITREC_SERVER} from "./configUtils";
 import {withTestUser} from "./Globals";
 import {showError} from "./showError";

@@ -11,7 +11,7 @@ import * as THREE from "three";
 import {AlwaysDepth, Color, LessDepth} from "three";
 import {CNodeDisplayTargetSphere} from "./CNodeDisplayTargetSphere";
 import * as LAYER from "../LayerMasks";
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 import {convertColorInput} from "../ConvertColorInputs";
 import {par} from "../par";
 import {hexColor, V3} from "../threeUtils";

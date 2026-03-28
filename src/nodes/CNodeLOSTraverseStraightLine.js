@@ -3,7 +3,7 @@
 import {radians} from "../utils";
 import {Color, Plane, Ray} from "three";
 import {CNodeTrack} from "./CNodeTrack";
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 import {V3} from "../threeUtils";
 import {getLocalNorthVector, getLocalUpVector} from "../SphericalMath";
 

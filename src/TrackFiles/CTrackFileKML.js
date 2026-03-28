@@ -2,7 +2,7 @@ import {CTrackFile} from "./CTrackFile";
 import {MISB, MISBFields} from "../MISBFields";
 import {CustomManager, FileManager, NodeMan, Sit, Synth3DManager} from "../Globals";
 import {timeStrToEpoch} from "../DateTimeUtils";
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 import {CNodeTrackFromLLAArray} from "../nodes/CNodeTrack";
 import {CNodeDisplayTrack} from "../nodes/CNodeDisplayTrack";
 import * as LAYERS from "../LayerMasks";

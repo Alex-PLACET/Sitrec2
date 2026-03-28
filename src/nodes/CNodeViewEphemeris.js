@@ -1,4 +1,4 @@
-import {CNodeViewText} from "./CNodeViewText.js";
+import {CNodeViewText} from "./CNodeViewText";
 import {altitudeAboveSphere, getAzElFromPositionAndForward} from "../SphericalMath";
 import {NodeMan} from "../Globals";
 import {Raycaster, Sphere, Vector3} from "three";

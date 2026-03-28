@@ -10,7 +10,7 @@ import {CNodeController} from "./CNodeController";
 import {MISB} from "../MISBUtils";
 import {getCelestialDirection, getCelestialDirectionFromRaDec} from "../CelestialMath";
 import {Quaternion, Vector2, Vector3} from "three";
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 import {getCursorPositionFromTopView} from "../mouseMoveView";
 import {get_real_horizon_angle_for_frame} from "../JetUtils";
 

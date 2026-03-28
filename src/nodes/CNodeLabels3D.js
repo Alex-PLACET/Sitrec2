@@ -11,7 +11,7 @@ import {par} from "../par";
 import {ECEFToLLAVD_radii, LLAToECEF} from "../LLA-ECEF-ENU";
 import {meanSeaLevelOffset} from "../EGM96Geoid";
 
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 import {V2, V3} from "../threeUtils";
 import {EventManager} from "../CEventManager";
 import {registerLabel3D, unregisterLabel3D} from "./CNodeDisplaySkyOverlay";

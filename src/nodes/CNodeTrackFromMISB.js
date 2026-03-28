@@ -5,9 +5,9 @@ import {meanSeaLevelOffset} from "../EGM96Geoid";
 import {MISB} from "../MISBUtils";
 import {saveAs} from "file-saver";
 import {CNodeTrack} from "./CNodeTrack";
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 import {CGeoJSON} from "../geoJSONUtils";
-import {isLocal} from "../configUtils.js"
+import {isLocal} from "../configUtils"
 import stringify from "json-stringify-pretty-compact";
 import {Vector3} from "three";
 

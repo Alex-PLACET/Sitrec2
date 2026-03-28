@@ -1,7 +1,7 @@
 import {radians} from "../utils";
 import {getLocalNorthVector, getLocalUpVector} from "../SphericalMath";
 import {Matrix4} from "three";
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 import {V3} from "../threeUtils";
 import {CNodeLOS} from "./CNodeLOS";
 import {NodeMan} from "../Globals";

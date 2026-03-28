@@ -4,7 +4,7 @@ import {par} from "../par";
 import {isKeyCodeHeld, isKeyHeld} from "../KeyBoardHandler";
 import {forceUpdateUIText} from "./CNodeViewUI";
 import {addOptionToGUIMenu, removeOptionFromGUIMenu} from "../lil-gui-extras";
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 import {calculateGST} from "../CelestialMath";
 import {updateGUIFrames} from "../JetGUI";
 import {updateFrameSlider} from "./CNodeFrameSlider";

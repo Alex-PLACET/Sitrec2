@@ -3,7 +3,7 @@
 
 import {Matrix3, Vector3} from "three";
 import {Globals, NodeMan, setRenderOne, Sit} from "./Globals";
-import {assert} from "./assert.js";
+import {assert} from "./assert";
 
 /** [latitude, longitude, altitude] tuple — angles in radians, altitude in meters. */
 export type LLATuple = [number, number, number];

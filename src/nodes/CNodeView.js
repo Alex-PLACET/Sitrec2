@@ -4,9 +4,9 @@
 // canvas elements are in CNodeView3D
 // take their size from the div.
 //
-import {CNode} from './CNode.js'
+import {CNode} from './CNode'
 import {Globals, guiShowHideGraphs, guiShowHideViews, NodeMan} from "../Globals";
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 import {ViewMan} from "../CViewManager";
 import {makeDraggable, makeResizable, removeDraggable, removeResizable} from "../DragResizeUtils";
 import {isKeyHeld} from "../KeyBoardHandler";

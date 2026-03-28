@@ -1,4 +1,4 @@
-import {CNodeViewText} from "./CNodeViewText.js";
+import {CNodeViewText} from "./CNodeViewText";
 import {guiMenus} from "../Globals";
 
 class CNodeViewDebug extends CNodeViewText {

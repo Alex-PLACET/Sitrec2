@@ -25,7 +25,7 @@ import {MISB} from "./MISBUtils";
 // Removed mathjs import - using native JavaScript Number.isFinite or typeof checks
 import {CNodeMISBDataTrack, makeLOSNodeFromTrackAngles, removeLOSNodeColumnNodes} from "./nodes/CNodeMISBData";
 import {CNodeTrackFromMISB} from "./nodes/CNodeTrackFromMISB";
-import {assert} from "./assert.js";
+import {assert} from "./assert";
 import {getLocalSouthVector, getLocalUpVector, pointOnSphereBelow} from "./SphericalMath";
 import {closestIntersectionTime, trackBoundingBox} from "./trackUtils";
 import {CNode3DObject, ModelFiles} from "./nodes/CNode3DObject";

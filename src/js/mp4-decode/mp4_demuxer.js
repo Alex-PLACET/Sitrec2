@@ -1,4 +1,4 @@
-import MP4Box from "../mp4box.all.js";
+import MP4Box from "../mp4box.all";
 //var MP4Box = require('mp4box');  // node.js version
 import {Sit} from "../../Globals";
 import {extractAllMetaData} from "../../ExtractMetadata";

@@ -3,7 +3,7 @@
 // regression module: https://github.com/Tom-Alexander/regression-js (MIT license)
 import regression from 'regression'
 
-import {assert} from "./assert.js";
+import {assert} from "./assert";
 import {Sit} from "./Globals";
 import {findStep} from "./utils";
 

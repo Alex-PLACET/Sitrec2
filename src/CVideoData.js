@@ -1,4 +1,4 @@
-import {assert} from "./assert.js";
+import {assert} from "./assert";
 
 export function interpolatePosition(positionsMap, frame) {
     if (positionsMap.has(frame)) {

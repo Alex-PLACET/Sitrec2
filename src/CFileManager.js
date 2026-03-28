@@ -56,7 +56,7 @@ import csv from "./utils/CSVParser";
 import {asyncCheckLogin} from "./login";
 import {waitForExportFrameSettled} from "./ExportFrameSettler";
 import {par} from "./par";
-import {assert} from "./assert.js";
+import {assert} from "./assert";
 import {textSitchToObject} from "./RegisterSitches";
 import {addOptionToGUIMenu, removeOptionFromGUIMenu} from "./lil-gui-extras";
 import {

@@ -6,7 +6,7 @@
 // 3. Nautical
 
 import {guiPhysics, NodeMan} from "./Globals";
-import {assert} from "./assert.js";
+import {assert} from "./assert";
 
 export class CUnits {
     constructor(_units = "metric", gui) {

@@ -1,8 +1,8 @@
 // a node that lets you choose a value with a slider/input box
 import {CNodeConstant} from "./CNode";
 import {par} from "../par";
-import {isLocal} from "../configUtils.js"
-import {assert} from "../assert.js";
+import {isLocal} from "../configUtils"
+import {assert} from "../assert";
 import {Color} from "three";
 import {CNodeGUIConstant} from "./CNodeGUIValue";
 import {setRenderOne} from "../Globals";

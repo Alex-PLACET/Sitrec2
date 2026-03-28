@@ -21,7 +21,7 @@
 import {CNode} from "./CNode";
 import {NodeMan} from "../Globals";
 
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 import {stripComments} from "../utils";
 import * as math from 'mathjs';
 

@@ -45,12 +45,12 @@ import {
     SitchMan,
     TrackManager,
 } from "./Globals";
-import {disableScroll, f2m, stripComments, updateDocumentTitle} from './utils.js'
+import {disableScroll, f2m, stripComments, updateDocumentTitle} from './utils'
 import {CSituation} from "./CSituation";
 import {par, resetPar} from "./par";
 
 // was here
-import * as LAYER from "./LayerMasks.js"
+import * as LAYER from "./LayerMasks"
 import {SetupFrameSlider} from "./nodes/CNodeFrameSlider";
 import {registerNodes} from "./RegisterNodes";
 import {registerSitches, textSitchToObject} from "./RegisterSitches";
@@ -83,7 +83,7 @@ import {
     setupConfigPaths,
     SITREC_APP,
     SITREC_SERVER
-} from "./configUtils.js"
+} from "./configUtils"
 import {SituationSetup, startLoadingInlineAssets} from "./SituationSetup";
 import {CUnits} from "./CUnits";
 import {updateLockTrack} from "./updateLockTrack";
@@ -97,9 +97,9 @@ import {disposeGimbalChart} from "./JetChart";
 import {CNode} from "./nodes/CNode";
 import {DragDropHandler} from "./DragDropHandler";
 import {CGuiMenuBar, setupHelpSearch} from "./lil-gui-extras";
-import {assert} from "./assert.js";
+import {assert} from "./assert";
 import {CNodeFactory} from "./nodes/CNodeFactory";
-import {extraCSS} from "./extra.css.js";
+import {extraCSS} from "./extra.css";
 import {_TrackManager} from "./TrackManager";
 import {ViewMan} from "./CViewManager";
 import {glareSprite, targetSphere} from "./JetStuffVars";

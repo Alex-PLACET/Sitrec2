@@ -21,7 +21,7 @@ import {CNodeControllerPTZUI} from "../nodes/CNodeControllerPTZUI";
 import {intersectSphere2, V3} from "../threeUtils";
 import {getCursorPositionFromTopView, getTopViewWithCursor, onDocumentMouseMove} from "../mouseMoveView";
 import {isKeyHeld} from "../KeyBoardHandler";
-import {isLocal} from "../configUtils.js"
+import {isLocal} from "../configUtils"
 import {mouseInViewOnly, mouseToNDC, mouseToView} from "../ViewUtils";
 import {CNodeMeasureAB} from "../nodes/CNodeLabels3D";
 import {CNodePositionXYZ} from "../nodes/CNodePositionLLA";

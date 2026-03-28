@@ -1,7 +1,7 @@
 import {asin, degrees, metersPerSecondFromKnots, radians} from "../utils";
 import {calcHorizonPoint, getLocalNorthVector, getLocalUpVector} from "../SphericalMath";
 import {CNodeEmptyArray} from "./CNodeArray";
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 import {V3} from "../threeUtils";
 
 /*

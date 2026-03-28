@@ -4,7 +4,7 @@ import {GlobalDateTimeNode, NodeMan, Sit} from "../Globals";
 import {DebugArrowAB} from "../threeExt";
 import {GlobalScene} from "../LocalFrame";
 import {getLocalNorthVector, getLocalUpVector} from "../SphericalMath";
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 import {V3} from "../threeUtils";
 import {ECEFToLLAVD_radii} from "../LLA-ECEF-ENU";
 import {meanSeaLevelOffset} from "../EGM96Geoid";

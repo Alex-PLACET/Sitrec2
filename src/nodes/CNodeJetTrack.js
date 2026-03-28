@@ -3,7 +3,7 @@ import {getLocalNorthVector, getLocalUpVector} from "../SphericalMath";
 import {NodeMan, Sit, Units} from "../Globals";
 import {CNode} from "./CNode";
 import {CNodeTrack} from "./CNodeTrack";
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 import {V3} from "../threeUtils";
 
 import {showError} from "../showError";

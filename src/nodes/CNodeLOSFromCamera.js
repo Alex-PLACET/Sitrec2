@@ -5,7 +5,7 @@
 import {PerspectiveCamera, Vector3} from "three";
 import {GlobalDateTimeNode, NodeMan, Sit} from "../Globals";
 import {CNodeEmptyArray} from "./CNodeArray";
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 import {getAzElFromPositionAndForward} from "../SphericalMath";
 import {CNodeLOS} from "./CNodeLOS";
 import {ECEFToLLAVD, ECEFToLLAVD_radii} from "../LLA-ECEF-ENU";

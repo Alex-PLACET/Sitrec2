@@ -1,7 +1,7 @@
 // a node that lets you choose a value with a slider/input box
 import {CNodeConstant} from "./CNode";
-import {isLocal} from "../configUtils.js"
-import {assert} from "../assert.js";
+import {isLocal} from "../configUtils"
+import {assert} from "../assert";
 import {Globals, markSitchDirty, NodeMan, setRenderOne, Units} from "../Globals";
 import {roundIfClose, stripComments} from "../utils";
 import {EventManager} from "../CEventManager";

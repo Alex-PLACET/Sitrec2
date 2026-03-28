@@ -1,4 +1,4 @@
-import {showError} from "./showError.js";
+import {showError} from "./showError";
 
 /**
  * Transport Stream (TS) Parser

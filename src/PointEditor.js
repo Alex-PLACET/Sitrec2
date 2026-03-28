@@ -1,4 +1,4 @@
-import {PointEditorWidget} from "./PointEditorWidget.js";
+import {PointEditorWidget} from "./PointEditorWidget";
 import {
     BoxGeometry,
     ConeGeometry,
@@ -11,7 +11,7 @@ import {
     Vector3
 } from "three";
 import {ECEFToLLAVD_radii, legacyEUSToECEF, LLAToECEF} from "./LLA-ECEF-ENU";
-import {assert} from "./assert.js";
+import {assert} from "./assert";
 import {V3} from "./threeUtils";
 import {ViewMan} from "./CViewManager";
 import {mouseInViewOnly, mouseToViewNormalized} from "./ViewUtils";

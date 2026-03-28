@@ -3,7 +3,7 @@
 import {CManager} from "../CManager";
 import {CNode} from "./CNode";
 import {FileManager, Globals, NodeMan, Sit} from "../Globals";
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 
 export class CNodeManager extends CManager{
     constructor(props) {

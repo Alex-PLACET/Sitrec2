@@ -1,7 +1,7 @@
 import {CNode} from "./CNode";
 import {guiShowHide, mainLoopCount, NodeFactory, setRenderOne} from "../Globals";
 import {par} from "../par";
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 import {normalizeLayerType} from "../utils";
 import {altitudeAboveSphere, getLocalNorthVector, getLocalUpVector} from "../SphericalMath";
 

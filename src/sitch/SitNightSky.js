@@ -14,10 +14,10 @@ import {CNodeViewUI} from "../nodes/CNodeViewUI";
 import {AddTimeDisplayToUI} from "../UIHelpers";
 import {DragDropHandler} from "../DragDropHandler";
 import JSURL from "jsurl"
-import {isLocal, SITREC_SERVER} from "../configUtils.js";
+import {isLocal, SITREC_SERVER} from "../configUtils";
 import {CNodeSwitch} from "../nodes/CNodeSwitch";
 import {CNodeControllerManualPosition} from "../nodes/CNodeControllerVarious";
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 import {MV3} from "../threeUtils";
 import {getPTZController} from "../js/CameraControls";
 import {radians} from "../utils";

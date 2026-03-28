@@ -4,7 +4,7 @@ import {AlwaysDepth} from "three";
 import {ExpandKeyframes, f2m, scaleF2M} from "../utils";
 import {ECEFToLLAVD_radii, LLAToECEF} from "../LLA-ECEF-ENU";
 import {CNodeSplineEditor} from "../nodes/CNodeSplineEdit";
-import * as LAYER from "../LayerMasks.js"
+import * as LAYER from "../LayerMasks"
 import {CNodeSwitch} from "../nodes/CNodeSwitch";
 import {CNodeArray,} from "../nodes/CNodeArray";
 import {CNodeGUIValue} from "../nodes/CNodeGUIValue";
@@ -26,7 +26,7 @@ import {makeMatLine} from "../MatLines";
 import {addControllerTo} from "../nodes/CNodeController";
 import {CNodeSmoothedPositionTrack} from "../nodes/CNodeSmoothedPositionTrack";
 import {CNodeTrackClosest} from "../nodes/CNodeTrackClosest";
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 import {V3} from "../threeUtils";
 import {ViewMan} from "../CViewManager";
 

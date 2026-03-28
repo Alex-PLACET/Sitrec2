@@ -1,5 +1,5 @@
-import {CVideoData} from "./CVideoData.js";
-import {CAudioMp4Data} from "./CAudioMp4Data.js";
+import {CVideoData} from "./CVideoData";
+import {CAudioMp4Data} from "./CAudioMp4Data";
 
 /**
  * Intermediate class that extends CVideoData to add audio support

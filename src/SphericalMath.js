@@ -1,8 +1,8 @@
 import {Plane, Vector3} from "three";
-import {atan2, cos, degrees, radians, sin} from "./utils.js";
+import {atan2, cos, degrees, radians, sin} from "./utils";
 import {ECEFToLLA_radii, RLLAToECEF_radii} from "./LLA-ECEF-ENU";
 import {Globals, Sit} from "./Globals";
-import {assert} from "./assert.js";
+import {assert} from "./assert";
 import {MV3, V3} from "./threeUtils";
 
 

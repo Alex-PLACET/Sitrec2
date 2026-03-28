@@ -2,7 +2,7 @@ import {Group} from "three"
 import {propagateLayerMaskObject} from "../threeExt";
 import {GlobalScene} from "../LocalFrame"
 import {CNode3D} from "./CNode3D";
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 import {convertColorInput} from "../ConvertColorInputs";
 import {guiShowHide, setRenderOne} from "../Globals";
 import {toggles} from "../KeyBoardHandler";

@@ -2,7 +2,7 @@ import {SplineEditor} from "../SplineEditor";
 import {Globals, guiMenus, NodeMan, Sit, TrackManager} from "../Globals";
 import {Vector3} from "three";
 import {getCameraNode} from "./CNodeCamera";
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 import {CNodeTrack} from "./CNodeTrack";
 import {ECEFToLLAVD_radii, LLAVToECEF} from "../LLA-ECEF-ENU";
 import {adjustHeightAboveGround, adjustHeightHAE, pointAbove} from "../threeExt";

@@ -1,4 +1,4 @@
-import {Globals} from "./Globals.js";
+import {Globals} from "./Globals";
 import {getEnv} from "./envUtils";
 
 export const isConsole = (typeof window === 'undefined');

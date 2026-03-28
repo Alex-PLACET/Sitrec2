@@ -4,7 +4,7 @@
 
 import {Globals} from "./Globals";
 import {Euler, MathUtils} from "three";
-import {DeviceOrientationCompass} from "../tools/src/DeviceOrientationCompass.js";
+import {DeviceOrientationCompass} from "../tools/src/DeviceOrientationCompass";
 
 class ARModeManager {
     constructor() {

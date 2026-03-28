@@ -3,7 +3,7 @@ import {f2m, radians} from "../utils";
 import {Sit} from "../Globals";
 
 import {CNodeController} from "./CNodeController";
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 import {meanSeaLevelOffset} from "../EGM96Geoid";
 
 

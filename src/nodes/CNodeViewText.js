@@ -1,4 +1,4 @@
-import {CNodeView} from "./CNodeView.js";
+import {CNodeView} from "./CNodeView";
 import {EventManager} from "../CEventManager";
 import {makeDraggable} from "../DragResizeUtils";
 

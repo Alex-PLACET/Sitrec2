@@ -1,5 +1,5 @@
 import {CNodeConstant} from "./nodes/CNode";
-import {assert} from "./assert.js";
+import {assert} from "./assert";
 import {CNodeController} from "./nodes/CNodeController";
 
 // A CManager is a simple class that manages a list of objects

@@ -1,4 +1,4 @@
-import {CNodeView} from "./CNodeView.js";
+import {CNodeView} from "./CNodeView";
 import {guiShowHide, setRenderOne} from "../Globals";
 import {makeDraggable} from "../DragResizeUtils";
 import {ViewMan} from "../CViewManager";

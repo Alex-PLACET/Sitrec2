@@ -2,7 +2,7 @@
 // the track at at given frame.
 // can be used to put an object inbetween the camera and the track
 import {getLocalUpVector} from "../SphericalMath";
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 import {V3} from "../threeUtils";
 import {CNodeLOS} from "./CNodeLOS";
 

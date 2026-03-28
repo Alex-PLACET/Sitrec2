@@ -32,7 +32,7 @@ import {
 import {Sit} from "../Globals";
 import {raDec2Celestial} from "../CelestialMath";
 import {SITREC_APP} from "../configUtils";
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 import {radians} from "../utils";
 import * as Astronomy from "astronomy-engine";
 

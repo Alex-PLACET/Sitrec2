@@ -14,7 +14,7 @@ import {GreyscaleShader} from "../shaders/GreyscaleShader";
 import {JPEGArtifactsShader} from "../shaders/JPEGArtifactsShader";
 import {Globals, guiTweaks} from "../Globals";
 import {CopyShader} from "../shaders/CopyShader";
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 
 let guiOnOffFolder = null;
 

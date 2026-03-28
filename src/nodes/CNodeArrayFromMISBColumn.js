@@ -3,7 +3,7 @@ import {MISB} from "../MISBUtils";
 import {ExpandMISBKeyframes} from "../utils";
 import {RollingAverage, RollingAverageDegrees} from "../smoothing";
 import {CNode} from "./CNode";
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 import {showError} from "../showError";
 
 // These nodes replace the manually created CNodeArrays

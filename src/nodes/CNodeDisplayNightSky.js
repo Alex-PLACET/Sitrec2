@@ -22,7 +22,7 @@ import {par} from "../par";
 import {CNodeDisplayGlobeCircle} from "./CNodeDisplayGlobeCircle";
 import {CNodeDisplayEarthShadow} from "./CNodeDisplayEarthShadow";
 import {CNodeDisplayMoonShadow} from "./CNodeDisplayMoonShadow";
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 import {intersectSphere2, V3} from "../threeUtils";
 import {
     getCelestialDirectionFromRaDec,
@@ -37,7 +37,7 @@ import {CNodeDisplaySkyOverlay} from "./CNodeDisplaySkyOverlay";
 import {CNodeViewUI} from "./CNodeViewUI";
 import {CNodeViewEphemeris} from "./CNodeViewEphemeris";
 import {CNodeSkyPlotView} from "./CNodeSkyPlotView";
-//import { eci_to_geodetic } from '../../pkg/eci_convert.js';
+//import { eci_to_geodetic } from '../../pkg/eci_convert';
 // npm install satellite.js --save-dev
 // installed with
 // npm install astronomy-engine --save-dev

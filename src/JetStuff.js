@@ -70,7 +70,7 @@ import {
     Vector3
 } from "three";
 import {CNodeDisplayLOS} from "./nodes/CNodeDisplayLOS";
-import {isLocal, SITREC_APP} from "./configUtils.js";
+import {isLocal, SITREC_APP} from "./configUtils";
 import {CNodeATFLIRUI} from "./nodes/CNodeATFLIRUI";
 import {CNodeView3D} from "./nodes/CNodeView3D";
 import {CNodeChartView} from "./nodes/CNodeChartView";

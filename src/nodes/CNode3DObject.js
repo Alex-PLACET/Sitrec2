@@ -61,7 +61,7 @@ import {
     propagateLayerMaskObject,
     removeDebugArrow
 } from "../threeExt";
-import {CNodeViewText} from "./CNodeViewText.js";
+import {CNodeViewText} from "./CNodeViewText";
 import {loadModelAsset} from "../ModelLoader";
 import {V3} from "../threeUtils";
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';

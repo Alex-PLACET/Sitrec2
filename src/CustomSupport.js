@@ -47,7 +47,7 @@ import {ECEFToLLAVD_radii, LLAToECEF} from "./LLA-ECEF-ENU";
 import {par} from "./par";
 import {GlobalScene} from "./LocalFrame";
 import {refreshLabelsAfterLoading} from "./nodes/CNodeLabels3D";
-import {assert} from "./assert.js";
+import {assert} from "./assert";
 import {getShortURL} from "./urlUtils";
 import {CNode3DObject, ModelAliases} from "./nodes/CNode3DObject";
 import {UpdateHUD} from "./JetStuff";

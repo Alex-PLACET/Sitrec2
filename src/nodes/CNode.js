@@ -17,7 +17,7 @@
 
 import {par} from "../par";
 import {FileManager, Globals, guiMenus, NodeMan, setRenderOne, Sit} from "../Globals";
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 import {V3} from "../threeUtils";
 import {isConsole, isLocal} from "../configUtils";
 

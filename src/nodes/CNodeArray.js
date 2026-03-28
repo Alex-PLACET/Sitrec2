@@ -1,6 +1,6 @@
 import {CNode} from "./CNode";
 import {GlobalDateTimeNode, NodeMan, Sit} from "../Globals";
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 import {ECEFToLLAVD_radii, LLAToECEF} from "../LLA-ECEF-ENU";
 import {roundIfClose} from "../utils";
 import {saveAs} from "file-saver";

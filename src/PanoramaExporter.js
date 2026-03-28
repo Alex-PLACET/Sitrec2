@@ -4,7 +4,7 @@ import {ExportProgressWidget, getExportPrefix} from "./utils";
 import {ViewMan} from "./CViewManager";
 import {CNode} from "./nodes/CNode";
 import {Raycaster, Vector3} from "three";
-import {assert} from "./assert.js";
+import {assert} from "./assert";
 import {intersectSurface} from "./threeExt";
 import * as LAYER from "./LayerMasks";
 

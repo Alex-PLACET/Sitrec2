@@ -1,4 +1,4 @@
-import {CNodeViewText} from "./CNodeViewText.js";
+import {CNodeViewText} from "./CNodeViewText";
 import {GlobalDateTimeNode, Globals, guiMenus, markSitchDirty, withTestUser} from "../Globals";
 import {SITREC_SERVER} from "../configUtils";
 import {sitrecAPI} from "../CSitrecAPI";

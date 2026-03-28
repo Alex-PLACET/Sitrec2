@@ -4,7 +4,7 @@ import {BufferGeometry, Float32BufferAttribute, Mesh} from "three";
 import seedrandom from "seedrandom";
 import {drop} from "../SphericalMath";
 import {CNode3DGroup} from "./CNode3DGroup";
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 import {V3} from "../threeUtils";
 
 let rng;

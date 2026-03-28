@@ -8,7 +8,7 @@
  * - Optimized for both indexed and non-indexed geometries
  * 
  * Usage:
- *   import { fastComputeVertexNormals } from './FastComputeVertexNormals.js';
+ *   import { fastComputeVertexNormals } from './FastComputeVertexNormals';
  *   fastComputeVertexNormals(geometry);
  */
 

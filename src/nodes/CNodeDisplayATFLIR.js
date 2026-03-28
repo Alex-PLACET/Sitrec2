@@ -15,7 +15,7 @@ import {LocalFrame} from "../LocalFrame";
 import {makeMatLine} from "../MatLines";
 import {GridHelper, Group} from "three";
 import * as LAYER from "../LayerMasks";
-import {assert} from "../assert.js";
+import {assert} from "../assert";
 import {V3} from "../threeUtils";
 import {ViewMan} from "../CViewManager";
 import {getGlareAngleFromFrame, jetPitchFromFrame, jetRollFromFrame, pitchAndGlobalRollFromFrame} from "../JetUtils";
