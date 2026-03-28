@@ -2,13 +2,21 @@
 // as well as some other useful related functions
 
 import {Matrix3, Vector3} from "three";
-// Removed import of cos, degrees, radians, sin - using direct Math functions instead
 import {Globals, NodeMan, setRenderOne, Sit} from "./Globals";
 import {assert} from "./assert.js";
 
+/** [latitude, longitude, altitude] tuple — angles in radians, altitude in meters. */
+export type LLATuple = [number, number, number];
+
+/** Latitude/longitude in degrees. */
+export interface LatLon {
+    lat: number;
+    lon: number;
+}
+
 // This is the distance in KM between two lat/long locations
 // assumes a sphere of equatorial radius (WGS84)
-export function haversineDistanceKM(lat1, lon1, lat2, lon2) {
+export function haversineDistanceKM(lat1: number, lon1: number, lat2: number, lon2: number): number {
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
     const rLat1 = lat1 * Math.PI / 180;
@@ -21,11 +29,11 @@ export function haversineDistanceKM(lat1, lon1, lat2, lon2) {
     return (wgs84.RADIUS / 1000) * c;
 }
 
-export function haversineDistanceABKM(a, b) {
+export function haversineDistanceABKM(a: Vector3, b: Vector3): number {
     return haversineDistanceKM(a.y, a.x, b.y, b.x);
 }
 
-export function interpolateGreatCircle(lat1, lon1, lat2, lon2, t) {
+export function interpolateGreatCircle(lat1: number, lon1: number, lat2: number, lon2: number, t: number): LatLon {
     const toRad = Math.PI / 180;
     const toDeg = 180 / Math.PI;
     const phi1 = lat1 * toRad;
@@ -64,15 +72,12 @@ export function interpolateGreatCircle(lat1, lon1, lat2, lon2, t) {
 // see https://en.wikipedia.org/wiki/World_Geodetic_System
 export const wgs84 = {
     RADIUS: 6378137,                            // exact, and same as in GRS 80
-    FLATTENING_DENOM: 298.257223563,
-    radiusMiles: 3963.190592
-
-
-};           // vs 298.257222100882711 for GRS 80
-
-wgs84.FLATTENING = 1/wgs84.FLATTENING_DENOM;
-wgs84.POLAR_RADIUS = wgs84.RADIUS*(1-wgs84.FLATTENING);
-wgs84.CIRC = 2*Math.PI*wgs84.RADIUS
+    FLATTENING_DENOM: 298.257223563,            // vs 298.257222100882711 for GRS 80
+    radiusMiles: 3963.190592,
+    FLATTENING: 1 / 298.257223563,
+    POLAR_RADIUS: 6378137 * (1 - 1 / 298.257223563),
+    CIRC: 2 * Math.PI * 6378137,
+} as const;
 
 /**
  * Update Globals.equatorRadius and Globals.polarRadius based on the earth model.
@@ -80,7 +85,7 @@ wgs84.CIRC = 2*Math.PI*wgs84.RADIUS
  *   useEllipsoid=true  → equatorial = wgs84.RADIUS, polar = wgs84.POLAR_RADIUS (real WGS84)
  * Call this when a sitch loads and when the user toggles the earth model.
  */
-export function updateEarthRadii(useEllipsoid) {
+export function updateEarthRadii(useEllipsoid: boolean): void {
     const newEquator = wgs84.RADIUS;
     // Testing: use 0.5 * equatorialRadius when ellipsoid is enabled for obvious visual difference.
     // Replace 0.5 * wgs84.RADIUS with wgs84.POLAR_RADIUS once the implementation is verified.
@@ -111,7 +116,7 @@ export function updateEarthRadii(useEllipsoid) {
 }
 
 /** Radius of curvature in the prime vertical at geodetic latitude, using Globals radii. */
-export function getN_radii(latitude) {
+export function getN_radii(latitude: number): number {
     const a = Globals.equatorRadius;
     const b = Globals.polarRadius;
     const e2 = (a*a - b*b) / (a*a);
@@ -120,7 +125,7 @@ export function getN_radii(latitude) {
 }
 
 /** LLA (radians) → ECEF Vector3 using Globals.equatorRadius / Globals.polarRadius. */
-export function RLLAToECEF_radii(latitude, longitude, altitude) {
+export function RLLAToECEF_radii(latitude: number, longitude: number, altitude: number): Vector3 {
     const a = Globals.equatorRadius;
     const b = Globals.polarRadius;
     const N = getN_radii(latitude);
@@ -134,7 +139,7 @@ export function RLLAToECEF_radii(latitude, longitude, altitude) {
 /** ECEF → [lat, lon, alt] (radians) using the iterative Bowring method with Globals radii.
  *  The single-step Bowring approximation has ~10m error at 10km altitude on extreme ellipsoids
  *  (e.g. the 0.5× polar radius test ellipsoid). Iterating the latitude converges to sub-mm. */
-export function ECEFToLLA_radii(X, Y, Z) {
+export function ECEFToLLA_radii(X: number, Y: number, Z: number): LLATuple {
     const a = Globals.equatorRadius;
     const b = Globals.polarRadius;
     const asqr = a*a;
@@ -198,14 +203,14 @@ export function ECEFToLLA_radii(X, Y, Z) {
 /*
  * Convert GPS coordinates (degrees) to Cartesian coordinates (meters)
  */
-export function project(latitude, longitude, altitude) {
+export function project(latitude: number, longitude: number, altitude: number): Vector3 {
     return RLLAToECEF(latitude * Math.PI / 180, longitude * Math.PI / 180, altitude);
 }
 
 /*
  * Convert Cartesian coordinates (meters) to GPS coordinates (degrees)
  */
-export function unproject(x, y, z) {
+export function unproject(x: number, y: number, z: number): LLATuple {
     const gps = ECEFToLLA(x, y, z);
 
     gps[0] = gps[0] * 180 / Math.PI;
@@ -215,7 +220,7 @@ export function unproject(x, y, z) {
 }
 
 
-export function RLLAToECEF(latitude, longitude, altitude) {
+export function RLLAToECEF(latitude: number, longitude: number, altitude: number): Vector3 {
 
 
     const a    = wgs84.RADIUS;
@@ -242,7 +247,7 @@ export function RLLAToECEF(latitude, longitude, altitude) {
 }
 
 
-export function LLAToECEF_Sphere(latitude, longitude, altitude) {
+export function LLAToECEF_Sphere(latitude: number, longitude: number, altitude: number): [number, number, number] {
 
     const a    = wgs84.RADIUS;  // using the standard wgs84.RADIUS
     const X = (a + altitude) * Math.cos(latitude) * Math.cos(longitude);
@@ -252,7 +257,7 @@ export function LLAToECEF_Sphere(latitude, longitude, altitude) {
     return [X, Y, Z];
 }
 
-export function RLLAToECEFV_Sphere(latitude, longitude, altitude, radius = wgs84.RADIUS) {
+export function RLLAToECEFV_Sphere(latitude: number, longitude: number, altitude: number, radius: number = wgs84.RADIUS): Vector3 {
 
     const X = (radius + altitude) * Math.cos(latitude) * Math.cos(longitude);
     const Y = (radius + altitude) * Math.cos(latitude) * Math.sin(longitude);
@@ -264,7 +269,7 @@ export function RLLAToECEFV_Sphere(latitude, longitude, altitude, radius = wgs84
 // Bowring method
 // NOTE: this uses the WGS84 ellipse
 // if using simple maps like map33 that use a sphere, then use the sphere version, next.
-export function ECEFToLLA(X, Y, Z) {
+export function ECEFToLLA(X: number, Y: number, Z: number): LLATuple {
     const a    = wgs84.RADIUS;
     const f    = wgs84.FLATTENING;
     const b    = wgs84.POLAR_RADIUS;
@@ -296,7 +301,7 @@ export function ECEFToLLA(X, Y, Z) {
     return [latitude, longitude, altitude];
 }
 
-export function ECEFToLLA_Sphere(X, Y, Z) {
+export function ECEFToLLA_Sphere(X: number, Y: number, Z: number): LLATuple {
     const R = wgs84.RADIUS; // Radius of the Earth
 
     // Calculate LLA
@@ -310,13 +315,13 @@ export function ECEFToLLA_Sphere(X, Y, Z) {
 
 // same functions, but passing and returning parameters as a Vector3
 // with LL as degrees
-export function ECEFToLLAVD_Sphere(V) {
+export function ECEFToLLAVD_Sphere(V: Vector3): Vector3 {
     const a = ECEFToLLA_Sphere(V.x,V.y,V.z);
     return new Vector3(a[0] * 180 / Math.PI, a[1] * 180 / Math.PI, a[2])
 }
 
 // ECEF to LLA as Vector3 in degrees, using ellipsoid-aware radii conversion.
-export function ECEFToLLAVD_radii(ecef) {
+export function ECEFToLLAVD_radii(ecef: Vector3): Vector3 {
     const lla = ECEFToLLA_radii(ecef.x, ecef.y, ecef.z);
     return new Vector3(lla[0] * 180 / Math.PI, lla[1] * 180 / Math.PI, lla[2]);
 }
@@ -326,25 +331,25 @@ export function ECEFToLLAVD_radii(ecef) {
 
 // same functions, but passing and returning parameters as a Vector3
 // with LL as degrees
-export function ECEFToLLAVD(V) {
+export function ECEFToLLAVD(V: Vector3): Vector3 {
     const a = ECEFToLLA(V.x,V.y,V.z);
     return new Vector3(a[0] * 180 / Math.PI, a[1] * 180 / Math.PI, a[2])
 }
 
 // and with radians
-export function ECEFToLLAV(V) {
+export function ECEFToLLAV(V: Vector3): Vector3 {
     const a = ECEFToLLA(V.x,V.y,V.z);
     return new Vector3((a[0]),(a[1]),a[2])
 }
 
 
-export function LLAToECEFVD(V) {
+export function LLAToECEFVD(V: Vector3): Vector3 {
     return RLLAToECEF(V.x * Math.PI / 180, V.y * Math.PI / 180, V.z);
 }
 
 
 // N is the radius of curvature at a given latitude
-export function getN(latitude) {
+export function getN(latitude: number): number {
 
     const a    = wgs84.RADIUS;
     const f    = wgs84.FLATTENING;
@@ -381,7 +386,7 @@ export function getN(latitude) {
 // Roatate about (y?) with latitude, and then about z with longtitude
 
 // lat1, lon1 in radians
-export function ECEF2ENU(pos,lat1, lon1, radius, justRotate=false) {
+export function ECEF2ENU(pos: Vector3, lat1: number, lon1: number, radius: number, justRotate: boolean = false): Vector3 {
     assert(radius !== undefined, "ECEF2ENU needs explicit radius" )
     // the origin in ECEF coordinates is at the surface with lat1, lon1
 
@@ -404,7 +409,7 @@ export function ECEF2ENU(pos,lat1, lon1, radius, justRotate=false) {
 
 // Ellipsoid-aware ECEF→ENU using RLLAToECEF_radii for origin (Globals radii).
 // Rotation matrix depends only on geodetic lat/lon, not Earth shape.
-export function ECEF2ENU_radii(pos, lat1, lon1, justRotate=false) {
+export function ECEF2ENU_radii(pos: Vector3, lat1: number, lon1: number, justRotate: boolean = false): Vector3 {
     const mECEF2ENU = new Matrix3().set(
         -Math.sin(lon1), Math.cos(lon1), 0,
         -Math.sin(lat1) * Math.cos(lon1), -Math.sin(lat1) * Math.sin(lon1), Math.cos(lat1),
@@ -421,7 +426,7 @@ export function ECEF2ENU_radii(pos, lat1, lon1, justRotate=false) {
 }
 
 // Ellipsoid-aware ENU→ECEF using RLLAToECEF_radii for origin (Globals radii).
-export function ENU2ECEF_radii(pos, lat1, lon1, justRotate=false) {
+export function ENU2ECEF_radii(pos: Vector3, lat1: number, lon1: number, justRotate: boolean = false): Vector3 {
     const mECEF2ENU = new Matrix3().set(
         -Math.sin(lon1), Math.cos(lon1), 0,
         -Math.sin(lat1) * Math.cos(lon1), -Math.sin(lat1) * Math.sin(lon1), Math.cos(lat1),
@@ -439,7 +444,7 @@ export function ENU2ECEF_radii(pos, lat1, lon1, justRotate=false) {
 }
 
 // Inverse of ECEF2ENU - converts from ENU to ECEF
-export function ENU2ECEF(pos, lat1, lon1, radius, justRotate=false) {
+export function ENU2ECEF(pos: Vector3, lat1: number, lon1: number, radius: number, justRotate: boolean = false): Vector3 {
     assert(radius !== undefined, "ENU2ECEF needs explicit radius")
     
     // Create the inverse transformation matrix (ENU to ECEF)
@@ -470,7 +475,7 @@ export function ENU2ECEF(pos, lat1, lon1, radius, justRotate=false) {
 // 2. ENU→ECEF on the sphere (recovering the spherical ECEF position)
 // 3. Spherical ECEF→LLA (getting the geographic coordinates)
 // 4. LLA→ECEF on the ellipsoid (placing the point correctly on the WGS84 ellipsoid)
-export function legacyEUSToECEF(eus, lat, lon) {
+export function legacyEUSToECEF(eus: Vector3, lat: number, lon: number): Vector3 {
     const enu = new Vector3(eus.x, -eus.z, eus.y);
     const sphericalECEF = ENU2ECEF(enu, lat, lon, wgs84.RADIUS);
     const lla = ECEFToLLA_Sphere(sphericalECEF.x, sphericalECEF.y, sphericalECEF.z);
@@ -480,19 +485,19 @@ export function legacyEUSToECEF(eus, lat, lon) {
 
 
 // Pre-computed constants for optimization - updated when Sit location or earth model changes
-let _sitLatRad, _sitLonRad, _sitSinLat, _sitCosLat, _sitSinLon, _sitCosLon;
-let _originEcefX, _originEcefY, _originEcefZ;
-let _m00, _m01, _m10, _m11, _m12, _m20, _m21, _m22;
+let _sitLatRad: number, _sitLonRad: number, _sitSinLat: number, _sitCosLat: number, _sitSinLon: number, _sitCosLon: number;
+let _originEcefX: number, _originEcefY: number, _originEcefZ: number;
+let _m00: number, _m01: number, _m10: number, _m11: number, _m12: number, _m20: number, _m21: number, _m22: number;
 // Pre-computed per-vertex ellipsoid constants (used in LLAToECEFRadians)
-let _llaecef_e2, _llaecef_ratio;
-let _lastSitLat = null, _lastSitLon = null;
-let _lastEquatorRadius = null, _lastPolarRadius = null;
+let _llaecef_e2: number, _llaecef_ratio: number;
+let _lastSitLat: number | null = null, _lastSitLon: number | null = null;
+let _lastEquatorRadius: number | null = null, _lastPolarRadius: number | null = null;
 
 // Constant for radians conversion (Math.PI / 180)
 const _DEG_TO_RAD = 0.017453292519943295;
 
 // Update pre-computed constants when Sit location or earth model changes
-function _updateSitConstants() {
+function _updateSitConstants(): void {
     if (Sit.lat === _lastSitLat && Sit.lon === _lastSitLon
             && Globals.equatorRadius === _lastEquatorRadius && Globals.polarRadius === _lastPolarRadius) {
         return; // No change, constants are still valid
@@ -535,7 +540,7 @@ function _updateSitConstants() {
 }
 
 // Convert LLA (degrees) to ECEF. The radius parameter is deprecated.
-export function LLAToECEFRadians(lat, lon, alt=0, radius) {
+export function LLAToECEFRadians(lat: number, lon: number, alt: number = 0, radius?: number): Vector3 {
     assert(radius === undefined, "undexpected radius in LLAToECEF")
     assert(Sit.lat !== undefined, "Sit.lat undefined in LLAToECEF")
 
@@ -558,19 +563,19 @@ export function LLAToECEFRadians(lat, lon, alt=0, radius) {
 }
 
 // Convert LLA (degrees) to ECEF. Uses constant multiplier for deg→rad.
-export function LLAToECEF(lat, lon, alt=0, radius) {
+export function LLAToECEF(lat: number, lon: number, alt: number = 0, radius?: number): Vector3 {
     // Convert degrees to radians using constant multiplier (faster than radians() function)
     return LLAToECEFRadians(lat * _DEG_TO_RAD, lon * _DEG_TO_RAD, alt, radius);
 }
 
 // vector input version
-export function LLAVToECEF(lla, radius) {
+export function LLAVToECEF(lla: Vector3, radius?: number): Vector3 {
     assert(radius === undefined, "undexpected radius in LLAVToECEF")
     return LLAToECEF(lla.x, lla.y, lla.z)
 }
 
 // Force update of LLA to ECEF constants (call this if you manually change Sit.lat/lon)
-export function updateLLAToECEFConstants() {
+export function updateLLAToECEFConstants(): void {
     _lastSitLat = null;
     _lastSitLon = null;
     _updateSitConstants();
@@ -580,7 +585,7 @@ export function updateLLAToECEFConstants() {
 // Convert RA, Dec to Az, El
 // Inputs in radians, outputs in radians
 // modified so az is positive clockwise from north
-export function raDecToAzElRADIANS(ra, dec, lat, lon, lst) {
+export function raDecToAzElRADIANS(ra: number, dec: number, lat: number, lon: number, lst: number): { az: number; el: number } {
     // Calculate the Hour Angle (HA)
     const ha = lst - ra;
 
@@ -603,7 +608,7 @@ export function raDecToAzElRADIANS(ra, dec, lat, lon, lst) {
 
 // GIven a date JS object (which also contains time) and a longitiude
 // Find the Local Sidereal time.
-export function getLST(date, longitude) {
+export function getLST(date: Date, longitude: number): number {
     // Convert date to Julian Date
     const JD = date.getTime() / 86400000 + 2440587.5;
 
@@ -628,7 +633,7 @@ export function getLST(date, longitude) {
 
 // given a position on the celestial sphere, find the az and el from a particular lat, lon
 // BAD
-export function ECEFCelestialToAzEl(ecef, lat, lon) {
+export function ECEFCelestialToAzEl(ecef: Vector3, lat: number, lon: number): { az: number; el: number } {
     // First convert to ENU, so locally Z is up
     const enu = ECEF2ENU(ecef, lat, lon, 1, true)
 
@@ -653,7 +658,7 @@ export function ECEFCelestialToAzEl(ecef, lat, lon) {
  * @param {boolean} northern - true for northern hemisphere, false for southern
  * @returns {{lat: number, lon: number}} Latitude and longitude in degrees
  */
-export function utmToLatLon(easting, northing, zone, northern = true) {
+export function utmToLatLon(easting: number, northing: number, zone: number, northern: boolean = true): LatLon {
     const a = 6378137.0;
     const f = 1 / 298.257223563;
     const k0 = 0.9996;
@@ -710,7 +715,7 @@ export function utmToLatLon(easting, northing, zone, northern = true) {
  * @param {number} epsgCode - EPSG code (e.g., 26911, 32611)
  * @returns {{zone: number, northern: boolean}|null} Zone info or null if not UTM
  */
-export function parseUTMFromEPSG(epsgCode) {
+export function parseUTMFromEPSG(epsgCode: number): { zone: number; northern: boolean } | null {
     if (epsgCode >= 26901 && epsgCode <= 26923) {
         return { zone: epsgCode - 26900, northern: true };
     }
@@ -723,7 +728,7 @@ export function parseUTMFromEPSG(epsgCode) {
     return null;
 }
 
-const CA_STATE_PLANE_ZONES = {
+const CA_STATE_PLANE_ZONES: Record<number, { zone: number; units: string; feM: number; fnM: number }> = {
     2225: { zone: 1, units: 'ft', feM: 2000000, fnM: 500000 },
     2226: { zone: 2, units: 'ft', feM: 2000000, fnM: 500000 },
     2227: { zone: 3, units: 'ft', feM: 2000000, fnM: 500000 },
@@ -750,7 +755,7 @@ const CA_STATE_PLANE_ZONES = {
     6419: { zone: 6, units: 'ftUS', feM: 2000000, fnM: 500000 },
 };
 
-const CA_ZONE_PARAMS = {
+const CA_ZONE_PARAMS: Record<number, { lat0: number; lon0: number; sp1: number; sp2: number }> = {
     1: { lat0: 39.333333, lon0: -122, sp1: 40, sp2: 41.666667 },
     2: { lat0: 37.666667, lon0: -122, sp1: 38.333333, sp2: 39.833333 },
     3: { lat0: 36.5, lon0: -120.5, sp1: 37.066667, sp2: 38.433333 },
@@ -764,7 +769,7 @@ const CA_ZONE_PARAMS = {
  * @param {number} epsgCode - EPSG code
  * @returns {{zone: number, units: string}|null} Zone info or null if not CA State Plane
  */
-export function parseCAStatePlaneFromEPSG(epsgCode) {
+export function parseCAStatePlaneFromEPSG(epsgCode: number): { zone: number; units: string; feM: number; fnM: number } | null {
     return CA_STATE_PLANE_ZONES[epsgCode] || null;
 }
 
@@ -779,7 +784,7 @@ export function parseCAStatePlaneFromEPSG(epsgCode) {
  * @param {number} fnM - False northing in meters
  * @returns {{lat: number, lon: number}} Latitude and longitude in degrees
  */
-export function caStatePlaneToLatLon(easting, northing, zone, units = 'ftUS', feM = 2000000, fnM = 500000) {
+export function caStatePlaneToLatLon(easting: number, northing: number, zone: number, units: string = 'ftUS', feM: number = 2000000, fnM: number = 500000): LatLon | null {
     const p = CA_ZONE_PARAMS[zone];
     if (!p) return null;
     
