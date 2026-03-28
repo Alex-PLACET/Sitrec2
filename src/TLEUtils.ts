@@ -213,6 +213,7 @@ export class CTLEData {
     startDate: Date;
     endDate: Date;
     loadError?: string;
+    rawText: string;
 
     // constructor is passed in a string that contains the TLE file as \n separated lines
     // extracts in into
@@ -221,6 +222,8 @@ export class CTLEData {
         // fileData is a string that contains the TLE file as \n separated lines
         assert(fileData !== undefined, "CTLEData: fileData is undefined");
         assert(typeof fileData === "string", "CTLEData: fileData is not a string");
+
+        this.rawText = fileData;
 
         // Check for server error messages before trying to parse as TLE
         const trimmedData = fileData.trim();
@@ -371,6 +374,50 @@ export class CTLEData {
             this.loadError = "No satellites loaded from TLE data";
         }
 
+    }
+
+    // Merge satellites from another CTLEData into this one.
+    // Satellites with matching NORAD numbers get their satrecs combined.
+    // New NORAD numbers are added as new entries.
+    mergeFrom(other: CTLEData): void {
+        let added = 0;
+        let merged = 0;
+
+        for (const otherSat of other.satData) {
+            const existing = this.noradIndex[otherSat.number];
+            if (existing) {
+                // Combine satrecs for the same satellite
+                existing.satrecs.push(...otherSat.satrecs);
+                merged++;
+            } else {
+                // New satellite -- add it
+                const newSat: SatData = {
+                    name: otherSat.name,
+                    number: otherSat.number,
+                    visible: otherSat.visible,
+                    satrecs: [...otherSat.satrecs],
+                };
+                this.satData.push(newSat);
+                this.noradIndex[newSat.number] = newSat;
+                added++;
+            }
+        }
+
+        // Recompute date range
+        this.startDate = new Date("2100");
+        this.endDate = new Date("1950");
+        for (const satData of this.satData) {
+            for (const satrec of satData.satrecs) {
+                const d = satRecToDate(satrec);
+                if (d < this.startDate) this.startDate = d;
+                if (d > this.endDate) this.endDate = d;
+            }
+        }
+
+        // Append raw text for export
+        this.rawText += "\n" + other.rawText;
+
+        console.log(`CTLEData.mergeFrom: added ${added} new satellites, merged satrecs for ${merged} existing. Total: ${this.satData.length}`);
     }
 
     // given a satellite name or number in s, convert it into a valid NORAD number that

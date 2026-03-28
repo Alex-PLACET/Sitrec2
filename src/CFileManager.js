@@ -77,6 +77,9 @@ import {asyncOperationRegistry} from "./AsyncOperationRegistry";
 import {ECEFToLLAVD_radii} from "./LLA-ECEF-ENU";
 import {projectedBoundsToWGS84} from "./proj4Loader";
 import {isAudioOnlyFormat} from "./AudioFormats";
+import {saveAs} from "file-saver";
+import {EventManager} from "./CEventManager";
+import {CTLEData} from "./TLEUtils";
 import {extractFeaturesFromFile, isFeaturesCSV} from "./ParseFeaturesCSV";
 import {createImageFromArrayBuffer} from "./FileUtils";
 import {CNode3DObject, ModelFiles} from "./nodes/CNode3DObject";
@@ -296,6 +299,7 @@ export class CFileManager extends CManager {
                 guiMenus.debug.add(this, "dumpRoots").name("debug dump Root notes").perm();
             }
 
+            this.setupResourcesMenu();
         }
     }
 
@@ -3000,6 +3004,7 @@ export class CFileManager extends CManager {
                 }
                 console.log("parseResult: DONE Parse " + filename)
                 setRenderOne(true);
+                EventManager.dispatchEvent("filesParsed", {filename});
                 if (options.returnMeta) {
                     return {parsedResult, changesSerializedState};
                 }
@@ -3060,6 +3065,288 @@ export class CFileManager extends CManager {
      * @param {string} filename - The name of the file
      * @param {*} parsedFile - The parsed file data (type varies by file format)
      */
+    // Sticky flag: when the user chooses "Merge All" in the TLE dialog,
+    // subsequent TLE imports in the same session skip the dialog and auto-merge.
+    _tleMergeAll = false;
+    // Shared promise so concurrent TLE imports wait for the first dialog result
+    // instead of each showing their own dialog.
+    _tleDialogPromise = null;
+
+    /**
+     * Generate a human-readable assessment of how a new TLE set relates to the
+     * existing loaded TLE set and the current simulation date.
+     */
+    _generateTLEAssessment(existingTLE, newTLE, currentDate) {
+        const fmtDate = (d) => d.toISOString().substring(0, 10);
+        const daysBetween = (a, b) => Math.round((b - a) / (1000 * 60 * 60 * 24));
+
+        const curMs = currentDate.getTime();
+        const exStart = existingTLE.startDate;
+        const exEnd = existingTLE.endDate;
+        const nwStart = newTLE.startDate;
+        const nwEnd = newTLE.endDate;
+
+        // Data points
+        const lines = [];
+        lines.push(`Current loaded: ${existingTLE.satData.length} satellites, ${fmtDate(exStart)} to ${fmtDate(exEnd)} (${daysBetween(exStart, exEnd)} days)`);
+        lines.push(`New file: ${newTLE.satData.length} satellites, ${fmtDate(nwStart)} to ${fmtDate(nwEnd)} (${daysBetween(nwStart, nwEnd)} days)`);
+        lines.push(`Simulation date: ${fmtDate(currentDate)}`);
+
+        // How well each set covers the current date
+        // Ideal TLE is from just before the current date (extrapolate forward)
+        const exDaysBeforeCur = daysBetween(exEnd, currentDate);
+        const exDaysAfterCur = daysBetween(currentDate, exStart);
+        const nwDaysBeforeCur = daysBetween(nwEnd, currentDate);
+        const nwDaysAfterCur = daysBetween(currentDate, nwStart);
+
+        const exContainsCur = curMs >= exStart.getTime() && curMs <= exEnd.getTime();
+        const nwContainsCur = curMs >= nwStart.getTime() && curMs <= nwEnd.getTime();
+
+        // Overlap between sets
+        const overlapStart = Math.max(exStart.getTime(), nwStart.getTime());
+        const overlapEnd = Math.min(exEnd.getTime(), nwEnd.getTime());
+        const hasOverlap = overlapStart <= overlapEnd;
+        const overlapDays = hasOverlap ? daysBetween(new Date(overlapStart), new Date(overlapEnd)) : 0;
+
+        lines.push('');
+
+        // Assessment of the new file's usefulness
+        const assessments = [];
+
+        if (nwContainsCur) {
+            assessments.push('The new TLE set spans the simulation date — it contains TLEs from just before and/or after the current time, which is ideal for accurate propagation.');
+        } else if (nwEnd.getTime() <= curMs && nwDaysBeforeCur <= 30) {
+            assessments.push(`The new TLE set ends ${nwDaysBeforeCur} day(s) before the simulation date. Since TLEs are best used by extrapolating forward from a recent epoch, this is still useful.`);
+        } else if (nwEnd.getTime() <= curMs && nwDaysBeforeCur <= 90) {
+            assessments.push(`The new TLE set ends ${nwDaysBeforeCur} days before the simulation date. This is moderately stale — propagation accuracy degrades beyond ~30 days, but may still be acceptable.`);
+        } else if (nwEnd.getTime() <= curMs) {
+            assessments.push(`The new TLE set ends ${nwDaysBeforeCur} days before the simulation date. This is quite old — propagation from TLEs this stale will have significant errors.`);
+        } else if (nwStart.getTime() > curMs) {
+            assessments.push(`The new TLE set starts ${nwDaysAfterCur} day(s) after the simulation date. Backward propagation from future TLEs is less reliable than forward propagation.`);
+        }
+
+        // Compare to existing
+        if (exContainsCur && !nwContainsCur) {
+            assessments.push('The currently loaded set already spans the simulation date, so the new set may not improve accuracy for the current time.');
+        } else if (!exContainsCur && nwContainsCur) {
+            assessments.push('The new set spans the simulation date while the current set does not — merging or replacing will improve accuracy.');
+        } else if (exContainsCur && nwContainsCur) {
+            assessments.push('Both sets span the simulation date. Merging will add satellites not in the current set and provide additional epoch data for existing ones.');
+        }
+
+        // Overlap info
+        if (hasOverlap && overlapDays > 0) {
+            assessments.push(`The two sets overlap by ${overlapDays} day(s) (${fmtDate(new Date(overlapStart))} to ${fmtDate(new Date(overlapEnd))}). Satellites in common will have their historical records combined when merged.`);
+        } else {
+            assessments.push('The two sets do not overlap in time. Merging will give broader temporal coverage.');
+        }
+
+        // Satellite count comparison
+        const existingCount = existingTLE.satData.length;
+        const newCount = newTLE.satData.length;
+        if (newCount > existingCount * 1.5) {
+            assessments.push(`The new set has significantly more satellites (${newCount} vs ${existingCount}).`);
+        } else if (existingCount > newCount * 1.5) {
+            assessments.push(`The current set has significantly more satellites (${existingCount} vs ${newCount}).`);
+        }
+
+        // Distance from new TLE set to simulation date (minimum of start/end distance)
+        const newDistDays = nwContainsCur ? 0 : Math.min(
+            Math.abs(daysBetween(nwEnd, currentDate)),
+            Math.abs(daysBetween(nwStart, currentDate))
+        );
+        const tooFar = newDistDays > 100;
+        let warning = null;
+        if (tooFar) {
+            warning = `WARNING: This TLE set is ${newDistDays} days away from the simulation date. It is NOT likely to be useful — satellite positions propagated from TLEs this far out of date will have very large errors and many satellites will fail to propagate entirely.`;
+        }
+
+        return {dataLines: lines, assessment: assessments.join(' '), warning};
+    }
+
+    /**
+     * Show a dialog asking the user how to handle a TLE file when one already exists.
+     * Includes an assessment of how useful the new file is relative to existing data.
+     * Returns "merge", "mergeAll", or "replace". Rejects on cancel.
+     */
+    showTLEChoiceDialog(filename, existingTLE, newTLEText) {
+        // Parse the new TLE temporarily to get its stats
+        let newTLE = null;
+        let assessment = null;
+        try {
+            newTLE = new CTLEData(newTLEText);
+            const currentDate = new Date(Sit.startTime);
+            assessment = this._generateTLEAssessment(existingTLE, newTLE, currentDate);
+        } catch (e) {
+            console.warn("Could not generate TLE assessment:", e);
+        }
+
+        return new Promise((resolve, reject) => {
+            const overlay = document.createElement('div');
+            overlay.style.cssText = `
+                position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                background: rgba(0,0,0,0.5); z-index: 10000;
+                display: flex; align-items: center; justify-content: center;
+            `;
+            for (const evt of ['dblclick', 'mousedown', 'mouseup', 'click', 'wheel', 'contextmenu']) {
+                overlay.addEventListener(evt, (e) => e.stopPropagation());
+            }
+
+            const modal = document.createElement('div');
+            modal.style.cssText = `
+                background: #2a2a2a; border-radius: 8px; padding: 20px;
+                min-width: 340px; max-width: 520px;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+                font-family: Arial, sans-serif; color: white;
+                max-height: 85vh; overflow-y: auto;
+            `;
+
+            const title = document.createElement('h3');
+            title.textContent = 'Import TLE Data';
+            title.style.cssText = 'margin: 0 0 10px 0; font-size: 18px; color: #fff;';
+
+            const message = document.createElement('p');
+            message.textContent = `TLE data is already loaded. How would you like to handle "${filename}"?`;
+            message.style.cssText = 'margin: 0 0 15px 0; font-size: 14px; color: #ccc;';
+
+            const btnStyle = `
+                padding: 10px 20px; border: none; border-radius: 4px;
+                cursor: pointer; font-size: 14px; margin: 5px; width: calc(100% - 10px);
+            `;
+
+            const makeBtn = (text, bg, action) => {
+                const btn = document.createElement('button');
+                btn.textContent = text;
+                btn.style.cssText = btnStyle + `background: ${bg}; color: white;`;
+                btn.onclick = () => { document.body.removeChild(overlay); resolve(action); };
+                return btn;
+            };
+
+            modal.appendChild(title);
+            modal.appendChild(message);
+            modal.appendChild(makeBtn('Merge (combine satellite data)', '#1976d2', 'merge'));
+            modal.appendChild(makeBtn('Merge All Files (skip dialog for remaining files)', '#0d47a1', 'mergeAll'));
+            modal.appendChild(makeBtn('Replace (remove existing data)', '#388e3c', 'replace'));
+            const cancelBtn = document.createElement('button');
+            cancelBtn.textContent = 'Cancel';
+            cancelBtn.style.cssText = btnStyle + 'background: #757575; color: white;';
+            cancelBtn.onclick = () => { document.body.removeChild(overlay); reject(new Error('User cancelled')); };
+            modal.appendChild(cancelBtn);
+
+            // Assessment section
+            if (assessment) {
+                const divider = document.createElement('hr');
+                divider.style.cssText = 'border: none; border-top: 1px solid #444; margin: 15px 0 10px 0;';
+                modal.appendChild(divider);
+
+                if (assessment.warning) {
+                    const warnSection = document.createElement('div');
+                    warnSection.style.cssText = 'font-size: 13px; color: #ff80a0; font-weight: bold; line-height: 1.5; margin-bottom: 10px; padding: 8px; background: rgba(255,80,120,0.1); border: 1px solid rgba(255,80,120,0.3); border-radius: 4px;';
+                    warnSection.textContent = assessment.warning;
+                    modal.appendChild(warnSection);
+                }
+
+                const dataSection = document.createElement('div');
+                dataSection.style.cssText = 'font-size: 12px; color: #aaa; font-family: monospace; margin-bottom: 10px; line-height: 1.6;';
+                dataSection.innerHTML = assessment.dataLines.map(l => l === '' ? '<br>' : l.replace(/</g, '&lt;')).join('<br>');
+                modal.appendChild(dataSection);
+
+                const assessSection = document.createElement('div');
+                assessSection.style.cssText = 'font-size: 13px; color: #ccc; line-height: 1.5;';
+                assessSection.textContent = assessment.assessment;
+                modal.appendChild(assessSection);
+            }
+
+            overlay.appendChild(modal);
+            document.body.appendChild(overlay);
+        });
+    }
+
+    /**
+     * Set up the File > Export > Resources submenu under the existing Export folder.
+     * Call once after guiMenus.file is available.
+     */
+    setupResourcesMenu() {
+        if (!guiMenus.file) return;
+
+        // Ensure the Export folder exists (same lazy creation as makeExportButton)
+        if (this.exportFolder === undefined) {
+            this.exportFolder = this.guiFolder.addFolder("Export").perm().close();
+        }
+
+        this._resourcesFolder = this.exportFolder.addFolder("Resources").close()
+            .tooltip("Download raw data for any loaded file");
+
+        // Rebuild the resources list whenever files finish parsing.
+        EventManager.addEventListener("filesParsed", () => {
+            this._rebuildResourcesList();
+        });
+        // Also rebuild when the folder is opened (catches files loaded before
+        // the event listener was set up, e.g. initial sitch assets).
+        this._resourcesFolder.$title.addEventListener('mousedown', () => {
+            // Defer so lil-gui's handler runs first and _closed is updated.
+            setTimeout(() => {
+                if (!this._resourcesFolder._closed) {
+                    this._rebuildResourcesList();
+                }
+            }, 0);
+        });
+    }
+
+    /**
+     * Rebuild the contents of the Resources folder from current FileManager.list.
+     */
+    _rebuildResourcesList() {
+        const folder = this._resourcesFolder;
+        if (!folder) return;
+
+        // Remove all existing children (controllers and sub-folders).
+        // destroy() mutates the parent arrays, so use while-loop on first element.
+        while (folder.controllers.length > 0) {
+            folder.controllers[0].destroy();
+        }
+        while (folder.folders.length > 0) {
+            folder.folders[0].destroy();
+        }
+
+        let count = 0;
+        for (const id in this.list) {
+            const entry = this.list[id];
+            // Need either original buffer or string data to be downloadable
+            if (!entry.original && !(typeof entry.data === 'string')) continue;
+            // Skip archive containers -- the extracted content is listed separately
+            if (entry.dataType === "archive") continue;
+            // Skip synthetic/internal entries with no meaningful filename
+            const displayName = entry.filename || id;
+            if (!displayName || displayName.length === 0) continue;
+
+            const actions = {};
+            const actionKey = 'dl_' + count;
+            actions[actionKey] = () => {
+                const baseName = displayName.split('/').pop() || 'resource.bin';
+                if (typeof entry.data === 'string') {
+                    // String data (e.g. TLE text) -- prefer over original which may be a zip
+                    saveAs(new Blob([entry.data]), baseName);
+                } else if (entry.original) {
+                    saveAs(new Blob([entry.original]), baseName);
+                }
+            };
+            let shortName = displayName.split('/').pop() || displayName;
+            if (shortName.length > 35) shortName = shortName.substring(0, 32) + '...';
+            const typeStr = entry.dataType ? ` (${entry.dataType})` : '';
+            folder.add(actions, actionKey)
+                .name(shortName + typeStr)
+                .tooltip(`Download: ${displayName}`);
+            count++;
+        }
+
+        if (count === 0) {
+            const empty = {};
+            empty.noFiles = () => {};
+            folder.add(empty, 'noFiles').name('(no downloadable files)').disable();
+        }
+    }
+
     async handleParsedFile(filename, parsedFile, trackOptions = {}) {
         console.log("handleParsedFile: Handling parsed file " + filename)
 
@@ -3288,14 +3575,55 @@ export class CFileManager extends CManager {
 
 
         // very rough figuring out what to do with it
-        // TODO: multiple TLEs, Videos, images.
         if (fileManagerEntry.dataType === "tle") {
+            const nightSky = NodeMan.get("NightSkyNode");
+            const existingTLE = nightSky.satellites.TLEData;
+            const hasExisting = existingTLE && existingTLE.satData.length > 0;
 
-            // remove any existing TLE (most likely the current Starlink, bout could be the last drag and drop file)
-            this.deleteIf(file => file.isTLE);
+            // Determine action: from deserialization metadata, sticky mergeAll, or dialog.
+            // Multiple TLE files may be processing concurrently (drag-drop of many files),
+            // so we use a shared promise to show only one dialog.
+            let action = trackOptions.tleAction; // "merge" or "replace" from saved metadata
+            if (!action && this._tleMergeAll) {
+                action = "merge";
+            }
+            if (!action && hasExisting) {
+                try {
+                    if (this._tleDialogPromise) {
+                        // Another TLE is already showing the dialog -- wait for its result
+                        action = await this._tleDialogPromise;
+                    } else {
+                        // First concurrent TLE -- show the dialog and share the promise
+                        this._tleDialogPromise = this.showTLEChoiceDialog(filename, existingTLE, parsedFile);
+                        action = await this._tleDialogPromise;
+                        this._tleDialogPromise = null;
+                    }
+                } catch (e) {
+                    this._tleDialogPromise = null;
+                    return false; // user cancelled
+                }
+            }
+
+            if (action === "mergeAll") {
+                this._tleMergeAll = true;
+                action = "merge";
+            }
+
+            // If no TLEs existed before this one, auto-merge the rest of this batch
+            if (!hasExisting) {
+                this._tleMergeAll = true;
+            }
 
             fileManagerEntry.isTLE = true;
-            NodeMan.get("NightSkyNode").replaceTLE(parsedFile)
+
+            if (action === "merge" && hasExisting) {
+                fileManagerEntry.tleMerged = true;
+                nightSky.mergeTLE(parsedFile);
+            } else {
+                // Replace: remove existing TLE files (except this one) and load fresh
+                this.deleteIf(file => file.isTLE && file !== fileManagerEntry);
+                nightSky.replaceTLE(parsedFile);
+            }
             return true;
         } else {
             let isATrack = false;

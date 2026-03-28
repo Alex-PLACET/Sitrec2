@@ -3785,6 +3785,8 @@ export class CCustomManager {
                     filesMetadata[id] = { dataType: file.dataType };
                 } else if (file.dataType === "groundOverlayImage") {
                     filesMetadata[id] = { dataType: file.dataType };
+                } else if (file.isTLE && file.tleMerged) {
+                    filesMetadata[id] = { dataType: file.dataType, tleAction: "merge" };
                 }
             }
 
@@ -4341,6 +4343,10 @@ export class CCustomManager {
                             if (metadata?.selectedTracks) {
                                 trackOptions.showDialog = false;
                                 trackOptions.selectedTracks = metadata.selectedTracks;
+                            }
+                            // Pass TLE merge/replace action to skip the choice dialog on reload
+                            if (metadata?.tleAction) {
+                                trackOptions.tleAction = metadata.tleAction;
                             }
                             FileManager.handleParsedFile(fileID, parsedFile, trackOptions);
                         }

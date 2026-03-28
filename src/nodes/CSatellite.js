@@ -39,6 +39,7 @@ export class CSatellite {
 
         // TLE Data
         this.TLEData = undefined;
+        this.tleFilterResults = null; // boolean[] from TLE filter dialog, or null (no filter active)
 
         // Rendering via CPointLightCloud
         this.lightCloud = null;
@@ -707,6 +708,36 @@ export class CSatellite {
 
     }
 
+    /**
+     * Merge new TLE data into the existing TLEData, combining by NORAD number.
+     * Rebuilds the light cloud since the satellite count may change.
+     */
+    mergeTLE(tle) {
+        assert(this.TLEData !== undefined, "mergeTLE requires existing TLEData");
+        const newData = new CTLEData(tle);
+        this.TLEData.mergeFrom(newData);
+        // Rebuild the rendering since satellite count may have changed
+        this.removeSatellites();
+        this.TLEData.satData.forEach(sat => {
+            if (!sat.ecef) sat.ecef = V3();
+        });
+        EventManager.dispatchEvent("tleLoaded", {});
+        setRenderOne(2);
+
+        // Update the export button to use merged raw text
+        if (this.exportTLEButton) {
+            this.exportTLEButton.destroy();
+            this.exportTLEButton = null;
+        }
+        const rawText = this.TLEData.rawText;
+        const obj = {
+            exportTLE: () => {
+                saveAs(new Blob([rawText]), "satellites.tle");
+            }
+        };
+        this.exportTLEButton = guiMenus.file.add(obj, 'exportTLE').name('Export TLE');
+    }
+
     removeSatellites() {
         if (this.TLEData !== undefined) {
             if (this.lightCloud) {
@@ -877,6 +908,15 @@ export class CSatellite {
             if (!filterHit && this.showOtherSatellites) {
                 satData.visible = true;
                 continue;
+            }
+        }
+
+        // Apply TLE filter results (from Filter TLEs dialog) as an AND on top of category filters
+        if (this.tleFilterResults) {
+            for (let i = 0; i < this.TLEData.satData.length; i++) {
+                if (!this.tleFilterResults[i]) {
+                    this.TLEData.satData[i].visible = false;
+                }
             }
         }
     }

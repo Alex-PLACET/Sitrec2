@@ -663,6 +663,10 @@ class CDragDropHandler {
     // this is called from the main loop
     // to allow for debugging
     checkDropQueue() {
+        if (this.dropQueue.length > 0) {
+            // Reset the "Merge All" sticky flag at the start of each batch
+            FileManager._tleMergeAll = false;
+        }
         while (this.dropQueue.length > 0) {
             const drop = this.dropQueue.shift();
             console.log("checkDropQueue: Parsing queued file " + drop.filename)

@@ -50,6 +50,8 @@ import {CCelestialElements} from "./CCelestialElements";
 import {CPlanets} from "./CPlanets";
 import {CSatellite} from "./CSatellite";
 import {EventManager} from "../CEventManager";
+import {showTLEFilterDialog} from "../TLEFilterDialog";
+import {showError} from "../showError";
 
 
 // other source of stars, if we need more (for zoomed-in pics)
@@ -433,6 +435,20 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
             // so they should be serialized directly (not with satellites. prefix)
             this.addSimpleSerial(option.key);
         });
+
+        // ── TLE Filter buttons ──
+        this._tleFilterDialog = null; // reference to open dialog element
+        satGUI.add({filterTLEs: () => this.openTLEFilterDialog()}, 'filterTLEs')
+            .name("Filter TLEs")
+            .tooltip("Filter visible satellites by altitude, position, orbital parameters, or name");
+
+        satGUI.add({clearTLEFilter: () => {
+            this.satellites.tleFilterResults = null;
+            this.satellites.filterSatellites();
+            setRenderOne(2);
+        }}, 'clearTLEFilter')
+            .name("Clear TLE Filter")
+            .tooltip("Remove all TLE spatial/orbital filters, restoring category-based visibility");
 
         satGUI.add(this, "maxLabelsDisplayed", 100, 10000, 100).listen().name("Max Labels Displayed")
             .tooltip("Maximum number of satellite labels to render at once")
@@ -1110,6 +1126,44 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
         // Add satellites to the scene
         this.satellites.addSatellites(this.satelliteGroup, 1);
         this.satellites.filterSatellites();
+    }
+
+    mergeTLE(tle) {
+        this.satellites.mergeTLE(tle);
+        // Rebuild the scene with merged satellite data
+        this.satellites.addSatellites(this.satelliteGroup, 1);
+        this.satellites.filterSatellites();
+    }
+
+    openTLEFilterDialog() {
+        if (!this.satellites.TLEData || this.satellites.TLEData.satData.length === 0) {
+            showError("No TLE data loaded. Load satellites first.");
+            return;
+        }
+        // Close any existing filter dialog
+        if (this._tleFilterDialog && this._tleFilterDialog.parentNode) {
+            this._tleFilterDialog.parentNode.removeChild(this._tleFilterDialog);
+        }
+
+        const savedResults = this.satellites.tleFilterResults;
+        const currentDate = GlobalDateTimeNode.dateNow;
+
+        this._tleFilterDialog = showTLEFilterDialog(
+            this.satellites,
+            // onApply: set filter results and update visibility
+            (filterResults) => {
+                this.satellites.tleFilterResults = filterResults;
+                this.satellites.filterSatellites();
+                setRenderOne(2);
+            },
+            // onCancel: restore previous state
+            () => {
+                this.satellites.tleFilterResults = savedResults;
+                this.satellites.filterSatellites();
+                setRenderOne(2);
+            },
+            currentDate
+        );
     }
 
     /**
