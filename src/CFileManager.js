@@ -2936,20 +2936,32 @@ export class CFileManager extends CManager {
                 if (!Array.isArray(parsedResult)) {
                     parsedResult = [parsedResult]
                 } else {
-                    // it is an array, so we need to make an entry for the original
+                    // Check if these are NITF-style converted products
+                    // (track CSV + optional JPG instead of original archive)
+                    const isConverted = parsedResult.length > 0 && parsedResult[0].nitfConverted;
+
+                    // Store the original file
                     this.remove(filename); // allow reloading.
                     this.add(filename, result, result)
-                    const fileManagerEntry = this.list[filename];
-                    fileManagerEntry.dynamicLink = true; // we DO want to rehost the original
-                    fileManagerEntry.staticURL = newStaticURL;
+                    const archiveEntry = this.list[filename];
+                    archiveEntry.filename = filename;
+                    archiveEntry.dataType = "archive";
+
+                    if (isConverted) {
+                        // Converted products: don't rehost the original, rehost sub-files instead
+                        archiveEntry.dynamicLink = false;
+                        archiveEntry.skipSerialization = true;
+                    } else {
+                        // Standard archive (zip, TS): rehost the original
+                        archiveEntry.dynamicLink = true;
+                        archiveEntry.staticURL = newStaticURL;
+                    }
 
                     // for multiple files, we don't want to keep the original static link
                     // we set it to null, so we don't try to include it loadedFiles
                     newStaticURL = null;
 
-                    fileManagerEntry.filename = filename;
-                    fileManagerEntry.dataType = "archive";
-                    isMultiple = true;
+                    isMultiple = !isConverted; // converted sub-files are NOT isMultiple
                 }
 
                 for (const x of parsedResult) {
@@ -2958,13 +2970,22 @@ export class CFileManager extends CManager {
                     // I think so.
 
                     this.remove(x.filename); // allow reloading.
-                    this.add(x.filename, x.parsed, result)
+                    // For converted products, use their convertedBuffer as the original
+                    // (this is what gets rehosted — the CSV or JPG, not the parent file)
+                    const originalData = x.convertedBuffer || result;
+                    this.add(x.filename, x.parsed, originalData)
                     const fileManagerEntry = this.list[x.filename];
                     fileManagerEntry.dynamicLink = !isMultiple;
                     fileManagerEntry.filename = x.filename;
                     fileManagerEntry.staticURL = newStaticURL;
                     fileManagerEntry.dataType = x.dataType;
                     fileManagerEntry.isMultiple = isMultiple;
+
+                    // Preserve autoSelectAsCamera from the parsed track file
+                    // (e.g. CTrackFileNITF) so it survives after parsed is consumed
+                    if (x.parsed && x.parsed.autoSelectAsCamera) {
+                        fileManagerEntry.autoSelectAsCamera = true;
+                    }
 
                     const parsedFile = x.parsed;
                     const parsedFilename = x.filename;

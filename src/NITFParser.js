@@ -11,8 +11,155 @@ import {CTrackFileNITF} from "./TrackFiles/CTrackFileNITF";
 import {createImageFromArrayBuffer} from "./FileUtils";
 import {decodeJPEG2000ToBlobURL, decodeJ2KTiledToCanvas} from "./JPEG2000Utils";
 import {initProgress, updateProgress, hideProgress} from "./CProgressIndicator";
+import {MISB} from "./MISBFields";
 
 export class NITFParser {
+
+    /**
+     * Convert MISB array rows (from CTrackFileNITF.toMISB()) to a CSV string.
+     * Only includes columns that have at least one non-null value.
+     * Headers use MISB field names so detectCSVType() returns "MISB1" on reload.
+     */
+    static misbRowsToCSV(misbRows) {
+        // Build reverse map: MISB index → field name
+        const indexToName = {};
+        for (const [name, idx] of Object.entries(MISB)) {
+            indexToName[idx] = name;
+        }
+
+        // Find columns with non-null data
+        const activeCols = [];
+        const maxIdx = Math.max(...Object.values(MISB));
+        for (let col = 0; col <= maxIdx; col++) {
+            if (!indexToName[col]) continue;
+            for (const row of misbRows) {
+                if (row[col] !== null && row[col] !== undefined) {
+                    activeCols.push(col);
+                    break;
+                }
+            }
+        }
+
+        // Build CSV
+        const headers = activeCols.map(col => indexToName[col]);
+        let csv = headers.join(",") + "\n";
+        for (const row of misbRows) {
+            const values = activeCols.map(col => {
+                const v = row[col];
+                return (v === null || v === undefined) ? "" : String(v);
+            });
+            csv += values.join(",") + "\n";
+        }
+        return csv;
+    }
+
+    /**
+     * Resize an HTMLImageElement and convert to JPEG ArrayBuffer.
+     * @param {HTMLImageElement} img - Source image
+     * @param {number|null} maxDimension - Max width or height (null = original size)
+     * @param {number} quality - JPEG quality 0-1 (default 0.92)
+     * @returns {Promise<{buffer: ArrayBuffer, width: number, height: number}>}
+     */
+    static async resizeImageToJPG(img, maxDimension, quality = 0.92) {
+        let w = img.width;
+        let h = img.height;
+
+        if (maxDimension && (w > maxDimension || h > maxDimension)) {
+            const scale = maxDimension / Math.max(w, h);
+            w = Math.round(w * scale);
+            h = Math.round(h * scale);
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, w, h);
+
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
+        const buffer = await blob.arrayBuffer();
+        return {buffer, width: w, height: h};
+    }
+
+    /**
+     * Show a dialog for large NITF images asking if user wants track only
+     * or track + image (with resize options).
+     * @param {string} filename
+     * @param {number} width - Image width in pixels
+     * @param {number} height - Image height in pixels
+     * @param {number} bufferSize - Decoded image buffer size in bytes
+     * @returns {Promise<{includeImage: boolean, maxDimension: number|null}>}
+     */
+    static showNITFImageDialog(filename, width, height, bufferSize) {
+        return new Promise((resolve, reject) => {
+            const overlay = document.createElement('div');
+            overlay.style.cssText = `
+                position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                background: rgba(0, 0, 0, 0.5); z-index: 10000;
+                display: flex; align-items: center; justify-content: center;
+            `;
+
+            const modal = document.createElement('div');
+            modal.style.cssText = `
+                background: #2a2a2a; border-radius: 8px; padding: 20px;
+                min-width: 320px; max-width: 440px;
+                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+                font-family: Arial, sans-serif; color: white;
+            `;
+
+            const title = document.createElement('h3');
+            title.textContent = 'Large NITF Image';
+            title.style.cssText = 'margin: 0 0 10px 0; font-size: 18px; color: #fff;';
+
+            const sizeMB = (bufferSize / (1024 * 1024)).toFixed(1);
+            const message = document.createElement('p');
+            message.textContent = `Image: ${width}\u00D7${height} (${sizeMB} MB)`;
+            message.style.cssText = 'margin: 0 0 16px 0; font-size: 14px; color: #ccc;';
+
+            const btnStyle = `
+                padding: 10px 20px; border: none; border-radius: 4px;
+                cursor: pointer; font-size: 14px; margin: 4px 0;
+                width: 100%; color: white; text-align: left;
+            `;
+
+            const makeBtn = (text, bg, onClick) => {
+                const btn = document.createElement('button');
+                btn.textContent = text;
+                btn.style.cssText = btnStyle + `background: ${bg};`;
+                btn.onclick = () => { document.body.removeChild(overlay); onClick(); };
+                return btn;
+            };
+
+            modal.appendChild(title);
+            modal.appendChild(message);
+            modal.appendChild(makeBtn(`Track Only (no image)`, '#555',
+                () => resolve({includeImage: false, maxDimension: null})));
+            modal.appendChild(makeBtn(`Track + Image (original ${width}\u00D7${height})`, '#1976d2',
+                () => resolve({includeImage: true, maxDimension: null})));
+
+            // Only show smaller options if the image is actually larger than that threshold
+            if (Math.max(width, height) > 4096) {
+                modal.appendChild(makeBtn('Track + Image (max 4096px)', '#1976d2',
+                    () => resolve({includeImage: true, maxDimension: 4096})));
+            }
+            if (Math.max(width, height) > 2048) {
+                modal.appendChild(makeBtn('Track + Image (max 2048px)', '#1976d2',
+                    () => resolve({includeImage: true, maxDimension: 2048})));
+            }
+            if (Math.max(width, height) > 1024) {
+                modal.appendChild(makeBtn('Track + Image (max 1024px)', '#1976d2',
+                    () => resolve({includeImage: true, maxDimension: 1024})));
+            }
+
+            modal.appendChild(makeBtn('Cancel', '#757575',
+                () => reject(new Error('User cancelled'))));
+
+            overlay.appendChild(modal);
+            document.body.appendChild(overlay);
+        });
+    }
 
     /**
      * Parse a NITF file and return virtual files for image and track data.
@@ -56,36 +203,70 @@ export class NITFParser {
                 continue;
             }
 
-            // Create image virtual file
+            // Decode image and determine whether to include it
+            let includeImage = true;
+            let maxDimension = null;
+            let img = null;
+            let imageBuffer = null;
+
             try {
                 updateProgress({status: `Decoding segment ${i} (${image.ncols}×${image.nrows}, ${image.ic})...`});
-                const imageBuffer = await this.imageToPNG(image);
+                imageBuffer = await this.imageToPNG(image);
                 if (imageBuffer === null) {
                     // imageToPNG explicitly rejected (e.g. unsupported CADRG VQ)
-                    continue;
-                }
-                // Detect format from magic bytes: JPEG=FFD8, PNG=8950
-                const head = new Uint8Array(imageBuffer, 0, 2);
-                const isJPEG = head[0] === 0xFF && head[1] === 0xD8;
-                const ext = isJPEG ? 'jpg' : 'png';
-                const mime = isJPEG ? 'image/jpeg' : 'image/png';
-                const imageFilename = `${filename}_image_${i}.${ext}`;
-                const img = await createImageFromArrayBuffer(imageBuffer, mime);
+                    includeImage = false;
+                } else {
+                    // Detect format from magic bytes: JPEG=FFD8, PNG=8950
+                    const head = new Uint8Array(imageBuffer, 0, 2);
+                    const isJPEG = head[0] === 0xFF && head[1] === 0xD8;
+                    const mime = isJPEG ? 'image/jpeg' : 'image/png';
+                    img = await createImageFromArrayBuffer(imageBuffer, mime);
 
-                results.push({
-                    filename: imageFilename,
-                    parsed: img,
-                    dataType: "image"
-                });
-                console.log(`NITFParser: Created image virtual file: ${imageFilename} (${img.width}x${img.height})`);
+                    // For large images, ask user what to do
+                    if (imageBuffer.byteLength > 10 * 1024 * 1024) {
+                        hideProgress();
+                        try {
+                            const choice = await this.showNITFImageDialog(
+                                filename, img.width, img.height, imageBuffer.byteLength);
+                            includeImage = choice.includeImage;
+                            maxDimension = choice.maxDimension;
+                        } catch (e) {
+                            // User cancelled — skip image but still process track
+                            console.log("NITFParser: User cancelled NITF image dialog, loading track only");
+                            includeImage = false;
+                        }
+                    }
+                }
             } catch (e) {
-                console.error("NITFParser: Failed to create image:", e);
+                console.error("NITFParser: Failed to decode image:", e);
+                includeImage = false;
+            }
+
+            // Convert image to JPG (with optional resize) for serialization
+            if (includeImage && img) {
+                try {
+                    updateProgress({status: `Converting image to JPEG...`});
+                    const jpgResult = await this.resizeImageToJPG(img, maxDimension, 0.92);
+                    const jpgImg = await createImageFromArrayBuffer(jpgResult.buffer, 'image/jpeg');
+                    const imageFilename = `${filename}_image_${i}.jpg`;
+
+                    results.push({
+                        filename: imageFilename,
+                        parsed: jpgImg,
+                        dataType: "image",
+                        convertedBuffer: jpgResult.buffer,
+                        nitfConverted: true,
+                    });
+                    console.log(`NITFParser: Created image virtual file: ${imageFilename} `
+                        + `(${jpgResult.width}x${jpgResult.height}, ${(jpgResult.buffer.byteLength / 1024).toFixed(0)} KB)`);
+                } catch (e) {
+                    console.error("NITFParser: Failed to convert image to JPG:", e);
+                }
             }
 
             // Create track virtual file if we have geolocation
             if (image.corners && image.corners.length === 4) {
                 try {
-                    const trackFilename = `${filename}_track_${i}.nitftrack`;
                     const trackFile = new CTrackFileNITF({
                         corners: image.corners,
                         datetime: image.datetime || nitf.fileHeader.datetime,
@@ -95,12 +276,20 @@ export class NITFParser {
                         height: image.nrows,
                     });
 
+                    // Convert track to MISB CSV for serialization
+                    const misbRows = trackFile.toMISB();
+                    const csvString = this.misbRowsToCSV(misbRows);
+                    const csvBuffer = new TextEncoder().encode(csvString).buffer;
+                    const trackFilename = `${filename}_track_${i}.csv`;
+
                     results.push({
                         filename: trackFilename,
                         parsed: trackFile,
-                        dataType: "trackfile"
+                        dataType: "trackfile",
+                        convertedBuffer: csvBuffer,
+                        nitfConverted: true,
                     });
-                    console.log(`NITFParser: Created track virtual file: ${trackFilename}`);
+                    console.log(`NITFParser: Created track virtual file: ${trackFilename} (${csvBuffer.byteLength} bytes)`);
                 } catch (e) {
                     console.error("NITFParser: Failed to create track:", e);
                 }

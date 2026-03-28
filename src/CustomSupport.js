@@ -3739,6 +3739,12 @@ export class CCustomManager {
             for (let id in FileManager.list) {
                 const file = FileManager.list[id]
 
+                // Skip files marked for no serialization (e.g. original NITF archives
+                // replaced by converted products)
+                if (file.skipSerialization) {
+                    continue;
+                }
+
                 // initial check for isMultiple is to skip synthetic files
                 // that are generated from .TS or (TODO) .ZIP  uploads
                 if (!file.isMultiple) {
@@ -3795,6 +3801,16 @@ export class CCustomManager {
             for (const [fileId, indices] of Object.entries(trackIndicesPerFile)) {
                 if (!filesMetadata[fileId]) filesMetadata[fileId] = {};
                 filesMetadata[fileId].selectedTracks = indices;
+            }
+
+            // Save autoSelectAsCamera flag for track files that define their own camera
+            // (e.g. NITF tracks converted to MISB CSV)
+            for (let id in FileManager.list) {
+                const file = FileManager.list[id];
+                if (file.autoSelectAsCamera) {
+                    if (!filesMetadata[id]) filesMetadata[id] = {};
+                    filesMetadata[id].autoSelectAsCamera = true;
+                }
             }
 
             if (Object.keys(filesMetadata).length > 0) {
@@ -4314,6 +4330,11 @@ export class CCustomManager {
                                     if (!FileManager.kmzImageMap) FileManager.kmzImageMap = {};
                                     FileManager.kmzImageMap[metadata.kmzHref] = FileManager.list[fileID].blobURL;
                                 }
+                            }
+                            // Restore autoSelectAsCamera on track files that had it
+                            if (metadata?.autoSelectAsCamera) {
+                                if (parsedFile) parsedFile.autoSelectAsCamera = true;
+                                if (FileManager.list[fileID]) FileManager.list[fileID].autoSelectAsCamera = true;
                             }
                             // Pass saved track selections to skip the multi-track dialog on reload
                             const trackOptions = {};
