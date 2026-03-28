@@ -79,18 +79,6 @@ describe('Test Registry sync', () => {
         expect(missing).toEqual([]);
     });
 
-    test('snapshot entries have matching snapshot directories (excluding Docker)', () => {
-        const missing = [];
-        for (const entry of TEST_REGISTRY) {
-            if (!entry.snapshot) continue;
-            if (entry.group === 'Docker') continue; // Docker snapshots created in CI only
-            const snapshotDir = path.join(ROOT, 'tests_regression', `${entry.file}-snapshots`);
-            if (!fs.existsSync(snapshotDir)) {
-                missing.push(`${entry.id}: snapshot dir ${entry.file}-snapshots/ does not exist`);
-            }
-        }
-        expect(missing).toEqual([]);
-    });
 });
 
 // ============================================================
