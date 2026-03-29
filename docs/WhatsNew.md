@@ -45,7 +45,49 @@ Example entry format:
 
 ---
 
-## Version 2.39.3 (unreleased)
+## Version 2.40.0 (unreleased)
+
+### New Features
+- **TLE Merge/Replace on Import**: When importing TLE files with data already loaded, a dialog offers Merge, Merge All (sticky for batch), or Replace, with a detailed assessment of how the new data relates to the existing set and simulation date
+- **TLE Filter Dialog**: Modeless draggable panel for filtering satellites by spatial criteria (above/below camera, altitude range, view frustum, centerline angle, Earth occlusion), name (wildcard or regex), and orbital parameters (eccentricity, inclination, period, speed)
+- **TLE Filter "Any Frame in Range"**: Precalculates per-satellite visibility across the sitch time range — satellites pass if visible at any sample frame. Results stored as on/off/changeable for O(1) per-frame lookup during playback
+- **TLE Filter "Not Hidden by Earth"**: On by default — filters out satellites occluded by the Earth using ray-sphere intersection from the observer position
+- **Export Resources Menu**: File > Export > Resources submenu allows downloading raw data for any loaded file
+- **Multi-Track Selection Dialog**: When importing files with 3+ tracks, shows a selection dialog with preview info. Selections are saved in custom sitch serialization
+- **Track Filter Panel**: Modeless draggable panel with live preview for filtering loaded tracks by altitude, frustum, and direction (towards/away from camera)
+- **Inter-Agent Communication**: New sitrec-comms MCP server for message passing between parallel AI agents
+- **Full-Tab Screenshot**: `view='page'` option for `sitrec_screenshot` captures the entire browser tab including DOM overlays, dialogs, and GUI panels
+
+### Improvements
+- **Co-Located Satellite Hiding**: When the camera follows a satellite track (e.g. ISS), docked objects within 500m are hidden in the look view (dots and labels) but remain visible in the main 3D overview
+- **Live TLE Filter Updates**: Spatial filters auto-update at 5Hz when the camera position, orientation, FOV, or frame changes
+- **NITF Rehosting as Converted Products**: NITF files are rehosted as MISB CSV + JPEG instead of the original binary, with optional image resize for large files
+- **Tiled JPEG 2000 Decoding**: Large NITF images with tiled J2K compression are decoded in parallel via Web Worker pool with progress indicator
+- **NSIF Format Support**: Added support for NATO Secondary Imagery Format files and UTM/MGRS coordinate parsing in NITF headers
+- **TypeScript Migration**: Converted `LLA-ECEF-ENU.js` and `TLEUtils.js` to TypeScript with full type annotations; added esbuild-loader for TS compilation; removed `.js` extensions from all relative imports
+- **Model Filename Delimiter**: Changed `#L...#` to `~L...~` for in-filename parameters (avoids URL fragment issues); legacy `#` delimiter still supported for backward compatibility
+- **MCP Reliability**: Protocol version handshake, orphan process detection, graceful shutdown, stale extension probe, auto-match sessions to tabs by build directory
+- **Test Infrastructure**: Node registration tests, drift checks for code-that-must-stay-in-sync, synthetic NITF/J2K tests, NSIF regression tests
+- Track filter towards/away camera fix: first and last ECEF samples always included
+- Fixed NLU "jet" alias resolution
+- Removed unused esbuild-jest dependency (fixed braces vulnerability)
+- Bumped path-to-regexp 8.3.0→8.4.0, aws-sdk-php 3.368.0→3.371.4
+
+### Bug Fixes
+- Fixed TLE batch replace: first file replaces, remaining files merge instead of chain-replacing each other
+- Fixed stale `tleFilterResults` after TLE merge hiding newly added satellites
+- Fixed `_tleMergeAll` sticky flag leaking across import methods (drag-drop vs File > Import)
+- Fixed TLE "Above/Below Camera" filter using viewport camera altitude instead of observer (lookCamera) altitude
+- Fixed TLE and NITF dialogs permanently bypassed when MCP extension is connected
+- Fixed ReDoS risk in TLE name regex filter: pre-compiled outside loop with probe guard
+- Fixed legacy `#`-delimited model filenames silently losing length parameter after delimiter change
+- Fixed balloon sphere pressure scaling to use interpolated track position
+- Fixed ICORDS 'N' offset bug causing wrong IC values in NITF parser
+- Fixed extension reconnect after page reload and stale connection detection
+
+---
+
+## Version 2.39.3 (2026-03-26)
 
 ### New Features
 - **Sonde Trajectory Comparison**: New `compareSondeTrajectory` API compares wind-reconstructed trajectories against GPS ground truth from the same balloon flight, with per-level horizontal error metrics

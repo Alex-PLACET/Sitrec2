@@ -40,7 +40,7 @@ const SITREC_CWD = process.cwd(); // Used to auto-match this MCP session to the 
 
 // Protocol version — bump when the wire format changes (e.g., adding _cwd).
 // Secondaries check this against the primary and force-replace stale primaries.
-const PROTOCOL_VERSION = 2;
+const PROTOCOL_VERSION = 3;
 
 // Load the agent guide once at startup
 let agentGuide = "";
@@ -107,13 +107,19 @@ process.stdin.on("close", () => shutdownGracefully("stdin closed (parent exited)
 process.on("SIGTERM", () => shutdownGracefully("SIGTERM"));
 process.on("SIGINT", () => shutdownGracefully("SIGINT"));
 
-// Safety net: if stdin becomes unreadable and the event loop only has WebSocket
-// timers, detect it with a periodic check. This catches edge cases where the
-// stdin "end" event doesn't fire (e.g., parent killed with SIGKILL).
-const ORPHAN_CHECK_INTERVAL_MS = 30000;
+// Safety net: detect orphaned server when parent process exits.
+// Three complementary checks:
+// 1. stdin close/destroy events (works for pipe-based stdio)
+// 2. stdin.destroyed / readableEnded polling (catches missed events)
+// 3. ppid change detection (most reliable on Unix: parent death reparents to init/launchd)
+const ORPHAN_CHECK_INTERVAL_MS = 10000;
+const originalPpid = process.ppid;
 setInterval(() => {
     if (process.stdin.destroyed || process.stdin.readableEnded) {
         shutdownGracefully("stdin destroyed (orphan detected)");
+    }
+    if (process.ppid !== originalPpid) {
+        shutdownGracefully("parent process exited (ppid changed from " + originalPpid + " to " + process.ppid + ")");
     }
 }, ORPHAN_CHECK_INTERVAL_MS).unref();  // unref so this timer alone doesn't keep process alive
 
@@ -538,10 +544,51 @@ function sendToExtension(action, params = {}, timeoutMs = REQUEST_TIMEOUT_MS) {
     });
 }
 
-// ── Startup: try primary, fall back to secondary ────────────────────────────
+// ── Startup: try primary, kill stale servers, fall back to secondary ─────────
 
-function start() {
-    // Try to bind the port. If it fails with EADDRINUSE, become secondary.
+/**
+ * Find PIDs of other node processes listening on the given port.
+ * Uses lsof which is available on macOS and most Linux.
+ */
+function findListeningPids(port) {
+    try {
+        const { execSync } = require("child_process");
+        const output = execSync(`lsof -i :${port} -sTCP:LISTEN -t 2>/dev/null`, { encoding: "utf8" });
+        return output.trim().split("\n").map(Number).filter(pid => pid > 0 && pid !== process.pid);
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * Probe a WebSocket server with a health check. Returns true if it responds
+ * with a valid protocol-version within the timeout.
+ */
+function probeServer(port, timeoutMs = 3000) {
+    return new Promise((resolve) => {
+        const timer = setTimeout(() => { ws.close(); resolve(false); }, timeoutMs);
+        const ws = new WebSocket(`ws://localhost:${port}`);
+        ws.on("open", () => {
+            ws.send(JSON.stringify({ type: "peer", version: PROTOCOL_VERSION }));
+        });
+        ws.on("message", (raw) => {
+            try {
+                const msg = JSON.parse(raw.toString());
+                if (msg.type === "protocol-version") {
+                    clearTimeout(timer);
+                    ws.close();
+                    resolve(msg.version === PROTOCOL_VERSION);
+                }
+            } catch { /* ignore */ }
+        });
+        ws.on("error", () => { clearTimeout(timer); resolve(false); });
+        ws.on("close", () => { clearTimeout(timer); resolve(false); });
+    });
+}
+
+async function start() {
+    // Try to bind the port. If it fails with EADDRINUSE, check if the existing
+    // server is healthy before joining as secondary.
     const testServer = new WebSocketServer({ host: WS_HOST, port: WS_PORT });
 
     testServer.on("listening", () => {
@@ -551,10 +598,29 @@ function start() {
         });
     });
 
-    testServer.on("error", (err) => {
+    testServer.on("error", async (err) => {
         if (err.code === "EADDRINUSE") {
-            log(`Port ${WS_PORT} in use — joining as secondary`);
-            startAsSecondary(WS_PORT);
+            // Probe the existing server before joining
+            log(`Port ${WS_PORT} in use — probing existing server...`);
+            const healthy = await probeServer(WS_PORT, 3000);
+            if (healthy) {
+                log("Existing server is healthy — joining as secondary");
+                startAsSecondary(WS_PORT);
+            } else {
+                // Stale or unresponsive — kill it and take over
+                const pids = findListeningPids(WS_PORT);
+                if (pids.length > 0) {
+                    log(`Killing stale server(s) on port ${WS_PORT}: PIDs ${pids.join(", ")}`);
+                    for (const pid of pids) {
+                        try { process.kill(pid, "SIGTERM"); } catch { /* already dead */ }
+                    }
+                    // Wait for port to free up, then retry
+                    setTimeout(() => start(), 1000);
+                } else {
+                    log("Port in use but no PIDs found — retrying...");
+                    setTimeout(() => start(), 1000);
+                }
+            }
         } else {
             log("Failed to start WebSocket server:", err.message);
             process.exit(1);
