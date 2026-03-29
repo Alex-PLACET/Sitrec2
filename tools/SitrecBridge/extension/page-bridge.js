@@ -372,7 +372,7 @@ const handlers = {
         return { imageData, mimeType, frame: targetFrame, width: exportCanvas.width, height: exportCanvas.height };
     },
 
-    sitrec_debug_log({ action } = {}) {
+    sitrec_debug_log({ action, tail } = {}) {
         // Persistent console capture, independent of Sitrec's production-only debugLog.
         // Uses window._mcpDebugLog so state survives across handler calls.
         if (!window._mcpDebugLog) {
@@ -385,12 +385,14 @@ const handlers = {
             state.originals.log = console.log;
             state.originals.error = console.error;
             state.originals.warn = console.warn;
+            const MAX_ENTRY_CHARS = 500;
             const capture = (level, args) => {
-                const msg = args.map(a => {
+                let msg = args.map(a => {
                     if (a instanceof Error) return `${a.message}\n${a.stack}`;
                     if (typeof a === "object") { try { return JSON.stringify(a); } catch { return "[Unserializable]"; } }
                     return String(a);
                 }).join(" ");
+                if (msg.length > MAX_ENTRY_CHARS) msg = msg.slice(0, MAX_ENTRY_CHARS) + `… [truncated ${msg.length - MAX_ENTRY_CHARS} chars]`;
                 state.buffer.push(`[${new Date().toISOString()}] ${level}: ${msg}`);
                 if (state.buffer.length > 10000) state.buffer.shift();
             };
@@ -416,7 +418,10 @@ const handlers = {
         }
 
         if (action === "export") {
-            return { enabled: state.enabled, entries: state.buffer.length, log: state.buffer.join("\n") };
+            // tail: only return the last N entries (default: all)
+            const entries = tail ? state.buffer.slice(-tail) : state.buffer;
+            const log = entries.join("\n");
+            return { enabled: state.enabled, entries: state.buffer.length, returned: entries.length, log };
         }
 
         // Default: status

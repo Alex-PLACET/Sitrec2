@@ -169,6 +169,66 @@ export const _configParams = {
             termsURL: "https://www.esri.com/en-us/legal/terms/data-attributions",
         },
 
+        ESRI_Hillshade: {
+            name: "ESRI World Hillshade",
+            mapURL: (z,x,y) => {
+                return `https://services.arcgisonline.com/arcgis/rest/services/Elevation/World_Hillshade/MapServer/tile/${z}/${y}/${x}`;
+            },
+            maxZoom: 16,
+            attribution: "Powered by Esri — Sources: Esri, Airbus DS, USGS, NGA, NASA, CGIAR, NLS, OS, NMA, Geodatastyrelsen & the GIS user community",
+            termsURL: "https://www.esri.com/en-us/legal/terms/data-attributions",
+        },
+
+        ESRI_Topo: {
+            name: "ESRI World Topo Map",
+            mapURL: (z,x,y) => {
+                return `https://services.arcgisonline.com/arcgis/rest/services/World_Topo_Map/MapServer/tile/${z}/${y}/${x}`;
+            },
+            maxZoom: 19,
+            attribution: "Powered by Esri — Sources: Esri, HERE, Garmin, FAO, NOAA, USGS & contributors",
+            termsURL: "https://www.esri.com/en-us/legal/terms/data-attributions",
+        },
+
+        ESRI_ShadedRelief: {
+            name: "ESRI Shaded Relief",
+            mapURL: (z,x,y) => {
+                return `https://services.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/${z}/${y}/${x}`;
+            },
+            maxZoom: 13,
+            attribution: "Powered by Esri — Sources: Esri, USGS, NOAA",
+            termsURL: "https://www.esri.com/en-us/legal/terms/data-attributions",
+        },
+
+        USGS_Topo: {
+            name: "USGS Topographic",
+            mapURL: (z,x,y) => {
+                return `https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/${z}/${y}/${x}`;
+            },
+            maxZoom: 16,
+            attribution: "USGS — The National Map",
+            termsURL: "https://www.usgs.gov/faqs/what-are-terms-uselicensing-map-services-and-data-national-map",
+        },
+
+        USGS_Imagery: {
+            name: "USGS Imagery",
+            mapURL: (z,x,y) => {
+                return `https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/${z}/${y}/${x}`;
+            },
+            maxZoom: 16,
+            attribution: "USGS — The National Map",
+            termsURL: "https://www.usgs.gov/faqs/what-are-terms-uselicensing-map-services-and-data-national-map",
+        },
+
+        USGS_ShadedRelief: {
+            name: "USGS Shaded Relief",
+            mapURL: (z,x,y) => {
+                return `https://basemap.nationalmap.gov/arcgis/rest/services/USGSShadedReliefOnly/MapServer/tile/${z}/${y}/${x}`;
+            },
+            maxZoom: 16,
+            attribution: "USGS — The National Map",
+            termsURL: "https://www.usgs.gov/faqs/what-are-terms-uselicensing-map-services-and-data-national-map",
+        },
+
         // Try make this just use the base url https://geoint.nrlssc.org/nrltileserver/wms/category/Imagery
         // or perhaps just the capabilities URL?
 
@@ -218,6 +278,31 @@ export const _configParams = {
             },
             maxZoom: 8,
             attribution: "NASA GIBS, VIIRS Black Marble",
+            termsURL: "https://www.earthdata.nasa.gov/engage/open-data-services-software-policies/data-use-guidance",
+        },
+
+        GIBS_MODIS: {
+            name: "MODIS True Color (daily)",
+
+            mapURL: function (z,x,y) {
+                // Uses the sitch start date for the TIME parameter
+                const date = new Date(GlobalDateTimeNode.dateNow).toISOString().substring(0, 10);
+                return `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/${date}/GoogleMapsCompatible_Level9/${z}/${y}/${x}.jpg`;
+            },
+            maxZoom: 9,
+            attribution: "NASA GIBS, MODIS Terra",
+            termsURL: "https://www.earthdata.nasa.gov/engage/open-data-services-software-policies/data-use-guidance",
+        },
+
+        GIBS_VIIRS: {
+            name: "VIIRS True Color (daily)",
+
+            mapURL: function (z,x,y) {
+                const date = new Date(GlobalDateTimeNode.dateNow).toISOString().substring(0, 10);
+                return `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/${date}/GoogleMapsCompatible_Level9/${z}/${y}/${x}.jpg`;
+            },
+            maxZoom: 9,
+            attribution: "NASA GIBS, VIIRS SNPP",
             termsURL: "https://www.earthdata.nasa.gov/engage/open-data-services-software-policies/data-use-guidance",
         }
 

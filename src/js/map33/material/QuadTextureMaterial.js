@@ -1,9 +1,7 @@
-import {CanvasTexture, TextureLoader} from "three";
+import {CanvasTexture, Texture} from "three";
 import {createTerrainDayNightMaterial} from "./TerrainDayNightMaterial";
 import {TileUsageTracker} from "../../../TileUsageTracker";
 import {ServiceAvailability} from "../../../ServiceAvailability";
-
-const loader = new TextureLoader()
 
 function logNetwork(url, status) {
     // if (Globals.regression) {
@@ -56,69 +54,88 @@ export function loadTextureWithRetries(url, maxRetries = 0, delay = 100, current
         return;
       }
 
-      logNetwork(url[urlIndex], 'pending');
-      loader.load(url[urlIndex],
-          // On load
-          (texture) => {
-            // Check if aborted after loading completes
-            if (abortSignal?.aborted) {
-              texture.dispose();
-              activeRequests--;
-              processQueue();
-              reject(new Error('Aborted'));
-              return;
+      const currentUrl = url[urlIndex];
+      logNetwork(currentUrl, 'pending');
+
+      fetch(currentUrl, {signal: abortSignal ?? undefined})
+        .then(response => {
+          if (abortSignal?.aborted) throw new Error('Aborted');
+
+          if (!response.ok) {
+            // We have the actual HTTP status code — only count server errors
+            // (5xx) as service failures. 404/403 are expected for missing tiles.
+            const status = response.status;
+            logNetwork(currentUrl, status);
+            if (status >= 500) {
+              ServiceAvailability.recordFailureByUrl(currentUrl);
             }
-
-            TileUsageTracker.trackTile(url[urlIndex]);
-            ServiceAvailability.recordSuccessByUrl(url[urlIndex]);
-
-            logNetwork(url[urlIndex], 200);
-            resolve(texture);
-            activeRequests--;
-            processQueue();
-          },
-          // On progress (unused)
-          undefined,
-          // On error
-          (err) => {
-            // this is no longer an active request
-            activeRequests--;
-
-            // Check if aborted
-            if (abortSignal?.aborted) {
-              processQueue();
-              reject(new Error('Aborted'));
-              return;
-            }
-
-            // If we have more urls to try, immediately try the next one
-            if (urlIndex < url.length - 1) {
-//              console.log(`Failed to load ${url[urlIndex]}, trying next url`);
-              urlIndex++;
-          //    console.log(`urlIndex=${urlIndex}, new url=${url[urlIndex]}`);
-              activeRequests++;
-              attemptLoad();
-            } else if (currentAttempt < maxRetries) {
-              console.log(`Retry ${currentAttempt + 1}/${maxRetries} for ${url[urlIndex]} after delay. urlIndex=${urlIndex}`);
-              setTimeout(() => {
-                // Check abort signal before retry
-                if (abortSignal?.aborted) {
-                  reject(new Error('Aborted'));
-                  return;
-                }
-                loadTextureWithRetries(url, maxRetries, delay, currentAttempt + 1, urlIndex, abortSignal)
-                    .then(resolve)
-                    .catch(reject);
-              }, delay);
-            } else {
-              console.log(`Failed to load ${url[urlIndex]} after ${maxRetries} attempts`);
-              ServiceAvailability.recordFailureByUrl(url[urlIndex]);
-              logNetwork(url[urlIndex], 404);
-              reject(err);
-              processQueue();
-            }
+            throw new Error(`HTTP ${status}`);
           }
-      );
+          return response.blob();
+        })
+        .then(blob => {
+          // Create an Image element (same as Three.js TextureLoader) rather than
+          // ImageBitmap, because Texture.flipY has no effect on ImageBitmap.
+          return new Promise((resolveImg, rejectImg) => {
+            const objectUrl = URL.createObjectURL(blob);
+            const img = new Image();
+            img.onload = () => { URL.revokeObjectURL(objectUrl); resolveImg(img); };
+            img.onerror = () => { URL.revokeObjectURL(objectUrl); rejectImg(new Error('Image decode failed')); };
+            img.src = objectUrl;
+          });
+        })
+        .then(img => {
+          if (abortSignal?.aborted) {
+            throw new Error('Aborted');
+          }
+
+          const texture = new Texture(img);
+          texture.needsUpdate = true;
+
+          TileUsageTracker.trackTile(currentUrl);
+          ServiceAvailability.recordSuccessByUrl(currentUrl);
+          logNetwork(currentUrl, 200);
+          resolve(texture);
+          activeRequests--;
+          processQueue();
+        })
+        .catch(err => {
+          activeRequests--;
+
+          if (err.message === 'Aborted' || abortSignal?.aborted) {
+            processQueue();
+            reject(new Error('Aborted'));
+            return;
+          }
+
+          // Network errors (fetch failed entirely) count as service failures
+          if (err.name === 'TypeError') {
+            ServiceAvailability.recordFailureByUrl(currentUrl);
+          }
+
+          // Try next URL in the list
+          if (urlIndex < url.length - 1) {
+            urlIndex++;
+            activeRequests++;
+            attemptLoad();
+          } else if (currentAttempt < maxRetries) {
+            console.log(`Retry ${currentAttempt + 1}/${maxRetries} for ${currentUrl} after delay`);
+            setTimeout(() => {
+              if (abortSignal?.aborted) {
+                reject(new Error('Aborted'));
+                return;
+              }
+              loadTextureWithRetries(url, maxRetries, delay, currentAttempt + 1, urlIndex, abortSignal)
+                  .then(resolve)
+                  .catch(reject);
+            }, delay);
+          } else {
+            console.log(`Failed to load ${currentUrl} after ${maxRetries} attempts`);
+            logNetwork(currentUrl, 'failed');
+            reject(err);
+            processQueue();
+          }
+        });
     };
 
     // Set up abort listener

@@ -15,7 +15,10 @@ export const SERVICE_PATTERNS = {
     aws: /s3\.amazonaws\.com|elevation-tiles-prod/i,
     osm: /openstreetmap\.org|tile\.osm/i,
     eox: /tiles\.maps\.eox\.at/i,
-    esri: /arcgisonline\.com|arcgis/i,
+    usgs: /nationalmap\.gov/i,
+    noaa: /noaa\.gov/i,
+    gibs: /gibs\.earthdata\.nasa\.gov/i,
+    esri: /arcgisonline\.com|services\.arcgis\.com/i,
 };
 
 export function identifyServiceFromUrl(url) {

@@ -4,7 +4,9 @@ import {identifyServiceFromUrl} from "./TileUsageTracker";
 class ServiceAvailabilityClass {
     constructor() {
         this.services = {};
-        this.failureThreshold = 3;
+        // Only 5xx server errors and network failures count toward this threshold
+        // (404s are expected for missing tiles and are not counted).
+        this.failureThreshold = 5;
         this.callbacks = {}; // serviceName → [callback, ...]
     }
 

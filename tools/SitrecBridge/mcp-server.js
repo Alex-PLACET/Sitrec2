@@ -831,6 +831,10 @@ const TOOLS = [
                     enum: ["enable", "disable", "export", "clear", "status"],
                     description: "Action to perform. Omit for status.",
                 },
+                tail: {
+                    type: "number",
+                    description: "For 'export': only return the last N entries (default: all). Use to avoid huge exports.",
+                },
             },
             required: [],
         },
