@@ -3068,6 +3068,9 @@ export class CFileManager extends CManager {
     // Sticky flag: when the user chooses "Merge All" in the TLE dialog,
     // subsequent TLE imports in the same session skip the dialog and auto-merge.
     _tleMergeAll = false;
+    // Set after the first "replace" in a batch so remaining files merge instead
+    // of each one replacing the previous.
+    _tleReplacedInBatch = false;
     // Shared promise so concurrent TLE imports wait for the first dialog result
     // instead of each showing their own dialog.
     _tleDialogPromise = null;
@@ -3587,6 +3590,13 @@ export class CFileManager extends CManager {
             if (!action && this._tleMergeAll) {
                 action = "merge";
             }
+            if (!action && hasExisting && !this._tleDialogPromise) {
+                // No batch-level decision pending — reset sticky flags so a
+                // single file import (File > Import, MCP) always shows the dialog
+                // instead of inheriting a stale mergeAll from a previous batch.
+                this._tleMergeAll = false;
+                this._tleReplacedInBatch = false;
+            }
             if (!action && hasExisting) {
                 try {
                     if (this._tleDialogPromise) {
@@ -3614,6 +3624,12 @@ export class CFileManager extends CManager {
                 this._tleMergeAll = true;
             }
 
+            // If a replace already happened in this batch, convert to merge so
+            // the remaining files don't delete the first replacement.
+            if (action === "replace" && this._tleReplacedInBatch) {
+                action = "merge";
+            }
+
             fileManagerEntry.isTLE = true;
 
             if (action === "merge" && hasExisting) {
@@ -3623,6 +3639,7 @@ export class CFileManager extends CManager {
                 // Replace: remove existing TLE files (except this one) and load fresh
                 this.deleteIf(file => file.isTLE && file !== fileManagerEntry);
                 nightSky.replaceTLE(parsedFile);
+                this._tleReplacedInBatch = true;
             }
             return true;
         } else {

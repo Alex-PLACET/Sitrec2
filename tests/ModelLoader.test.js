@@ -153,6 +153,12 @@ describe("ModelLoader", () => {
         expect(extractModelFilenameParameters("plain-model.glb")).toEqual({});
     });
 
+    test("extracts model-length metadata from legacy # delimiters", () => {
+        expect(extractModelFilenameParameters("shahed#L3.5m#.glb").modelLength).toBeCloseTo(11.4829396325);
+        expect(extractModelFilenameParameters("drone#L24.5ft#.glb")).toEqual({modelLength: 24.5});
+        expect(extractModelFilenameParameters("thing#L100#.glb")).toEqual({modelLength: 100});
+    });
+
     test("parses mesh PLY files into mesh scene graphs", async () => {
         const trianglePLY = [
             "ply",

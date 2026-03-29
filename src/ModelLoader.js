@@ -84,7 +84,7 @@ export function extractModelFilenameParameters(filename) {
     const parameters = {};
     const displayName = getDisplayModelName(filename);
 
-    for (const block of displayName.matchAll(/~([^~]+)~/g)) {
+    for (const block of displayName.matchAll(/[~#]([^~#]+)[~#]/g)) {
         const blockText = block[1];
         for (const match of blockText.matchAll(/([A-Za-z])\s*(-?(?:\d+(?:\.\d+)?|\.\d+))\s*([A-Za-z]+)?/g)) {
             const key = match[1].toUpperCase();

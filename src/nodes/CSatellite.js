@@ -716,6 +716,9 @@ export class CSatellite {
         assert(this.TLEData !== undefined, "mergeTLE requires existing TLEData");
         const newData = new CTLEData(tle);
         this.TLEData.mergeFrom(newData);
+        // Clear any active TLE filter — the boolean[] is indexed by satData position
+        // and would be the wrong length after merge.
+        this.tleFilterResults = null;
         // Rebuild the rendering since satellite count may have changed
         this.removeSatellites();
         this.TLEData.satData.forEach(sat => {

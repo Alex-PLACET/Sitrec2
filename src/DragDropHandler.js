@@ -664,8 +664,9 @@ class CDragDropHandler {
     // to allow for debugging
     checkDropQueue() {
         if (this.dropQueue.length > 0) {
-            // Reset the "Merge All" sticky flag at the start of each batch
+            // Reset batch-scoped TLE flags at the start of each batch
             FileManager._tleMergeAll = false;
+            FileManager._tleReplacedInBatch = false;
         }
         while (this.dropQueue.length > 0) {
             const drop = this.dropQueue.shift();

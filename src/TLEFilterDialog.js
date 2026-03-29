@@ -247,6 +247,27 @@ function wildcardToRegex(pattern) {
 export function applyTLEFilters(satellites, filterOptions, currentDate) {
     const results = [];
 
+    // Pre-compile name regexes once outside the loop to avoid per-satellite overhead.
+    // If the pattern is invalid, set to null so the filter is skipped.
+    let wildcardRe = null;
+    if (filterOptions.nameWildcardEnabled && filterOptions.nameWildcardPattern) {
+        try { wildcardRe = wildcardToRegex(filterOptions.nameWildcardPattern); } catch { /* skip */ }
+    }
+    let nameRe = null;
+    if (filterOptions.nameRegexEnabled && filterOptions.nameRegexPattern) {
+        try { nameRe = new RegExp(filterOptions.nameRegexPattern, 'i'); } catch { /* skip */ }
+        // Guard against ReDoS: test the regex against a long string. If it takes
+        // too long on a single test, the pattern is pathological — discard it.
+        if (nameRe) {
+            const start = performance.now();
+            nameRe.test('A'.repeat(500));
+            if (performance.now() - start > 50) {
+                console.warn('TLE filter: regex too slow, disabling:', filterOptions.nameRegexPattern);
+                nameRe = null;
+            }
+        }
+    }
+
     for (let i = 0; i < satellites.TLEData.satData.length; i++) {
         const satData = satellites.TLEData.satData[i];
         let pass = true;
@@ -299,23 +320,13 @@ export function applyTLEFilters(satellites, filterOptions, currentDate) {
         }
 
         // Name (wildcard)
-        if (pass && filterOptions.nameWildcardEnabled && filterOptions.nameWildcardPattern) {
-            try {
-                const re = wildcardToRegex(filterOptions.nameWildcardPattern);
-                if (!re.test(satData.name)) pass = false;
-            } catch {
-                pass = false;
-            }
+        if (pass && wildcardRe) {
+            if (!wildcardRe.test(satData.name)) pass = false;
         }
 
         // Name RE (regex)
-        if (pass && filterOptions.nameRegexEnabled && filterOptions.nameRegexPattern) {
-            try {
-                const re = new RegExp(filterOptions.nameRegexPattern, 'i');
-                if (!re.test(satData.name)) pass = false;
-            } catch {
-                // Invalid regex -- don't filter
-            }
+        if (pass && nameRe) {
+            if (!nameRe.test(satData.name)) pass = false;
         }
 
         // Orbital parameters (from satrec)
