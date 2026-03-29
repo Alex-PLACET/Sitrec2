@@ -41,11 +41,13 @@ export class CNodeFloodSim extends CNode3DGroup {
         this.floodRate = v.floodRate ?? 50;
         this.sphereSize = v.sphereSize ?? 1.0;
         this.dropRadius = v.dropRadius ?? 10;
-        this.waterColor = v.waterColor ?? "#4488cc";
+        this.waterColor = v.waterColor ?? "#1a3a5c";
         this.maxParticles = v.maxParticles ?? DEFAULT_MAX_PARTICLES;
         this.method = v.method ?? "HeightMap"; // "HeightMap" (grid-based), "Fast" (ad-hoc pressure), or "PBF" (Position Based Fluids)
         this.waterSource = v.waterSource ?? "Rain"; // "Rain" or "DamBurst"
-        this.addSimpleSerials(["floodEnabled", "floodRate", "sphereSize", "dropRadius", "waterColor", "maxParticles", "method", "waterSource",
+        this.floodSpeed = v.floodSpeed ?? 1; // sim steps per frame (1-20)
+        this.manningN = v.manningN ?? 0.03; // Manning's roughness coefficient (0.03 = clean natural channel)
+        this.addSimpleSerials(["floodEnabled", "floodRate", "sphereSize", "dropRadius", "waterColor", "maxParticles", "method", "waterSource", "floodSpeed", "manningN",
             "hmEastMin", "hmEastMax", "hmNorthMin", "hmNorthMax"]);
 
         // Particle buffers
@@ -93,6 +95,10 @@ export class CNodeFloodSim extends CNode3DGroup {
         this.waterDepth = null;
         this.flowX = null;
         this.flowY = null;
+        this.velX = null;       // cell-centered x velocity (for advection)
+        this.velY = null;       // cell-centered y velocity (for advection)
+        this._tmpVelX = null;   // advection scratch buffer
+        this._tmpVelY = null;
         this.waterMesh = null;
         this._hmPositions = null;
         this._hmNormals = null;
@@ -220,6 +226,8 @@ export class CNodeFloodSim extends CNode3DGroup {
         this.guiFolder.add(this, "method", ["HeightMap", "Fast", "PBF"]).name("Method").tooltip("Simulation method: HeightMap (grid), Fast (particles), or PBF (position-based fluids)")
             .onChange(() => this.updateMethodVisibility());
         this.guiFolder.add(this, "waterSource", ["Rain", "DamBurst"]).name("Water Source").tooltip("Rain: add water over time. DamBurst: maintain water level at target altitude within drop radius");
+        this.guiFolder.add(this, "floodSpeed", 1, 20, 1).name("Speed").tooltip("Simulation steps per frame (1-20x)");
+        this.guiFolder.add(this, "manningN", 0.01, 0.15, 0.005).name("Manning's N").tooltip("Bed roughness: 0.01=smooth, 0.03=natural channel, 0.05=rough floodplain, 0.1=dense vegetation");
         this.guiFolder.addColor(this, "waterColor").name("Water Color").tooltip("Color of the water")
             .onChange(() => {
                 this.instancedMesh.material.color.set(this.waterColor);
@@ -240,6 +248,8 @@ export class CNodeFloodSim extends CNode3DGroup {
         if (this.waterDepth) this.waterDepth.fill(0);
         if (this.flowX) this.flowX.fill(0);
         if (this.flowY) this.flowY.fill(0);
+        if (this.velX) this.velX.fill(0);
+        if (this.velY) this.velY.fill(0);
         this._hmHasWater = false;
         if (this.waterMesh) this.waterMesh.geometry.setDrawRange(0, 0);
         this.removeBoundaryVisuals();
@@ -397,7 +407,8 @@ export class CNodeFloodSim extends CNode3DGroup {
                 }
             }
             if (this._hmHasWater || this.floodEnabled) {
-                this.heightMapStep(dt);
+                const steps = Math.max(1, Math.min(Math.round(this.floodSpeed), 20));
+                for (let r = 0; r < steps; r++) this.heightMapStep(dt);
                 this.updateWaterMesh();
             }
         } else {
@@ -969,10 +980,15 @@ export class CNodeFloodSim extends CNode3DGroup {
         this.hmResX = Math.round((this.hmEastMax - this.hmEastMin) / this.hmSpacing);
         this.hmResY = Math.round((this.hmNorthMax - this.hmNorthMin) / this.hmSpacing);
         const resX = this.hmResX, resY = this.hmResY;
-        this.hmGround = new Float32Array(resX * resY);
-        this.waterDepth = new Float32Array(resX * resY);
+        const cellCount = resX * resY;
+        this.hmGround = new Float32Array(cellCount);
+        this.waterDepth = new Float32Array(cellCount);
         this.flowX = new Float32Array((resX + 1) * resY);
         this.flowY = new Float32Array(resX * (resY + 1));
+        this.velX = new Float32Array(cellCount);
+        this.velY = new Float32Array(cellCount);
+        this._tmpVelX = new Float32Array(cellCount);
+        this._tmpVelY = new Float32Array(cellCount);
         this._hmHasWater = false;
         this.rebuildHMGround();
         this.setupWaterMesh();
@@ -1038,22 +1054,130 @@ export class CNodeFloodSim extends CNode3DGroup {
         this._hmHasWater = true;
     }
 
+    /** Bilinear sample from a cell-centered array */
+    _bilinear(arr, fi, fj, resX, resY) {
+        fi = Math.max(0, Math.min(fi, resX - 1.001));
+        fj = Math.max(0, Math.min(fj, resY - 1.001));
+        const i0 = fi | 0, j0 = fj | 0;
+        const i1 = Math.min(i0 + 1, resX - 1), j1 = Math.min(j0 + 1, resY - 1);
+        const fx = fi - i0, fy = fj - j0;
+        return arr[j0*resX+i0]*(1-fx)*(1-fy) + arr[j0*resX+i1]*fx*(1-fy)
+             + arr[j1*resX+i0]*(1-fx)*fy     + arr[j1*resX+i1]*fx*fy;
+    }
+
+    /** Semi-Lagrangian self-advection of the velocity field.
+     *
+     * Handles the nonlinear advection terms in the SWE momentum equation:
+     *   u·du/dx + v·du/dy  (x-momentum advection)
+     *   u·dv/dx + v·dv/dy  (y-momentum advection)
+     *
+     * Without this step, the solver would only have pressure-driven flow
+     * (no inertia). With it, water carries momentum past obstacles, forms
+     * jets, and exhibits realistic dam-break velocity profiles.
+     *
+     * Method: for each cell, trace backward through the velocity field by
+     * -v·dt, then bilinearly interpolate the velocity at the departure point.
+     * This is the Stam "Stable Fluids" approach — unconditionally stable
+     * but introduces numerical diffusion that smooths sharp features.
+     *
+     * Note: we advect velocity (u,v) rather than momentum (h·u, h·v).
+     * Momentum advection would be more conservative but the pipe model's
+     * divergence step already handles mass conservation.
+     */
+    advectFlows(dt) {
+        const resX = this.hmResX, resY = this.hmResY, sp = this.hmSpacing;
+        const fx = this.flowX, fy = this.flowY;
+        const fxW = resX + 1, fyW = resX;
+        const vx = this.velX, vy = this.velY;
+        const tvx = this._tmpVelX, tvy = this._tmpVelY;
+
+        // Compute cell-centered velocities from edge flows
+        for (let j = 0; j < resY; j++) for (let i = 0; i < resX; i++) {
+            const ci = j * resX + i;
+            vx[ci] = (fx[j*fxW+i] + fx[j*fxW+(i+1)]) * 0.5;
+            vy[ci] = (fy[j*fyW+i] + fy[(j+1)*fyW+i]) * 0.5;
+        }
+
+        // Semi-Lagrangian self-advection: trace backward, sample at source
+        const invSp = 1 / sp;
+        for (let j = 0; j < resY; j++) for (let i = 0; i < resX; i++) {
+            const ci = j * resX + i;
+            const srcI = i - vx[ci] * dt * invSp;
+            const srcJ = j - vy[ci] * dt * invSp;
+            tvx[ci] = this._bilinear(vx, srcI, srcJ, resX, resY);
+            tvy[ci] = this._bilinear(vy, srcI, srcJ, resX, resY);
+        }
+
+        // Write advected velocities back to edge flows
+        for (let j = 0; j < resY; j++) for (let i = 1; i < resX; i++) {
+            fx[j*fxW+i] = (tvx[j*resX+(i-1)] + tvx[j*resX+i]) * 0.5;
+        }
+        for (let j = 1; j < resY; j++) for (let i = 0; i < resX; i++) {
+            fy[j*fyW+i] = (tvy[(j-1)*resX+i] + tvy[j*resX+i]) * 0.5;
+        }
+    }
+
+    // ── Shallow Water Equation Solver ──────────────────────────────────
+    //
+    // Solves the 2D shallow water equations (SWE) using operator splitting:
+    //
+    //   Continuity:  dh/dt + d(hu)/dx + d(hv)/dy = 0
+    //   X-momentum:  d(hu)/dt + d(hu²+gh²/2)/dx + d(huv)/dy = -gh·dB/dx - friction
+    //   Y-momentum:  d(hv)/dt + d(huv)/dx + d(hv²+gh²/2)/dy = -gh·dB/dy - friction
+    //
+    // Split into three operators per timestep:
+    //   1. Advection: semi-Lagrangian self-advection of velocity field
+    //      Handles the nonlinear terms u·du/dx, v·du/dy (momentum transport/inertia)
+    //   2. Pressure: virtual pipes model — accelerates edge flows by water surface
+    //      gradient, equivalent to -g·d(h+B)/dx (hydrostatic pressure + gravity)
+    //   3. Friction: Manning's equation — bed shear stress τ = ρg·n²·|V|·V / h^(1/3)
+    //      Applied implicitly: F /= (1 + g·n²·|u|·dt / h^(4/3)) for stability
+    //
+    // The pressure step uses CFL-limited substeps for numerical stability:
+    //   dt ≤ dx / (|u_max| + √(g·h_max)) × 0.5
+    // This accounts for BOTH flow velocity and gravity wave celerity c=√(gh).
+    //
+    // Outflow scaling prevents negative water depths (positivity preservation):
+    // if total outflow from a cell exceeds available water, all outgoing flows
+    // are scaled proportionally. This conserves mass exactly.
+
     heightMapStep(dt) {
         const resX = this.hmResX, resY = this.hmResY, sp = this.hmSpacing;
         const g = this.hmGround, w = this.waterDepth;
         const fx = this.flowX, fy = this.flowY;
         if (!g || !w) return;
 
-        const gravity = GRAVITY, damping = 0.999;
+        // ── Step 1: Semi-Lagrangian velocity advection (operator-split) ──
+        // Transports the velocity field by itself, giving water inertia.
+        // Without this, the solver only has pressure-driven flow (no jets, wakes,
+        // or momentum carrying past obstacles). Uses cell-centered velocities
+        // reconstructed from staggered edge flows.
+        this.advectFlows(dt);
+
+        const gravity = GRAVITY;
+        const manningN = this.manningN;
         const fxW = resX + 1, fyW = resX;
 
-        let maxD = 0;
+        // ── CFL condition: dt ≤ dx / (|u_max| + √(g·h_max)) × safety ──
+        // Must account for both flow velocity and wave celerity.
+        // Wave celerity c = √(g·h) is the speed of gravity waves in shallow water.
+        // The dam-break front advances at up to 2·√(g·h₀) (Ritter's solution).
+        let maxD = 0, maxV = 0;
         for (let k = 0, len = w.length; k < len; k++) if (w[k] > maxD) maxD = w[k];
-        const maxSubDt = maxD > 0.01 ? (sp / Math.sqrt(gravity * maxD)) * 0.5 : dt;
+        for (let k = 0, len = fx.length; k < len; k++) { const v = Math.abs(fx[k]); if (v > maxV) maxV = v; }
+        for (let k = 0, len = fy.length; k < len; k++) { const v = Math.abs(fy[k]); if (v > maxV) maxV = v; }
+        const maxSpeed = maxV + (maxD > 0.01 ? Math.sqrt(gravity * maxD) : 0);
+        const maxSubDt = maxSpeed > 0.01 ? (sp / maxSpeed) * 0.5 : dt;
         const substeps = Math.max(1, Math.min(Math.ceil(dt / maxSubDt), 20));
         const subDt = dt / substeps;
 
         for (let s = 0; s < substeps; s++) {
+            // ── Step 2: Pressure gradient (virtual pipes) ──
+            // dF/dt = g · (surface_left − surface_right) / dx
+            // This is the hydrostatic pressure gradient: -g · d(h+B)/dx
+            // where (h+B) is the water surface elevation. Water accelerates
+            // from high surface to low surface, which is physically correct.
+            // Edge flows F are stored on a staggered grid (between cell centers).
             for (let j = 0; j < resY; j++) for (let i = 1; i < resX; i++) {
                 const left = j * resX + (i - 1), right = j * resX + i;
                 fx[j * fxW + i] += subDt * gravity * (g[left] + w[left] - g[right] - w[right]) / sp;
@@ -1062,6 +1186,10 @@ export class CNodeFloodSim extends CNode3DGroup {
                 const below = (j - 1) * resX + i, above = j * resX + i;
                 fy[j * fyW + i] += subDt * gravity * (g[below] + w[below] - g[above] - w[above]) / sp;
             }
+
+            // ── Step 3: Outflow scaling (positivity preservation) ──
+            // Prevents cells from going negative by scaling outgoing flows
+            // so total outflow ≤ available water volume. Conserves mass exactly.
             for (let j = 0; j < resY; j++) for (let i = 0; i < resX; i++) {
                 const idx = j * resX + i;
                 if (w[idx] <= 0) {
@@ -1086,6 +1214,9 @@ export class CNodeFloodSim extends CNode3DGroup {
                     if (fy[j * fyW + i] < 0) fy[j * fyW + i] *= scale;
                 }
             }
+
+            // ── Step 4: Continuity — update depths from flow divergence ──
+            // dh/dt = -(dF_x/dx + dF_y/dy)  (mass conservation)
             for (let j = 0; j < resY; j++) for (let i = 0; i < resX; i++) {
                 const idx = j * resX + i;
                 const netFlow = fx[j * fxW + i] - fx[j * fxW + (i + 1)]
@@ -1093,8 +1224,36 @@ export class CNodeFloodSim extends CNode3DGroup {
                 w[idx] += subDt * netFlow / sp;
                 if (w[idx] < 0) w[idx] = 0;
             }
-            for (let k = 0; k < fx.length; k++) fx[k] *= damping;
-            for (let k = 0; k < fy.length; k++) fy[k] *= damping;
+
+            // ── Step 5: Manning friction (implicit) ──
+            // Bed shear stress: τ = ρ·g·n²·|u|·u / h^(1/3)
+            // Deceleration:     du/dt = -g·n²·|u|·u / h^(4/3)
+            // Implicit:         F_new = F / (1 + g·n²·|F|·dt / h^(4/3))
+            // This replaces artificial damping with physically-based friction.
+            // Manning's n values: 0.01=smooth, 0.03=natural channel, 0.05=rough,
+            // 0.1=dense vegetation. Implicit treatment prevents overshoot when
+            // h is small (friction → ∞ as h → 0, correctly stopping thin films).
+            if (manningN > 0) {
+                const n2 = manningN * manningN;
+                for (let j = 0; j < resY; j++) for (let i = 1; i < resX; i++) {
+                    const edge = j * fxW + i;
+                    const hAvg = (w[j * resX + (i - 1)] + w[j * resX + i]) * 0.5;
+                    if (hAvg > 0.01) {
+                        const fric = gravity * n2 * Math.abs(fx[edge]) / Math.pow(hAvg, 4 / 3);
+                        fx[edge] /= (1 + fric * subDt);
+                    }
+                }
+                for (let j = 1; j < resY; j++) for (let i = 0; i < resX; i++) {
+                    const edge = j * fyW + i;
+                    const hAvg = (w[(j - 1) * resX + i] + w[j * resX + i]) * 0.5;
+                    if (hAvg > 0.01) {
+                        const fric = gravity * n2 * Math.abs(fy[edge]) / Math.pow(hAvg, 4 / 3);
+                        fy[edge] /= (1 + fric * subDt);
+                    }
+                }
+            }
+
+            // ── Step 6: Boundary conditions (reflective) ──
             for (let j = 0; j < resY; j++) { fx[j * fxW] = 0; fx[j * fxW + resX] = 0; }
             for (let i = 0; i < resX; i++) { fy[i] = 0; fy[resY * fyW + i] = 0; }
         }
@@ -1134,8 +1293,8 @@ export class CNodeFloodSim extends CNode3DGroup {
 
         const mat = new MeshPhongMaterial({
             color: new Color(this.waterColor),
-            transparent: true, opacity: 0.6, side: DoubleSide,
-            shininess: 80, specular: new Color(0x444444),
+            transparent: true, opacity: 0.85, side: DoubleSide,
+            shininess: 150, specular: new Color(0x888888),
         });
         this.waterMesh = new Mesh(geo, mat);
         this.waterMesh.frustumCulled = false;
@@ -1165,13 +1324,24 @@ export class CNodeFloodSim extends CNode3DGroup {
             pos[vi+2] = e*ez + n*nz + u*uz;
         }
 
+        // Normals with turbulent perturbation for realistic water surface
+        const t = performance.now() * 0.001;
+        const turb = 0.2; // turbulence strength
         for (let j = 0; j < resY; j++) for (let i = 0; i < resX; i++) {
             const ci = j * resX + i, vi = ci * 3;
+            if (w[ci] < threshold) { nrm[vi] = ux; nrm[vi+1] = uy; nrm[vi+2] = uz; continue; }
             const hL = g[i > 0 ? ci-1 : ci] + w[i > 0 ? ci-1 : ci];
             const hR = g[i < resX-1 ? ci+1 : ci] + w[i < resX-1 ? ci+1 : ci];
             const hD = g[j > 0 ? ci-resX : ci] + w[j > 0 ? ci-resX : ci];
             const hU = g[j < resY-1 ? ci+resX : ci] + w[j < resY-1 ? ci+resX : ci];
-            const lnE = -(hR-hL), lnN = -(hU-hD), lnU = 2*sp;
+            // Base normal from height differences
+            let lnE = -(hR-hL), lnN = -(hU-hD), lnU = 2*sp;
+            // Turbulent perturbation — multi-frequency sine waves
+            const e = eMin + i * sp, n = nMin + j * sp;
+            lnE += (Math.sin(e*0.3 + t*2.7) * Math.cos(n*0.5 + t*1.3)
+                  + Math.sin(e*0.8 + n*0.4 + t*4.1) * 0.5) * turb;
+            lnN += (Math.cos(e*0.4 + t*1.9) * Math.sin(n*0.6 + t*2.3)
+                  + Math.cos(e*0.3 + n*0.9 + t*3.7) * 0.5) * turb;
             const len = Math.sqrt(lnE*lnE + lnN*lnN + lnU*lnU);
             const inv = 1/len;
             const ne = lnE*inv, nn = lnN*inv, nu = lnU*inv;
@@ -1397,10 +1567,15 @@ export class CNodeFloodSim extends CNode3DGroup {
         this.hmEastMin = newEMin; this.hmEastMax = newEMax;
         this.hmNorthMin = newNMin; this.hmNorthMax = newNMax;
         this.hmResX = newResX; this.hmResY = newResY;
-        this.hmGround = new Float32Array(newResX * newResY);
+        const newCells = newResX * newResY;
+        this.hmGround = new Float32Array(newCells);
         this.waterDepth = newWater;
         this.flowX = new Float32Array((newResX + 1) * newResY);
         this.flowY = new Float32Array(newResX * (newResY + 1));
+        this.velX = new Float32Array(newCells);
+        this.velY = new Float32Array(newCells);
+        this._tmpVelX = new Float32Array(newCells);
+        this._tmpVelY = new Float32Array(newCells);
 
         this.rebuildHMGround();
         this.setupWaterMesh();
