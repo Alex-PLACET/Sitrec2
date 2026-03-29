@@ -47,7 +47,8 @@ export class CNodeFloodSim extends CNode3DGroup {
         this.waterSource = v.waterSource ?? "Rain"; // "Rain" or "DamBurst"
         this.floodSpeed = v.floodSpeed ?? 1; // sim steps per frame (1-20)
         this.manningN = v.manningN ?? 0.03; // Manning's roughness coefficient (0.03 = clean natural channel)
-        this.addSimpleSerials(["floodEnabled", "floodRate", "sphereSize", "dropRadius", "waterColor", "maxParticles", "method", "waterSource", "floodSpeed", "manningN",
+        this.edgeCondition = v.edgeCondition ?? "Draining"; // "Blocking" or "Draining"
+        this.addSimpleSerials(["floodEnabled", "floodRate", "sphereSize", "dropRadius", "waterColor", "maxParticles", "method", "waterSource", "floodSpeed", "manningN", "edgeCondition",
             "hmEastMin", "hmEastMax", "hmNorthMin", "hmNorthMax"]);
 
         // Particle buffers
@@ -228,6 +229,7 @@ export class CNodeFloodSim extends CNode3DGroup {
         this.guiFolder.add(this, "waterSource", ["Rain", "DamBurst"]).name("Water Source").tooltip("Rain: add water over time. DamBurst: maintain water level at target altitude within drop radius");
         this.guiFolder.add(this, "floodSpeed", 1, 20, 1).name("Speed").tooltip("Simulation steps per frame (1-20x)");
         this.guiFolder.add(this, "manningN", 0.01, 0.15, 0.005).name("Manning's N").tooltip("Bed roughness: 0.01=smooth, 0.03=natural channel, 0.05=rough floodplain, 0.1=dense vegetation");
+        this.guiFolder.add(this, "edgeCondition", ["Blocking", "Draining"]).name("Edge").tooltip("Blocking: water reflects at grid edges. Draining: water flows out and is removed");
         this.guiFolder.addColor(this, "waterColor").name("Water Color").tooltip("Color of the water")
             .onChange(() => {
                 this.instancedMesh.material.color.set(this.waterColor);
@@ -1080,22 +1082,49 @@ export class CNodeFloodSim extends CNode3DGroup {
      * This is the Stam "Stable Fluids" approach — unconditionally stable
      * but introduces numerical diffusion that smooths sharp features.
      *
-     * Note: we advect velocity (u,v) rather than momentum (h·u, h·v).
-     * Momentum advection would be more conservative but the pipe model's
-     * divergence step already handles mass conservation.
+     * Edge flows store discharge F = h·u (m²/s), so we convert to velocity
+     * u = F/h for advection, then convert back to discharge F = h·u afterward.
      */
     advectFlows(dt) {
         const resX = this.hmResX, resY = this.hmResY, sp = this.hmSpacing;
         const fx = this.flowX, fy = this.flowY;
+        const w = this.waterDepth;
         const fxW = resX + 1, fyW = resX;
         const vx = this.velX, vy = this.velY;
         const tvx = this._tmpVelX, tvy = this._tmpVelY;
+        const minH = 0.01;
 
-        // Compute cell-centered velocities from edge flows
+        // Compute cell-centered velocities: u = discharge / depth
+        // Clamp to physical maximum (Ritter dam-break: 2√(gh))
+        let maxDepth = 0;
+        for (let k = 0, len = w.length; k < len; k++) if (w[k] > maxDepth) maxDepth = w[k];
+        const maxPhysVel = maxDepth > 0.1 ? 2 * Math.sqrt(GRAVITY * maxDepth) : 10;
+
         for (let j = 0; j < resY; j++) for (let i = 0; i < resX; i++) {
             const ci = j * resX + i;
-            vx[ci] = (fx[j*fxW+i] + fx[j*fxW+(i+1)]) * 0.5;
-            vy[ci] = (fy[j*fyW+i] + fy[(j+1)*fyW+i]) * 0.5;
+            const h = w[ci];
+            if (h > minH) {
+                let ux = (fx[j*fxW+i] + fx[j*fxW+(i+1)]) * 0.5 / h;
+                let uy = (fy[j*fyW+i] + fy[(j+1)*fyW+i]) * 0.5 / h;
+                const spd = Math.sqrt(ux * ux + uy * uy);
+                if (spd > maxPhysVel) { const s = maxPhysVel / spd; ux *= s; uy *= s; }
+                vx[ci] = ux; vy[ci] = uy;
+            } else {
+                vx[ci] = 0; vy[ci] = 0;
+            }
+        }
+
+        // Numerical diffusion: smooth velocity to damp oscillations
+        const visc = 0.05;
+        for (let j = 1; j < resY - 1; j++) for (let i = 1; i < resX - 1; i++) {
+            const ci = j * resX + i;
+            tvx[ci] = vx[ci] + visc * (vx[ci-1]+vx[ci+1]+vx[ci-resX]+vx[ci+resX] - 4*vx[ci]);
+            tvy[ci] = vy[ci] + visc * (vy[ci-1]+vy[ci+1]+vy[ci-resX]+vy[ci+resX] - 4*vy[ci]);
+        }
+        // Copy smoothed interior back (boundaries stay as-is)
+        for (let j = 1; j < resY - 1; j++) for (let i = 1; i < resX - 1; i++) {
+            const ci = j * resX + i;
+            vx[ci] = tvx[ci]; vy[ci] = tvy[ci];
         }
 
         // Semi-Lagrangian self-advection: trace backward, sample at source
@@ -1108,12 +1137,24 @@ export class CNodeFloodSim extends CNode3DGroup {
             tvy[ci] = this._bilinear(vy, srcI, srcJ, resX, resY);
         }
 
-        // Write advected velocities back to edge flows
+        // Write advected velocities back to edge discharges: F = h_edge · u_edge
+        // Blend between original flow and advected flow to prevent advection
+        // from overpowering the pressure gradient (which corrects uphill flow).
+        // Full replacement (blend=1) can push water uphill; partial blend lets
+        // the pressure step remain dominant while advection adds inertia.
+        const advBlend = 0.5;
+        const oneMinusBlend = 1 - advBlend;
         for (let j = 0; j < resY; j++) for (let i = 1; i < resX; i++) {
-            fx[j*fxW+i] = (tvx[j*resX+(i-1)] + tvx[j*resX+i]) * 0.5;
+            const edge = j * fxW + i;
+            const hEdge = (w[j*resX+(i-1)] + w[j*resX+i]) * 0.5;
+            const advF = hEdge * (tvx[j*resX+(i-1)] + tvx[j*resX+i]) * 0.5;
+            fx[edge] = fx[edge] * oneMinusBlend + advF * advBlend;
         }
         for (let j = 1; j < resY; j++) for (let i = 0; i < resX; i++) {
-            fy[j*fyW+i] = (tvy[(j-1)*resX+i] + tvy[j*resX+i]) * 0.5;
+            const edge = j * fyW + i;
+            const hEdge = (w[(j-1)*resX+i] + w[j*resX+i]) * 0.5;
+            const advF = hEdge * (tvy[(j-1)*resX+i] + tvy[j*resX+i]) * 0.5;
+            fy[edge] = fy[edge] * oneMinusBlend + advF * advBlend;
         }
     }
 
@@ -1164,27 +1205,55 @@ export class CNodeFloodSim extends CNode3DGroup {
         // The dam-break front advances at up to 2·√(g·h₀) (Ritter's solution).
         let maxD = 0, maxV = 0;
         for (let k = 0, len = w.length; k < len; k++) if (w[k] > maxD) maxD = w[k];
-        for (let k = 0, len = fx.length; k < len; k++) { const v = Math.abs(fx[k]); if (v > maxV) maxV = v; }
-        for (let k = 0, len = fy.length; k < len; k++) { const v = Math.abs(fy[k]); if (v > maxV) maxV = v; }
+        // Use cell-centered velocities (computed in advectFlows) for max velocity
+        const _vx = this.velX, _vy = this.velY;
+        if (_vx) for (let k = 0, len = _vx.length; k < len; k++) { const v = Math.abs(_vx[k]); if (v > maxV) maxV = v; }
+        if (_vy) for (let k = 0, len = _vy.length; k < len; k++) { const v = Math.abs(_vy[k]); if (v > maxV) maxV = v; }
         const maxSpeed = maxV + (maxD > 0.01 ? Math.sqrt(gravity * maxD) : 0);
-        const maxSubDt = maxSpeed > 0.01 ? (sp / maxSpeed) * 0.5 : dt;
-        const substeps = Math.max(1, Math.min(Math.ceil(dt / maxSubDt), 20));
+        const maxSubDt = maxSpeed > 0.01 ? (sp / maxSpeed) * 0.25 : dt;
+        const substeps = Math.max(1, Math.min(Math.ceil(dt / maxSubDt), 50));
         const subDt = dt / substeps;
 
         for (let s = 0; s < substeps; s++) {
-            // ── Step 2: Pressure gradient (virtual pipes) ──
-            // dF/dt = g · (surface_left − surface_right) / dx
-            // This is the hydrostatic pressure gradient: -g · d(h+B)/dx
-            // where (h+B) is the water surface elevation. Water accelerates
-            // from high surface to low surface, which is physically correct.
-            // Edge flows F are stored on a staggered grid (between cell centers).
+            // ── Step 2: Pressure gradient (depth-weighted virtual pipes) ──
+            // dF/dt = g · h_edge · (surface_left − surface_right) / dx
+            // The full SWE momentum equation: d(hu)/dt = -g·h·d(h+B)/dx
+            // The h_edge factor is critical: it makes wave speed √(g·h) instead
+            // of the incorrect √(g). Deep water pushes proportionally harder,
+            // giving correct dam-break front speeds of ~2·√(g·h₀).
+            // Edge flows F store discharge (h·u) in m²/s on a staggered grid.
             for (let j = 0; j < resY; j++) for (let i = 1; i < resX; i++) {
                 const left = j * resX + (i - 1), right = j * resX + i;
-                fx[j * fxW + i] += subDt * gravity * (g[left] + w[left] - g[right] - w[right]) / sp;
+                const hEdge = (w[left] + w[right]) * 0.5;
+                fx[j * fxW + i] += subDt * gravity * hEdge * (g[left] + w[left] - g[right] - w[right]) / sp;
             }
             for (let j = 1; j < resY; j++) for (let i = 0; i < resX; i++) {
                 const below = (j - 1) * resX + i, above = j * resX + i;
-                fy[j * fyW + i] += subDt * gravity * (g[below] + w[below] - g[above] - w[above]) / sp;
+                const hEdge = (w[below] + w[above]) * 0.5;
+                fy[j * fyW + i] += subDt * gravity * hEdge * (g[below] + w[below] - g[above] - w[above]) / sp;
+            }
+
+            // ── Step 2b: Clamp discharge to physical limits ──
+            // Discharge F = h·u cannot exceed h · maxPhysicalVelocity.
+            // This prevents numerical overshoot from creating unphysical spikes.
+            {
+                let mxD = 0;
+                for (let k = 0, len = w.length; k < len; k++) if (w[k] > mxD) mxD = w[k];
+                const maxVel = mxD > 0.1 ? 2 * Math.sqrt(gravity * mxD) : 10;
+                for (let j = 0; j < resY; j++) for (let i = 1; i < resX; i++) {
+                    const hE = (w[j*resX+(i-1)] + w[j*resX+i]) * 0.5;
+                    const maxF = hE * maxVel;
+                    const edge = j * fxW + i;
+                    if (fx[edge] > maxF) fx[edge] = maxF;
+                    else if (fx[edge] < -maxF) fx[edge] = -maxF;
+                }
+                for (let j = 1; j < resY; j++) for (let i = 0; i < resX; i++) {
+                    const hE = (w[(j-1)*resX+i] + w[j*resX+i]) * 0.5;
+                    const maxF = hE * maxVel;
+                    const edge = j * fyW + i;
+                    if (fy[edge] > maxF) fy[edge] = maxF;
+                    else if (fy[edge] < -maxF) fy[edge] = -maxF;
+                }
             }
 
             // ── Step 3: Outflow scaling (positivity preservation) ──
@@ -1253,9 +1322,27 @@ export class CNodeFloodSim extends CNode3DGroup {
                 }
             }
 
-            // ── Step 6: Boundary conditions (reflective) ──
-            for (let j = 0; j < resY; j++) { fx[j * fxW] = 0; fx[j * fxW + resX] = 0; }
-            for (let i = 0; i < resX; i++) { fy[i] = 0; fy[resY * fyW + i] = 0; }
+            // ── Step 6: Boundary conditions ──
+            if (this.edgeCondition === "Draining") {
+                // Outflow: allow water to leave the domain freely.
+                // Boundary flows are driven by interior water surface slope,
+                // and the depth update subtracts the outgoing flux normally,
+                // effectively removing water that exits the grid.
+                for (let j = 0; j < resY; j++) {
+                    // Left edge: allow outflow (negative fx), block inflow
+                    if (fx[j * fxW] > 0) fx[j * fxW] = 0;
+                    // Right edge: allow outflow (positive fx), block inflow
+                    if (fx[j * fxW + resX] < 0) fx[j * fxW + resX] = 0;
+                }
+                for (let i = 0; i < resX; i++) {
+                    if (fy[i] > 0) fy[i] = 0;
+                    if (fy[resY * fyW + i] < 0) fy[resY * fyW + i] = 0;
+                }
+            } else {
+                // Blocking (reflective): zero all boundary flows
+                for (let j = 0; j < resY; j++) { fx[j * fxW] = 0; fx[j * fxW + resX] = 0; }
+                for (let i = 0; i < resX; i++) { fy[i] = 0; fy[resY * fyW + i] = 0; }
+            }
         }
 
         let hasWater = false;
