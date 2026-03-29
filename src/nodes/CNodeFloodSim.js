@@ -9,13 +9,16 @@
 //   GROUND: slope acceleration + terrain clamping (PBF handles fluid pressure)
 
 import {CNode3DGroup} from "./CNode3DGroup";
-import {Color, DynamicDrawUsage, InstancedMesh, Matrix4, MeshPhongMaterial, SphereGeometry} from "three";
+import {BufferAttribute, BufferGeometry, Color, DoubleSide, DynamicDrawUsage, InstancedMesh, LineBasicMaterial, LineLoop, Matrix4, Mesh, MeshBasicMaterial, MeshPhongMaterial, Raycaster, SphereGeometry} from "three";
 import {ECEFToLLAVD_radii, LLAToECEF} from "../LLA-ECEF-ENU";
 import {getLocalEastVector, getLocalNorthVector, getLocalUpVector} from "../SphericalMath";
 import {guiPhysics, NodeMan, setRenderOne, Sit} from "../Globals";
 import {EventManager} from "../CEventManager";
 import {meanSeaLevelOffset} from "../EGM96Geoid";
 import * as LAYER from "../LayerMasks";
+import {screenToNDC} from "../mouseMoveView";
+import {ViewMan} from "../CViewManager";
+import {mouseInViewOnly} from "../ViewUtils";
 
 const GRAVITY = 9.81;
 const DEFAULT_MAX_PARTICLES = 50000;
@@ -40,8 +43,10 @@ export class CNodeFloodSim extends CNode3DGroup {
         this.dropRadius = v.dropRadius ?? 10;
         this.waterColor = v.waterColor ?? "#4488cc";
         this.maxParticles = v.maxParticles ?? DEFAULT_MAX_PARTICLES;
-        this.method = v.method ?? "Fast"; // "Fast" (ad-hoc pressure) or "PBF" (Position Based Fluids)
-        this.addSimpleSerials(["floodEnabled", "floodRate", "sphereSize", "dropRadius", "waterColor", "maxParticles", "method"]);
+        this.method = v.method ?? "HeightMap"; // "HeightMap" (grid-based), "Fast" (ad-hoc pressure), or "PBF" (Position Based Fluids)
+        this.waterSource = v.waterSource ?? "Rain"; // "Rain" or "DamBurst"
+        this.addSimpleSerials(["floodEnabled", "floodRate", "sphereSize", "dropRadius", "waterColor", "maxParticles", "method", "waterSource",
+            "hmEastMin", "hmEastMax", "hmNorthMin", "hmNorthMax"]);
 
         // Particle buffers
         this.count = 0;
@@ -76,6 +81,30 @@ export class CNodeFloodSim extends CNode3DGroup {
         this._cellStart = null;
         this._sortedIdx = null;
 
+        // HeightMap water simulation — bounds-based grid
+        this.hmSpacing = 10;                          // meters per cell
+        this.hmEastMin = v.hmEastMin ?? -2500;        // grid bounds in local ENU (meters)
+        this.hmEastMax = v.hmEastMax ?? 2500;
+        this.hmNorthMin = v.hmNorthMin ?? -2500;
+        this.hmNorthMax = v.hmNorthMax ?? 2500;
+        this.hmResX = Math.round((this.hmEastMax - this.hmEastMin) / this.hmSpacing);
+        this.hmResY = Math.round((this.hmNorthMax - this.hmNorthMin) / this.hmSpacing);
+        this.hmGround = null;
+        this.waterDepth = null;
+        this.flowX = null;
+        this.flowY = null;
+        this.waterMesh = null;
+        this._hmPositions = null;
+        this._hmNormals = null;
+        this._hmIndices = null;
+        this._hmHasWater = false;
+        // Boundary visuals and drag handles
+        this.boundaryLine = null;
+        this.cornerHandles = [];
+        this.isDragging = false;
+        this.draggingCorner = -1;
+        this.raycaster = new Raycaster();
+
         this._mat4 = new Matrix4();
 
         // Tile reload
@@ -85,6 +114,7 @@ export class CNodeFloodSim extends CNode3DGroup {
             if (this._rebuildTimer) clearTimeout(this._rebuildTimer);
             this._rebuildTimer = setTimeout(() => {
                 this.buildElevationGrid();
+                if (this.hmGround) this.rebuildHMGround();
                 this._rebuildTimer = null;
             }, 500);
         });
@@ -92,7 +122,7 @@ export class CNodeFloodSim extends CNode3DGroup {
         // Self-drive physics when paused (ignores pause state)
         this._lastUpdateTime = 0;
         this._renderInterval = setInterval(() => {
-            if (!this.floodEnabled && this.aliveCount === 0) return;
+            if (!this.floodEnabled && this.aliveCount === 0 && !this._hmHasWater) return;
             // Only self-drive if the render loop hasn't called update recently
             const now = performance.now();
             if (now - this._lastUpdateTime > 50) {
@@ -103,6 +133,7 @@ export class CNodeFloodSim extends CNode3DGroup {
 
         this.setupMesh();
         this.setupGUI();
+        this.setupDragListeners();
     }
 
     // ── Buffer allocation ────────────────────────────────────────────────
@@ -186,10 +217,13 @@ export class CNodeFloodSim extends CNode3DGroup {
         this.guiFolder.add(this, "dropRadius", 1, 10000, 1).name("Drop Radius").tooltip("Radius around the drop point where particles spawn");
         this.guiFolder.add(this, "maxParticles", 1000, 200000, 1000).name("Max Particles").tooltip("Maximum number of active water particles")
             .onChange(v => this.resizeBuffers(v));
-        this.guiFolder.add(this, "method", ["Fast", "PBF"]).name("Method").tooltip("Simulation method: Fast (simple) or PBF (position-based fluids)");
-        this.guiFolder.addColor(this, "waterColor").name("Water Color").tooltip("Color of the water particles")
+        this.guiFolder.add(this, "method", ["HeightMap", "Fast", "PBF"]).name("Method").tooltip("Simulation method: HeightMap (grid), Fast (particles), or PBF (position-based fluids)")
+            .onChange(() => this.updateMethodVisibility());
+        this.guiFolder.add(this, "waterSource", ["Rain", "DamBurst"]).name("Water Source").tooltip("Rain: add water over time. DamBurst: maintain water level at target altitude within drop radius");
+        this.guiFolder.addColor(this, "waterColor").name("Water Color").tooltip("Color of the water")
             .onChange(() => {
                 this.instancedMesh.material.color.set(this.waterColor);
+                if (this.waterMesh) this.waterMesh.material.color.set(this.waterColor);
                 setRenderOne();
             });
         this.guiFolder.add(this, "resetFlood").name("Reset").tooltip("Remove all particles and restart the simulation");
@@ -202,6 +236,13 @@ export class CNodeFloodSim extends CNode3DGroup {
         this.onGround.fill(0);
         this.freeStack.length = 0;
         this.instancedMesh.count = 0;
+        // HeightMap state
+        if (this.waterDepth) this.waterDepth.fill(0);
+        if (this.flowX) this.flowX.fill(0);
+        if (this.flowY) this.flowY.fill(0);
+        this._hmHasWater = false;
+        if (this.waterMesh) this.waterMesh.geometry.setDrawRange(0, 0);
+        this.removeBoundaryVisuals();
         this.originSet = false;
         this.elevGrid = null;
         setRenderOne();
@@ -234,6 +275,8 @@ export class CNodeFloodSim extends CNode3DGroup {
         this._seaLevel = meanSeaLevelOffset(this.originLat, this.originLon);
         this.buildElevationGrid();
         this.originSet = true;
+        this.initHeightMapGrids();
+        this.updateMethodVisibility();
     }
 
     // ── Elevation grid (unchanged) ───────────────────────────────────────
@@ -326,7 +369,7 @@ export class CNodeFloodSim extends CNode3DGroup {
 
     update(f) {
         super.update(f);
-        if (!this.floodEnabled && this.aliveCount === 0) return;
+        if (!this.floodEnabled && this.aliveCount === 0 && !this._hmHasWater) return;
         this.runFloodStep(f);
     }
 
@@ -338,36 +381,51 @@ export class CNodeFloodSim extends CNode3DGroup {
             this.setupOrigin(targetECEF);
         }
 
-        // Spawn new particles
-        if (this.floodEnabled) {
-            const diff = targetECEF.clone().sub(this.originECEF);
-            const spawnE = diff.dot(this.eastVec);
-            const spawnN = diff.dot(this.northVec);
-            // Spawn on the ground at the target's XY, not in the air
-            const groundElev = this.sampleGrid(spawnE, spawnN).elev;
-            const spawnAlt = groundElev + this.sphereSize;
-
-            const room = this.maxParticles - this.count + this.freeStack.length;
-            const toSpawn = Math.min(this.floodRate, room);
-            for (let i = 0; i < toSpawn; i++) this.spawnParticle(spawnE, spawnN, spawnAlt);
-        }
-
-        // Dispatch to selected solver
         const dt = (Sit.simSpeed || 1) / (Sit.fps || 30);
-        if (this.method === "PBF") {
-            this.pbfStep(dt);
-        } else {
-            // Fast: 4 substeps with ad-hoc pressure
-            const substeps = 4;
-            const subDt = dt / substeps;
-            for (let s = 0; s < substeps; s++) {
-                this.fastPhysicsStep(subDt);
-                this.fastResolveCollisions();
-            }
-        }
-        this._lastUpdateTime = performance.now();
 
-        this.updateInstances();
+        if (this.method === "HeightMap") {
+            // Add water to grid cells within drop radius
+            if (this.floodEnabled) {
+                const diff = targetECEF.clone().sub(this.originECEF);
+                const spawnE = diff.dot(this.eastVec);
+                const spawnN = diff.dot(this.northVec);
+                if (this.waterSource === "DamBurst") {
+                    const targetAlt = this.originAlt + diff.dot(this.upVec);
+                    this.heightMapDamBurst(spawnE, spawnN, targetAlt);
+                } else {
+                    this.heightMapAddWater(spawnE, spawnN, dt);
+                }
+            }
+            if (this._hmHasWater || this.floodEnabled) {
+                this.heightMapStep(dt);
+                this.updateWaterMesh();
+            }
+        } else {
+            // Spawn new particles
+            if (this.floodEnabled) {
+                const diff = targetECEF.clone().sub(this.originECEF);
+                const spawnE = diff.dot(this.eastVec);
+                const spawnN = diff.dot(this.northVec);
+                const groundElev = this.sampleGrid(spawnE, spawnN).elev;
+                const spawnAlt = groundElev + this.sphereSize;
+                const room = this.maxParticles - this.count + this.freeStack.length;
+                const toSpawn = Math.min(this.floodRate, room);
+                for (let i = 0; i < toSpawn; i++) this.spawnParticle(spawnE, spawnN, spawnAlt);
+            }
+            if (this.method === "PBF") {
+                this.pbfStep(dt);
+            } else {
+                const substeps = 4;
+                const subDt = dt / substeps;
+                for (let s = 0; s < substeps; s++) {
+                    this.fastPhysicsStep(subDt);
+                    this.fastResolveCollisions();
+                }
+            }
+            this.updateInstances();
+        }
+
+        this._lastUpdateTime = performance.now();
         setRenderOne();
     }
 
@@ -905,6 +963,449 @@ export class CNodeFloodSim extends CNode3DGroup {
         }
     }
 
+    // ── HeightMap Methods ─────────────────────────────────────────────────
+
+    initHeightMapGrids() {
+        this.hmResX = Math.round((this.hmEastMax - this.hmEastMin) / this.hmSpacing);
+        this.hmResY = Math.round((this.hmNorthMax - this.hmNorthMin) / this.hmSpacing);
+        const resX = this.hmResX, resY = this.hmResY;
+        this.hmGround = new Float32Array(resX * resY);
+        this.waterDepth = new Float32Array(resX * resY);
+        this.flowX = new Float32Array((resX + 1) * resY);
+        this.flowY = new Float32Array(resX * (resY + 1));
+        this._hmHasWater = false;
+        this.rebuildHMGround();
+        this.setupWaterMesh();
+        this.createBoundaryVisuals();
+    }
+
+    rebuildHMGround() {
+        const resX = this.hmResX, resY = this.hmResY, sp = this.hmSpacing;
+        const eMin = this.hmEastMin, nMin = this.hmNorthMin;
+        for (let j = 0; j < resY; j++) {
+            const n = nMin + j * sp;
+            for (let i = 0; i < resX; i++) {
+                this.hmGround[j * resX + i] = this.sampleGrid(eMin + i * sp, n).elev;
+            }
+        }
+    }
+
+    heightMapAddWater(spawnE, spawnN, dt) {
+        const resX = this.hmResX, resY = this.hmResY, sp = this.hmSpacing;
+        const eMin = this.hmEastMin, nMin = this.hmNorthMin;
+        const radius = this.dropRadius, radiusSq = radius * radius;
+        const gi = (spawnE - eMin) / sp, gj = (spawnN - nMin) / sp;
+        const cellRadius = Math.ceil(radius / sp);
+        const iMin = Math.max(0, Math.floor(gi - cellRadius));
+        const iMax = Math.min(resX - 1, Math.ceil(gi + cellRadius));
+        const jMin = Math.max(0, Math.floor(gj - cellRadius));
+        const jMax = Math.min(resY - 1, Math.ceil(gj + cellRadius));
+
+        let cellCount = 0;
+        for (let j = jMin; j <= jMax; j++) for (let i = iMin; i <= iMax; i++) {
+            const dx = (i - gi) * sp, dy = (j - gj) * sp;
+            if (dx * dx + dy * dy <= radiusSq) cellCount++;
+        }
+        if (cellCount === 0) return;
+
+        const waterPerCell = this.floodRate * 0.0002 * dt;
+        for (let j = jMin; j <= jMax; j++) for (let i = iMin; i <= iMax; i++) {
+            const dx = (i - gi) * sp, dy = (j - gj) * sp;
+            if (dx * dx + dy * dy <= radiusSq) this.waterDepth[j * resX + i] += waterPerCell;
+        }
+        this._hmHasWater = true;
+    }
+
+    heightMapDamBurst(spawnE, spawnN, targetAlt) {
+        const resX = this.hmResX, resY = this.hmResY, sp = this.hmSpacing;
+        const eMin = this.hmEastMin, nMin = this.hmNorthMin;
+        const radius = this.dropRadius, radiusSq = radius * radius;
+        const gi = (spawnE - eMin) / sp, gj = (spawnN - nMin) / sp;
+        const cellRadius = Math.ceil(radius / sp);
+        const iMin = Math.max(0, Math.floor(gi - cellRadius));
+        const iMax = Math.min(resX - 1, Math.ceil(gi + cellRadius));
+        const jMin = Math.max(0, Math.floor(gj - cellRadius));
+        const jMax = Math.min(resY - 1, Math.ceil(gj + cellRadius));
+        const g = this.hmGround, w = this.waterDepth;
+
+        for (let j = jMin; j <= jMax; j++) for (let i = iMin; i <= iMax; i++) {
+            const dx = (i - gi) * sp, dy = (j - gj) * sp;
+            if (dx * dx + dy * dy > radiusSq) continue;
+            const ci = j * resX + i;
+            const depth = targetAlt - g[ci];
+            if (depth > 0) w[ci] = depth;
+        }
+        this._hmHasWater = true;
+    }
+
+    heightMapStep(dt) {
+        const resX = this.hmResX, resY = this.hmResY, sp = this.hmSpacing;
+        const g = this.hmGround, w = this.waterDepth;
+        const fx = this.flowX, fy = this.flowY;
+        if (!g || !w) return;
+
+        const gravity = GRAVITY, damping = 0.999;
+        const fxW = resX + 1, fyW = resX;
+
+        let maxD = 0;
+        for (let k = 0, len = w.length; k < len; k++) if (w[k] > maxD) maxD = w[k];
+        const maxSubDt = maxD > 0.01 ? (sp / Math.sqrt(gravity * maxD)) * 0.5 : dt;
+        const substeps = Math.max(1, Math.min(Math.ceil(dt / maxSubDt), 20));
+        const subDt = dt / substeps;
+
+        for (let s = 0; s < substeps; s++) {
+            for (let j = 0; j < resY; j++) for (let i = 1; i < resX; i++) {
+                const left = j * resX + (i - 1), right = j * resX + i;
+                fx[j * fxW + i] += subDt * gravity * (g[left] + w[left] - g[right] - w[right]) / sp;
+            }
+            for (let j = 1; j < resY; j++) for (let i = 0; i < resX; i++) {
+                const below = (j - 1) * resX + i, above = j * resX + i;
+                fy[j * fyW + i] += subDt * gravity * (g[below] + w[below] - g[above] - w[above]) / sp;
+            }
+            for (let j = 0; j < resY; j++) for (let i = 0; i < resX; i++) {
+                const idx = j * resX + i;
+                if (w[idx] <= 0) {
+                    if (fx[j * fxW + i] < 0) fx[j * fxW + i] = 0;
+                    if (fx[j * fxW + (i + 1)] > 0) fx[j * fxW + (i + 1)] = 0;
+                    if (fy[j * fyW + i] < 0) fy[j * fyW + i] = 0;
+                    if (fy[(j + 1) * fyW + i] > 0) fy[(j + 1) * fyW + i] = 0;
+                    continue;
+                }
+                let totalOut = 0;
+                if (fx[j * fxW + (i + 1)] > 0) totalOut += fx[j * fxW + (i + 1)];
+                if (fx[j * fxW + i] < 0) totalOut -= fx[j * fxW + i];
+                if (fy[(j + 1) * fyW + i] > 0) totalOut += fy[(j + 1) * fyW + i];
+                if (fy[j * fyW + i] < 0) totalOut -= fy[j * fyW + i];
+                totalOut *= subDt;
+                const vol = w[idx] * sp;
+                if (totalOut > vol && totalOut > 0) {
+                    const scale = vol / totalOut;
+                    if (fx[j * fxW + (i + 1)] > 0) fx[j * fxW + (i + 1)] *= scale;
+                    if (fx[j * fxW + i] < 0) fx[j * fxW + i] *= scale;
+                    if (fy[(j + 1) * fyW + i] > 0) fy[(j + 1) * fyW + i] *= scale;
+                    if (fy[j * fyW + i] < 0) fy[j * fyW + i] *= scale;
+                }
+            }
+            for (let j = 0; j < resY; j++) for (let i = 0; i < resX; i++) {
+                const idx = j * resX + i;
+                const netFlow = fx[j * fxW + i] - fx[j * fxW + (i + 1)]
+                              + fy[j * fyW + i] - fy[(j + 1) * fyW + i];
+                w[idx] += subDt * netFlow / sp;
+                if (w[idx] < 0) w[idx] = 0;
+            }
+            for (let k = 0; k < fx.length; k++) fx[k] *= damping;
+            for (let k = 0; k < fy.length; k++) fy[k] *= damping;
+            for (let j = 0; j < resY; j++) { fx[j * fxW] = 0; fx[j * fxW + resX] = 0; }
+            for (let i = 0; i < resX; i++) { fy[i] = 0; fy[resY * fyW + i] = 0; }
+        }
+
+        let hasWater = false;
+        for (let k = 0, len = w.length; k < len; k++) {
+            if (w[k] > 0.001) { hasWater = true; break; }
+        }
+        this._hmHasWater = hasWater;
+    }
+
+    setupWaterMesh() {
+        if (this.waterMesh) {
+            this.group.remove(this.waterMesh);
+            this.waterMesh.geometry.dispose();
+            this.waterMesh.material.dispose();
+        }
+        const resX = this.hmResX, resY = this.hmResY;
+        const numVerts = resX * resY;
+        const maxIndices = (resX - 1) * (resY - 1) * 6;
+
+        this._hmPositions = new Float32Array(numVerts * 3);
+        this._hmNormals = new Float32Array(numVerts * 3);
+        this._hmIndices = new Uint32Array(maxIndices);
+
+        const geo = new BufferGeometry();
+        const posAttr = new BufferAttribute(this._hmPositions, 3);
+        posAttr.setUsage(DynamicDrawUsage);
+        geo.setAttribute('position', posAttr);
+        const nrmAttr = new BufferAttribute(this._hmNormals, 3);
+        nrmAttr.setUsage(DynamicDrawUsage);
+        geo.setAttribute('normal', nrmAttr);
+        const idxAttr = new BufferAttribute(this._hmIndices, 1);
+        idxAttr.setUsage(DynamicDrawUsage);
+        geo.setIndex(idxAttr);
+        geo.setDrawRange(0, 0);
+
+        const mat = new MeshPhongMaterial({
+            color: new Color(this.waterColor),
+            transparent: true, opacity: 0.6, side: DoubleSide,
+            shininess: 80, specular: new Color(0x444444),
+        });
+        this.waterMesh = new Mesh(geo, mat);
+        this.waterMesh.frustumCulled = false;
+        this.waterMesh.visible = (this.method === "HeightMap");
+        this.group.add(this.waterMesh);
+    }
+
+    updateWaterMesh() {
+        if (!this.waterMesh || !this.waterDepth || !this.hmGround) return;
+
+        const resX = this.hmResX, resY = this.hmResY, sp = this.hmSpacing;
+        const eMin = this.hmEastMin, nMin = this.hmNorthMin;
+        const g = this.hmGround, w = this.waterDepth;
+        const pos = this._hmPositions, nrm = this._hmNormals, idx = this._hmIndices;
+        const originAlt = this.originAlt;
+        const ex = this.eastVec.x, ey = this.eastVec.y, ez = this.eastVec.z;
+        const nx = this.northVec.x, ny = this.northVec.y, nz = this.northVec.z;
+        const ux = this.upVec.x, uy = this.upVec.y, uz = this.upVec.z;
+        const threshold = 0.01;
+
+        for (let j = 0; j < resY; j++) for (let i = 0; i < resX; i++) {
+            const ci = j * resX + i, vi = ci * 3;
+            const e = eMin + i * sp, n = nMin + j * sp;
+            const u = (g[ci] + w[ci]) - originAlt;
+            pos[vi] = e*ex + n*nx + u*ux;
+            pos[vi+1] = e*ey + n*ny + u*uy;
+            pos[vi+2] = e*ez + n*nz + u*uz;
+        }
+
+        for (let j = 0; j < resY; j++) for (let i = 0; i < resX; i++) {
+            const ci = j * resX + i, vi = ci * 3;
+            const hL = g[i > 0 ? ci-1 : ci] + w[i > 0 ? ci-1 : ci];
+            const hR = g[i < resX-1 ? ci+1 : ci] + w[i < resX-1 ? ci+1 : ci];
+            const hD = g[j > 0 ? ci-resX : ci] + w[j > 0 ? ci-resX : ci];
+            const hU = g[j < resY-1 ? ci+resX : ci] + w[j < resY-1 ? ci+resX : ci];
+            const lnE = -(hR-hL), lnN = -(hU-hD), lnU = 2*sp;
+            const len = Math.sqrt(lnE*lnE + lnN*lnN + lnU*lnU);
+            const inv = 1/len;
+            const ne = lnE*inv, nn = lnN*inv, nu = lnU*inv;
+            nrm[vi]   = ne*ex + nn*nx + nu*ux;
+            nrm[vi+1] = ne*ey + nn*ny + nu*uy;
+            nrm[vi+2] = ne*ez + nn*nz + nu*uz;
+        }
+
+        let idxCount = 0;
+        for (let j = 0; j < resY-1; j++) for (let i = 0; i < resX-1; i++) {
+            const tl = j*resX+i, tr = tl+1, bl = tl+resX, br = bl+1;
+            if (w[tl] > threshold || w[tr] > threshold || w[bl] > threshold || w[br] > threshold) {
+                idx[idxCount++] = tl; idx[idxCount++] = tr; idx[idxCount++] = bl;
+                idx[idxCount++] = tr; idx[idxCount++] = br; idx[idxCount++] = bl;
+            }
+        }
+
+        const geo = this.waterMesh.geometry;
+        geo.attributes.position.needsUpdate = true;
+        geo.attributes.normal.needsUpdate = true;
+        geo.index.needsUpdate = true;
+        geo.setDrawRange(0, idxCount);
+    }
+
+    updateMethodVisibility() {
+        if (this.instancedMesh) this.instancedMesh.visible = (this.method !== "HeightMap");
+        if (this.waterMesh) this.waterMesh.visible = (this.method === "HeightMap");
+        if (this.boundaryLine) this.boundaryLine.visible = (this.method === "HeightMap");
+        for (const h of this.cornerHandles) h.visible = (this.method === "HeightMap");
+        setRenderOne();
+    }
+
+    // ── Boundary visuals & drag handles ──────────────────────────────────
+
+    enuToECEFOffset(e, n, u) {
+        return {
+            x: e*this.eastVec.x + n*this.northVec.x + u*this.upVec.x,
+            y: e*this.eastVec.y + n*this.northVec.y + u*this.upVec.y,
+            z: e*this.eastVec.z + n*this.northVec.z + u*this.upVec.z,
+        };
+    }
+
+    createBoundaryVisuals() {
+        this.removeBoundaryVisuals();
+        if (!this.originSet) return;
+
+        const lineGeo = new BufferGeometry();
+        lineGeo.setAttribute('position', new BufferAttribute(new Float32Array(4 * 3), 3));
+        this.boundaryLine = new LineLoop(lineGeo, new LineBasicMaterial({color: 0xffff00}));
+        this.boundaryLine.frustumCulled = false;
+        this.group.add(this.boundaryLine);
+
+        const handleGeo = new SphereGeometry(1, 8, 8);
+        const handleMat = new MeshBasicMaterial({color: 0xffff00, transparent: true, opacity: 0.8});
+        this.cornerHandles = [];
+        for (let c = 0; c < 4; c++) {
+            const handle = new Mesh(handleGeo, handleMat);
+            handle.frustumCulled = false;
+            this.cornerHandles.push(handle);
+            this.group.add(handle);
+        }
+        this.updateBoundaryVisuals();
+    }
+
+    updateBoundaryVisuals() {
+        if (!this.boundaryLine || !this.originSet) return;
+        const corners = [
+            [this.hmEastMin, this.hmNorthMin],
+            [this.hmEastMax, this.hmNorthMin],
+            [this.hmEastMax, this.hmNorthMax],
+            [this.hmEastMin, this.hmNorthMax],
+        ];
+        const posArr = this.boundaryLine.geometry.attributes.position.array;
+        for (let c = 0; c < 4; c++) {
+            const [e, n] = corners[c];
+            const elev = this.sampleGrid(e, n).elev;
+            const u = elev - this.originAlt + 5;
+            const p = this.enuToECEFOffset(e, n, u);
+            posArr[c*3] = p.x; posArr[c*3+1] = p.y; posArr[c*3+2] = p.z;
+            if (this.cornerHandles[c]) {
+                this.cornerHandles[c].position.set(p.x, p.y, p.z);
+                this.cornerHandles[c].scale.setScalar(30);
+            }
+        }
+        this.boundaryLine.geometry.attributes.position.needsUpdate = true;
+    }
+
+    removeBoundaryVisuals() {
+        if (this.boundaryLine) {
+            this.group.remove(this.boundaryLine);
+            this.boundaryLine.geometry.dispose();
+            this.boundaryLine.material.dispose();
+            this.boundaryLine = null;
+        }
+        for (const h of this.cornerHandles) {
+            this.group.remove(h);
+        }
+        this.cornerHandles = [];
+    }
+
+    setupDragListeners() {
+        this._onPointerDown = this.onPointerDown.bind(this);
+        this._onPointerMove = this.onPointerMove.bind(this);
+        this._onPointerUp = this.onPointerUp.bind(this);
+        document.addEventListener('pointerdown', this._onPointerDown);
+        document.addEventListener('pointermove', this._onPointerMove);
+        document.addEventListener('pointerup', this._onPointerUp);
+    }
+
+    removeDragListeners() {
+        if (this._onPointerDown) {
+            document.removeEventListener('pointerdown', this._onPointerDown);
+            document.removeEventListener('pointermove', this._onPointerMove);
+            document.removeEventListener('pointerup', this._onPointerUp);
+        }
+    }
+
+    getHandleAtMouse(mouseX, mouseY) {
+        const view = ViewMan.get("mainView");
+        if (!view) return -1;
+        const mouseRay = screenToNDC(view, mouseX, mouseY);
+        this.raycaster.setFromCamera(mouseRay, view.camera);
+        let closest = -1, closestDist = Infinity;
+        for (let c = 0; c < this.cornerHandles.length; c++) {
+            const intersects = this.raycaster.intersectObject(this.cornerHandles[c], false);
+            if (intersects.length > 0 && intersects[0].distance < closestDist) {
+                closestDist = intersects[0].distance;
+                closest = c;
+            }
+        }
+        return closest;
+    }
+
+    onPointerDown(event) {
+        if (event.button !== 0 || !this.originSet || this.cornerHandles.length === 0) return;
+        if (this.method !== "HeightMap") return;
+        let target = event.target;
+        while (target) {
+            if (target.classList && target.classList.contains('lil-gui')) return;
+            target = target.parentElement;
+        }
+        const view = ViewMan.get("mainView");
+        if (!view || !mouseInViewOnly(view, event.clientX, event.clientY)) return;
+        const cornerIdx = this.getHandleAtMouse(event.clientX, event.clientY);
+        if (cornerIdx >= 0) {
+            this.isDragging = true;
+            this.draggingCorner = cornerIdx;
+            if (view.controls) view.controls.enabled = false;
+            event.stopPropagation();
+            event.preventDefault();
+        }
+    }
+
+    onPointerMove(event) {
+        if (!this.isDragging || this.draggingCorner < 0) return;
+        const view = ViewMan.get("mainView");
+        if (!view) return;
+        const mouseRay = screenToNDC(view, event.clientX, event.clientY);
+        this.raycaster.setFromCamera(mouseRay, view.camera);
+        if (!NodeMan.exists("TerrainModel")) return;
+        const terrainNode = NodeMan.get("TerrainModel");
+        const savedMask = this.raycaster.layers.mask;
+        this.raycaster.layers.mask = LAYER.MASK_MAIN | LAYER.MASK_LOOK;
+        const intersect = terrainNode.getClosestIntersect(this.raycaster);
+        this.raycaster.layers.mask = savedMask;
+        if (!intersect) return;
+
+        const diff = intersect.point.clone().sub(this.originECEF);
+        const e = diff.dot(this.eastVec), n = diff.dot(this.northVec);
+        const sp = this.hmSpacing;
+        const snappedE = Math.round(e / sp) * sp;
+        const snappedN = Math.round(n / sp) * sp;
+
+        // Corner order: 0=SW, 1=SE, 2=NE, 3=NW
+        const c = this.draggingCorner;
+        let eMin = this.hmEastMin, eMax = this.hmEastMax;
+        let nMin = this.hmNorthMin, nMax = this.hmNorthMax;
+        if (c === 0 || c === 3) eMin = Math.min(snappedE, eMax - sp);
+        if (c === 1 || c === 2) eMax = Math.max(snappedE, eMin + sp);
+        if (c === 0 || c === 1) nMin = Math.min(snappedN, nMax - sp);
+        if (c === 2 || c === 3) nMax = Math.max(snappedN, nMin + sp);
+
+        this.resizeGrid(eMin, eMax, nMin, nMax);
+        this.updateBoundaryVisuals();
+        setRenderOne();
+        event.stopPropagation();
+        event.preventDefault();
+    }
+
+    onPointerUp() {
+        if (this.isDragging) {
+            const view = ViewMan.get("mainView");
+            if (view && view.controls) view.controls.enabled = true;
+            this.isDragging = false;
+            this.draggingCorner = -1;
+        }
+    }
+
+    resizeGrid(newEMin, newEMax, newNMin, newNMax) {
+        const sp = this.hmSpacing;
+        const newResX = Math.round((newEMax - newEMin) / sp);
+        const newResY = Math.round((newNMax - newNMin) / sp);
+        if (newResX < 2 || newResY < 2 || newResX > 2000 || newResY > 2000) return;
+        if (newResX === this.hmResX && newResY === this.hmResY &&
+            newEMin === this.hmEastMin && newNMin === this.hmNorthMin) return;
+
+        const oldResX = this.hmResX, oldEMin = this.hmEastMin, oldNMin = this.hmNorthMin;
+        const oldWater = this.waterDepth;
+
+        const newWater = new Float32Array(newResX * newResY);
+        if (oldWater) {
+            for (let j = 0; j < newResY; j++) {
+                const oldJ = Math.round((newNMin + j * sp - oldNMin) / sp);
+                if (oldJ < 0 || oldJ >= this.hmResY) continue;
+                for (let i = 0; i < newResX; i++) {
+                    const oldI = Math.round((newEMin + i * sp - oldEMin) / sp);
+                    if (oldI < 0 || oldI >= oldResX) continue;
+                    newWater[j * newResX + i] = oldWater[oldJ * oldResX + oldI];
+                }
+            }
+        }
+
+        this.hmEastMin = newEMin; this.hmEastMax = newEMax;
+        this.hmNorthMin = newNMin; this.hmNorthMax = newNMax;
+        this.hmResX = newResX; this.hmResY = newResY;
+        this.hmGround = new Float32Array(newResX * newResY);
+        this.waterDepth = newWater;
+        this.flowX = new Float32Array((newResX + 1) * newResY);
+        this.flowY = new Float32Array(newResX * (newResY + 1));
+
+        this.rebuildHMGround();
+        this.setupWaterMesh();
+    }
+
     // ── Instance matrix update ───────────────────────────────────────────
 
     updateInstances() {
@@ -939,9 +1440,15 @@ export class CNodeFloodSim extends CNode3DGroup {
     dispose() {
         if (this._renderInterval) clearInterval(this._renderInterval);
         if (this._rebuildTimer) clearTimeout(this._rebuildTimer);
+        this.removeDragListeners();
+        this.removeBoundaryVisuals();
         if (this.instancedMesh) {
             this.instancedMesh.geometry.dispose();
             this.instancedMesh.material.dispose();
+        }
+        if (this.waterMesh) {
+            this.waterMesh.geometry.dispose();
+            this.waterMesh.material.dispose();
         }
         if (this.guiFolder) this.guiFolder.destroy();
         super.dispose();
