@@ -338,6 +338,69 @@ async function handleServerMessage(msg) {
         return;
     }
 
+    // Full-page screenshot via chrome.tabs.captureVisibleTab — captures DOM + canvas
+    if (action === "sitrec_screenshot" && params?.view === "page") {
+        const pageTabTarget = params?.tab;
+        if (params?.tab !== undefined) delete params.tab;
+        const pageTabId = await findSitrecTabByTarget(pageTabTarget, _cwd);
+        trackCommandStart(action, params, _cwd, pageTabId);
+        if (!pageTabId) {
+            sendToServer({ id, error: "No Sitrec tab found for page capture." });
+            trackCommandEnd(false);
+            return;
+        }
+        try {
+            const tab = await chrome.tabs.get(pageTabId);
+            // Ensure the tab is active so captureVisibleTab can see it
+            if (!tab.active) {
+                await chrome.tabs.update(pageTabId, { active: true });
+                await new Promise(r => setTimeout(r, 250));
+            }
+
+            const usePng = params.quality === "png";
+            const format = usePng ? "png" : "jpeg";
+            const quality = usePng ? undefined : Math.min(100, Math.max(1, Number(params.quality) || 75));
+            const mimeType = usePng ? "image/png" : "image/jpeg";
+
+            const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format, quality });
+            let imageData = dataUrl.replace(/^data:image\/[a-z]+;base64,/, "");
+
+            // Optional maxWidth downscale via OffscreenCanvas
+            if (params.maxWidth) {
+                const maxW = Number(params.maxWidth);
+                const blob = await (await fetch(dataUrl)).blob();
+                const bitmap = await createImageBitmap(blob);
+                if (bitmap.width > maxW) {
+                    const scale = maxW / bitmap.width;
+                    const w = Math.round(bitmap.width * scale);
+                    const h = Math.round(bitmap.height * scale);
+                    const oc = new OffscreenCanvas(w, h);
+                    oc.getContext("2d").drawImage(bitmap, 0, 0, w, h);
+                    const resizedBlob = await oc.convertToBlob({
+                        type: mimeType,
+                        quality: usePng ? undefined : quality / 100,
+                    });
+                    const buf = await resizedBlob.arrayBuffer();
+                    const bytes = new Uint8Array(buf);
+                    const CHUNK = 0x8000;
+                    let binary = "";
+                    for (let i = 0; i < bytes.length; i += CHUNK) {
+                        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+                    }
+                    imageData = btoa(binary);
+                }
+                bitmap.close();
+            }
+
+            sendToServer({ id, result: { imageData, mimeType } });
+            trackCommandEnd(true);
+        } catch (e) {
+            sendToServer({ id, error: `Page capture failed: ${e.message}` });
+            trackCommandEnd(false);
+        }
+        return;
+    }
+
     // Tab targeting: use params.tab to select a specific tab by ID or URL substring.
     // Extract and remove the tab param so it doesn't get forwarded to the content script.
     const tabTarget = params?.tab;

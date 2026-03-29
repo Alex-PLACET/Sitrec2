@@ -698,6 +698,8 @@ const TOOLS = [
             "Capture a screenshot of the Sitrec viewport. By default, composites all visible views " +
             "and overlays into a single image (same as 'Render Viewport Video'). " +
             "Pass view='mainView' or view='lookView' to capture a single view instead. " +
+            "Pass view='page' to capture the full browser tab (DOM elements + canvas — " +
+            "includes GUI panels, labels, and all visible UI). " +
             "Returns a base64-encoded image (JPEG by default, use quality='png' for lossless).",
         inputSchema: {
             type: "object",
@@ -705,7 +707,7 @@ const TOOLS = [
                 ...TAB_PROPERTY,
                 view: {
                     type: "string",
-                    description: "Capture a single named view. Accepts 'main'/'mainView', 'look'/'lookView', 'video'/'videoView'. If omitted, composites all visible views.",
+                    description: "Capture a single named view. Accepts 'main'/'mainView', 'look'/'lookView', 'video'/'videoView'. Use 'page' to capture the full browser tab including DOM UI elements. If omitted, composites all visible views.",
                 },
                 quality: {
                     type: ["number", "string"],
