@@ -40,6 +40,7 @@ export class CSatellite {
         // TLE Data
         this.TLEData = undefined;
         this.tleFilterResults = null; // boolean[] from TLE filter dialog, or null (no filter active)
+        this.tleFilterFrameData = null; // per-frame visibility from "any frame in range" mode
 
         // Rendering via CPointLightCloud
         this.lightCloud = null;
@@ -719,6 +720,7 @@ export class CSatellite {
         // Clear any active TLE filter — the boolean[] is indexed by satData position
         // and would be the wrong length after merge.
         this.tleFilterResults = null;
+        this.tleFilterFrameData = null;
         // Rebuild the rendering since satellite count may have changed
         this.removeSatellites();
         this.TLEData.satData.forEach(sat => {
@@ -953,6 +955,50 @@ export class CSatellite {
         }
     }
 
+    /**
+     * Get the ECEF position of the satellite the camera is currently riding on,
+     * if any. Returns {ecef} or null. Uses the pre-computed track array position
+     * (which is frame-accurate) rather than the TLE interpolation position
+     * (which may be from a stale interpolation interval).
+     */
+    _getCameraSatelliteState() {
+        try {
+            const sw = NodeMan.get('cameraTrackSwitch', false);
+            if (!sw) return null;
+            const trackNode = sw.inputs[sw.choice];
+            if (!trackNode || trackNode.constructor.name !== 'CNodeSatelliteTrack' || !trackNode.norad) {
+                return null;
+            }
+            // Use the track node's pre-computed position for the current frame
+            const trackValue = trackNode.array[par.frame];
+            if (trackValue && trackValue.position) {
+                return {ecef: trackValue.position};
+            }
+            // Fallback to live TLE satData
+            const satData = this.TLEData.getRecordFromNORAD(trackNode.norad);
+            if (!satData || !satData.ecef || satData.invalidPosition) return null;
+            return {ecef: satData.ecef};
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Find the nearest sample index in tleFilterFrameData for a given timeMS.
+     * Linear scan — fast for ≤60 samples.
+     */
+    _nearestSampleIndex(timeMS) {
+        const times = this.tleFilterFrameData.sampleTimesMS;
+        let bestIdx = 0;
+        let bestDist = Math.abs(timeMS - times[0]);
+        for (let s = 1; s < times.length; s++) {
+            const d = Math.abs(timeMS - times[s]);
+            if (d < bestDist) { bestDist = d; bestIdx = s; }
+            else break; // times are sorted, so once distance increases we're past the nearest
+        }
+        return bestIdx;
+    }
+
     updateAllSatellites(date, options = {}) {
         if (!this.TLEData || !this.lightCloud) {
             return;
@@ -968,6 +1014,13 @@ export class CSatellite {
         }
 
         const lookPos = options.lookCameraPos || V3(0, 0, 0);
+
+        // When the camera is riding a satellite (e.g. ISS), hide that satellite
+        // AND any co-located objects (docked spacecraft with separate TLE entries).
+        // Matched by proximity alone (<500m). At orbital altitudes no independent
+        // satellite stays within 300m for more than a fraction of a second, so
+        // distance is sufficient — no velocity check needed.
+        const camSatState = this._getCameraSatelliteState();
 
         let validCount = 0;
         let visibleCount = 0;
@@ -1068,7 +1121,30 @@ export class CSatellite {
                 satData.invalidPosition = true;
             }
 
-            if (satData.invalidPosition || !satData.visible) {
+            // Detect satellites co-located with the camera satellite (docked objects).
+            // These are hidden in the look view only (dots + labels) but remain
+            // visible in the main 3D overview.
+            satData.hiddenInLookView = false;
+            if (camSatState && !satData.invalidPosition && satData.ecef) {
+                satData.hiddenInLookView = satData.ecef.distanceTo(camSatState.ecef) < 500;
+            }
+
+            // Per-frame TLE filter: if "any frame in range" precalculated data exists,
+            // check whether this satellite is visible at the current time.
+            let tleFrameHidden = false;
+            if (this.tleFilterFrameData && satData.visible && !satData.invalidPosition) {
+                const fd = this.tleFilterFrameData.perSat[i];
+                if (fd === 'off') {
+                    tleFrameHidden = true;
+                } else if (Array.isArray(fd)) {
+                    // 'changeable' — find nearest sample for current time
+                    const idx = this._nearestSampleIndex(timeMS);
+                    tleFrameHidden = !fd[idx];
+                }
+                // 'on' → always visible, no action needed
+            }
+
+            if (satData.invalidPosition || !satData.visible || tleFrameHidden) {
                 this.removeSatSunArrows(satData);
                 this.lightCloud.setBrightness(i, 0);
                 this.lightCloud.setPosition(i, 1000000000, 0, 0);

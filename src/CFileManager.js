@@ -3173,6 +3173,10 @@ export class CFileManager extends CManager {
      * Returns "merge", "mergeAll", or "replace". Rejects on cancel.
      */
     showTLEChoiceDialog(filename, existingTLE, newTLEText) {
+        // Auto-merge in automated contexts (non-destructive default)
+        if (Globals.regression || window._mcpDebug) {
+            return Promise.resolve("merge");
+        }
         // Parse the new TLE temporarily to get its stats
         let newTLE = null;
         let assessment = null;

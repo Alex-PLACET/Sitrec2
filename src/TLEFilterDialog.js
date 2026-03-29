@@ -2,11 +2,13 @@
 // spatial, orbital, and name criteria. Integrates with CSatellite.filterSatellites()
 // via the tleFilterResults array.
 
-import {Frustum, Matrix4, Vector3} from "three";
-import {NodeMan, setRenderOne} from "./Globals";
-import {ECEFToLLAVD_radii} from "./LLA-ECEF-ENU";
+import {Frustum, Matrix4, Ray, Sphere, Vector3} from "three";
+import {NodeMan, setRenderOne, Sit} from "./Globals";
+import {par} from "./par";
+import {ECEFToLLAVD_radii, wgs84} from "./LLA-ECEF-ENU";
 import {bestSat} from "./TLEUtils";
 import {degrees} from "./mathUtils";
+import {intersectSphere2, V3} from "./threeUtils";
 
 
 // ─── Shared Dialog Chrome ───────────────────────────────────────────────────
@@ -209,15 +211,16 @@ function makeSection(title) {
 
 // ─── Filter Logic ───────────────────────────────────────────────────────────
 
-function getSatAltitudeKm(satData) {
-    if (!satData.ecef || satData.invalidPosition) return null;
-    const lla = ECEFToLLAVD_radii(satData.ecef); // returns Vector3(lat_deg, lon_deg, alt_meters)
+function getAltitudeFromEcefKm(ecef) {
+    const lla = ECEFToLLAVD_radii(ecef);
     return lla.z / 1000;
 }
 
 function getCameraAltitudeKm() {
     try {
-        const cam = NodeMan.get('mainCamera').camera;
+        // Use the lookCamera (observer/aircraft position in the sitch),
+        // not the mainCamera (3D viewport which can be zoomed out to orbit).
+        const cam = NodeMan.get('lookCamera').camera;
         if (!cam) return null;
         const lla = ECEFToLLAVD_radii(cam.position);
         return lla.z / 1000;
@@ -239,6 +242,88 @@ function wildcardToRegex(pattern) {
     // Escape regex special chars except *, then convert * to .*
     const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
     return new RegExp('^' + escaped + '$', 'i');
+}
+
+/**
+ * Check spatial filters against a single ECEF position.
+ * Returns true if the position passes all enabled spatial filters.
+ */
+function checkSpatialFilters(ecef, filterOptions) {
+    const altKm = getAltitudeFromEcefKm(ecef);
+
+    if (filterOptions.aboveCameraEnabled) {
+        const camAlt = getCameraAltitudeKm();
+        if (camAlt === null || altKm === null || altKm <= camAlt) return false;
+    }
+
+    if (filterOptions.belowCameraEnabled) {
+        const camAlt = getCameraAltitudeKm();
+        if (camAlt === null || altKm === null || altKm >= camAlt) return false;
+    }
+
+    if (filterOptions.altitudeEnabled) {
+        if (altKm === null || altKm < filterOptions.altMinKm || altKm > filterOptions.altMaxKm) return false;
+    }
+
+    if (filterOptions.frustumEnabled) {
+        const lookCam = getLookCamera();
+        if (!lookCam) return false;
+        const frustum = new Frustum();
+        const m = new Matrix4().multiplyMatrices(lookCam.projectionMatrix, lookCam.matrixWorldInverse);
+        frustum.setFromProjectionMatrix(m);
+        if (!frustum.containsPoint(ecef)) return false;
+    }
+
+    if (filterOptions.centerlineEnabled) {
+        const lookCam = getLookCamera();
+        if (!lookCam) return false;
+        const camPos = lookCam.position;
+        const lookDir = new Vector3(0, 0, -1).applyQuaternion(lookCam.quaternion);
+        const toSat = new Vector3().subVectors(ecef, camPos).normalize();
+        const angleDeg = degrees(Math.acos(Math.min(1, Math.max(-1, lookDir.dot(toSat)))));
+        if (angleDeg > filterOptions.centerlineMaxDeg) return false;
+    }
+
+    if (filterOptions.hiddenByEarthEnabled) {
+        const lookCam = getLookCamera();
+        if (!lookCam) return false;
+        const camPos = lookCam.position;
+        const toSat = new Vector3().subVectors(ecef, camPos);
+        const dist = toSat.length();
+        toSat.normalize();
+        const ray = new Ray(camPos, toSat);
+        const earthSphere = new Sphere(V3(0, 0, 0), wgs84.POLAR_RADIUS);
+        const hit0 = V3(), hit1 = V3();
+        const intersects = intersectSphere2(ray, earthSphere, hit0, hit1);
+        if (intersects && hit0.distanceTo(camPos) < dist) return false;
+    }
+
+    return true;
+}
+
+/** True if any spatial filter checkbox is enabled. */
+function hasSpatialFilter(filterOptions) {
+    return filterOptions.aboveCameraEnabled || filterOptions.belowCameraEnabled
+        || filterOptions.altitudeEnabled || filterOptions.frustumEnabled
+        || filterOptions.centerlineEnabled || filterOptions.hiddenByEarthEnabled;
+}
+
+/**
+ * Build an array of sample dates spanning the sitch time range.
+ * Samples ~1 per second of sim time, capped at 60.
+ */
+function buildSampleDates() {
+    const startMs = new Date(Sit.startTime).getTime();
+    const endFrame = Sit.frames - 1;
+    const totalMs = endFrame * 1000 * (Sit.simSpeed ?? 1) / Sit.fps;
+    if (totalMs <= 0) return [new Date(startMs)];
+    const numSamples = Math.min(60, Math.max(2, Math.ceil(totalMs / 1000)));
+    const dates = [];
+    for (let s = 0; s < numSamples; s++) {
+        const t = s / (numSamples - 1);
+        dates.push(new Date(startMs + t * totalMs));
+    }
+    return dates;
 }
 
 /**
@@ -268,56 +353,19 @@ export function applyTLEFilters(satellites, filterOptions, currentDate) {
         }
     }
 
+    const spatial = hasSpatialFilter(filterOptions);
+    // For "any frame in range" mode, pre-compute sample dates and frame data
+    const sampleDates = (spatial && filterOptions.anyFrameInRange) ? buildSampleDates() : null;
+    // Build sample timestamps (ms) for frame-to-sample mapping during rendering
+    const sampleTimesMS = sampleDates ? sampleDates.map(d => d.getTime()) : null;
+    // Per-satellite frame visibility data: 'on', 'off', or boolean[] for changeable
+    const perSatFrameData = sampleDates ? [] : null;
+
     for (let i = 0; i < satellites.TLEData.satData.length; i++) {
         const satData = satellites.TLEData.satData[i];
         let pass = true;
 
-        // Spatial filters require valid ECEF position
-        const altKm = getSatAltitudeKm(satData);
-
-        // Above Camera
-        if (pass && filterOptions.aboveCameraEnabled) {
-            const camAlt = getCameraAltitudeKm();
-            if (camAlt === null || altKm === null || altKm <= camAlt) pass = false;
-        }
-
-        // Below Camera
-        if (pass && filterOptions.belowCameraEnabled) {
-            const camAlt = getCameraAltitudeKm();
-            if (camAlt === null || altKm === null || altKm >= camAlt) pass = false;
-        }
-
-        // Altitude Range
-        if (pass && filterOptions.altitudeEnabled) {
-            if (altKm === null || altKm < filterOptions.altMinKm || altKm > filterOptions.altMaxKm) pass = false;
-        }
-
-        // Crosses View Frustum
-        if (pass && filterOptions.frustumEnabled) {
-            const lookCam = getLookCamera();
-            if (!lookCam || !satData.ecef || satData.invalidPosition) {
-                pass = false;
-            } else {
-                const frustum = new Frustum();
-                const m = new Matrix4().multiplyMatrices(lookCam.projectionMatrix, lookCam.matrixWorldInverse);
-                frustum.setFromProjectionMatrix(m);
-                if (!frustum.containsPoint(satData.ecef)) pass = false;
-            }
-        }
-
-        // Close to Centerline
-        if (pass && filterOptions.centerlineEnabled) {
-            const lookCam = getLookCamera();
-            if (!lookCam || !satData.ecef || satData.invalidPosition) {
-                pass = false;
-            } else {
-                const camPos = lookCam.position;
-                const lookDir = new Vector3(0, 0, -1).applyQuaternion(lookCam.quaternion);
-                const toSat = new Vector3().subVectors(satData.ecef, camPos).normalize();
-                const angleDeg = degrees(Math.acos(Math.min(1, Math.max(-1, lookDir.dot(toSat)))));
-                if (angleDeg > filterOptions.centerlineMaxDeg) pass = false;
-            }
-        }
+        // ── Non-spatial filters (checked once, independent of position) ──
 
         // Name (wildcard)
         if (pass && wildcardRe) {
@@ -352,9 +400,6 @@ export function applyTLEFilters(satellites, filterOptions, currentDate) {
 
         // Speed (approximate orbital velocity from mean motion and semi-major axis)
         if (pass && filterOptions.speedEnabled) {
-            // v = 2*pi*a / T, where a is semi-major axis in km
-            // From mean motion n (rad/min): T = 2*pi/n minutes, a = (GM/n^2)^(1/3)
-            // GM_earth = 398600.4418 km^3/s^2, n in rad/s = satrec.no / 60
             const GM = 398600.4418;
             const nRadPerSec = satrec.no / 60;
             if (nRadPerSec > 0) {
@@ -366,8 +411,50 @@ export function applyTLEFilters(satellites, filterOptions, currentDate) {
             }
         }
 
+        // ── Spatial filters ──
+        if (pass && spatial) {
+            if (sampleDates) {
+                // "Any frame in range": propagate to each sample, build per-frame
+                // visibility array. Satellite passes filter if visible at ANY sample.
+                const samples = new Array(sampleDates.length);
+                let onCount = 0;
+                for (let s = 0; s < sampleDates.length; s++) {
+                    const ecef = satellites.calcSatECEF(satrec, sampleDates[s]);
+                    const vis = !!(ecef && checkSpatialFilters(ecef, filterOptions));
+                    samples[s] = vis;
+                    if (vis) onCount++;
+                }
+                if (onCount === 0) {
+                    pass = false;
+                    perSatFrameData.push('off');
+                } else if (onCount === sampleDates.length) {
+                    perSatFrameData.push('on');
+                } else {
+                    perSatFrameData.push(samples);
+                }
+            } else {
+                // Current frame: use the satellite's current ECEF position
+                if (!satData.ecef || satData.invalidPosition) {
+                    pass = false;
+                } else {
+                    pass = checkSpatialFilters(satData.ecef, filterOptions);
+                }
+            }
+        } else if (perSatFrameData) {
+            // Satellite passed non-spatial but no spatial filters active,
+            // or failed non-spatial filters entirely.
+            perSatFrameData.push(pass ? 'on' : 'off');
+        }
+
         results.push(pass);
     }
+
+    // Store per-frame visibility data on the satellites object for use during rendering.
+    // null when not in "any frame in range" mode.
+    satellites.tleFilterFrameData = perSatFrameData ? {
+        sampleTimesMS,
+        perSat: perSatFrameData,
+    } : null;
 
     return results;
 }
@@ -391,13 +478,25 @@ export function showTLEFilterDialog(satellites, onApply, onCancel, currentDate) 
         altitudeEnabled: false, altMinKm: 200, altMaxKm: 2000,
         frustumEnabled: false,
         centerlineEnabled: false, centerlineMaxDeg: 10,
+        hiddenByEarthEnabled: true,
         nameWildcardEnabled: false, nameWildcardPattern: '',
         nameRegexEnabled: false, nameRegexPattern: '',
         eccentricityEnabled: false, eccMin: 0, eccMax: 0.1,
         inclinationEnabled: false, incMin: 0, incMax: 180,
         periodEnabled: false, periodMin: 80, periodMax: 200,
         speedEnabled: false, speedMinKmS: 0, speedMaxKmS: 10,
+        anyFrameInRange: false,
     };
+
+    function showProgress() {
+        document.body.style.cursor = 'wait';
+        dialog.style.cursor = 'wait';
+    }
+
+    function hideProgress() {
+        document.body.style.cursor = '';
+        dialog.style.cursor = 'default';
+    }
 
     // Status line
     const statusLine = document.createElement('div');
@@ -405,15 +504,84 @@ export function showTLEFilterDialog(satellites, onApply, onCancel, currentDate) 
     const totalSats = satellites.TLEData.satData.length;
     statusLine.textContent = `${totalSats} satellites loaded`;
 
-    function updatePreview() {
+    let updatePending = null;
+
+    function runFilter() {
         const results = applyTLEFilters(satellites, filterOptions, currentDate);
         const passing = results.filter(Boolean).length;
-        statusLine.textContent = `${passing} / ${totalSats} satellites match`;
+        const modeLabel = filterOptions.anyFrameInRange && hasSpatialFilter(filterOptions) ? ' (any frame)' : '';
+        statusLine.textContent = `${passing} / ${totalSats} satellites match${modeLabel}`;
         onApply(results);
+        hideProgress();
     }
+
+    function updatePreview() {
+        showProgress();
+        if (filterOptions.anyFrameInRange && hasSpatialFilter(filterOptions)) {
+            // Expensive path: yield to browser so checkbox + progress bar
+            // repaint before the computation blocks the thread.
+            if (updatePending) clearTimeout(updatePending);
+            updatePending = setTimeout(() => { updatePending = null; runFilter(); }, 0);
+        } else {
+            // Fast path: run synchronously, no visible delay.
+            runFilter();
+        }
+    }
+
+    // ── Live update polling ──
+    // Re-run spatial filters when the camera moves or the frame changes.
+    let liveInterval = null;
+    let lastCamX = NaN, lastCamY = NaN, lastCamZ = NaN;
+    let lastCamQX = NaN, lastCamQY = NaN, lastCamQZ = NaN, lastCamQW = NaN;
+    let lastFov = NaN, lastFrame = -1;
+
+    function startLiveUpdates() {
+        if (liveInterval) return;
+        liveInterval = setInterval(() => {
+            if (!hasSpatialFilter(filterOptions)) return;
+            try {
+                const cam = NodeMan.get('lookCamera').camera;
+                const p = cam.position;
+                const q = cam.quaternion;
+                const fov = cam.fov ?? NaN;
+                const changed = p.x !== lastCamX || p.y !== lastCamY || p.z !== lastCamZ
+                    || q.x !== lastCamQX || q.y !== lastCamQY || q.z !== lastCamQZ || q.w !== lastCamQW
+                    || fov !== lastFov || par.frame !== lastFrame;
+                if (!changed) return;
+                lastCamX = p.x; lastCamY = p.y; lastCamZ = p.z;
+                lastCamQX = q.x; lastCamQY = q.y; lastCamQZ = q.z; lastCamQW = q.w;
+                lastFov = fov; lastFrame = par.frame;
+
+                if (filterOptions.anyFrameInRange) {
+                    // In range mode, frame data is precalculated — just re-render
+                    // so updateAllSatellites picks up the per-frame visibility.
+                    setRenderOne(2);
+                } else {
+                    // Current-frame mode: re-run filters with new camera state
+                    updatePreview();
+                }
+            } catch { /* lookCamera may not exist */ }
+        }, 200);
+    }
+
+    function stopLiveUpdates() {
+        if (liveInterval) {
+            clearInterval(liveInterval);
+            liveInterval = null;
+        }
+    }
+
+    startLiveUpdates();
 
     // ── Spatial Filters ──
     dialog.appendChild(makeSection('Spatial Filters'));
+
+    const anyFrameRow = makeCheckboxRow('Any frame in range', (checked) => {
+        filterOptions.anyFrameInRange = checked;
+        updatePreview();
+    });
+    anyFrameRow.row.title = 'When checked, a satellite passes if it meets the spatial criteria at any point during the sitch time range (slower). When unchecked, only the current frame is checked (updates live as you scrub).';
+    dialog.appendChild(anyFrameRow.row);
 
     const aboveRow = makeCheckboxRow('Above Camera', (checked) => {
         filterOptions.aboveCameraEnabled = checked;
@@ -447,6 +615,13 @@ export function showTLEFilterDialog(satellites, onApply, onCancel, currentDate) 
         updatePreview();
     });
     dialog.appendChild(centerlineRow.row);
+
+    const hiddenByEarthRow = makeCheckboxRow('Not Hidden by Earth', (checked) => {
+        filterOptions.hiddenByEarthEnabled = checked;
+        updatePreview();
+    });
+    hiddenByEarthRow.checkbox.checked = true; // on by default
+    dialog.appendChild(hiddenByEarthRow.row);
 
     // ── Name Filters ──
     dialog.appendChild(makeSection('Name Filters'));
@@ -508,7 +683,7 @@ export function showTLEFilterDialog(satellites, onApply, onCancel, currentDate) 
 
     btnRow.appendChild(makeButton('Clear All', '#555', () => {
         // Uncheck all checkboxes
-        [aboveRow, belowRow, frustumRow].forEach(r => { r.checkbox.checked = false; });
+        [aboveRow, belowRow, frustumRow, anyFrameRow, hiddenByEarthRow].forEach(r => { r.checkbox.checked = false; });
         [altRow, eccRow, incRow, periodRow, speedRow].forEach(r => { r.checkbox.checked = false; });
         [nameWildRow, nameReRow].forEach(r => { r.checkbox.checked = false; });
         centerlineRow.checkbox.checked = false;
@@ -516,17 +691,20 @@ export function showTLEFilterDialog(satellites, onApply, onCancel, currentDate) 
         Object.keys(filterOptions).forEach(k => {
             if (k.endsWith('Enabled')) filterOptions[k] = false;
         });
+        filterOptions.anyFrameInRange = false;
         updatePreview();
     }));
 
     btnRow.appendChild(makeButton('Apply', '#1976d2', () => {
         const results = applyTLEFilters(satellites, filterOptions, currentDate);
         onApply(results);
+        stopLiveUpdates();
         if (dialog.parentNode) dialog.parentNode.removeChild(dialog);
     }));
 
     btnRow.appendChild(makeButton('Cancel', '#757575', () => {
         onCancel();
+        stopLiveUpdates();
         if (dialog.parentNode) dialog.parentNode.removeChild(dialog);
     }));
 

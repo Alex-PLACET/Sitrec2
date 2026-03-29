@@ -1445,6 +1445,16 @@ export class CNodeView3D extends CNodeViewCanvas {
                     }
                 }
 
+                // Hide co-located satellite dots in the look view before rendering
+                let nightSkyForRestore = null;
+                if (this.id === "lookView") {
+                    const nsNode = NodeMan.get("NightSkyNode", false);
+                    if (nsNode) {
+                        nsNode.hideCameraColocatedSatellites();
+                        nightSkyForRestore = nsNode;
+                    }
+                }
+
                 const atmosphereFogState = this.pushLookViewAtmosphereFog();
                 try {
                     // [DBG] Render main scene
@@ -1456,11 +1466,16 @@ export class CNodeView3D extends CNodeViewCanvas {
                             const focalLength = rtHeight / (2 * Math.tan(fov / 2));
                             sharedUniforms.cameraFocalLength.value = focalLength;
                         }
-                        
+
                         this.renderer.render(GlobalScene, this.camera);
                     }
                 } finally {
                     this.popLookViewAtmosphereFog(atmosphereFogState);
+                }
+
+                // Restore satellite brightness after look view render
+                if (nightSkyForRestore) {
+                    nightSkyForRestore.restoreSatelliteScales();
                 }
 
                 this.removeCameraOffset(savedQuaternion);
@@ -1679,6 +1694,7 @@ export class CNodeView3D extends CNodeViewCanvas {
                 this.camera.updateMatrix();
                 this.camera.updateMatrixWorld();
             }
+
 
             // Only render the quad if skyOpacity is greater than zero
             if (skyOpacity > 0) {

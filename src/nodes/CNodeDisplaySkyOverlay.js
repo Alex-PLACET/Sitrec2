@@ -199,6 +199,9 @@ export class CNodeDisplaySkyOverlay extends CNodeViewUI {
             const sat = satData[i];
             if (!sat.visible || sat.invalidPosition) continue;
 
+            // Hide co-located satellites (docked to the camera satellite) in look view
+            if (isLookView && sat.hiddenInLookView) continue;
+
             if (satellites.labelFlares && !sat.isFlaring) continue;
             if (satellites.labelLit && !sat.isLit) continue;
             if (isMainView && satellites.labelLookVisible && !sat.visibleInLook) continue;

@@ -12,6 +12,7 @@ import {createImageFromArrayBuffer} from "./FileUtils";
 import {decodeJPEG2000ToBlobURL, decodeJ2KTiledToCanvas} from "./JPEG2000Utils";
 import {initProgress, updateProgress, hideProgress} from "./CProgressIndicator";
 import {MISB} from "./MISBFields";
+import {Globals} from "./Globals";
 
 export class NITFParser {
 
@@ -93,6 +94,10 @@ export class NITFParser {
      * @returns {Promise<{includeImage: boolean, maxDimension: number|null}>}
      */
     static showNITFImageDialog(filename, width, height, bufferSize) {
+        // Auto-accept in automated contexts: track only (smallest, fastest)
+        if (Globals.regression || window._mcpDebug) {
+            return Promise.resolve({includeImage: false, maxDimension: null});
+        }
         return new Promise((resolve, reject) => {
             const overlay = document.createElement('div');
             overlay.style.cssText = `

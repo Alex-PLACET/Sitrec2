@@ -444,6 +444,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
 
         satGUI.add({clearTLEFilter: () => {
             this.satellites.tleFilterResults = null;
+            this.satellites.tleFilterFrameData = null;
             this.satellites.filterSatellites();
             setRenderOne(2);
         }}, 'clearTLEFilter')
@@ -1102,6 +1103,43 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
             shaderScale = view.adjustPointScale(shaderScale * 2);
             uniforms.baseScale.value = shaderScale;
             uniforms.distanceReference.value = 3000000;
+
+        }
+    }
+
+    /**
+     * Zero brightness of satellites co-located with the camera satellite.
+     * Called before the look view renders GlobalScene. Must be paired with
+     * restoreSatelliteScales() after the render.
+     */
+    hideCameraColocatedSatellites() {
+        if (!this.satellites.showSatellites || !this.satellites.TLEData || !this.satellites.lightCloud) return;
+        this._hiddenLookViewIndices = [];
+        const brightnessArray = this.satellites.lightCloud.brightnessArray;
+        const satData = this.satellites.TLEData.satData;
+        for (let i = 0; i < satData.length; i++) {
+            if (satData[i].hiddenInLookView && brightnessArray[i] > 0) {
+                this._hiddenLookViewIndices.push({index: i, brightness: brightnessArray[i]});
+                brightnessArray[i] = 0;
+            }
+        }
+        if (this._hiddenLookViewIndices.length > 0) {
+            this.satellites.lightCloud.markBrightnessNeedUpdate();
+        }
+    }
+
+    /**
+     * Restore brightness of satellites hidden for the look view.
+     * Called after the look view GlobalScene render.
+     */
+    restoreSatelliteScales() {
+        if (this._hiddenLookViewIndices && this._hiddenLookViewIndices.length > 0) {
+            const brightnessArray = this.satellites.lightCloud.brightnessArray;
+            for (const {index, brightness} of this._hiddenLookViewIndices) {
+                brightnessArray[index] = brightness;
+            }
+            this.satellites.lightCloud.markBrightnessNeedUpdate();
+            this._hiddenLookViewIndices = null;
         }
     }
 
