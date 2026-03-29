@@ -327,8 +327,9 @@ export const _configParams = {
 
         NationalMap: {
             name: "National Map 3DEP GeoTIFF",
-            // here's a working example URL
-            // https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/exportImage?f=image&format=tiff&bbox=-118.5,33.3,-118.3,33.5&bboxSR=4326&imageSR=4326&size=500,500
+            // Uses web mercator projection (same as texture tiles) to avoid
+            // CRS84Quad dynamic subdivision issues. The exportImage endpoint
+            // accepts any bbox in EPSG:4326.
             mapURL: function (z,x,y, layerName, layerType) {
                 return this.mapProjectionElevation.getWMSGeoTIFFURLFromTile("https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/exportImage",z,x,y);
             },
@@ -337,7 +338,6 @@ export const _configParams = {
             tileSize: 256,
             attribution: "Data: U.S. Geological Survey",
             termsURL: "https://www.usgs.gov/faqs/what-are-terms-uselicensing-map-services-and-data-national-map",
-            mapping: 4326,
         },
 
 

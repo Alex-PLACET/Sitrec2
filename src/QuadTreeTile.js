@@ -29,6 +29,60 @@ import {fileSystemFetch} from "./fileSystemFetch";
 import {geoidCorrectionForTile, interpolateGeoidOffset, meanSeaLevelOffset} from "./EGM96Geoid";
 
 
+// Concurrency-limited fetch for GeoTIFF elevation tiles with IndexedDB caching.
+// Dynamic rendering endpoints (e.g., USGS exportImage) generate tiles on the fly
+// and can't handle many simultaneous requests. Plain fetch() avoids quickFetch's
+// Range-header chunking which multiplies connections per tile.
+import {indexedDBManager} from "./IndexedDBManager";
+
+const GEOTIFF_MAX_CONCURRENT = 6;
+const GEOTIFF_CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
+let geoTiffActiveCount = 0;
+const geoTiffQueue = [];
+
+async function geoTiffFetchWithLimit(url) {
+    // Check cache first (no concurrency slot needed)
+    try {
+        const cached = await indexedDBManager.getCachedData(`geotiff:${url}`);
+        if (cached) {
+            return new Response(cached, {
+                status: 200,
+                headers: new Headers({'Content-Type': 'image/tiff'}),
+            });
+        }
+    } catch (e) { /* cache miss or error, proceed to fetch */ }
+
+    // Acquire a concurrency slot
+    return new Promise((resolve, reject) => {
+        const run = () => {
+            geoTiffActiveCount++;
+            fetch(url)
+                .then(async (response) => {
+                    if (response.ok) {
+                        // Clone before consuming body, cache the arrayBuffer
+                        const clone = response.clone();
+                        clone.arrayBuffer().then(buf => {
+                            indexedDBManager.cacheData(`geotiff:${url}`, buf, GEOTIFF_CACHE_TTL).catch(() => {});
+                        });
+                    }
+                    resolve(response);
+                })
+                .catch(reject)
+                .finally(() => {
+                    geoTiffActiveCount--;
+                    if (geoTiffQueue.length > 0) {
+                        geoTiffQueue.shift()();
+                    }
+                });
+        };
+        if (geoTiffActiveCount < GEOTIFF_MAX_CONCURRENT) {
+            run();
+        } else {
+            geoTiffQueue.push(run);
+        }
+    });
+}
+
 // we maintain a set of bad texture URLs to avoid retrying them
 // this is per session
 const badTextureUrls = new Set();
@@ -2771,7 +2825,11 @@ export class QuadTreeTile {
     }
 
     async handleGeoTIFFElevation(url) {
-        const response = await fileSystemFetch(url);
+        // Use plain fetch with concurrency limiting instead of quickFetch.
+        // GeoTIFF elevation tiles are small (~130KB) and don't need chunked downloads.
+        // quickFetch's Range requests multiply connections to the server, which overwhelms
+        // dynamic rendering endpoints like USGS exportImage.
+        const response = await geoTiffFetchWithLimit(url);
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
@@ -2860,33 +2918,38 @@ export class QuadTreeTile {
         }
 
         this.shape = [width, height];
-        this.elevation = elevationData;
 
-        // Validate elevation data
-        const stats = {
-            min: Infinity,
-            max: -Infinity,
-            nanCount: 0
-        };
+        // Apply geoid correction (convert from MSL/NAVD88 to HAE) — same as PNG path.
+        // Without this, tiles at different positions get different uncorrected geoid offsets,
+        // causing visible discontinuities at tile boundaries.
+        const geoidCorners = geoidCorrectionForTile(this.map.options.mapProjection, this.z, this.x, this.y);
+        const xScale = width > 1 ? 1 / (width - 1) : 0;
+        const yScale = height > 1 ? 1 / (height - 1) : 0;
 
-        for (let i = 0; i < elevationData.length; i++) {
-            const value = elevationData[i];
-            if (Number.isNaN(value)) {
-                stats.nanCount++;
-            } else {
-                stats.min = Math.min(stats.min, value);
-                stats.max = Math.max(stats.max, value);
+        const stats = { min: Infinity, max: -Infinity, nanCount: 0 };
+
+        for (let i = 0; i < width; i++) {
+            for (let j = 0; j < height; j++) {
+                const idx = j * width + i;
+                let value = elevationData[idx];
+                if (Number.isNaN(value)) {
+                    stats.nanCount++;
+                    elevationData[idx] = 0;
+                } else {
+                    value += interpolateGeoidOffset(geoidCorners, i * xScale, j * yScale);
+                    elevationData[idx] = value;
+                    stats.min = Math.min(stats.min, value);
+                    stats.max = Math.max(stats.max, value);
+                }
             }
         }
 
-        // Log statistics for debugging
+        this.elevation = elevationData;
+
         console.log('Elevation statistics:', {
-            width,
-            height,
-            min: stats.min,
-            max: stats.max,
-            nanCount: stats.nanCount,
-            totalPoints: elevationData.length
+            width, height,
+            min: stats.min, max: stats.max,
+            nanCount: stats.nanCount, totalPoints: elevationData.length
         });
     }
 

@@ -77,16 +77,20 @@ export class CTileMapping {
             urlBase += '?';
         }
 
+        // Expand bbox by half a pixel on each side to fix tile edge discontinuities.
+        // ArcGIS exportImage uses "pixel-is-area" registration where the bbox defines
+        // cell edges, not pixel centers. Without this expansion, adjacent tiles' edge
+        // pixels sample locations one pixel apart, causing elevation mismatches.
+        const pixelSize = 256;
+        const halfPixelLon = (lon1 - lon0) / pixelSize / 2;
+        const halfPixelLat = (lat0 - lat1) / pixelSize / 2; // lat0 > lat1 (north > south)
 
         const url =
             urlBase +
             "&f=image&format=tiff" +
-            `&bbox=${lon0},${lat1},${lon1},${lat0}` +
+            `&bbox=${lon0 - halfPixelLon},${lat1 - halfPixelLat},${lon1 + halfPixelLon},${lat0 + halfPixelLat}` +
             "&bboxSR=4326&imageSR=4326&size=256,256";
 
-        console.log("getWMSGeoTIFFURLFromTile URL = " + url);
-           console.log("Point 0 " + lon0 + "," + lat0);
-     //    console.log("Point 1 " + lon1 + "," + lat1);
         return url;
     }
 
