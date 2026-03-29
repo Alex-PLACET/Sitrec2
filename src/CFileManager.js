@@ -3173,8 +3173,9 @@ export class CFileManager extends CManager {
      * Returns "merge", "mergeAll", or "replace". Rejects on cancel.
      */
     showTLEChoiceDialog(filename, existingTLE, newTLEText) {
-        // Auto-merge in automated contexts (non-destructive default)
-        if (Globals.regression || window._mcpDebug) {
+        // Auto-merge only in headless regression tests (not MCP — the user
+        // is interactively working and should see the dialog).
+        if (Globals.regression) {
             return Promise.resolve("merge");
         }
         // Parse the new TLE temporarily to get its stats

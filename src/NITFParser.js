@@ -94,8 +94,8 @@ export class NITFParser {
      * @returns {Promise<{includeImage: boolean, maxDimension: number|null}>}
      */
     static showNITFImageDialog(filename, width, height, bufferSize) {
-        // Auto-accept in automated contexts: track only (smallest, fastest)
-        if (Globals.regression || window._mcpDebug) {
+        // Auto-accept only in headless regression tests
+        if (Globals.regression) {
             return Promise.resolve({includeImage: false, maxDimension: null});
         }
         return new Promise((resolve, reject) => {
