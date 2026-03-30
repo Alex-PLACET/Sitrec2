@@ -958,7 +958,7 @@ export class CVideoWebCodecBase extends CVideoAndAudio {
         }
 
         this.flushing = true;
-        console.debug(`[Video] Dispatching group ${groupId} to worker: ${chunksToSend.length} chunks, frames ${group.frame}-${group.frame + group.length - 1}`);
+        // console.debug(`[Video] Dispatching group ${groupId} to worker: ${chunksToSend.length} chunks, frames ${group.frame}-${group.frame + group.length - 1}`);
         const sent = this._workerManager.decodeGroup(groupId, chunksToSend, rawDataToSend, timestampMap);
         if (!sent) {
             if (group._decodeTimer) { clearTimeout(group._decodeTimer); group._decodeTimer = null; }
