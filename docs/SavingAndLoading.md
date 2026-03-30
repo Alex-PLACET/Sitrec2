@@ -45,12 +45,24 @@ Local save is best when you want fast offline-like iteration and no server depen
 
 ### Browser support
 
-Local folder access uses the browser File System Access API.
+Local folder access uses the browser File System Access API. Not all browsers support it:
 
-- Supported: Chrome and Edge (Chromium-based browsers).
-- Not supported: Firefox (and some other browsers).
+![File System Menu](docimages/ui-local-settings-file.jpg)
+
+| Browser | Local Folder Access |
+|---------|-----|
+| Chrome  | Yes |
+| Opera   | Yes |
+| Edge    | Yes |
+| Safari  | Yes |
+| Firefox | No  |
+| Brave   | No by default (see below) |
 
 If unsupported, Sitrec shows a message asking you to use Chrome or Edge.
+
+**Brave Browser:** local filesystem access is disabled by default but can be enabled by visiting `brave://flags/#file-system-access-api` and enabling the File System Access API. Full details [can be found here](https://github.com/brave/brave-browser/issues/29411#issuecomment-1534565893).
+
+![Brave File System Access setting](docimages/brave-settings-file-api.jpg)
 
 ### First-time setup
 

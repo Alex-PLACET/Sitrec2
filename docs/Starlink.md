@@ -1,6 +1,6 @@
 # Investigating Starlink Flares With Sitrec
 
-Starlink satellites form a huge constellation that covers the globe at altitudes of around 550 km. As of late 2025, there are approximately 10,000 of them in orbit. It's possible this will increase to 20,000 over the next few years. 
+Starlink satellites form a huge constellation that covers the globe at altitudes of around 550 km. As of early 2026, there are approximately 10,000 of them in orbit. It's possible this will increase to 20,000 over the next few years. 
 
 Satellites are visible when it's dark, and the satellite is illuminated by the sun. With Starlink satellites, this happens in one of three ways. 
 

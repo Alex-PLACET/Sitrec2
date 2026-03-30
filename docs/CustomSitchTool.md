@@ -27,7 +27,7 @@ The position of the camera, and the other known objects, is defined by a track. 
 
 To get a track into Sitrec, just import it (again, either via the "import" option on the file menu, or by dragging and dropping it directly into the browser window). The currently supported track formats are:
 
-- KML or KMZ formatted ADS-B tracks. These are typically files exported from a flight tracking service such as FlightRadar24, Planefinder.nøet, FLightAware.com, or ADSB Exchange. 
+- KML or KMZ formatted ADS-B tracks. These are typically files exported from a flight tracking service such as FlightRadar24, Planefinder.net, FlightAware.com, or ADSB Exchange. 
 - DJI drone data in CSV format. This has to be extracted from the encrypted data file using an online service. 
 - CSV files. These currently need the relevant columns with headers matching the default MISB field names
 - MISB KLV files. This is MISB data, typically embedded in a .TS video file. To import this into Sitrec, you need to convert it to KLV format, for example with ffmpeg (e.g. ffmpeg -i truck.ts  -map 0:1 -c copy -f data output.klv ). These files can vary in format. 

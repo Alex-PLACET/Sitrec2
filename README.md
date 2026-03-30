@@ -12,8 +12,10 @@ My goal here is to create a tool to effectively analyze UAP/UFO cases, and to sh
 
 - [The Sitrec User Interface - How the menus work](docs/UserInterface.md)
 - [The Custom Sitch Tool - Drag and Drop Sitches](docs/CustomSitchTool.md)
-- [Custom Models and 3D Object - add your own planes](docs/CustomModels.md)
+- [Saving and Loading Sitches - Server saves and local folder workflow](docs/SavingAndLoading.md)
+- [Custom Models and 3D Objects - Add your own planes](docs/CustomModels.md)
 - [Recreating Starlink Situations - Horizon Flares](docs/Starlink.md)
+- [GIS, Geodesy, and Altitude - Understanding altitude datums and coordinate systems](docs/GIS.md)
 - [What's New](docs/WhatsNew.md)
 
 
@@ -22,11 +24,14 @@ My goal here is to create a tool to effectively analyze UAP/UFO cases, and to sh
 - [Installing and Configuring a Sitrec Server](docs/dev/Installing-and-configuring.md)
 - [File Rehosting and Related Server Configuration](docs/dev/FileRehosting.md)
 - [Custom Terrain and Elevation Sources, WMS, etc.](docs/dev/CustomTerrainSources.md)
+- [Adding New Settings - Developer checklist for new user settings](docs/dev/ADDING_NEW_SETTINGS.md)
+- [Settings Manager Architecture - Server/cookie fallback and sanitization](docs/dev/SettingsManager.md)
+- [Dynamic GUI Mirroring - API for mirrored GUI controls](docs/dev/dynamic-gui-mirroring.md)
 
 
-### Legacy documentation 
+### Legacy documentation
 - [Adding a Sitch in Code (older method)](docs/dev/AddSitchInCode.md)
-- [Local custom Sitch with JSON files - More complex cusom sitches](./docs/LocalCustomSitches.md)
+- [Local Custom Sitches with JSON files - More complex custom sitches](docs/LocalCustomSitches.md)
 
 The most common use case is to display three views:
 - A video of a UAP situation 

@@ -1,8 +1,8 @@
 ## Adding A Sitch in Code
 
-### (The following approach has largely been replaced by setting up a custom sitch. See: 
-- [The Custom Sitch Tool - Drag and Drop Sitches](docs/CustomSitchTool.md)
-- [Local custom Sitch with JSON files - More complex cusom sitches](./docs/LocalCustomSitches.md))
+### (The following approach has largely been replaced by setting up a custom sitch. See:
+- [The Custom Sitch Tool - Drag and Drop Sitches](../CustomSitchTool.md)
+- [Local custom Sitch with JSON files - More complex custom sitches](../LocalCustomSitches.md)
 
 ### So this approach would only apply if you need to add custom code
 

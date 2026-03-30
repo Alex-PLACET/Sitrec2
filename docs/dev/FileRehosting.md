@@ -42,7 +42,7 @@ Currently, error handling is minimal.
 
 The uploading to the server is done with a simple POST, and so it is limited by two variables:
  - **client_max_body_size** in the Nginx .conf file (or Apache equivalent)
- - **upload_max_filesize** in php.ini (e.g in /etc/php/8.3/fpm/phi.ini)
+ - **upload_max_filesize** in php.ini (e.g in /etc/php/8.3/fpm/php.ini)
 
 In the Metabunk implementation, these are both set to 100M
 
