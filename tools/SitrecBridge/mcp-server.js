@@ -135,6 +135,59 @@ const pendingRequests = new Map();  // id → { resolve, reject, timer }
 const peerRequestMap = new Map();   // primaryId → { peerSocket, peerId } (primary only)
 let requestCounter = 0;
 let keepaliveTimer = null;
+let extensionConnectedResolve = null; // resolve callback for waitForExtension()
+
+// ── Auto-Promotion ─────────────────────────────────────────────────────────
+// When a secondary detects the primary has lost its extension connection,
+// it force-promotes to primary so the extension reconnects to it.
+
+function waitForExtension(timeoutMs = 10000) {
+    if (extensionSocket && extensionSocket.readyState === WebSocket.OPEN) {
+        return Promise.resolve();
+    }
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            extensionConnectedResolve = null;
+            reject(new Error("Timed out waiting for extension to connect after promotion"));
+        }, timeoutMs);
+        extensionConnectedResolve = () => { clearTimeout(timer); resolve(); };
+    });
+}
+
+async function forcePromoteToPrimary() {
+    if (mode === "primary") return;
+    log("Secondary: Force-promoting to primary...");
+
+    if (primarySocket) {
+        try { primarySocket.close(); } catch {}
+        primarySocket = null;
+    }
+    for (const [id, { reject, timer }] of pendingRequests) {
+        clearTimeout(timer);
+        reject(new Error("Promoting to primary"));
+    }
+    pendingRequests.clear();
+
+    const pids = findListeningPids(WS_PORT);
+    for (const pid of pids) {
+        try { process.kill(pid, "SIGTERM"); } catch {}
+    }
+    await new Promise(r => setTimeout(r, 500));
+
+    return new Promise((resolve, reject) => {
+        const testServer = new WebSocketServer({ host: WS_HOST, port: WS_PORT });
+        testServer.on("listening", () => {
+            testServer.close(() => {
+                startAsPrimary(WS_PORT);
+                log("Secondary: Promoted to primary — waiting for extension...");
+                resolve();
+            });
+        });
+        testServer.on("error", (err) => {
+            reject(new Error(`Force promotion failed: ${err.message}`));
+        });
+    });
+}
 
 // ── Primary Mode ────────────────────────────────────────────────────────────
 
@@ -239,6 +292,12 @@ function setupExtensionConnection(ws, force = false) {
 function finishExtensionSetup(ws) {
     extensionSocket = ws;
     log("Primary: Extension connected");
+
+    // Notify waitForExtension() if anyone is waiting (e.g., after auto-promotion)
+    if (extensionConnectedResolve) {
+        extensionConnectedResolve();
+        extensionConnectedResolve = null;
+    }
 
     // Send the source manifest version so the extension can detect if it needs reloading
     try {
@@ -984,9 +1043,35 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
     }
 
-    // All other tools relay to the extension (via primary if secondary)
+    // All other tools relay to the extension (via primary if secondary).
+    // If the relay fails because the primary lost its extension, auto-promote and retry.
+    async function sendWithAutoPromote() {
+        try {
+            const response = await sendToExtension(name, args || {});
+            if (mode === "secondary" && response.error &&
+                response.error.includes("extension is not connected")) {
+                log("Auto-promoting: primary lost extension connection...");
+                await forcePromoteToPrimary();
+                await waitForExtension(10000);
+                return await sendToExtension(name, args || {});
+            }
+            return response;
+        } catch (e) {
+            if (mode === "secondary" && (
+                e.message.includes("Not connected to primary") ||
+                e.message.includes("Primary server disconnected")
+            )) {
+                log("Auto-promoting: lost connection to primary...");
+                await forcePromoteToPrimary();
+                await waitForExtension(10000);
+                return await sendToExtension(name, args || {});
+            }
+            throw e;
+        }
+    }
+
     try {
-        const response = await sendToExtension(name, args || {});
+        const response = await sendWithAutoPromote();
 
         // Build assert warning text if any asserts fired during this call
         let assertText = "";
