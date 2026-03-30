@@ -483,8 +483,20 @@ n
         // x and y are in original video coordinates, which are pixels
         const [vx, vy] = this.pointsXY[f];
 
+        // LOS must use the unadjusted camera geometry, independent of any
+        // user pan offset on the video view. Temporarily zero panOffset so
+        // videoToCanvasCoordsOriginal returns coordinates for the unshifted view.
+        const savedPanX = this.overlayView.panOffsetX;
+        const savedPanY = this.overlayView.panOffsetY;
+        this.overlayView.panOffsetX = 0;
+        this.overlayView.panOffsetY = 0;
+
         // convert to canvas coordinates (from original video coords)
         const [x, y] = this.overlayView.videoToCanvasCoordsOriginal(vx, vy);
+
+        // Restore pan offset
+        this.overlayView.panOffsetX = savedPanX;
+        this.overlayView.panOffsetY = savedPanY;
 
         // make it relative to the center of the screen
         let yoff = y - this.heightPx/2;

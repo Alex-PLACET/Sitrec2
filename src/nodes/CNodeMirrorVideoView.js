@@ -16,10 +16,13 @@ export class CNodeMirrorVideoView extends CNodeVideoView {
     }
 
     // update just checks to see if the video has changed
-    // use the new video if it has
+    // use the new video if it has, and sync pan offset
     update() {
         if (this.in.mirror.videoData !== this.videoData) {
             this.videoData = this.in.mirror.videoData;
         }
+        // Sync pan offset from mirrored view so overlay matches
+        this.panOffsetX = this.in.mirror.panOffsetX ?? 0;
+        this.panOffsetY = this.in.mirror.panOffsetY ?? 0;
     }
 }

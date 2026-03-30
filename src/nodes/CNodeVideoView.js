@@ -108,6 +108,10 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         this._noiseWorker = null;
         this._noiseWorkerFailed = false;
 
+        // Pan offset for zoom+pan mode (fraction of video dimensions, 0 = centered)
+        this.panOffsetX = 0;
+        this.panOffsetY = 0;
+
         this.setupMouseHandler();
 
         // if it's an overlay view then we don't need to add the overlay UI view
@@ -596,14 +600,45 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
             scale = 1 / scale
         }
 
-        const videoZoom = NodeMan.get("videoZoom", false);
-        if (videoZoom !== undefined) {
-            let v = videoZoom.value;
-            v *= scale;
-            videoZoom.setValue(v);
+        if (this.in.zoom !== undefined) {
+            const oldZoom = this.in.zoom.v0 / 100;
+            const newZoom = oldZoom * scale; // scale < 1 = scroll down = zoom out
+
+            // Zoom around cursor: adjust panOffset to keep mouse position stable
+            if (this.mouse && this.videoWidth > 0 && this.videoHeight > 0) {
+                const [mouseVX, mouseVY] = this.canvasToVideoCoords(this.mouse.anchorX, this.mouse.anchorY);
+                const mouseFracX = mouseVX / this.videoWidth;
+                const mouseFracY = mouseVY / this.videoHeight;
+                const ratio = oldZoom / newZoom;
+                this.panOffsetX = (mouseFracX - 0.5) * (1 - ratio) + this.panOffsetX * ratio;
+                this.panOffsetY = (mouseFracY - 0.5) * (1 - ratio) + this.panOffsetY * ratio;
+            }
+
+            const videoZoom = NodeMan.get("videoZoom", false);
+            if (videoZoom !== undefined) {
+                videoZoom.setValue(newZoom * 100);
+            }
+            this.clampPanOffset();
+        } else {
+            // Fallback to pos-based zoom when no zoom input
+            this.zoomView(scale);
         }
     }
 
+
+    // Check if mouse position is over a tracking overlay control point
+    _isOverOverlayControl(canvasX, canvasY) {
+        const trackingOverlay = NodeMan.get("trackingOverlay", false);
+        if (!trackingOverlay || !trackingOverlay.draggable) return false;
+        return trackingOverlay.draggable.some(d => d.isWithin(canvasX, canvasY));
+    }
+
+    // Check if a tracking overlay control is currently being dragged
+    _isOverlayDragging() {
+        const trackingOverlay = NodeMan.get("trackingOverlay", false);
+        if (!trackingOverlay || !trackingOverlay.draggable) return false;
+        return trackingOverlay.draggable.some(d => d.dragging);
+    }
 
     setupMouseHandler() {
         this.mouse = new CMouseHandler(this, {
@@ -614,29 +649,51 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
                 }
             },
 
+            move: (e) => {
+                // Show grab cursor when hovering over a tracking overlay control point
+                const overControl = this._isOverOverlayControl(this.mouse.x, this.mouse.y);
+                this.canvas.style.cursor = overControl ? 'grab' : '';
+            },
+
             wheel: (e) => {
-
-                //                console.log(e.deltaY)
-                var scale = 0.90;
-                if (e.deltaY > 0) {
-                    //                    this.in.zoom.value *= 0.6666
-                } else {
-                    //                    this.in.zoom.value *= 1 / 0.6666
-                    scale = 1 / scale
+                // When zoom input exists, zoom is handled by onMouseWheel (document-level)
+                // which does zoom-around-cursor with panOffset.
+                // When no zoom input, use pos-based zoom.
+                if (this.in.zoom === undefined) {
+                    var scale = 0.90;
+                    if (e.deltaY > 0) {
+                    } else {
+                        scale = 1 / scale
+                    }
+                    this.zoomView(scale)
                 }
-
-                this.zoomView(scale)
-
+                // Anchor position is already stored by CMouseHandler.newPosition
             },
 
             drag: (e) => {
-                const moveX = this.mouse.dx / this.widthPx; // px = mouse move as a fraction of the screen width
-                const moveY = this.mouse.dy / this.widthPx
-                this.posLeft += moveX
-                this.posRight += moveX
-                this.posTop += moveY
-                this.posBot += moveY
+                // Don't pan if a tracking overlay control point is being dragged
+                if (this._isOverlayDragging()) {
+                    this.canvas.style.cursor = 'grabbing';
+                    return;
+                }
 
+                if (this.in.zoom !== undefined) {
+                    // Pan via panOffset when using videoZoom
+                    this.getSourceAndDestCoords();
+                    // Convert mouse pixel delta to video-fraction delta
+                    this.panOffsetX -= (this.mouse.dx / this.dWidth) * (this.sWidth / this.videoWidth);
+                    this.panOffsetY -= (this.mouse.dy / this.dHeight) * (this.sHeight / this.videoHeight);
+                    this.clampPanOffset();
+                } else {
+                    // Pos-based pan when no zoom input
+                    const moveX = this.mouse.dx / this.widthPx;
+                    const moveY = this.mouse.dy / this.widthPx
+                    this.posLeft += moveX
+                    this.posRight += moveX
+                    this.posTop += moveY
+                    this.posBot += moveY
+                }
+                setRenderOne(true);
             },
 
 
@@ -653,10 +710,30 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
 
 
             centerDrag: (e) => {
-                this.zoomView(100 / (100 - this.mouse.dx))
+                if (this.in.zoom !== undefined) {
+                    // Zoom via videoZoom when using zoom input
+                    var scale = 100 / (100 - this.mouse.dx);
+                    const oldZoom = this.in.zoom.v0 / 100;
+                    const newZoom = oldZoom * scale;
+                    const videoZoom = NodeMan.get("videoZoom", false);
+                    if (videoZoom !== undefined) {
+                        videoZoom.setValue(newZoom * 100);
+                    }
+                    this.clampPanOffset();
+                } else {
+                    this.zoomView(100 / (100 - this.mouse.dx))
+                }
             },
 
             dblClick: (e) => {
+                this.panOffsetX = 0;
+                this.panOffsetY = 0;
+                if (this.in.zoom !== undefined) {
+                    const videoZoom = NodeMan.get("videoZoom", false);
+                    if (videoZoom !== undefined) {
+                        videoZoom.setValue(100);
+                    }
+                }
                 this.defaultPosition();
             },
 
@@ -668,7 +745,7 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         })
     }
 
-    toSerializeCNodeVideoView = ["posLeft", "posRight", "posTop", "posBot"]
+    toSerializeCNodeVideoView = ["posLeft", "posRight", "posTop", "posBot", "panOffsetX", "panOffsetY"]
 
     modSerialize() {
         const result = {
@@ -2603,8 +2680,25 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         }
         this.posRight = -this.posLeft;
         this.posBot = -this.posTop;
+        this.panOffsetX = 0;
+        this.panOffsetY = 0;
         this.positioned = true;
         setRenderOne(true);
+    }
+
+    // Clamp panOffset so the source crop stays within the image bounds
+    clampPanOffset() {
+        if (this.in.zoom === undefined) return;
+        const zoom = this.in.zoom.v0 / 100;
+        if (zoom <= 1) {
+            this.panOffsetX = 0;
+            this.panOffsetY = 0;
+            return;
+        }
+        // At zoom z, visible fraction is 1/z. Max panOffset = (1 - 1/z) / 2
+        const maxPan = (1 - 1 / zoom) / 2;
+        this.panOffsetX = Math.max(-maxPan, Math.min(maxPan, this.panOffsetX));
+        this.panOffsetY = Math.max(-maxPan, Math.min(maxPan, this.panOffsetY));
     }
 
 
@@ -2631,13 +2725,12 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         if (this.in.zoom !== undefined) {
             const zoom = this.in.zoom.v0 / 100;
 
-            const offsetW = (sourceW - sourceW / zoom) / 2;
-            const offsetH = (sourceH - sourceH / zoom) / 2;
-
-            this.sx = offsetW;
-            this.sy = offsetH;
             this.sWidth = sourceW / zoom;
             this.sHeight = sourceH / zoom;
+
+            // Apply pan offset (panOffsetX/Y are fractions of video dimensions, 0 = centered)
+            this.sx = (sourceW - this.sWidth) / 2 + this.panOffsetX * sourceW;
+            this.sy = (sourceH - this.sHeight) / 2 + this.panOffsetY * sourceH;
 
             if (aspectSource > aspectView) {
                 this.fovCoverage = (this.widthPx / aspectSource) / this.heightPx;

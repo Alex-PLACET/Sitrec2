@@ -53,19 +53,19 @@ export class CNodeViewUI extends CNodeViewCanvas2D {
 
 
     // px, py = pixel position of a percentage, so 50,50 = center
+    // panX/panY shift the zoom center to match video pan offset
     px(x) {
-        return this.wpx * (((x-50)  / 100) * this.zoom + 0.5);
+        return this.wpx * (((x-50)  / 100) * this.zoom + 0.5 - this.panX * this.zoom);
     }
 
     // use hpy for square scaling
     // should use the
     px_square(x) {
-        return this.wpx/2 + this.hpx * (((x-50)  / 100) * this.zoom);
+        return this.wpx/2 + this.hpx * (((x-50)  / 100) * this.zoom - this.panX * this.zoom);
     }
 
     py(y) {
-//        return this.hpx * y / 100 - 50) * this.zoom + 50;
-        return this.hpx *(((y-50)  / 100) * this.zoom + 0.5);
+        return this.hpx *(((y-50)  / 100) * this.zoom + 0.5 - this.panY * this.zoom);
 
     }
 
@@ -190,10 +190,18 @@ export class CNodeViewUI extends CNodeViewCanvas2D {
         if (!this.visible) return;
 
         this.zoom = 1;
+        this.panX = 0;
+        this.panY = 0;
         if (this.syncVideoZoom && NodeMan.exists("videoZoom")) {
             var videoZoom = NodeMan.get("videoZoom")
             if (videoZoom !== undefined) {
                 this.zoom = videoZoom.v0 / 100;
+            }
+            // Sync pan offset from video view for correct HUD positioning
+            const videoView = NodeMan.get("video", false);
+            if (videoView) {
+                this.panX = videoView.panOffsetX ?? 0;
+                this.panY = videoView.panOffsetY ?? 0;
             }
         }
 

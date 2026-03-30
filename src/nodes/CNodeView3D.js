@@ -1358,6 +1358,42 @@ export class CNodeView3D extends CNodeViewCanvas {
 
                 const savedQuaternion = this.applyCameraOffset();
 
+                // Apply asymmetric frustum shift for video pan offset.
+                // This shifts which portion of the rendered view is visible without
+                // changing camera position or direction (LOS stays invariant).
+                // We patch updateProjectionMatrix so the shift survives any
+                // re-computation (e.g. matchVideoAspect re-apply after renderSky).
+                let _panPatchedCamera = null;
+                let _panOrigUpdatePM = null;
+                if (this.syncVideoZoom) {
+                    const panSyncView = NodeMan.exists("video") ? NodeMan.get("video") : null;
+                    if (panSyncView !== null) {
+                        const panX = panSyncView.panOffsetX ?? 0;
+                        const panY = panSyncView.panOffsetY ?? 0;
+                        if (panX !== 0 || panY !== 0) {
+                            // panOffset is fraction of video; multiply by 2*zoom to get
+                            // NDC shift in the zoomed camera's projection space.
+                            const zoom = this.camera.zoom;
+                            const panShiftX = 2 * panX * zoom;
+                            const panShiftY = -2 * panY * zoom; // negative: video Y down, NDC Y up
+
+                            // Patch updateProjectionMatrix to always append the pan shift
+                            _panPatchedCamera = this.camera;
+                            _panOrigUpdatePM = this.camera.updateProjectionMatrix;
+                            const cam = this.camera;
+                            const origFn = _panOrigUpdatePM;
+                            cam.updateProjectionMatrix = function () {
+                                origFn.call(cam);
+                                cam.projectionMatrix.elements[8] += panShiftX;
+                                cam.projectionMatrix.elements[9] += panShiftY;
+                                cam.projectionMatrixInverse.copy(cam.projectionMatrix).invert();
+                            };
+                            // Apply immediately
+                            cam.updateProjectionMatrix();
+                        }
+                    }
+                }
+
                 // [DBG] Render sky
                 if (Globals.renderDebugFlags.dbg_renderSky) {
                     this.renderSky();
@@ -1480,6 +1516,10 @@ export class CNodeView3D extends CNodeViewCanvas {
 
                 this.removeCameraOffset(savedQuaternion);
 
+                // Restore original updateProjectionMatrix before FOV restore
+                if (_panPatchedCamera && _panOrigUpdatePM) {
+                    _panPatchedCamera.updateProjectionMatrix = _panOrigUpdatePM;
+                }
 
                 this.camera.layers.mask = oldLayers;
 
