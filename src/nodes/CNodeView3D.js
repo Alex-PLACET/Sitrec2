@@ -1371,21 +1371,29 @@ export class CNodeView3D extends CNodeViewCanvas {
                         const panX = panSyncView.panOffsetX ?? 0;
                         const panY = panSyncView.panOffsetY ?? 0;
                         if (panX !== 0 || panY !== 0) {
-                            // panOffset is fraction of video; multiply by 2*zoom to get
-                            // NDC shift in the zoomed camera's projection space.
+                            // panOffset is fraction of VIDEO dimensions, but projection
+                            // matrix elements[8]/[9] are in VIEW NDC space. Scale by the
+                            // ratio of video extent to view extent in each axis.
+                            // oldFOV = base camera FOV (before fovOverride).
                             const zoom = this.camera.zoom;
-                            const panShiftX = 2 * panX * zoom;
-                            const panShiftY = -2 * panY * zoom; // negative: video Y down, NDC Y up
+                            const baseFovHalfTan = Math.tan(oldFOV * Math.PI / 360);
+                            const videoAspect = panSyncView.videoWidth / panSyncView.videoHeight;
 
-                            // Patch updateProjectionMatrix to always append the pan shift
+                            // Patch updateProjectionMatrix to append the pan shift.
+                            // Computed dynamically because camera.fov and camera.aspect
+                            // may change during the render cycle (fovOverride, matchVideoAspect).
                             _panPatchedCamera = this.camera;
                             _panOrigUpdatePM = this.camera.updateProjectionMatrix;
                             const cam = this.camera;
                             const origFn = _panOrigUpdatePM;
                             cam.updateProjectionMatrix = function () {
                                 origFn.call(cam);
-                                cam.projectionMatrix.elements[8] += panShiftX;
-                                cam.projectionMatrix.elements[9] += panShiftY;
+                                const currFovHalfTan = Math.tan(cam.fov * Math.PI / 360);
+                                // Video extent in NDC: how much of the view the video spans
+                                const hScale = videoAspect * baseFovHalfTan / (cam.aspect * currFovHalfTan);
+                                const vScale = baseFovHalfTan / currFovHalfTan;
+                                cam.projectionMatrix.elements[8] += 2 * panX * hScale * zoom;
+                                cam.projectionMatrix.elements[9] -= 2 * panY * vScale * zoom;
                                 cam.projectionMatrixInverse.copy(cam.projectionMatrix).invert();
                             };
                             // Apply immediately
