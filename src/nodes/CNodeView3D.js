@@ -1375,6 +1375,11 @@ export class CNodeView3D extends CNodeViewCanvas {
                             // matrix elements[8]/[9] are in VIEW NDC space. Scale by the
                             // ratio of video extent to view extent in each axis.
                             // oldFOV = base camera FOV (before fovOverride).
+                            // Use camera.zoom because elements[8]/[9] are relative to
+                            // the projection built with camera.zoom. When pixel-match
+                            // caps camera.zoom, the render target reduction + browser
+                            // magnification handles the excess zoom — the NDC shift
+                            // must match the projection's own zoom level.
                             const zoom = this.camera.zoom;
                             const baseFovHalfTan = Math.tan(oldFOV * Math.PI / 360);
                             const videoAspect = panSyncView.videoWidth / panSyncView.videoHeight;
