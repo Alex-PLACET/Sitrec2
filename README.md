@@ -12,6 +12,7 @@ My goal here is to create a tool to effectively analyze UAP/UFO cases, and to sh
 
 - [The Sitrec User Interface - How the menus work](docs/UserInterface.md)
 - [The Custom Sitch Tool - Drag and Drop Sitches](docs/CustomSitchTool.md)
+- [Loading and Filtering Tracks - Formats, importing, filtering, and display](docs/Tracks.md)
 - [Saving and Loading Sitches - Server saves and local folder workflow](docs/SavingAndLoading.md)
 - [Custom Models and 3D Objects - Add your own planes](docs/CustomModels.md)
 - [Recreating Starlink Situations - Horizon Flares](docs/Starlink.md)

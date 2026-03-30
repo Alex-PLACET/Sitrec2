@@ -44,7 +44,7 @@ export class CNodeMISBDataTrack extends CNodeEmptyArray {
 
         // G-force filter for removing spurious data points
         this.filterEnabled = false;
-        this.filterMaxG = 3.0;  // 3g is a lot higher than you'd get in reality, but with sparse curved tracks the effective g can be quite high. Most spurious data will result in much higher values (like >100g)
+        this.filterMaxG = 10.0;  // 10g allows for sparse curved tracks where computed g can be high. Most spurious data will result in much higher values (like >100g)
         this.tryAltitudeFirst = true; // try replacing just altitude before removing the point
         this.filteredSlots = new Set();
         this.altitudeFixedSlots = new Map(); // slot -> corrected altitude
