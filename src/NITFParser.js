@@ -997,16 +997,48 @@ export class NITFParser {
                 }
             } else if (abpp <= 16) {
                 // >8-bit mono, big-endian (NITF standard byte order).
-                // Scale by actual bit depth (ABPP), not storage size (NBPP=16).
+                // First pass: compute P2/P98 percentiles for contrast stretch.
+                // Many satellite sensors (e.g. RapidEye analytic) store calibrated
+                // radiance in 16-bit that only uses a small fraction of the range,
+                // so a naive linear scale produces a near-black image.
                 const maxVal = (1 << abpp) - 1;
+
+                // Build a histogram of 16-bit values
+                const histogram = new Uint32Array(maxVal + 1);
+                for (let i = 0; i < pixelCount; i++) {
+                    const hi = pixelData[i * 2] || 0;
+                    const lo = pixelData[i * 2 + 1] || 0;
+                    histogram[(hi << 8) | lo]++;
+                }
+
+                // Find P2 and P98 from the cumulative histogram (ignoring zero/nodata)
+                const nonZeroCount = pixelCount - histogram[0];
+                const p2Target = Math.floor(nonZeroCount * 0.02);
+                const p98Target = Math.floor(nonZeroCount * 0.98);
+                let cumulative = 0;
+                let lo2 = 1, hi98 = maxVal;
+                for (let v = 1; v <= maxVal; v++) {
+                    cumulative += histogram[v];
+                    if (cumulative >= p2Target && lo2 === 1) lo2 = v;
+                    if (cumulative >= p98Target) { hi98 = v; break; }
+                }
+
+                // Only apply stretch if data uses less than half the bit range;
+                // otherwise the naive linear scale is fine and this is a no-op.
+                const useStretch = (hi98 < maxVal * 0.5);
+                const sLo = useStretch ? lo2 : 0;
+                const sHi = useStretch ? hi98 : maxVal;
+                const range = sHi - sLo || 1;
+
                 for (let i = 0; i < pixelCount; i++) {
                     const hi = pixelData[i * 2] || 0;
                     const lo = pixelData[i * 2 + 1] || 0;
                     const val16 = (hi << 8) | lo;
-                    const val = Math.round(val16 * 255 / maxVal);
-                    rgba[i * 4] = val;
-                    rgba[i * 4 + 1] = val;
-                    rgba[i * 4 + 2] = val;
+                    const clamped = val16 < sLo ? 0 : val16 > sHi ? 255
+                        : Math.round((val16 - sLo) * 255 / range);
+                    rgba[i * 4] = clamped;
+                    rgba[i * 4 + 1] = clamped;
+                    rgba[i * 4 + 2] = clamped;
                     rgba[i * 4 + 3] = 255;
                 }
             }
