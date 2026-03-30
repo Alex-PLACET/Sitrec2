@@ -90,10 +90,9 @@ export class NITFParser {
      * @param {string} filename
      * @param {number} width - Image width in pixels
      * @param {number} height - Image height in pixels
-     * @param {number} bufferSize - Decoded image buffer size in bytes
      * @returns {Promise<{includeImage: boolean, maxDimension: number|null}>}
      */
-    static showNITFImageDialog(filename, width, height, bufferSize) {
+    static showNITFImageDialog(filename, width, height) {
         // Auto-accept only in headless regression tests
         if (Globals.regression) {
             return Promise.resolve({includeImage: false, maxDimension: null});
@@ -118,9 +117,9 @@ export class NITFParser {
             title.textContent = 'Large NITF Image';
             title.style.cssText = 'margin: 0 0 10px 0; font-size: 18px; color: #fff;';
 
-            const sizeMB = (bufferSize / (1024 * 1024)).toFixed(1);
+            const megapixels = (width * height / 1e6).toFixed(1);
             const message = document.createElement('p');
-            message.textContent = `Image: ${width}\u00D7${height} (${sizeMB} MB)`;
+            message.textContent = `Image: ${width}\u00D7${height} (${megapixels} MP)`;
             message.style.cssText = 'margin: 0 0 16px 0; font-size: 14px; color: #ccc;';
 
             const btnStyle = `
@@ -208,43 +207,48 @@ export class NITFParser {
                 continue;
             }
 
-            // Decode image and determine whether to include it
+            // Determine whether to include image and at what resolution.
+            // Ask the user BEFORE decoding so tiles decode at the chosen size.
             let includeImage = true;
             let maxDimension = null;
             let img = null;
             let imageBuffer = null;
 
-            try {
-                updateProgress({status: `Decoding segment ${i} (${image.ncols}×${image.nrows}, ${image.ic})...`});
-                imageBuffer = await this.imageToPNG(image);
-                if (imageBuffer === null) {
-                    // imageToPNG explicitly rejected (e.g. unsupported CADRG VQ)
+            // Show resize dialog for images larger than ~1600×1600 (2.5M pixels)
+            const totalPixels = image.ncols * image.nrows;
+            if (totalPixels > 2.5 * 1024 * 1024) {
+                hideProgress();
+                try {
+                    const choice = await this.showNITFImageDialog(
+                        filename, image.ncols, image.nrows);
+                    includeImage = choice.includeImage;
+                    maxDimension = choice.maxDimension;
+                } catch (e) {
+                    // User cancelled — skip image but still process track
+                    console.log("NITFParser: User cancelled NITF image dialog, loading track only");
                     includeImage = false;
-                } else {
-                    // Detect format from magic bytes: JPEG=FFD8, PNG=8950
-                    const head = new Uint8Array(imageBuffer, 0, 2);
-                    const isJPEG = head[0] === 0xFF && head[1] === 0xD8;
-                    const mime = isJPEG ? 'image/jpeg' : 'image/png';
-                    img = await createImageFromArrayBuffer(imageBuffer, mime);
-
-                    // For large images, ask user what to do
-                    if (imageBuffer.byteLength > 10 * 1024 * 1024) {
-                        hideProgress();
-                        try {
-                            const choice = await this.showNITFImageDialog(
-                                filename, img.width, img.height, imageBuffer.byteLength);
-                            includeImage = choice.includeImage;
-                            maxDimension = choice.maxDimension;
-                        } catch (e) {
-                            // User cancelled — skip image but still process track
-                            console.log("NITFParser: User cancelled NITF image dialog, loading track only");
-                            includeImage = false;
-                        }
-                    }
                 }
-            } catch (e) {
-                console.error("NITFParser: Failed to decode image:", e);
-                includeImage = false;
+            }
+
+            if (includeImage) {
+                try {
+                    initProgress({title: 'Loading NITF', filename: shortName});
+                    updateProgress({status: `Decoding segment ${i} (${image.ncols}×${image.nrows}, ${image.ic})...`});
+                    imageBuffer = await this.imageToPNG(image, maxDimension);
+                    if (imageBuffer === null) {
+                        // imageToPNG explicitly rejected (e.g. unsupported CADRG VQ)
+                        includeImage = false;
+                    } else {
+                        // Detect format from magic bytes: JPEG=FFD8, PNG=8950
+                        const head = new Uint8Array(imageBuffer, 0, 2);
+                        const isJPEG = head[0] === 0xFF && head[1] === 0xD8;
+                        const mime = isJPEG ? 'image/jpeg' : 'image/png';
+                        img = await createImageFromArrayBuffer(imageBuffer, mime);
+                    }
+                } catch (e) {
+                    console.error("NITFParser: Failed to decode image:", e);
+                    includeImage = false;
+                }
             }
 
             // Convert image to JPG (with optional resize) for serialization
@@ -904,24 +908,25 @@ export class NITFParser {
      * Convert NITF image pixel data to a PNG ArrayBuffer.
      * Supports uncompressed mono (8/16-bit), RGB, and LUT-based images.
      */
-    static async imageToPNG(image) {
+    static async imageToPNG(image, maxDimension = null) {
         const {nrows, ncols, rawData, abpp, nbands, irep, pvtype, bands, imode,
                nbpr, nbpc, nppbh, nppbv} = image;
 
-        // Handle compressed formats
+        // Handle compressed formats (pass maxDimension so tile/block decoders
+        // can limit resolution before decoding, not after)
         if (image.ic === 'M3' || image.ic === 'C3') {
             // Masked/non-masked JPEG — decode per-block using browser Image API
-            return this._decodeJPEGBlocked(image);
+            return this._decodeJPEGBlocked(image, maxDimension);
         }
 
         if (image.ic === 'M8') {
             // Masked JPEG 2000 — per-block decode with mask table
-            return this._decodeJPEG2000Blocked(image);
+            return this._decodeJPEG2000Blocked(image, maxDimension);
         }
 
         if (image.ic === 'C8') {
             // Non-masked JPEG 2000 — single codestream
-            return this._decodeJPEG2000(image);
+            return this._decodeJPEG2000(image, maxDimension);
         }
 
         if (image.ic === 'C1' || image.ic === 'M1') {
@@ -1125,7 +1130,7 @@ export class NITFParser {
      * scan for the SOC marker and pass the full data to the shared decoder
      * which also handles JP2 container wrapping if present.
      */
-    static async _decodeJPEG2000(image) {
+    static async _decodeJPEG2000(image, maxDimension = null) {
         const {rawData, irep, bands} = image;
 
         // Check if the image data contains a full JP2 container (starts with JP2
@@ -1179,6 +1184,9 @@ export class NITFParser {
                         percent: done / total * 100,
                     });
                 };
+                if (maxDimension) {
+                    options.maxDimension = maxDimension;
+                }
                 updateProgress({status: 'Starting decode workers...'});
                 const {canvas} = await decodeJ2KTiledToCanvas(arrayBuffer, options);
                 console.log(`NITFParser: J2K tiled decode produced ${canvas.width}×${canvas.height} canvas`);
@@ -1206,15 +1214,18 @@ export class NITFParser {
      * similar to M3 (masked JPEG). Each block is decoded separately and
      * composited onto a canvas.
      */
-    static async _decodeJPEG2000Blocked(image) {
+    static async _decodeJPEG2000Blocked(image, maxDimension = null) {
         const {nrows, ncols, rawData, nbpr, nbpc, nppbh, nppbv, irep, bands} = image;
         const nblocks = nbpr * nbpc;
 
-        // Browser canvas limits — downscale if needed
+        // Apply user-chosen maxDimension first, then browser canvas limits
         const MAX_PIXELS = 128 * 1024 * 1024;
         const MAX_DIM = 16384;
         let scale = 1;
-        if (nrows * ncols > MAX_PIXELS) {
+        if (maxDimension && Math.max(nrows, ncols) > maxDimension) {
+            scale = maxDimension / Math.max(nrows, ncols);
+        }
+        if (nrows * ncols * scale * scale > MAX_PIXELS) {
             scale = Math.sqrt(MAX_PIXELS / (nrows * ncols));
         }
         if (nrows * scale > MAX_DIM) scale = MAX_DIM / nrows;
@@ -1371,17 +1382,19 @@ export class NITFParser {
         return ranges;
     }
 
-    static async _decodeJPEGBlocked(image) {
+    static async _decodeJPEGBlocked(image, maxDimension = null) {
         const {nrows, ncols, rawData, nbpr, nbpc, nppbh, nppbv} = image;
         const isMasked = image.ic === 'M3';
         const nblocks = nbpr * nbpc;
 
-        // Browser canvas limits: max ~128M pixels to be safe across browsers.
-        // Downscale if the image exceeds this.
+        // Apply user-chosen maxDimension first, then browser canvas limits
         const MAX_PIXELS = 128 * 1024 * 1024;
         const MAX_DIM = 16384;
         let scale = 1;
-        if (nrows * ncols > MAX_PIXELS) {
+        if (maxDimension && Math.max(nrows, ncols) > maxDimension) {
+            scale = maxDimension / Math.max(nrows, ncols);
+        }
+        if (nrows * ncols * scale * scale > MAX_PIXELS) {
             scale = Math.sqrt(MAX_PIXELS / (nrows * ncols));
         }
         if (nrows * scale > MAX_DIM) scale = MAX_DIM / nrows;

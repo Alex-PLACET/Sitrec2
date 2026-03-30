@@ -384,7 +384,8 @@ export async function decodeJ2KTiledToCanvas(arrayBuffer, options) {
 
     // Calculate sub-resolution decode level to keep output under target size.
     // Each level halves both dimensions (wavelet decomposition levels).
-    const MAX_EDGE = 10240; // max pixels per edge
+    // Use user-chosen maxDimension if provided, otherwise default 10240.
+    const MAX_EDGE = (options && options.maxDimension) || 10240;
     let reduceLevel = 0;
     let effW = Xsiz, effH = Ysiz;
     while ((effW > MAX_EDGE || effH > MAX_EDGE) && reduceLevel < 6) {
