@@ -858,6 +858,84 @@ export class CNodeView3D extends CNodeViewCanvas {
         }
     }
 
+    // Prepare the camera with the effective zoom + pan shift for tile LOD evaluation.
+    // Called by the terrain system before subdivideTilesViewSpecific() so tiles
+    // are loaded at the resolution matching the actual rendered view.
+    prepareCameraForLOD() {
+        this._lodSavedZoom = this.camera.zoom;
+        this._lodSavedFov = this.camera.fov;
+        this._lodSavedAspect = this.camera.aspect;
+
+        // Always use the FULL videoZoom for LOD, not the pixel-match-capped value.
+        // The tile system must see the final effective FOV (after all zoom) so it
+        // loads tiles at the correct resolution regardless of whether rendering
+        // uses FOV zoom, pixel shader, or a split of both.
+        if (NodeMan.exists("videoZoom") && (this.syncVideoZoom || this.syncPixelZoomWithVideo)) {
+            this.camera.zoom = NodeMan.get("videoZoom").v0 / 100;
+        }
+        this.camera.aspect = this.widthPx / this.heightPx;
+
+        // Apply fovOverride if we have a video view with fovCoverage
+        let videoView = null;
+        if (NodeMan.exists("mirrorVideo")) videoView = NodeMan.get("mirrorVideo");
+        else if (NodeMan.exists("video")) videoView = NodeMan.get("video");
+        if (videoView !== null && videoView.fovCoverage !== undefined) {
+            this.camera.fov = 180 / Math.PI * 2 * Math.atan(
+                Math.tan(this.camera.fov * Math.PI / 360) / videoView.fovCoverage
+            );
+        }
+
+        // Apply matchVideoAspect: adjust FOV and aspect to match video,
+        // same as renderTargetAndEffects() does for actual rendering.
+        const frustum = NodeMan.get(this.cameraNode.id + "_Frustum", false);
+        if (frustum && frustum.matchVideoAspect && frustum.videoAspect) {
+            const videoAspect = frustum.videoAspect;
+            const viewAspect = this.camera.aspect;
+            if (videoAspect > viewAspect) {
+                // Letterbox: preserve hFOV, narrow vFOV
+                const hFOVTanHalf = Math.tan(this.camera.fov * Math.PI / 360) * this.camera.aspect;
+                this.camera.fov = 2 * Math.atan(hFOVTanHalf / videoAspect) * 180 / Math.PI;
+            }
+            // For pillarbox: vFOV stays unchanged
+            this.camera.aspect = videoAspect;
+        }
+
+        this.camera.updateProjectionMatrix();
+
+        // Apply pan shift to the projection matrix for correct frustum culling
+        if (this.syncVideoZoom || this.syncPixelZoomWithVideo) {
+            const panSyncView = NodeMan.exists("video") ? NodeMan.get("video") : null;
+            if (panSyncView) {
+                const panX = panSyncView.panOffsetX ?? 0;
+                const panY = panSyncView.panOffsetY ?? 0;
+                if (panX !== 0 || panY !== 0) {
+                    const oldFOV = this._lodSavedFov;
+                    const baseFovHalfTan = Math.tan(oldFOV * Math.PI / 360);
+                    const vidAspect = panSyncView.videoWidth / panSyncView.videoHeight;
+                    const currFovHalfTan = Math.tan(this.camera.fov * Math.PI / 360);
+                    const hScale = vidAspect * baseFovHalfTan / (this.camera.aspect * currFovHalfTan);
+                    const vScale = baseFovHalfTan / currFovHalfTan;
+                    const zoom = this.camera.zoom;
+                    this.camera.projectionMatrix.elements[8] += 2 * panX * hScale * zoom;
+                    this.camera.projectionMatrix.elements[9] -= 2 * panY * vScale * zoom;
+                    this.camera.projectionMatrixInverse.copy(this.camera.projectionMatrix).invert();
+                }
+            }
+        }
+    }
+
+    restoreCameraAfterLOD() {
+        if (this._lodSavedZoom !== undefined) {
+            this.camera.zoom = this._lodSavedZoom;
+            this.camera.fov = this._lodSavedFov;
+            this.camera.aspect = this._lodSavedAspect;
+            this.camera.updateProjectionMatrix();
+            this._lodSavedZoom = undefined;
+            this._lodSavedFov = undefined;
+            this._lodSavedAspect = undefined;
+        }
+    }
+
     getAtmosphereDensity() {
         const visibilityMeters = Math.max(1000, this.atmosphereVisibilityKm * 1000);
         return Math.sqrt(Math.log(2)) / visibilityMeters;
@@ -1371,21 +1449,34 @@ export class CNodeView3D extends CNodeViewCanvas {
                         const panX = panSyncView.panOffsetX ?? 0;
                         const panY = panSyncView.panOffsetY ?? 0;
                         if (panX !== 0 || panY !== 0) {
-                            // panOffset is fraction of video; multiply by 2*zoom to get
-                            // NDC shift in the zoomed camera's projection space.
+                            // panOffset is fraction of VIDEO dimensions, but projection
+                            // matrix elements[8]/[9] are in VIEW NDC space. Scale by the
+                            // ratio of video extent to view extent in each axis.
+                            // oldFOV = base camera FOV (before fovOverride).
+                            // Use camera.zoom because elements[8]/[9] are relative to
+                            // the projection built with camera.zoom. When pixel-match
+                            // caps camera.zoom, the render target reduction + browser
+                            // magnification handles the excess zoom — the NDC shift
+                            // must match the projection's own zoom level.
                             const zoom = this.camera.zoom;
-                            const panShiftX = 2 * panX * zoom;
-                            const panShiftY = -2 * panY * zoom; // negative: video Y down, NDC Y up
+                            const baseFovHalfTan = Math.tan(oldFOV * Math.PI / 360);
+                            const videoAspect = panSyncView.videoWidth / panSyncView.videoHeight;
 
-                            // Patch updateProjectionMatrix to always append the pan shift
+                            // Patch updateProjectionMatrix to append the pan shift.
+                            // Computed dynamically because camera.fov and camera.aspect
+                            // may change during the render cycle (fovOverride, matchVideoAspect).
                             _panPatchedCamera = this.camera;
                             _panOrigUpdatePM = this.camera.updateProjectionMatrix;
                             const cam = this.camera;
                             const origFn = _panOrigUpdatePM;
                             cam.updateProjectionMatrix = function () {
                                 origFn.call(cam);
-                                cam.projectionMatrix.elements[8] += panShiftX;
-                                cam.projectionMatrix.elements[9] += panShiftY;
+                                const currFovHalfTan = Math.tan(cam.fov * Math.PI / 360);
+                                // Video extent in NDC: how much of the view the video spans
+                                const hScale = videoAspect * baseFovHalfTan / (cam.aspect * currFovHalfTan);
+                                const vScale = baseFovHalfTan / currFovHalfTan;
+                                cam.projectionMatrix.elements[8] += 2 * panX * hScale * zoom;
+                                cam.projectionMatrix.elements[9] -= 2 * panY * vScale * zoom;
                                 cam.projectionMatrixInverse.copy(cam.projectionMatrix).invert();
                             };
                             // Apply immediately

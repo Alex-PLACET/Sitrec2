@@ -34,7 +34,7 @@ import {par} from "../par";
 import {quickToggle} from "../KeyBoardHandler";
 import {CNodeGUIFlag, CNodeGUIValue} from "./CNodeGUIValue";
 import {CNodeConstant} from "./CNode";
-import {Globals, guiMenus, NodeMan, setRenderOne, Sit} from "../Globals";
+import {CustomManager, Globals, guiMenus, NodeMan, setRenderOne, Sit} from "../Globals";
 import {CMouseHandler} from "../CMouseHandler";
 import {CNodeViewUI} from "./CNodeViewUI";
 import {CVideoMp4Data} from "../CVideoMp4Data";
@@ -738,8 +738,17 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
             },
 
             contextMenu: (e) => {
-                // TODO: Implement actual video view context menu
-                alert("Context menu triggered on video view.\nContext menus are not yet fully implemented for video views.");
+                // Show Video Adjustments as a context menu at click position
+                if (!Globals.menuBar || !guiMenus.video || !CustomManager) return;
+                const adjFolder = guiMenus.video.folders.find(
+                    f => (f._title?.textContent || f.$title?.textContent) === 'Video Adjustments'
+                );
+                if (!adjFolder) return;
+                const menu = Globals.menuBar.createStandaloneMenu(
+                    "Video Adjustments", e.clientX, e.clientY, true
+                );
+                if (!menu) return;
+                CustomManager.setupDynamicMirroring(adjFolder, menu);
             }
 
         })

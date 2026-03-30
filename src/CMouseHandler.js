@@ -112,7 +112,12 @@ export class CMouseHandler {
 
         this.newPosition(e, true)
         this.dragging = true;
-        
+
+        // Track right-click down position for context menu detection
+        if (e.button === 2) {
+            this._contextMenuDownPos = { x: e.clientX, y: e.clientY };
+        }
+
         // Cancel long press if a second finger touches down
         if (this.activePointers.size > 1 && this.longPressTimer) {
             this.clearLongPressTimer();
@@ -175,7 +180,19 @@ export class CMouseHandler {
 
         this.newPosition(e)
         this.dragging = false;
-        
+
+        // Detect right-click release without drag → context menu
+        if (e.button === 2 && this._contextMenuDownPos) {
+            const dx = e.clientX - this._contextMenuDownPos.x;
+            const dy = e.clientY - this._contextMenuDownPos.y;
+            if (Math.sqrt(dx * dx + dy * dy) <= 5) {
+                if (this.handlers.contextMenu) {
+                    this.handlers.contextMenu(e);
+                }
+            }
+            this._contextMenuDownPos = null;
+        }
+
         // Don't trigger up handler if long press was triggered
         if (!this.isLongPressTriggered) {
             if (this.handlers.up) this.handlers.up(e)

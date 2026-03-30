@@ -383,13 +383,40 @@ class CNodeView extends CNode {
         // check if it's flagged, and we actually have a videoZoom UI control
         if (NodeMan.exists("videoZoom")) {
             if (this.effectsEnabled && this.syncPixelZoomWithVideo && NodeMan.get("pixelZoomNode").enabled) {
-                this.camera.zoom = 1; // i.e. render it noramally, and then zoom up the pixels
-                // these are CNodeGUI objects
-                // that we need to sync
                 var videoZoom = NodeMan.get("videoZoom")
                 var pixelZoom = NodeMan.get("pixelZoom");
+                const totalZoom = videoZoom.v0 / 100;
 
-                pixelZoom.value = videoZoom.v0;
+                // Compute render dimensions to find pixel-match threshold.
+                // Below threshold: FOV zoom (camera.zoom) gives full 3D resolution.
+                // Above threshold: pixel shader magnifies the rest so pixels match video.
+                let renderW, renderH;
+                if (this.in.canvasWidth !== undefined) {
+                    const long = this.in.canvasWidth.v0;
+                    if (this.widthPx > this.heightPx) {
+                        renderW = long;
+                        renderH = Math.floor(long * this.heightPx / this.widthPx);
+                    } else {
+                        renderH = long;
+                        renderW = Math.floor(long * this.widthPx / this.heightPx);
+                    }
+                } else {
+                    renderW = this.widthPx;
+                    renderH = this.heightPx;
+                }
+
+                const videoView = NodeMan.get("video", false);
+                let pixelMatchZoom = Infinity;
+                if (videoView && videoView.videoWidth > 0 && renderW > 0 && renderH > 0) {
+                    pixelMatchZoom = Math.max(
+                        videoView.videoWidth / renderW,
+                        videoView.videoHeight / renderH
+                    );
+                }
+
+                // FOV zoom up to pixel-match, pixel shader for the rest
+                this.camera.zoom = Math.min(totalZoom, pixelMatchZoom);
+                pixelZoom.value = Math.max(100, totalZoom / this.camera.zoom * 100);
             }
             else if (this.syncVideoZoom) {
                 var videoZoom = NodeMan.get("videoZoom")
