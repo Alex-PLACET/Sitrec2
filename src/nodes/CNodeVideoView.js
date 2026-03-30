@@ -3486,11 +3486,21 @@ function applyEchoEffect(videoView, currentImage, currentFrame, wantMin, wantMax
 function applyConvolutionToImage(image, kernelName, params, videoView) {
     if (kernelName === 'none' || !CONVOLUTION_KERNELS[kernelName]) return image;
 
+    // Skip recalculation if the source image, kernel, and params are unchanged
+    if (videoView._convolutionCanvas &&
+        videoView._convLastImage === image &&
+        videoView._convLastKernel === kernelName &&
+        videoView._convLastAmount === params.amount &&
+        videoView._convLastThreshold === params.threshold &&
+        videoView._convLastStrength === params.strength) {
+        return videoView._convolutionCanvas;
+    }
+
     const width = image.width;
     const height = image.height;
 
-    if (!videoView._convolutionCanvas || 
-        videoView._convolutionCanvas.width !== width || 
+    if (!videoView._convolutionCanvas ||
+        videoView._convolutionCanvas.width !== width ||
         videoView._convolutionCanvas.height !== height) {
         videoView._convolutionCanvas = document.createElement('canvas');
         videoView._convolutionCanvas.width = width;
@@ -3501,6 +3511,13 @@ function applyConvolutionToImage(image, kernelName, params, videoView) {
     const ctx = videoView._convolutionCtx;
     ctx.drawImage(image, 0, 0);
     applyConvolution(ctx, width, height, kernelName, params);
+
+    videoView._convLastImage = image;
+    videoView._convLastKernel = kernelName;
+    videoView._convLastAmount = params.amount;
+    videoView._convLastThreshold = params.threshold;
+    videoView._convLastStrength = params.strength;
+
     return videoView._convolutionCanvas;
 }
 
