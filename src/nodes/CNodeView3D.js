@@ -858,6 +858,65 @@ export class CNodeView3D extends CNodeViewCanvas {
         }
     }
 
+    // Prepare the camera with the effective zoom + pan shift for tile LOD evaluation.
+    // Called by the terrain system before subdivideTilesViewSpecific() so tiles
+    // are loaded at the resolution matching the actual rendered view.
+    prepareCameraForLOD() {
+        this._lodSavedZoom = this.camera.zoom;
+        this._lodSavedFov = this.camera.fov;
+
+        // Always use the FULL videoZoom for LOD, not the pixel-match-capped value.
+        // The tile system must see the final effective FOV (after all zoom) so it
+        // loads tiles at the correct resolution regardless of whether rendering
+        // uses FOV zoom, pixel shader, or a split of both.
+        if (NodeMan.exists("videoZoom") && (this.syncVideoZoom || this.syncPixelZoomWithVideo)) {
+            this.camera.zoom = NodeMan.get("videoZoom").v0 / 100;
+        }
+        this.camera.aspect = this.widthPx / this.heightPx;
+
+        // Apply fovOverride if we have a video view with fovCoverage
+        let videoView = null;
+        if (NodeMan.exists("mirrorVideo")) videoView = NodeMan.get("mirrorVideo");
+        else if (NodeMan.exists("video")) videoView = NodeMan.get("video");
+        if (videoView !== null && videoView.fovCoverage !== undefined) {
+            this.camera.fov = 180 / Math.PI * 2 * Math.atan(
+                Math.tan(this.camera.fov * Math.PI / 360) / videoView.fovCoverage
+            );
+        }
+        this.camera.updateProjectionMatrix();
+
+        // Apply pan shift to the projection matrix for correct frustum culling
+        if (this.syncVideoZoom || this.syncPixelZoomWithVideo) {
+            const panSyncView = NodeMan.exists("video") ? NodeMan.get("video") : null;
+            if (panSyncView) {
+                const panX = panSyncView.panOffsetX ?? 0;
+                const panY = panSyncView.panOffsetY ?? 0;
+                if (panX !== 0 || panY !== 0) {
+                    const oldFOV = this._lodSavedFov;
+                    const baseFovHalfTan = Math.tan(oldFOV * Math.PI / 360);
+                    const videoAspect = panSyncView.videoWidth / panSyncView.videoHeight;
+                    const currFovHalfTan = Math.tan(this.camera.fov * Math.PI / 360);
+                    const hScale = videoAspect * baseFovHalfTan / (this.camera.aspect * currFovHalfTan);
+                    const vScale = baseFovHalfTan / currFovHalfTan;
+                    const zoom = this.camera.zoom;
+                    this.camera.projectionMatrix.elements[8] += 2 * panX * hScale * zoom;
+                    this.camera.projectionMatrix.elements[9] -= 2 * panY * vScale * zoom;
+                    this.camera.projectionMatrixInverse.copy(this.camera.projectionMatrix).invert();
+                }
+            }
+        }
+    }
+
+    restoreCameraAfterLOD() {
+        if (this._lodSavedZoom !== undefined) {
+            this.camera.zoom = this._lodSavedZoom;
+            this.camera.fov = this._lodSavedFov;
+            this.camera.updateProjectionMatrix();
+            this._lodSavedZoom = undefined;
+            this._lodSavedFov = undefined;
+        }
+    }
+
     getAtmosphereDensity() {
         const visibilityMeters = Math.max(1000, this.atmosphereVisibilityKm * 1000);
         return Math.sqrt(Math.log(2)) / visibilityMeters;

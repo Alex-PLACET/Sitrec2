@@ -1408,6 +1408,14 @@ export class CNodeTerrainUI extends CNode {
                 this.terrainNode.maps[this.mapType].map.subdivideTilesGeneral();
             }
 
+            // Prepare each view's camera with effective zoom + pan for accurate LOD.
+            // This ensures tile subdivision uses the actual rendered FOV and direction.
+            for (const view of views) {
+                if (view && view.visible && view.prepareCameraForLOD) {
+                    view.prepareCameraForLOD();
+                }
+            }
+
             // subdivide the elevation first so elevation requests will come before textures
             // this makes it more likely that the elevation will be ready when the texture is ready to make a tile.
             if (this.terrainNode.elevationMap !== undefined) {
@@ -1426,11 +1434,18 @@ export class CNodeTerrainUI extends CNode {
                 // Get the current map definition to check for textureSubSize override
                 const mapDef = this.mapSources[this.mapType];
                 const textureSubSize = mapDef?.textureSubSize ?? this.textureSubSize;
-                
+
                 for (const view of views) {
                     if (view && view.visible) {
                         this.terrainNode.maps[this.mapType].map.subdivideTilesViewSpecific(view, textureSubSize / this.textureDetail);
                     }
+                }
+            }
+
+            // Restore cameras after LOD evaluation
+            for (const view of views) {
+                if (view && view.visible && view.restoreCameraAfterLOD) {
+                    view.restoreCameraAfterLOD();
                 }
             }
 
