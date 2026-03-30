@@ -864,6 +864,7 @@ export class CNodeView3D extends CNodeViewCanvas {
     prepareCameraForLOD() {
         this._lodSavedZoom = this.camera.zoom;
         this._lodSavedFov = this.camera.fov;
+        this._lodSavedAspect = this.camera.aspect;
 
         // Always use the FULL videoZoom for LOD, not the pixel-match-capped value.
         // The tile system must see the final effective FOV (after all zoom) so it
@@ -883,6 +884,22 @@ export class CNodeView3D extends CNodeViewCanvas {
                 Math.tan(this.camera.fov * Math.PI / 360) / videoView.fovCoverage
             );
         }
+
+        // Apply matchVideoAspect: adjust FOV and aspect to match video,
+        // same as renderTargetAndEffects() does for actual rendering.
+        const frustum = NodeMan.get(this.cameraNode.id + "_Frustum", false);
+        if (frustum && frustum.matchVideoAspect && frustum.videoAspect) {
+            const videoAspect = frustum.videoAspect;
+            const viewAspect = this.camera.aspect;
+            if (videoAspect > viewAspect) {
+                // Letterbox: preserve hFOV, narrow vFOV
+                const hFOVTanHalf = Math.tan(this.camera.fov * Math.PI / 360) * this.camera.aspect;
+                this.camera.fov = 2 * Math.atan(hFOVTanHalf / videoAspect) * 180 / Math.PI;
+            }
+            // For pillarbox: vFOV stays unchanged
+            this.camera.aspect = videoAspect;
+        }
+
         this.camera.updateProjectionMatrix();
 
         // Apply pan shift to the projection matrix for correct frustum culling
@@ -894,9 +911,9 @@ export class CNodeView3D extends CNodeViewCanvas {
                 if (panX !== 0 || panY !== 0) {
                     const oldFOV = this._lodSavedFov;
                     const baseFovHalfTan = Math.tan(oldFOV * Math.PI / 360);
-                    const videoAspect = panSyncView.videoWidth / panSyncView.videoHeight;
+                    const vidAspect = panSyncView.videoWidth / panSyncView.videoHeight;
                     const currFovHalfTan = Math.tan(this.camera.fov * Math.PI / 360);
-                    const hScale = videoAspect * baseFovHalfTan / (this.camera.aspect * currFovHalfTan);
+                    const hScale = vidAspect * baseFovHalfTan / (this.camera.aspect * currFovHalfTan);
                     const vScale = baseFovHalfTan / currFovHalfTan;
                     const zoom = this.camera.zoom;
                     this.camera.projectionMatrix.elements[8] += 2 * panX * hScale * zoom;
@@ -911,9 +928,11 @@ export class CNodeView3D extends CNodeViewCanvas {
         if (this._lodSavedZoom !== undefined) {
             this.camera.zoom = this._lodSavedZoom;
             this.camera.fov = this._lodSavedFov;
+            this.camera.aspect = this._lodSavedAspect;
             this.camera.updateProjectionMatrix();
             this._lodSavedZoom = undefined;
             this._lodSavedFov = undefined;
+            this._lodSavedAspect = undefined;
         }
     }
 
