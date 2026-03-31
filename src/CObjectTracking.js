@@ -1359,11 +1359,21 @@ function getStabilizationBounds() {
     const referencePoint = objectTracker.trackedPositions.get(firstFrame);
     if (!referencePoint) return null;
 
+    // Use center of video as anchor when stabilizeCenters is enabled
+    let anchorX, anchorY;
+    if (videoData.stabilizeCenters && !videoData.stabilizationDirectOffset) {
+        anchorX = videoData.videoWidth / 2;
+        anchorY = videoData.videoHeight / 2;
+    } else {
+        anchorX = referencePoint.x;
+        anchorY = referencePoint.y;
+    }
+
     let minX = 0, maxX = 0, minY = 0, maxY = 0;
 
     for (const [frame, pos] of objectTracker.trackedPositions) {
-        const shiftX = referencePoint.x - pos.x;
-        const shiftY = referencePoint.y - pos.y;
+        const shiftX = anchorX - pos.x;
+        const shiftY = anchorY - pos.y;
         minX = Math.min(minX, shiftX);
         maxX = Math.max(maxX, shiftX);
         minY = Math.min(minY, shiftY);
@@ -1477,11 +1487,17 @@ async function renderStabilizedVideo(expanded = false) {
             if (!originalImage || !originalImage.width) continue;
 
             // Calculate stabilization shift for this frame
+            // Must match the logic in CVideoData.getStabilizedImage()
             const trackPos = interpolatePosition(objectTracker.trackedPositions, frame);
             let shiftX = 0, shiftY = 0;
             if (trackPos && referencePoint) {
-                shiftX = referencePoint.x - trackPos.x;
-                shiftY = referencePoint.y - trackPos.y;
+                if (videoData.stabilizeCenters) {
+                    shiftX = videoData.videoWidth / 2 - trackPos.x;
+                    shiftY = videoData.videoHeight / 2 - trackPos.y;
+                } else {
+                    shiftX = referencePoint.x - trackPos.x;
+                    shiftY = referencePoint.y - trackPos.y;
+                }
             }
 
             // Clear and draw stabilized frame
@@ -1578,6 +1594,26 @@ export function addObjectTrackingMenu() {
     stabilizeToggleMenuItem = trackingFolder.add(menuActions, 'toggleStabilization')
         .name("Enable Stabilization")
         .tooltip("Toggle video stabilization on/off")
+        .perm();
+
+    const stabilizeCentersParams = {
+        get stabilizeCenters() {
+            const videoData = objectTracker?.videoView?.videoData;
+            return videoData?.stabilizeCenters ?? true;
+        },
+        set stabilizeCenters(v) {
+            const videoData = objectTracker?.videoView?.videoData;
+            if (videoData) {
+                videoData.stabilizeCenters = v;
+                videoData.stabilizedImageCache = [];
+                setRenderOne(true);
+            }
+        }
+    };
+
+    trackingFolder.add(stabilizeCentersParams, 'stabilizeCenters')
+        .name("Stabilize Centers")
+        .tooltip("When checked, the stabilized point is fixed at the center of the view. When unchecked, it stays at its initial position.")
         .perm();
 
     trackingFolder.add(menuActions, 'renderStabilized')
@@ -1719,7 +1755,7 @@ export function getObjectTracker() {
 }
 
 export function serializeAutoTracking() {
-    if (!objectTracker || !objectTracker.enabled) return null;
+    if (!objectTracker) return null;
     if (objectTracker.trackedPositions.size === 0) return null;
 
     const videoView = objectTracker.videoView;
@@ -1739,6 +1775,7 @@ export function serializeAutoTracking() {
         // Stabilization state
         stabilizationEnabled: videoData?.stabilizationEnabled ?? false,
         stabilizationDirectOffset: videoData?.stabilizationDirectOffset ?? false,
+        stabilizeCenters: videoData?.stabilizeCenters ?? true,
     };
 }
 
@@ -1782,6 +1819,14 @@ export async function deserializeAutoTracking(data) {
         objectTracker.trackedPositions = new Map(data.trackedPositions);
     }
 
+    // Initialize lastVideoWidth/Height so renderOverlay doesn't think the video changed
+    // and clear our just-restored tracked positions
+    const dims = objectTracker.getImageDimensions();
+    if (dims.width > 0 && dims.height > 0) {
+        objectTracker.lastVideoWidth = dims.width;
+        objectTracker.lastVideoHeight = dims.height;
+    }
+
     // Restore stabilization if there's tracking data
     if (data.stabilizationEnabled && objectTracker.trackedPositions.size > 0) {
         const videoData = videoView.videoData;
@@ -1789,6 +1834,7 @@ export async function deserializeAutoTracking(data) {
             const firstFrame = Math.min(...objectTracker.trackedPositions.keys());
             const referencePoint = objectTracker.trackedPositions.get(firstFrame);
             if (referencePoint) {
+                videoData.stabilizeCenters = data.stabilizeCenters ?? true;
                 videoData.setStabilizationData(
                     objectTracker.trackedPositions,
                     referencePoint,

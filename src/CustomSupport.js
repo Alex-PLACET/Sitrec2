@@ -3976,7 +3976,9 @@ export class CCustomManager {
         out.motionAnalysis = serializeMotionAnalysis()
 
         // Serialize auto tracking state (tracked positions + stabilization)
-        out.autoTracking = serializeAutoTracking()
+        // Fall back to Sit.autoTracking (from previous load) if the objectTracker
+        // is no longer active but previously-serialized data exists
+        out.autoTracking = serializeAutoTracking() ?? Sit.autoTracking ?? null
 
         // Serialize sub sitches
         out.subSitchesData = this.serializeSubSitches()

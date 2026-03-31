@@ -72,6 +72,7 @@ export class CVideoData {
         this.stabilizationData = null;  // Map of frame -> {x, y} offsets
         this.stabilizationReferencePoint = null; // {x, y} - the fixed point
         this.stabilizationDirectOffset = false;  // true = use offsets directly (motion analysis)
+        this.stabilizeCenters = true;  // true = center tracked point in view, false = keep at initial position
         this.stabilizedImageCache = [];  // Cache for stabilized frames
 
         this.flushEntireCache();
@@ -234,6 +235,12 @@ export class CVideoData {
             // Direct offset mode (motion analysis): offsets are cumulative motion to cancel
             shiftX = trackPos.x;
             shiftY = trackPos.y;
+        } else if (this.stabilizeCenters) {
+            // Center mode: shift to keep tracked point at center of view
+            const w = originalImage.width || originalImage.videoWidth;
+            const h = originalImage.height || originalImage.videoHeight;
+            shiftX = w / 2 - trackPos.x;
+            shiftY = h / 2 - trackPos.y;
         } else {
             // Point tracking mode: shift to keep tracked point at reference position
             shiftX = this.stabilizationReferencePoint.x - trackPos.x;
