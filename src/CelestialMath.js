@@ -157,7 +157,9 @@ export function getCelestialDirection(body, date, pos) {
 }
 
 export function getCelestialDirectionFromRaDec(ra, dec, date) {
-    const gst = calculateGST(date);
+    // Use getSiderealTime (same function the celestial sphere rotation uses)
+    // so the camera pointing and the rendered Moon position are perfectly consistent.
+    const gst = radians(getSiderealTime(date, 0));
     const ecef = celestialToECEF(ra, dec, wgs84.RADIUS, gst)
     // ecef for the sun will give us a vector from the center to the earth towards the Sun (which, for our purposes
     // is considered to be infinitely far away
