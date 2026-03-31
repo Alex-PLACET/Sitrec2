@@ -16,6 +16,12 @@
 window._mcpDebug = true;
 window._mcpAsserts = [];
 
+// ── Nonce Authentication ────────────────────────────────────────────────────
+// The content script generates a random nonce per injection and sends it via
+// postMessage after this module loads.  All subsequent messages must include
+// the nonce to prevent spoofing by other scripts on the page.
+let bridgeNonce = null;
+
 function drainAsserts() {
     const asserts = window._mcpAsserts;
     window._mcpAsserts = [];
@@ -466,7 +472,17 @@ const handlers = {
 
 window.addEventListener("message", async (event) => {
     if (event.source !== window) return;
-    if (!event.data || event.data.source !== "sitrec-bridge-content") return;
+    if (!event.data) return;
+
+    // Handle nonce initialization from content script (one-time handshake)
+    if (event.data.source === "sitrec-bridge-init" && event.data.nonce && !bridgeNonce) {
+        bridgeNonce = event.data.nonce;
+        startSitrecDetection();
+        return;
+    }
+
+    if (event.data.source !== "sitrec-bridge-content") return;
+    if (!bridgeNonce || event.data.nonce !== bridgeNonce) return; // reject unverified
 
     const { reqId, action, params } = event.data;
 
@@ -475,6 +491,7 @@ window.addEventListener("message", async (event) => {
         window.postMessage(
             {
                 source: "sitrec-bridge-page",
+                nonce: bridgeNonce,
                 reqId,
                 error: "Sitrec is not ready yet. Wait for the page to finish loading.",
             },
@@ -488,6 +505,7 @@ window.addEventListener("message", async (event) => {
         window.postMessage(
             {
                 source: "sitrec-bridge-page",
+                nonce: bridgeNonce,
                 reqId,
                 error: `Unknown action: ${action}`,
             },
@@ -499,12 +517,12 @@ window.addEventListener("message", async (event) => {
     try {
         const result = await handler(params || {});
         const asserts = drainAsserts();
-        const response = { source: "sitrec-bridge-page", reqId, result };
+        const response = { source: "sitrec-bridge-page", nonce: bridgeNonce, reqId, result };
         if (asserts) response.asserts = asserts;
         window.postMessage(response, "*");
     } catch (e) {
         const asserts = drainAsserts();
-        const response = { source: "sitrec-bridge-page", reqId, error: e.message };
+        const response = { source: "sitrec-bridge-page", nonce: bridgeNonce, reqId, error: e.message };
         if (asserts) response.asserts = asserts;
         window.postMessage(response, "*");
     }
@@ -513,22 +531,37 @@ window.addEventListener("message", async (event) => {
 // ── Sitrec Detection ────────────────────────────────────────────────────────
 // Tell the content script that this page is actually running Sitrec,
 // so it can open the keepalive port and register the tab.
+//
+// Detection is deferred until the nonce handshake completes (startSitrecDetection
+// is called from the message listener above).  Uses stronger checks than a bare
+// window.Sit existence test to prevent trivial spoofing.
+
+function isSitrecReal() {
+    // Sitrec's ready marker — created by Sitrec's own initialization code
+    if (document.getElementById("sitrec-objects-ready")) return true;
+    // Core globals with expected internal structure (hard to convincingly fake)
+    if (window.Sit && typeof window.Sit.name === "string" &&
+        window.NodeMan && typeof window.NodeMan.iterate === "function") return true;
+    return false;
+}
 
 function notifySitrecDetected() {
     const buildDir = window.__sitrecBuildDir || null;
-    window.postMessage({ source: "sitrec-bridge-page", type: "sitrec-detected", buildDir }, "*");
+    window.postMessage({ source: "sitrec-bridge-page", type: "sitrec-detected", nonce: bridgeNonce, buildDir }, "*");
     console.log("[SitrecBridge] Page bridge loaded — Sitrec detected" + (buildDir ? ` (build: ${buildDir})` : ""));
 }
 
-if (window.Sit || document.getElementById("sitrec-objects-ready")) {
-    notifySitrecDetected();
-} else {
-    const detectInterval = setInterval(() => {
-        if (window.Sit || document.getElementById("sitrec-objects-ready")) {
-            clearInterval(detectInterval);
-            notifySitrecDetected();
-        }
-    }, 500);
-    // Stop polling after 30 seconds — not a Sitrec page
-    setTimeout(() => clearInterval(detectInterval), 30000);
+function startSitrecDetection() {
+    if (isSitrecReal()) {
+        notifySitrecDetected();
+    } else {
+        const detectInterval = setInterval(() => {
+            if (isSitrecReal()) {
+                clearInterval(detectInterval);
+                notifySitrecDetected();
+            }
+        }, 500);
+        // Stop polling after 30 seconds — not a Sitrec page
+        setTimeout(() => clearInterval(detectInterval), 30000);
+    }
 }

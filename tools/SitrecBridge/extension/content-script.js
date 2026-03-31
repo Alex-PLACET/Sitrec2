@@ -9,6 +9,12 @@
  * so page-bridge.js is injected into the page's main world to do the actual work.
  */
 
+// Nonce for authenticating the postMessage channel between content script and page bridge.
+// Generated per injection; lives only in the content script's isolated world, so page
+// scripts cannot read it directly.  The nonce is sent to page-bridge once via postMessage
+// after the module loads; both sides then require it on every subsequent message.
+let bridgeNonce = null;
+
 // Inject the page-bridge script into the main world
 (function injectPageBridge() {
     // Check if already injected
@@ -19,9 +25,15 @@
     marker.style.display = "none";
     document.documentElement.appendChild(marker);
 
+    bridgeNonce = crypto.randomUUID();
+
     const script = document.createElement("script");
     script.src = chrome.runtime.getURL("page-bridge.js");
     script.type = "module";
+    // After the module evaluates and sets up its listener, send the nonce
+    script.addEventListener("load", () => {
+        window.postMessage({ source: "sitrec-bridge-init", nonce: bridgeNonce }, "*");
+    });
     document.documentElement.appendChild(script);
 })();
 
@@ -60,6 +72,7 @@ function openKeepalivePort() {
 window.addEventListener("message", (event) => {
     if (event.source !== window) return;
     if (event.data?.source === "sitrec-bridge-page" && event.data.type === "sitrec-detected") {
+        if (event.data.nonce !== bridgeNonce) return; // reject unverified messages
         if (!sitrecDetected) {
             sitrecDetected = true;
             sitrecBuildDir = event.data.buildDir || null;
@@ -96,6 +109,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     window.postMessage(
         {
             source: "sitrec-bridge-content",
+            nonce: bridgeNonce,
             reqId,
             action,
             params,
@@ -112,6 +126,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 window.addEventListener("message", (event) => {
     if (event.source !== window) return;
     if (!event.data || event.data.source !== "sitrec-bridge-page") return;
+    if (event.data.nonce !== bridgeNonce) return; // reject unverified messages
 
     const { reqId, result, error, asserts } = event.data;
     const pending = pendingPageRequests.get(reqId);
