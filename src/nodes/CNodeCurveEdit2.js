@@ -1471,6 +1471,7 @@ export class CNodeCurveEditor2 extends CNodeTrack {
             ...super.modSerialize(),
             points: flatPoints,
             defaultSnap: this.editorView.defaultSnap,
+            maxY: this.editorView.maxY,
         };
     }
     
@@ -1488,6 +1489,13 @@ export class CNodeCurveEditor2 extends CNodeTrack {
         
         if (v.defaultSnap !== undefined) {
             this.editorView.defaultSnap = v.defaultSnap;
+        }
+
+        if (v.maxY !== undefined) {
+            this.editorView.maxY = v.maxY;
+            if (this.editorView.yRangeSlider) {
+                this.editorView.yRangeSlider.value = v.maxY;
+            }
         }
     }
     
