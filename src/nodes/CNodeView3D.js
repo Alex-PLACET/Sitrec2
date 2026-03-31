@@ -1485,6 +1485,11 @@ export class CNodeView3D extends CNodeViewCanvas {
                     }
                 }
 
+                // Hoist declarations needed by the finally block below
+                let oldLayers = this.camera.layers.mask;
+                let nightSkyForRestore = null;
+                try {
+
                 // [DBG] Render sky
                 if (Globals.renderDebugFlags.dbg_renderSky) {
                     this.renderSky();
@@ -1556,7 +1561,7 @@ export class CNodeView3D extends CNodeViewCanvas {
 
 // fovOverride WAS (incorrectly) being applied here
 
-                const oldLayers = this.camera.layers.mask;
+                oldLayers = this.camera.layers.mask;
 
                 // this.layers can be used to override the camera layers for this view
                 // for example lookView2 in the custom flir1 setup
@@ -1573,7 +1578,6 @@ export class CNodeView3D extends CNodeViewCanvas {
                 }
 
                 // Hide co-located satellite dots in the look view before rendering
-                let nightSkyForRestore = null;
                 if (this.id === "lookView") {
                     const nsNode = NodeMan.get("NightSkyNode", false);
                     if (nsNode) {
@@ -1600,30 +1604,32 @@ export class CNodeView3D extends CNodeViewCanvas {
                     this.popLookViewAtmosphereFog(atmosphereFogState);
                 }
 
-                // Restore satellite brightness after look view render
-                if (nightSkyForRestore) {
-                    nightSkyForRestore.restoreSatelliteScales();
-                }
-
-                this.removeCameraOffset(savedQuaternion);
-
-                // Restore original updateProjectionMatrix before FOV restore
-                if (_panPatchedCamera && _panOrigUpdatePM) {
-                    _panPatchedCamera.updateProjectionMatrix = _panOrigUpdatePM;
-                }
-
-                this.camera.layers.mask = oldLayers;
-
-
-                if (this.fovOverride !== undefined) {
-                    this.camera.fov = oldFOV;
-                    this.camera.updateProjectionMatrix();
-                }
-
-                if (this.isIR && this.effectsEnabled) {
-                    NodeMan.get("lighting").setIR(false);
-                }
                 if (globalProfiler) globalProfiler.pop();
+
+                } finally {
+                    // Restore satellite brightness after look view render
+                    if (nightSkyForRestore) {
+                        nightSkyForRestore.restoreSatelliteScales();
+                    }
+
+                    this.removeCameraOffset(savedQuaternion);
+
+                    // Restore original updateProjectionMatrix before FOV restore
+                    if (_panPatchedCamera && _panOrigUpdatePM) {
+                        _panPatchedCamera.updateProjectionMatrix = _panOrigUpdatePM;
+                    }
+
+                    this.camera.layers.mask = oldLayers;
+
+                    if (this.fovOverride !== undefined) {
+                        this.camera.fov = oldFOV;
+                        this.camera.updateProjectionMatrix();
+                    }
+
+                    if (this.isIR && this.effectsEnabled) {
+                        NodeMan.get("lighting").setIR(false);
+                    }
+                }
 
                 if (this.effectsEnabled) {
 
