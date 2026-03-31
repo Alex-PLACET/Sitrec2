@@ -116,7 +116,7 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
     }
 
     shouldBeVisible() {
-        return this.showInfo || this.hasAnyInfoItem();
+        return this.showInfo && this.hasAnyInfoItem();
     }
 
     updateVisibility() {
