@@ -721,13 +721,14 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
     
     renderCanvas(frame) {
         super.renderCanvas(frame);
-        
+
         if (!this.visible) return;
-        
+
         const ctx = this.ctx;
         const margin = 60;
         const width = this.widthPx;
         const height = this.heightPx;
+        if (width < margin * 2 + 10 || height < margin * 2 + 10) return;
         const graphWidth = width - margin * 2;
         const graphHeight = height - margin * 2;
         
@@ -1175,6 +1176,7 @@ export class CNodeOSDGraphView extends CNodeCurveEditorView2 {
 
         const width = this.widthPx;
         const height = this.heightPx;
+        if (width < margin + rightMargin + 10 || height < margin * 2 + 10) return;
         const graphWidth = width - margin - rightMargin;
         const graphHeight = height - margin * 2;
 
