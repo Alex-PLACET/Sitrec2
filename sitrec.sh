@@ -233,9 +233,15 @@ for t in tags:
             SELECTED="latest"
         fi
 
+        # Skip only if the local image is genuinely up to date.
+        # When pinned to 'latest', compare the resolved local version
+        # against the resolved remote version, not just the tag name.
         if [ "$SELECTED" = "$CURRENT" ]; then
-            echo "[sitrec] Already running $CURRENT."
-            exit 0
+            if [ "$CURRENT" != "latest" ] || \
+               { [ -n "$LOCAL_VERSION" ] && [ "$LOCAL_VERSION" = "$LATEST_VERSION" ]; }; then
+                echo "[sitrec] Already running $CURRENT."
+                exit 0
+            fi
         fi
 
         switch_version "$SELECTED"
