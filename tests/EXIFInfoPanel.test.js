@@ -3,6 +3,7 @@
  */
 
 jest.mock('../src/DragResizeUtils', () => ({
+    blockViewEvents: jest.fn(),
     makeDraggable: jest.fn(),
 }));
 

@@ -9,6 +9,7 @@ import {ECEFToLLAVD_radii, wgs84} from "./LLA-ECEF-ENU";
 import {bestSat} from "./TLEUtils";
 import {degrees} from "./mathUtils";
 import {intersectSphere2, V3} from "./threeUtils";
+import {blockViewEvents, makeDraggable} from "./DragResizeUtils";
 
 
 // ─── Shared Dialog Chrome ───────────────────────────────────────────────────
@@ -40,9 +41,7 @@ function makeDraggablePanel() {
         z-index: 10000; cursor: default;
         max-height: 85vh; overflow-y: auto;
     `;
-    for (const evt of ['dblclick', 'mousedown', 'mouseup', 'click', 'wheel', 'contextmenu']) {
-        dialog.addEventListener(evt, (e) => e.stopPropagation());
-    }
+    blockViewEvents(dialog);
 
     const titleBar = document.createElement('div');
     titleBar.style.cssText = `
@@ -53,31 +52,20 @@ function makeDraggablePanel() {
     titleBar.textContent = 'Filter TLEs';
     dialog.appendChild(titleBar);
 
-    let dragging = false, dragX = 0, dragY = 0;
-    const onMouseMove = (e) => {
-        if (!dragging) return;
-        dialog.style.left = (e.clientX - dragX) + 'px';
-        dialog.style.top = (e.clientY - dragY) + 'px';
-    };
-    const stopDrag = () => {
-        dragging = false;
-        window.removeEventListener('mousemove', onMouseMove, true);
-        window.removeEventListener('mouseup', stopDrag, true);
-    };
-    titleBar.addEventListener('mousedown', (e) => {
-        dragging = true;
-        const rect = dialog.getBoundingClientRect();
-        dialog.style.left = rect.left + 'px';
-        dialog.style.top = rect.top + 'px';
-        dialog.style.right = '';
-        dragX = e.clientX - dialog.offsetLeft;
-        dragY = e.clientY - dialog.offsetTop;
-        window.addEventListener('mousemove', onMouseMove, true);
-        window.addEventListener('mouseup', stopDrag, true);
-        e.preventDefault();
-    });
-
     document.body.appendChild(dialog);
+
+    makeDraggable(dialog, {
+        handle: titleBar,
+        onDragStart: () => {
+            // Remove right-anchoring on first drag so left-based positioning works
+            if (dialog.style.right) {
+                const rect = dialog.getBoundingClientRect();
+                dialog.style.left = rect.left + 'px';
+                dialog.style.top = rect.top + 'px';
+                dialog.style.right = '';
+            }
+        },
+    });
     return dialog;
 }
 

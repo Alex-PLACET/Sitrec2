@@ -265,6 +265,18 @@ function calculateResizeSnap(left, top, width, height, dir, excludeView) {
  * @param {string} [options.requiredKey] - Key that must be held for dragging (e.g., "shift", "control", "alt", or any letter)
  * @param {HTMLElement[]} [options.excludeElements] - Elements to exclude from triggering drag (like the tab menu)
  */
+
+/**
+ * Prevent mouse and wheel events from propagating through a floating panel
+ * to the 3D views underneath. Pointer events are intentionally NOT blocked
+ * because makeDraggable relies on document-level pointerup to end drags.
+ */
+export function blockViewEvents(element) {
+    for (const type of ["mousedown", "mouseup", "click", "dblclick", "wheel", "contextmenu"]) {
+        element.addEventListener(type, (e) => e.stopPropagation());
+    }
+}
+
 export function makeDraggable(element, options = {}) {
     if (!element) return;
     

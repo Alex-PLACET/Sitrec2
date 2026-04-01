@@ -1,6 +1,6 @@
 import {CNodeView} from "./CNodeView";
 import {guiShowHide, setRenderOne} from "../Globals";
-import {makeDraggable} from "../DragResizeUtils";
+import {blockViewEvents, makeDraggable} from "../DragResizeUtils";
 import {ViewMan} from "../CViewManager";
 
 class CNodeNotes extends CNodeView {
@@ -132,6 +132,7 @@ class CNodeNotes extends CNodeView {
     }
 
     setupDragging() {
+        blockViewEvents(this.div);
         makeDraggable(this.div, {
             handle: '.cnodeview-tab',
             viewInstance: this,

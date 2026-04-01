@@ -1048,8 +1048,6 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
     updateEXIFInfoButton() {
         if (!guiMenus.video) return;
 
-        this.syncEXIFInfoPanel();
-
         if (this.exifInfoButtonController) {
             this.exifInfoButtonController.destroy();
             this.exifInfoButtonController = null;

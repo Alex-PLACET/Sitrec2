@@ -8,6 +8,7 @@ import {Frustum, Matrix4, Vector3} from "three";
 import {Globals, NodeMan, TrackManager, FileManager, Sit, setRenderOne} from "./Globals";
 import {CTrackFile} from "./TrackFiles/CTrackFile";
 import {CNodeDisplayTrack} from "./nodes/CNodeDisplayTrack";
+import {blockViewEvents, makeDraggable} from "./DragResizeUtils";
 
 
 // ─── Track Preview Extraction ────────────────────────────────────────────────
@@ -202,10 +203,7 @@ function makeOverlayAndDialog(options = {}) {
             position: fixed; top: 80px; left: 50%; transform: translateX(-50%);
             z-index: 10000; cursor: default;
         `;
-        // Prevent events on the dialog from reaching Sitrec
-        for (const evt of ['dblclick', 'mousedown', 'mouseup', 'click', 'wheel', 'contextmenu']) {
-            dialog.addEventListener(evt, (e) => e.stopPropagation());
-        }
+        blockViewEvents(dialog);
 
         // Draggable title bar
         const titleBar = document.createElement('div');
@@ -215,35 +213,21 @@ function makeOverlayAndDialog(options = {}) {
         `;
         dialog.appendChild(titleBar);
 
-        let dragging = false, dragX = 0, dragY = 0;
-        const onMouseMove = (e) => {
-            if (!dragging) return;
-            dialog.style.left = (e.clientX - dragX) + 'px';
-            dialog.style.top = (e.clientY - dragY) + 'px';
-        };
-        const stopDrag = () => {
-            dragging = false;
-            window.removeEventListener('mousemove', onMouseMove, true);
-            window.removeEventListener('mouseup', stopDrag, true);
-        };
-        titleBar.addEventListener('mousedown', (e) => {
-            dragging = true;
-            // Remove the centering transform on first drag
-            if (dialog.style.transform) {
-                const rect = dialog.getBoundingClientRect();
-                dialog.style.left = rect.left + 'px';
-                dialog.style.top = rect.top + 'px';
-                dialog.style.transform = '';
-            }
-            dragX = e.clientX - dialog.offsetLeft;
-            dragY = e.clientY - dialog.offsetTop;
-            // Capture at window level to catch mouseup even outside the dialog
-            window.addEventListener('mousemove', onMouseMove, true);
-            window.addEventListener('mouseup', stopDrag, true);
-            e.preventDefault();
+        document.body.appendChild(dialog);
+
+        makeDraggable(dialog, {
+            handle: titleBar,
+            onDragStart: () => {
+                // Remove centering transform on first drag so left-based positioning works
+                if (dialog.style.transform) {
+                    const rect = dialog.getBoundingClientRect();
+                    dialog.style.left = rect.left + 'px';
+                    dialog.style.top = rect.top + 'px';
+                    dialog.style.transform = '';
+                }
+            },
         });
 
-        document.body.appendChild(dialog);
         // Return dialog as both overlay and dialog — cleanup removes the dialog itself
         return {overlay: dialog, dialog, titleBar};
     }
@@ -251,9 +235,7 @@ function makeOverlayAndDialog(options = {}) {
     // Modal: full-screen overlay blocks scene interaction
     const overlay = document.createElement('div');
     overlay.style.cssText = OVERLAY_STYLE;
-    for (const evt of ['dblclick', 'mousedown', 'mouseup', 'click', 'wheel', 'contextmenu']) {
-        overlay.addEventListener(evt, (e) => e.stopPropagation());
-    }
+    blockViewEvents(overlay);
     const dialog = document.createElement('div');
     dialog.style.cssText = DIALOG_STYLE;
     overlay.appendChild(dialog);
