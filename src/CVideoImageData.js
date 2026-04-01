@@ -7,6 +7,7 @@ export class CVideoImageData extends CVideoData {
         super(v, loadedCallback, errorCallback);
         assert(v.img, "CVideoImageData: img is undefined");
         this.img = v.img
+        this.importMetadata = v.importMetadata ?? null;
 
         this.videoWidth = this.img.width;
         this.videoHeight = this.img.height;
@@ -18,6 +19,10 @@ export class CVideoImageData extends CVideoData {
 
         // Cache for rotated image (only created when rotation is applied)
         this.rotatedImage = null;
+
+        if (this.importMetadata?.image?.rotationDegrees !== undefined) {
+            this.metadataRotation = this.importMetadata.image.rotationDegrees;
+        }
 
         // Defer callback until after constructor returns and assignment completes
         // This ensures this.videoData is set before loadedCallback runs

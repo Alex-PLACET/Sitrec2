@@ -5,6 +5,7 @@ import {
     GlobalDateTimeNode,
     Globals,
     guiMenus,
+    markSitchDirty,
     NodeMan,
     Sit,
     TrackManager,
@@ -1141,6 +1142,35 @@ class CSitrecAPI {
                 }
             },
 
+            importMedia: {
+                doc: "Import a photo or video into the current video view.",
+                params: {
+                    file: "Media path, URL, or Sitrec reference (string)"
+                },
+                fn: async (v) => {
+                    const source = this._normalizeMediaSource(v.file ?? v.filename ?? v.url);
+                    if (!source) {
+                        return { success: false, error: "Media file is required" };
+                    }
+
+                    const videoNode = this._getVideoImportNode();
+                    if (!videoNode?.newVideo) {
+                        return { success: false, error: "video node not found" };
+                    }
+
+                    const clearFrames = !Array.isArray(videoNode.videos) || videoNode.videos.length === 0;
+                    videoNode.newVideo(source, clearFrames);
+                    markSitchDirty();
+
+                    return {
+                        success: true,
+                        imported: true,
+                        pending: true,
+                        file: source,
+                    };
+                }
+            },
+
             undo: {
                 doc: "Undo the last action.",
                 fn: () => {
@@ -1547,6 +1577,24 @@ class CSitrecAPI {
 
         forceUpdateUIText();
         return { success: true, template: templateName, views: positions };
+    }
+
+    _normalizeMediaSource(source) {
+        if (typeof source !== "string") return "";
+
+        let normalized = source.trim();
+        if (normalized.startsWith("!")) {
+            normalized = normalized.substring(1);
+        }
+        if (normalized.startsWith("data/")) {
+            normalized = normalized.substring(5);
+        }
+
+        return normalized;
+    }
+
+    _getVideoImportNode() {
+        return NodeMan.get("video", false) ?? NodeMan.get("videoView", false);
     }
 
     getDocumentation() {

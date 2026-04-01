@@ -53,6 +53,8 @@ import {
     getBestFormatForResolution,
     getVideoExtension
 } from "../VideoExporter";
+import {applyImportedImageMetadata} from "../EXIFUtils";
+import {EXIFInfoPanel} from "../EXIFInfoPanel";
 import {isResolvableSitrecReference, resolveURLForFetch} from "../SitrecObjectResolver";
 
 
@@ -88,6 +90,10 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         this.videos = [];
         this.currentVideoIndex = -1;
         this.videoSelectorController = null;
+        this.exifInfoButtonController = null;
+        this.exifInfoPanel = new EXIFInfoPanel({
+            onVisibilityChange: () => this.updateEXIFInfoButton(),
+        });
         this._elaPendingKey = null;
         this._elaResultKey = null;
         this._elaResultCanvas = null;
@@ -367,6 +373,8 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
 
         // Setup/update rotation dropdown now that video is loaded
         this.setupRotationDropdown();
+        this.updateEXIFPositionButton();
+        this.updateEXIFInfoButton();
 
         // Handle pending multi-video restore
         // Pass vd (the videoData from callback parameter) since this.videoData may not be set yet
@@ -865,6 +873,8 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
 
         this.updateVideoSelector();
         this.updateRotationDropdown();
+        this.updateEXIFPositionButton();
+        this.updateEXIFInfoButton();
     }
 
     getVideoDisplayName(entry, index) {
@@ -919,6 +929,8 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         if (guiMenus.view) {
             this.updateVideoSelector();
             this.setupRotationDropdown();
+            this.updateEXIFPositionButton();
+            this.updateEXIFInfoButton();
         } else if (retries > 0) {
             setTimeout(() => this.ensureVideoSelectorUpdated(retries - 1), 100);
         }
@@ -973,6 +985,80 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         }
     }
 
+    getCurrentImportMetadata() {
+        return this.videoData?.importMetadata ?? null;
+    }
+
+    applyCurrentEXIFCameraPosition() {
+        const metadata = this.getCurrentImportMetadata();
+        if (!metadata) {
+            console.log("[EXIF] No imported metadata is available for the current image");
+            return;
+        }
+
+        const applied = applyImportedImageMetadata(
+            metadata,
+            this.fileName ?? this.videoData?.filename ?? ""
+        );
+
+        if (!applied) {
+            return;
+        }
+
+        metadata.applied = {
+            ...(metadata.applied ?? {}),
+            ...applied,
+        };
+
+        this.updateEXIFPositionButton();
+        this.updateEXIFInfoButton();
+    }
+
+    toggleEXIFInfoPanel() {
+        this.syncEXIFInfoPanel();
+        this.exifInfoPanel.toggle();
+    }
+
+    syncEXIFInfoPanel() {
+        const metadata = this.getCurrentImportMetadata();
+        this.exifInfoPanel.setMetadata(
+            metadata,
+            this.fileName ?? this.videoData?.filename ?? ""
+        );
+    }
+
+    updateEXIFInfoButton() {
+        if (!guiMenus.video) return;
+
+        this.syncEXIFInfoPanel();
+
+        if (this.exifInfoButtonController) {
+            this.exifInfoButtonController.destroy();
+            this.exifInfoButtonController = null;
+        }
+
+        const metadata = this.getCurrentImportMetadata();
+        if (!metadata) return;
+
+        this.exifInfoButtonController = guiMenus.video.add(this, "toggleEXIFInfoPanel")
+            .name(this.exifInfoPanel.visible ? "Hide EXIF Panel" : "Show EXIF Panel");
+    }
+
+    updateEXIFPositionButton() {
+        if (!guiMenus.video) return;
+
+        if (this.exifPositionController) {
+            this.exifPositionController.destroy();
+            this.exifPositionController = null;
+        }
+
+        const metadata = this.getCurrentImportMetadata();
+        if (!metadata?.placement?.hasLocation) return;
+
+        this.exifPositionController = guiMenus.video.add(this, "applyCurrentEXIFCameraPosition")
+            .name("Set Camera To EXIF GPS");
+    }
+
     async promptAddOrReplace() {
         return new Promise((resolve) => {
             const result = confirm(
@@ -1009,6 +1095,8 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
 
         this.invalidateELAResult();
         this.updateVideoSelector();
+        this.updateEXIFPositionButton();
+        this.updateEXIFInfoButton();
         this.dispatchVideoAvailabilityChanged();
     }
 
@@ -1022,6 +1110,8 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         this.videos = [];
         this.currentVideoIndex = -1;
         this.videoData = null;
+        this.updateEXIFPositionButton();
+        this.updateEXIFInfoButton();
         this.invalidateELAResult();
         this.updateVideoSelector();
         this.dispatchVideoAvailabilityChanged();
@@ -1060,11 +1150,12 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         // Dispose of all video data including audio
         this.disposeAllVideos();
         this.disposeELAWorker();
+        this.exifInfoPanel.destroy();
         // Call parent dispose
         super.dispose();
     }
 
-    makeImageVideo(filename, img, deleteAfterUsing = false, imageFileID = undefined) {
+    makeImageVideo(filename, img, deleteAfterUsing = false, imageFileID = undefined, importMetadata = undefined, pauseTimelineOnLoad = false) {
 
         this.fileName = filename;
         this.invalidateELAResult();
@@ -1073,7 +1164,8 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
             id: this.id + "_data_" + this.videos.length,
             filename: filename,
             img: img,
-            deleteAfterUsing: deleteAfterUsing
+            deleteAfterUsing: deleteAfterUsing,
+            importMetadata: importMetadata,
         },
             this.loadedCallback.bind(this), this.errorCallback.bind(this))
         
@@ -1084,7 +1176,7 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         
         this.positioned = false;
         par.frame = 0;
-        par.paused = false; // unpause, otherwise we see nothing.
+        par.paused = pauseTimelineOnLoad ? true : false;
         EventManager.dispatchEvent("videoLoaded", {
             width: img.width, height: img.height,
             videoData: this
