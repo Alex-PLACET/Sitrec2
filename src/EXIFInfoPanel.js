@@ -225,6 +225,13 @@ export class EXIFInfoPanel {
         this.panel.appendChild(this.content);
         container.appendChild(this.panel);
 
+        // Prevent mouse/wheel events from passing through to views underneath.
+        // Pointer events are excluded — makeDraggable relies on document-level
+        // pointerup to end drags, which stopPropagation would break.
+        for (const eventType of ["mousedown", "mouseup", "click", "dblclick", "wheel"]) {
+            this.panel.addEventListener(eventType, (e) => e.stopPropagation());
+        }
+
         makeDraggable(this.panel, {
             handle: this.titleRow,
             excludeElements: [this.closeButton, this.toolbar],
