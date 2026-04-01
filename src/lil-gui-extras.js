@@ -748,6 +748,7 @@ export class CGuiMenuBar {
 
         // Z-index management for bringing clicked menus to front
         this.baseZIndex = 5000; // Base z-index for menu divs
+        this.browserMode = false; // When true, prevent undocking/dragging menus
 
         // Track the currently active persistent menu (dismissOnOutsideClick = false)
         this.activePersistentMenu = null;
@@ -1169,6 +1170,47 @@ export class CGuiMenuBar {
         this.hideEmpty();
     }
 
+    // Hide all non-bar menus (floating, sidebar-docked) for overlay modes like the sitch browser.
+    // Menus opened from the menu bar while in this mode will still appear on top.
+    hideNonBarMenus() {
+        this._hiddenForOverlay = [];
+        this.browserMode = true;
+        for (const gui of this.slots) {
+            if (!gui) continue;
+            const mode = gui.mode;
+            if (mode === "DETACHED" || mode === "SIDEBAR_LEFT" || mode === "SIDEBAR_RIGHT" || mode === "SIDEBAR_CENTER") {
+                const el = gui.domElement;
+                if (el && el.style.display !== "none") {
+                    this._hiddenForOverlay.push({ el, display: el.style.display });
+                    el.style.display = "none";
+                }
+            }
+            // Close any open docked menus
+            if (mode === "DOCKED" && !gui._closed) {
+                gui.close();
+            }
+        }
+        // Also hide sidebars themselves
+        for (const fn of [getLeftSidebar, getRightSidebar, getCenterSidebar]) {
+            const sb = fn();
+            if (sb && sb.style.display !== "none") {
+                this._hiddenForOverlay.push({ el: sb, display: sb.style.display });
+                sb.style.display = "none";
+            }
+        }
+    }
+
+    // Restore menus hidden by hideNonBarMenus
+    restoreNonBarMenus() {
+        this.browserMode = false;
+        if (!this._hiddenForOverlay) return;
+        for (const entry of this._hiddenForOverlay) {
+            const el = entry.el ?? entry.gui?.domElement?.parentElement;
+            if (el) el.style.display = entry.display || "";
+        }
+        this._hiddenForOverlay = null;
+    }
+
     // Check if a GUI folder has any visible content (recursively)
     _hasVisibleContent(gui) {
         if (!gui) return false;
@@ -1522,6 +1564,9 @@ export class CGuiMenuBar {
         this.menuBar.scrollTop = 0;
 
         this.bringToFront(newGUI);
+
+        // In browser mode, allow click-to-open but prevent dragging/undocking
+        if (this.browserMode) return;
 
         const newDiv = this.divs.find((div) => div === newGUI.domElement.parentElement);
 

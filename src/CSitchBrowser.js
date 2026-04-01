@@ -6,7 +6,7 @@
  * Right-click context menu with label checkboxes.
  */
 import {isAdmin, SITREC_APP, SITREC_SERVER} from "./configUtils";
-import {getEffectiveUserID, setNewSitchObject, SitchMan, withTestUser} from "./Globals";
+import {getEffectiveUserID, Globals, setNewSitchObject, SitchMan, withTestUser} from "./Globals";
 import {DragDropHandler} from "./DragDropHandler";
 
 const LABEL_COLORS = [
@@ -358,6 +358,9 @@ export class CSitchBrowser {
         if (this.overlay) this.close();
         this.selectedKey = null;
         this.selection.clear();
+
+        // Hide floating/sidebar menus so they don't overlap the browser
+        Globals.menuBar?.hideNonBarMenus();
 
         const overlay = document.createElement("div");
         this.overlay = overlay;
@@ -2017,5 +2020,6 @@ export class CSitchBrowser {
         this._hideContextMenu();
         if (this.overlay) { document.body.removeChild(this.overlay); this.overlay = null; }
         if (this._keyHandler) { document.removeEventListener("keydown", this._keyHandler); this._keyHandler = null; }
+        Globals.menuBar?.restoreNonBarMenus();
     }
 }
