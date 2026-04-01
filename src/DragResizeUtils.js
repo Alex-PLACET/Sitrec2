@@ -26,6 +26,10 @@ export let isViewDragging = false;
 // Snap distance in pixels
 const SNAP_DISTANCE = 10;
 
+// Resize handle thickness in pixels
+const HANDLE_SIZE = 10;
+const HANDLE_HALF = HANDLE_SIZE / 2;
+
 // Border highlight color when drag key is held
 const DRAG_BORDER_COLOR = 'rgba(100, 150, 255, 0.6)';
 
@@ -254,6 +258,82 @@ function calculateResizeSnap(left, top, width, height, dir, excludeView) {
 }
 
 /**
+ * Adjusts resize handle positions for all views so that handles straddle
+ * the edge by default, but shrink to inside-only when an adjacent window's
+ * edge (or the screen boundary) is within HANDLE_SIZE pixels. This prevents
+ * overlapping grab zones between neighbouring panels.
+ */
+export function updateAllHandlePositions() {
+    // Collect visible views that have resize handles
+    const views = [];
+    ViewMan.iterate((id, view) => {
+        if (view.div && view.div._resizeHandles && view.visible) {
+            views.push(view);
+        }
+    });
+
+    const screenRight = ViewMan.widthPx;
+    const screenBottom = ViewMan.heightPx;
+
+    for (const view of views) {
+        const handles = view.div._resizeHandles;
+        const L = view.leftPx;
+        const T = view.topPx;
+        const R = L + view.widthPx;
+        const B = T + view.heightPx;
+
+        // Start assuming no neighbour conflict (straddle the edge)
+        let northInside = false;
+        let eastInside = false;
+        let southInside = false;
+        let westInside = false;
+
+        // Screen edges: shrink inward if flush with viewport boundary
+        if (L < HANDLE_HALF) westInside = true;
+        if (T < HANDLE_HALF) northInside = true;
+        if (screenRight - R < HANDLE_HALF) eastInside = true;
+        if (screenBottom - B < HANDLE_HALF) southInside = true;
+
+        // Neighbouring views: shrink inward if opposing edges are close
+        for (const other of views) {
+            if (other === view) continue;
+            const oL = other.leftPx;
+            const oT = other.topPx;
+            const oR = oL + other.widthPx;
+            const oB = oT + other.heightPx;
+
+            // Only consider neighbours that share vertical/horizontal extent
+            const vOverlap = T < oB && oT < B;
+            const hOverlap = L < oR && oL < R;
+
+            if (vOverlap) {
+                if (Math.abs(R - oL) < HANDLE_SIZE) eastInside = true;
+                if (Math.abs(L - oR) < HANDLE_SIZE) westInside = true;
+            }
+            if (hOverlap) {
+                if (Math.abs(B - oT) < HANDLE_SIZE) southInside = true;
+                if (Math.abs(T - oB) < HANDLE_SIZE) northInside = true;
+            }
+        }
+
+        // Apply offsets: 0 = inside-only, -HANDLE_HALF = straddling edge
+        const nOff = northInside ? '0px' : `-${HANDLE_HALF}px`;
+        const eOff = eastInside  ? '0px' : `-${HANDLE_HALF}px`;
+        const sOff = southInside ? '0px' : `-${HANDLE_HALF}px`;
+        const wOff = westInside  ? '0px' : `-${HANDLE_HALF}px`;
+
+        if (handles.n)  handles.n.style.top    = nOff;
+        if (handles.e)  handles.e.style.right   = eOff;
+        if (handles.s)  handles.s.style.bottom  = sOff;
+        if (handles.w)  handles.w.style.left    = wOff;
+        if (handles.ne) { handles.ne.style.top   = nOff; handles.ne.style.right  = eOff; }
+        if (handles.se) { handles.se.style.bottom = sOff; handles.se.style.right  = eOff; }
+        if (handles.sw) { handles.sw.style.bottom = sOff; handles.sw.style.left   = wOff; }
+        if (handles.nw) { handles.nw.style.top   = nOff; handles.nw.style.left   = wOff; }
+    }
+}
+
+/**
  * Makes an element draggable
  * @param {HTMLElement} element - The element to make draggable
  * @param {Object} options - Configuration options
@@ -446,11 +526,14 @@ export function makeDraggable(element, options = {}) {
             });
         }
         
+        // Recompute handle positions for all views after a drag
+        updateAllHandlePositions();
+
         // Remove global event listeners
         document.removeEventListener('pointermove', onPointerMove);
         document.removeEventListener('pointerup', onPointerUp);
     };
-    
+
     // Add event listener to handle using pointerdown for better off-screen support
     handleElement.addEventListener('pointerdown', onPointerDown);
     
@@ -524,58 +607,57 @@ export function makeResizable(element, options = {}) {
             }
         });
         
-        // Position the handle
+        // Position handles straddling the edge (macOS-style) so they
+        // don't overlap scrollbars or content inside the panel.
+        // updateAllHandlePositions() will later adjust these inward
+        // where adjacent windows' handles would overlap.
         switch (dir) {
             case 'n':
-                handle.style.top = '0px';
-                handle.style.left = '50%';
-                handle.style.transform = 'translateX(-50%)';
+                handle.style.top = `-${HANDLE_HALF}px`;
+                handle.style.left = '0px';
                 handle.style.cursor = 'n-resize';
                 handle.style.width = '100%';
-                handle.style.height = '10px';
+                handle.style.height = `${HANDLE_SIZE}px`;
                 break;
             case 'e':
-                handle.style.top = '50%';
-                handle.style.right = '0px';
-                handle.style.transform = 'translateY(-50%)';
+                handle.style.top = '0px';
+                handle.style.right = `-${HANDLE_HALF}px`;
                 handle.style.cursor = 'e-resize';
-                handle.style.width = '10px';
+                handle.style.width = `${HANDLE_SIZE}px`;
                 handle.style.height = '100%';
                 break;
             case 's':
-                handle.style.bottom = '0px';
-                handle.style.left = '50%';
-                handle.style.transform = 'translateX(-50%)';
+                handle.style.bottom = `-${HANDLE_HALF}px`;
+                handle.style.left = '0px';
                 handle.style.cursor = 's-resize';
                 handle.style.width = '100%';
-                handle.style.height = '10px';
+                handle.style.height = `${HANDLE_SIZE}px`;
                 break;
             case 'w':
-                handle.style.top = '50%';
-                handle.style.left = '0px';
-                handle.style.transform = 'translateY(-50%)';
+                handle.style.top = '0px';
+                handle.style.left = `-${HANDLE_HALF}px`;
                 handle.style.cursor = 'w-resize';
-                handle.style.width = '10px';
+                handle.style.width = `${HANDLE_SIZE}px`;
                 handle.style.height = '100%';
                 break;
             case 'ne':
-                handle.style.top = '0px';
-                handle.style.right = '0px';
+                handle.style.top = `-${HANDLE_HALF}px`;
+                handle.style.right = `-${HANDLE_HALF}px`;
                 handle.style.cursor = 'ne-resize';
                 break;
             case 'se':
-                handle.style.bottom = '0px';
-                handle.style.right = '0px';
+                handle.style.bottom = `-${HANDLE_HALF}px`;
+                handle.style.right = `-${HANDLE_HALF}px`;
                 handle.style.cursor = 'se-resize';
                 break;
             case 'sw':
-                handle.style.bottom = '0px';
-                handle.style.left = '0px';
+                handle.style.bottom = `-${HANDLE_HALF}px`;
+                handle.style.left = `-${HANDLE_HALF}px`;
                 handle.style.cursor = 'sw-resize';
                 break;
             case 'nw':
-                handle.style.top = '0px';
-                handle.style.left = '0px';
+                handle.style.top = `-${HANDLE_HALF}px`;
+                handle.style.left = `-${HANDLE_HALF}px`;
                 handle.style.cursor = 'nw-resize';
                 break;
         }
@@ -777,10 +859,13 @@ export function makeResizable(element, options = {}) {
                 });
             }
             
+            // Recompute handle positions for all views after a resize
+            updateAllHandlePositions();
+
             document.removeEventListener('pointermove', onPointerMove);
             document.removeEventListener('pointerup', onPointerUp);
         };
-        
+
         handle.addEventListener('pointerdown', onPointerDown);
         handle._resizeCleanup = () => {
             handle.removeEventListener('pointerdown', onPointerDown);

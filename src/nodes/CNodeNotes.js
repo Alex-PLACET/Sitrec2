@@ -19,7 +19,6 @@ class CNodeNotes extends CNodeView {
         this.div.id = 'notes-view-' + v.id;
         this.div.style.backgroundColor = '#222';
         this.div.style.borderRadius = '8px';
-        this.div.style.overflow = 'hidden';
 
         this.createTab();
         this.createTextArea();
@@ -57,6 +56,7 @@ class CNodeNotes extends CNodeView {
             color: #eee;
             border-bottom: 1px solid #444;
             cursor: move;
+            border-radius: 8px 8px 0 0;
         `;
         this.tab = tab;
         this.div.appendChild(tab);
@@ -94,6 +94,7 @@ class CNodeNotes extends CNodeView {
             color: #eee;
             border: none;
             outline: none;
+            border-radius: 0 0 8px 8px;
         `;
         this.textArea.value = this.notesText;
         this.textArea.placeholder = "Enter your notes here...";
@@ -127,6 +128,7 @@ class CNodeNotes extends CNodeView {
             overflow-y: auto;
             white-space: pre-wrap;
             word-wrap: break-word;
+            border-radius: 0 0 8px 8px;
         `;
         this.div.appendChild(this.linkOverlay);
     }
@@ -178,6 +180,15 @@ class CNodeNotes extends CNodeView {
                 this.textArea.focus();
             }
         });
+    }
+
+    setBorderRadius(r) {
+        this.div.style.borderRadius = r;
+        const topR = r === '0' ? '0' : `${r} ${r} 0 0`;
+        const botR = r === '0' ? '0' : `0 0 ${r} ${r}`;
+        this.tab.style.borderRadius = topR;
+        this.textArea.style.borderRadius = botR;
+        this.linkOverlay.style.borderRadius = botR;
     }
 
     showTextArea() {
@@ -238,7 +249,7 @@ class CNodeNotes extends CNodeView {
         this.height = 1;
         this.updateWH();
         
-        this.div.style.borderRadius = '0';
+        this.setBorderRadius('0');
         this.dockedMode = true;
         this.show(true);
     }
@@ -303,7 +314,7 @@ class CNodeNotes extends CNodeView {
         console.log(`hide: dockedMode=${this.dockedMode}, visible=${this.visible}`);
         if (this.dockedMode) {
             this.restoreViewPositions();
-            this.div.style.borderRadius = '8px';
+            this.setBorderRadius('8px');
         }
         super.hide();
     }
