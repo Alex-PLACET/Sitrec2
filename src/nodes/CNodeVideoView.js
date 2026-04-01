@@ -53,7 +53,7 @@ import {
     getBestFormatForResolution,
     getVideoExtension
 } from "../VideoExporter";
-import {applyImportedImageMetadata} from "../EXIFUtils";
+import {applyImportedImageMetadata, extractJPEGImportMetadata} from "../EXIFUtils";
 import {EXIFInfoPanel} from "../EXIFInfoPanel";
 import {isResolvableSitrecReference, resolveURLForFetch} from "../SitrecObjectResolver";
 
@@ -233,8 +233,15 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'].includes(fileExt)) {
             console.log(`[VideoNew] Detected image file for video[${videoIndex}]`);
             const { FileManager } = require("../Globals");
-            FileManager.loadAsset(fileName).then(result => {
-                this.makeImageVideo(fileName, result.parsed);
+            FileManager.loadAsset(fileName).then(async (result) => {
+                const fileEntry = FileManager.list[fileName];
+                const importMetadata = fileEntry?.original
+                    ? await extractJPEGImportMetadata(fileEntry.original, fileName).catch(err => {
+                        console.warn(`[EXIF] Failed to parse metadata for ${fileName}:`, err);
+                        return null;
+                    })
+                    : null;
+                this.makeImageVideo(fileName, result.parsed, false, undefined, importMetadata, true);
                 this.staticURL = fileName;
             }).catch(err => {
                 console.error(`[VideoNew] Error loading image as video: ${fileName}`, err);
@@ -373,6 +380,17 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
 
         // Setup/update rotation dropdown now that video is loaded
         this.setupRotationDropdown();
+
+        // Apply EXIF metadata if present and not yet applied (single convergence point
+        // for drag-drop, newVideo, and importMedia paths)
+        const importMeta = videoData?.importMetadata;
+        if (importMeta && !importMeta.applied) {
+            importMeta.applied = applyImportedImageMetadata(
+                importMeta,
+                this.fileName ?? videoData?.filename ?? ""
+            );
+        }
+
         this.updateEXIFPositionButton();
         this.updateEXIFInfoButton();
 

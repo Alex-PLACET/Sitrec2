@@ -11,7 +11,7 @@ import {MP4_DEMUXER_EXTENSIONS, WEBAUDIO_SUPPORTED_EXTENSIONS} from "./AudioForm
 import {ViewMan} from "./CViewManager";
 import {quickFetch} from "./quickFetch";
 import {convertTiffBufferToBlobURL} from "./TIFFUtils";
-import {applyImportedImageMetadata, extractJPEGImportMetadata} from "./EXIFUtils";
+import {extractJPEGImportMetadata} from "./EXIFUtils";
 
 // Image file extensions
 const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'jp2', 'j2k', 'jpx', 'jpc', 'j2c'];
@@ -400,9 +400,6 @@ class CDragDropHandler {
             const img = await decodeJPEG2000ToImage(arrayBuffer);
             videoNode.makeImageVideo(file.name, img, false, file.name, importMetadata, true);
             videoNode.imageFileID = file.name;
-            if (importMetadata) {
-                importMetadata.applied = applyImportedImageMetadata(importMetadata, file.name);
-            }
             console.log(`Loaded J2K image "${file.name}" as video source (${img.width}x${img.height})`);
             markSitchDirty();
             return;
@@ -420,9 +417,6 @@ class CDragDropHandler {
             img.onload = () => {
                 videoNode.makeImageVideo(file.name, img, false, file.name, importMetadata, true);
                 videoNode.imageFileID = file.name;
-                if (importMetadata) {
-                    importMetadata.applied = applyImportedImageMetadata(importMetadata, file.name);
-                }
                 console.log(`Loaded image "${file.name}" as video source (${img.width}x${img.height})`);
                 markSitchDirty();
                 resolve();
