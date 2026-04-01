@@ -20,6 +20,7 @@ class CNodeTabbedCanvasView extends CNodeViewCanvas2D {
         menuContainer.style.left = '0px';
         menuContainer.style.top = '0px';
         menuContainer.style.zIndex = '1000';
+        menuContainer.style.pointerEvents = 'none';
         this.div.appendChild(menuContainer);
 
         this.tabMenu = new GUI({
@@ -29,6 +30,7 @@ class CNodeTabbedCanvasView extends CNodeViewCanvas2D {
             closeFolders: false
         });
         this.tabMenu.domElement.style.position = 'relative';
+        this.tabMenu.domElement.style.pointerEvents = 'auto';
 
         const closeObj = {
             close: () => {

@@ -991,7 +991,7 @@ export class CNode3DObject extends CNode3DGroup {
         return {position: this.group.position.clone()};
     }
 
-    show(visible) {
+    show(visible=true) {
         super.show(visible);
         if (this.label !== undefined) {
             this.label.show(visible)

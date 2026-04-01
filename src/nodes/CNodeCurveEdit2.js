@@ -2,6 +2,7 @@ import {CNodeTrack} from "./CNodeTrack";
 import {NodeMan, setRenderOne, Sit, UndoManager} from "../Globals";
 import {par} from "../par";
 import {CNodeTabbedCanvasView} from "./CNodeTabbedCanvasView";
+import {assert} from "../assert";
 
 export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
     constructor(v) {
@@ -32,6 +33,7 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
         this.isDraggingFrame = false;
         this.isDraggingAFrame = false;
         this.isDraggingBFrame = false;
+        this.isDraggingWindow = false;
         this.lastMouseX = 0;
         this.lastMouseY = 0;
         this.stateBeforeDrag = null;
@@ -419,6 +421,19 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
                 return;
             }
         }
+
+        // Click in the margin area (outside graph, not on any element):
+        // start a window drag.
+        if (!this.isInsideGraphArea(x, y)) {
+            e.preventDefault();
+            e.stopPropagation();
+            this.isDragging = true;
+            this.isDraggingWindow = true;
+            this.lastMouseX = e.clientX;
+            this.lastMouseY = e.clientY;
+            document.addEventListener('pointermove', this.documentMoveHandler);
+            document.addEventListener('pointerup', this.documentUpHandler);
+        }
     }
     
     onMouseMove(e) {
@@ -623,11 +638,23 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
             if (this.onChange) {
                 this.onChange();
             }
+        } else if (this.isDragging && this.isDraggingWindow) {
+            e.preventDefault();
+            e.stopPropagation();
+            this.canvas.style.cursor = 'move';
+            const deltaX = e.clientX - this.lastMouseX;
+            const deltaY = e.clientY - this.lastMouseY;
+            const currentLeft = parseInt(this.div.style.left || 0);
+            const currentTop = parseInt(this.div.style.top || 0);
+            this.div.style.left = (currentLeft + deltaX) + 'px';
+            this.div.style.top = (currentTop + deltaY) + 'px';
+            this.lastMouseX = e.clientX;
+            this.lastMouseY = e.clientY;
         } else {
             this.updateCursor(x, y);
         }
     }
-    
+
     onMouseUp(e) {
         if (this.isDragging) {
             e.preventDefault();
@@ -659,6 +686,7 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
         }
         
         this.isDragging = false;
+        this.isDraggingWindow = false;
         this.draggedPointIndex = null;
         this.draggedLineIndex = null;
         this.isDraggingLine = false;
@@ -908,6 +936,29 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
         return this.points.filter(p => p.x < Sit.frames);
     }
     
+    show(visible=true) {
+        if (visible) {
+            this.replaceDefaultSentinel();
+        }
+        super.show(visible);
+    }
+
+    replaceDefaultSentinel() {
+        if (this.points.length === 1 && this.points[0].x === 99 && this.points[0].y === 99) {
+            const currentFrame = Math.floor(par.frame);
+            let currentFOV = 30;
+            const lookView = NodeMan.get("lookView", false);
+            if (lookView && lookView.camera) {
+                currentFOV = lookView.camera.fov;
+            }
+            currentFOV = Math.round(currentFOV * 10) / 10;
+            this.points = [{x: currentFrame, y: currentFOV}];
+            if (this.onChange) {
+                this.onChange();
+            }
+        }
+    }
+
     setPoints(points) {
         this.points = points;
     }
@@ -1048,29 +1099,46 @@ export class CNodeOSDGraphView extends CNodeCurveEditorView2 {
     onMouseDown(e) {
         if (this.isFrameX) return;
         const crosshair = this.getCrosshairScreenPos();
-        if (!crosshair) return;
         const rect = this.canvas.getBoundingClientRect();
         const mx = e.clientX - rect.left;
         const my = e.clientY - rect.top;
-        const threshold = 8;
-        const nearV = Math.abs(mx - crosshair.x) < threshold;
-        const nearH = Math.abs(my - crosshair.y) < threshold;
-        if (nearH || nearV) {
-            this._draggingAxis = nearH ? 'h' : 'v';
-            this.canvas.setPointerCapture(e.pointerId);
-            e.stopPropagation();
+        if (crosshair) {
+            const threshold = 8;
+            const nearV = Math.abs(mx - crosshair.x) < threshold;
+            const nearH = Math.abs(my - crosshair.y) < threshold;
+            if (nearH || nearV) {
+                this._draggingAxis = nearH ? 'h' : 'v';
+                this.canvas.setPointerCapture(e.pointerId);
+                e.stopPropagation();
+                e.preventDefault();
+                return;
+            }
+        }
+
+        // Click in margin area: start window drag
+        if (!this.isInsideGraphArea(mx, my)) {
             e.preventDefault();
+            e.stopPropagation();
+            this.isDragging = true;
+            this.isDraggingWindow = true;
+            this.lastMouseX = e.clientX;
+            this.lastMouseY = e.clientY;
+            document.addEventListener('pointermove', this.documentMoveHandler);
+            document.addEventListener('pointerup', this.documentUpHandler);
         }
     }
 
     onMouseMove(e) {
-        if (!this._draggingAxis) return;
-        const rect = this.canvas.getBoundingClientRect();
-        const mx = e.clientX - rect.left;
-        const my = e.clientY - rect.top;
-        this.snapToNearestByAxis(mx, my, this._draggingAxis);
-        e.stopPropagation();
-        e.preventDefault();
+        if (this._draggingAxis) {
+            const rect = this.canvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+            this.snapToNearestByAxis(mx, my, this._draggingAxis);
+            e.stopPropagation();
+            e.preventDefault();
+            return;
+        }
+        super.onMouseMove(e);
     }
 
     onMouseUp(e) {
@@ -1079,7 +1147,9 @@ export class CNodeOSDGraphView extends CNodeCurveEditorView2 {
             this.canvas.releasePointerCapture(e.pointerId);
             e.stopPropagation();
             e.preventDefault();
+            return;
         }
+        super.onMouseUp(e);
     }
 
     setSeries(series) {
@@ -1490,7 +1560,7 @@ export class CNodeCurveEditor2 extends CNodeTrack {
         }
     }
     
-    show(visible) {
+    show(visible=true) {
         super.show(visible);
         if (this.editorView) {
             this.editorView.show(visible);

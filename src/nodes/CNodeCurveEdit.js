@@ -187,7 +187,7 @@ export class CNodeCurveEditor extends CNode {
         }
     }
 
-    show(visible) {
+    show(visible=true) {
         super.show(visible);
         if (this.editorView) {
             this.editorView.show(visible);

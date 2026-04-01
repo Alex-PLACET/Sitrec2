@@ -59,7 +59,7 @@ export class CNode3DGroup extends CNode3D {
         return this._object;
     }
 
-    show(visible) {
+    show(visible=true) {
         super.show(visible);
         this.group.visible = visible
     }

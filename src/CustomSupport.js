@@ -980,7 +980,7 @@ export class CCustomManager {
                             useRegression: true,
                             minX: 0, maxX: "Sit.frames", minY: 0, maxY: 40,
                             xLabel: "Frame", xStep: 1, yLabel: "FOV", yStep: 5,
-                            points: [0, 30, 100, 30, 400, 30, 900, 30]
+                            points: [99, 99]
                         },
                         frames: -1, // -1 will inherit from Sit.frames
                     },

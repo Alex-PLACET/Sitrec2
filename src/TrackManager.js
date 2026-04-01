@@ -173,7 +173,7 @@ class CMetaTrack {
     }
 
 
-    show(visible) {
+    show(visible=true) {
 
         if (this.displayCenterDataNode) {
             this.displayCenterDataNode.show(visible);
