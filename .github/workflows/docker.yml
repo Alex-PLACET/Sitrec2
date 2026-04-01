@@ -276,8 +276,21 @@ jobs:
               "${SOURCE_ARM64}"
           done
 
-      - name: Clean up build tags
+      - name: Clean up per-arch build tags
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # The per-arch build tags are no longer needed
-          # They'll expire naturally, but we can delete them via the API
-          echo "Per-arch images pushed. Manifest tags created."
+          PKG="${IMAGE_NAME_LC##*/}"
+          for SUFFIX in amd64 arm64; do
+            TAG="build-${SUFFIX}-${GITHUB_SHA}"
+            echo "Deleting tag: ${TAG}"
+            # Find the version ID for this tag
+            VID=$(gh api "/user/packages/container/${PKG}/versions" \
+              --paginate --jq ".[] | select(.metadata.container.tags[] == \"${TAG}\") | .id")
+            if [ -n "$VID" ]; then
+              gh api --method DELETE "/user/packages/container/${PKG}/versions/${VID}"
+              echo "Deleted version ${VID} (${TAG})"
+            else
+              echo "Warning: could not find version for tag ${TAG}"
+            fi
+          done
