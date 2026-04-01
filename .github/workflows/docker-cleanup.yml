@@ -1,0 +1,22 @@
+name: Cleanup container images
+
+# Delete old untagged GHCR versions (orphaned digests from multi-arch builds).
+# Runs weekly and can be triggered manually.
+
+on:
+  schedule:
+    - cron: '0 3 * * 0'  # Sunday 3am UTC
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - uses: actions/delete-package-versions@v5
+        with:
+          package-name: 'sitrec2'
+          package-type: 'container'
+          min-versions-to-keep: 10
+          delete-only-untagged-versions: 'true'
