@@ -225,7 +225,7 @@ describe('applyImportedImageMetadata', () => {
         mockIntersectSurface.mockReturnValue(new Vector3(11, 22, 333));
     });
 
-    test('applies EXIF placement, time, frustum target, and view layout through repo nodes', () => {
+    test('applies EXIF placement, time, and view layout through repo nodes', () => {
         const metadata = {
             camera: {make: 'DJI'},
             capture: {date: '2024-05-01T12:34:56.000Z'},
@@ -256,11 +256,6 @@ describe('applyImportedImageMetadata', () => {
         expect(ptzAngles.el).toBe(-12.3);
         expect(ptzAngles.roll).toBeCloseTo(5.6, 5);
         expect(ptzAngles.fov).toBe(42.5);
-        expect(mockTargetSetLLA).toHaveBeenCalledWith(11, 22, 303);
-        expect(ECEFToLLAVD_radii).toHaveBeenCalledWith(new Vector3(11, 22, 333));
-        expect(mainView.controls.target).toEqual(new Vector3(11, 22, 333));
-        expect(mainView.controls.targetIsTerrain).toBe(true);
-        expect(mainView.focusTrackName).toBe('targetTrackSwitchSmooth');
         expect(mockUpdateViewFromPreset).toHaveBeenCalledTimes(3);
         expect(mockUpdateViewFromPreset).toHaveBeenNthCalledWith(1, 'mainView', expect.objectContaining({name: 'mainView'}));
         expect(mockUpdateViewFromPreset).toHaveBeenNthCalledWith(2, 'lookView', expect.objectContaining({name: 'lookView'}));
@@ -270,8 +265,6 @@ describe('applyImportedImageMetadata', () => {
         expect(mockSetRenderOne).toHaveBeenCalled();
         expect(applied).toEqual(expect.objectContaining({
             cameraPositionNode: 'fixedCameraPosition',
-            targetPositionNode: 'fixedTargetPositionWind',
-            focusTrack: 'targetTrackSwitchSmooth',
             viewLayout: 'mainView, lookView, video',
             verticalFov: '42.50 deg',
             heading: '123.4 deg',

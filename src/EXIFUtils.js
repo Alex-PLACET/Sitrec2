@@ -752,10 +752,6 @@ export function applyImportedImageMetadata(metadata, filename = "") {
         }
     }
 
-    Object.assign(applied, applyImportedImageFrustumTarget(metadata, cameraNode, filename, {
-        logResult: false,
-        render: false,
-    }) ?? {});
     Object.assign(applied, applyImportedImageViewLayout(filename, {
         logResult: false,
     }) ?? {});
