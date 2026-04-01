@@ -477,6 +477,7 @@ window.addEventListener("message", async (event) => {
     // Handle nonce initialization from content script (one-time handshake)
     if (event.data.source === "sitrec-bridge-init" && event.data.nonce && !bridgeNonce) {
         bridgeNonce = event.data.nonce;
+        console.log("[SitrecBridge:page] Nonce handshake complete, starting detection");
         startSitrecDetection();
         return;
     }
@@ -536,12 +537,26 @@ window.addEventListener("message", async (event) => {
 // is called from the message listener above).  Uses stronger checks than a bare
 // window.Sit existence test to prevent trivial spoofing.
 
-function isSitrecReal() {
+function isSitrecReal(log = false) {
     // Sitrec's ready marker — created by Sitrec's own initialization code
-    if (document.getElementById("sitrec-objects-ready")) return true;
+    const readyEl = document.getElementById("sitrec-objects-ready");
+    if (readyEl) {
+        if (log) console.log("[SitrecBridge:page] isSitrecReal: found #sitrec-objects-ready (data-ready=" + readyEl.dataset.ready + ")");
+        return true;
+    }
     // Core globals with expected internal structure (hard to convincingly fake)
     if (window.Sit && typeof window.Sit.name === "string" &&
-        window.NodeMan && typeof window.NodeMan.iterate === "function") return true;
+        window.NodeMan && typeof window.NodeMan.iterate === "function") {
+        if (log) console.log("[SitrecBridge:page] isSitrecReal: found Sit.name=" + window.Sit.name);
+        return true;
+    }
+    if (log) {
+        console.log("[SitrecBridge:page] isSitrecReal: NOT detected — "
+            + "Sit=" + !!window.Sit
+            + ", Sit.name=" + (window.Sit ? typeof window.Sit.name : "N/A")
+            + ", NodeMan=" + !!window.NodeMan
+            + ", #sitrec-objects-ready=" + !!readyEl);
+    }
     return false;
 }
 
@@ -552,16 +567,34 @@ function notifySitrecDetected() {
 }
 
 function startSitrecDetection() {
-    if (isSitrecReal()) {
+    console.log("[SitrecBridge:page] startSitrecDetection() — checking immediately...");
+    if (isSitrecReal(true)) {
         notifySitrecDetected();
     } else {
+        console.log("[SitrecBridge:page] Sitrec not ready yet, polling every 500ms (30s timeout)...");
+        let pollCount = 0;
         const detectInterval = setInterval(() => {
-            if (isSitrecReal()) {
+            pollCount++;
+            // Log every 5th poll (every 2.5s) to avoid spam
+            const shouldLog = (pollCount % 5 === 0);
+            if (shouldLog) {
+                console.log("[SitrecBridge:page] Detection poll #" + pollCount + " (" + (pollCount * 0.5) + "s)...");
+            }
+            if (isSitrecReal(shouldLog)) {
                 clearInterval(detectInterval);
+                console.log("[SitrecBridge:page] Sitrec detected after " + (pollCount * 0.5) + "s");
                 notifySitrecDetected();
             }
         }, 500);
         // Stop polling after 30 seconds — not a Sitrec page
-        setTimeout(() => clearInterval(detectInterval), 30000);
+        setTimeout(() => {
+            clearInterval(detectInterval);
+            if (!isSitrecReal(false)) {
+                console.warn("[SitrecBridge:page] Detection TIMED OUT after 30s — giving up. "
+                    + "Sit=" + !!window.Sit
+                    + ", NodeMan=" + !!window.NodeMan
+                    + ", #sitrec-objects-ready=" + !!document.getElementById("sitrec-objects-ready"));
+            }
+        }, 30000);
     }
 }

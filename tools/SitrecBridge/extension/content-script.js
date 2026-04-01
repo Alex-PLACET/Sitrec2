@@ -17,8 +17,12 @@ let bridgeNonce = null;
 
 // Inject the page-bridge script into the main world
 (function injectPageBridge() {
+    console.log("[SitrecBridge:content] Injecting page-bridge on", window.location.href);
     // Check if already injected
-    if (document.getElementById("sitrec-bridge-injected")) return;
+    if (document.getElementById("sitrec-bridge-injected")) {
+        console.log("[SitrecBridge:content] Already injected, skipping");
+        return;
+    }
 
     const marker = document.createElement("div");
     marker.id = "sitrec-bridge-injected";
@@ -32,7 +36,11 @@ let bridgeNonce = null;
     script.type = "module";
     // After the module evaluates and sets up its listener, send the nonce
     script.addEventListener("load", () => {
+        console.log("[SitrecBridge:content] page-bridge.js loaded, sending nonce");
         window.postMessage({ source: "sitrec-bridge-init", nonce: bridgeNonce }, "*");
+    });
+    script.addEventListener("error", (e) => {
+        console.error("[SitrecBridge:content] Failed to load page-bridge.js:", e);
     });
     document.documentElement.appendChild(script);
 })();
@@ -72,8 +80,12 @@ function openKeepalivePort() {
 window.addEventListener("message", (event) => {
     if (event.source !== window) return;
     if (event.data?.source === "sitrec-bridge-page" && event.data.type === "sitrec-detected") {
-        if (event.data.nonce !== bridgeNonce) return; // reject unverified messages
+        if (event.data.nonce !== bridgeNonce) {
+            console.warn("[SitrecBridge:content] sitrec-detected nonce mismatch — ignoring");
+            return;
+        }
         if (!sitrecDetected) {
+            console.log("[SitrecBridge:content] Sitrec detected, opening keepalive port");
             sitrecDetected = true;
             sitrecBuildDir = event.data.buildDir || null;
             openKeepalivePort();
