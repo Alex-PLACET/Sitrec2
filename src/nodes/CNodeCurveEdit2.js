@@ -40,6 +40,7 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
         this.dragStartLineP2 = null;
         this.lockAxis = null;
         this.snapToY = null;
+        this.snapToX = null;
         this.defaultSnap = config.defaultSnap ?? false;
         this.pushPointsHorizontally = false;
         
@@ -569,6 +570,7 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
             }
             
             this.snapToY = null;
+            this.snapToX = null;
             if (this.defaultSnap === e.shiftKey) {
                 const newScreen = this.graphToScreen(newX, newY);
                 for (let i = 0; i < this.points.length; i++) {
@@ -579,6 +581,15 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
                             this.snapToY = newY;
                             break;
                         }
+                    }
+                }
+                // Snap X to current frame
+                const currentFrame = Math.floor(par.frame);
+                if (currentFrame >= this.minX && currentFrame <= this.maxX) {
+                    const frameScreen = this.graphToScreen(currentFrame, newY);
+                    if (Math.abs(newScreen.x - frameScreen.x) < 4) {
+                        newX = currentFrame;
+                        this.snapToX = newX;
                     }
                 }
             }
@@ -659,7 +670,8 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
         this.dragStartLineP2 = null;
         this.lockAxis = null;
         this.snapToY = null;
-        
+        this.snapToX = null;
+
         const rect = this.canvas.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
@@ -783,61 +795,50 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
         ctx.fillText(this.yLabel, 0, 0);
         ctx.restore();
         
-        if (this.points.length > 1) {
-            const firstX = this.points[0].x;
-            const lastX = this.points[this.points.length - 1].x;
-            const step = (this.maxX - this.minX) / graphWidth;
-            
-            if (this.minX < firstX) {
-                ctx.strokeStyle = 'rgba(74, 170, 255, 0.5)';
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                let started = false;
-                for (let x = this.minX; x <= firstX; x += step) {
-                    const y = this.interpolateValue(x, this.points);
-                    const screen = this.graphToScreen(x, y);
-                    if (!started) {
-                        ctx.moveTo(screen.x, screen.y);
-                        started = true;
-                    } else {
-                        ctx.lineTo(screen.x, screen.y);
-                    }
-                }
-                const screen = this.graphToScreen(firstX, this.points[0].y);
-                ctx.lineTo(screen.x, screen.y);
-                ctx.stroke();
-            }
-            
+        // Use only active points (x < Sit.frames) for curve drawing;
+        // disabled points are rendered as faded dots but don't affect the curve.
+        const activePoints = this.getActivePoints();
+
+        if (activePoints.length >= 1) {
+            const firstX = activePoints[0].x;
+            const firstY = activePoints[0].y;
+            const lastX = activePoints[activePoints.length - 1].x;
+            const lastY = activePoints[activePoints.length - 1].y;
+
             ctx.strokeStyle = '#4af';
             ctx.lineWidth = 2;
             ctx.beginPath();
-            for (let i = 0; i < this.points.length; i++) {
-                const screen = this.graphToScreen(this.points[i].x, this.points[i].y);
-                if (i === 0) {
+
+            // Flat hold before first active point
+            if (this.minX < firstX) {
+                const s = this.graphToScreen(this.minX, firstY);
+                ctx.moveTo(s.x, s.y);
+                const e = this.graphToScreen(firstX, firstY);
+                ctx.lineTo(e.x, e.y);
+            }
+
+            // Active point segments
+            for (let i = 0; i < activePoints.length; i++) {
+                const screen = this.graphToScreen(activePoints[i].x, activePoints[i].y);
+                if (i === 0 && this.minX >= firstX) {
                     ctx.moveTo(screen.x, screen.y);
                 } else {
                     ctx.lineTo(screen.x, screen.y);
                 }
             }
-            ctx.stroke();
-            
+
+            // Flat hold after last active point
             if (this.maxX > lastX) {
-                ctx.strokeStyle = 'rgba(74, 170, 255, 0.5)';
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                const startScreen = this.graphToScreen(lastX, this.points[this.points.length - 1].y);
-                ctx.moveTo(startScreen.x, startScreen.y);
-                for (let x = lastX; x <= this.maxX; x += step) {
-                    const y = this.interpolateValue(x, this.points);
-                    const screen = this.graphToScreen(x, y);
-                    ctx.lineTo(screen.x, screen.y);
-                }
-                ctx.stroke();
+                const e = this.graphToScreen(this.maxX, lastY);
+                ctx.lineTo(e.x, e.y);
             }
+
+            ctx.stroke();
         }
-        
-        ctx.fillStyle = '#4af';
+
         for (let i = 0; i < this.points.length; i++) {
+            const disabled = this.points[i].x >= Sit.frames;
+            ctx.fillStyle = disabled ? 'rgba(74, 170, 255, 0.3)' : '#4af';
             const screen = this.graphToScreen(this.points[i].x, this.points[i].y);
             ctx.beginPath();
             ctx.arc(screen.x, screen.y, 5, 0, Math.PI * 2);
@@ -885,10 +886,26 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
             ctx.stroke();
             ctx.setLineDash([]);
         }
+
+        if (this.snapToX !== null) {
+            const snapScreen = this.graphToScreen(this.snapToX, this.minY);
+            ctx.strokeStyle = 'red';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(snapScreen.x, margin);
+            ctx.lineTo(snapScreen.x, height - margin);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
     }
     
     getPoints() {
         return this.points;
+    }
+
+    getActivePoints() {
+        return this.points.filter(p => p.x < Sit.frames);
     }
     
     setPoints(points) {
@@ -1403,11 +1420,29 @@ export class CNodeCurveEditor2 extends CNodeTrack {
     
     recalculate() {
         super.recalculate();
-        
-        const points = this.editorView.getPoints();
-        
+
+        const points = this.editorView.getActivePoints();
+
+        if (points.length === 0) {
+            this.array.fill(0);
+            return;
+        }
+
+        // Hold flat beyond the active point range instead of extrapolating,
+        // since disabled points beyond Sit.frames are excluded.
+        const firstY = points[0].y;
+        const lastY = points[points.length - 1].y;
+        const firstX = points[0].x;
+        const lastX = points[points.length - 1].x;
+
         for (let f = 0; f < this.frames; f++) {
-            this.array[f] = this.interpolateValue(f, points);
+            if (f < firstX) {
+                this.array[f] = firstY;
+            } else if (f > lastX) {
+                this.array[f] = lastY;
+            } else {
+                this.array[f] = this.interpolateValue(f, points);
+            }
         }
     }
     
@@ -1502,11 +1537,6 @@ export class CNodeCurveEditor2 extends CNodeTrack {
     }
     
     getValueFrame(f) {
-        let y = this.array[Math.floor(f)];
-        if (y < this.editorView.minY)
-            y = this.editorView.minY;
-        if (y > this.editorView.maxY)
-            y = this.editorView.maxY;
-        return y
+        return this.array[Math.floor(f)];
     }
 }
