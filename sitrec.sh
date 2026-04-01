@@ -110,7 +110,7 @@ for t in tags:
         # Find which version tag 'latest' points to by comparing manifest digests.
         # Uses HEAD requests for speed; only checks the 3 newest tags.
         LATEST_VERSION=""
-        ACCEPT_HDR="Accept: application/vnd.oci.image.index.v1+json"
+        ACCEPT_HDR="Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json"
         MANIFEST_URL="https://ghcr.io/v2/mickwest/sitrec2/manifests"
         LATEST_DIGEST=$(curl -sf -I -H "$AUTH_HDR" -H "$ACCEPT_HDR" \
             "$MANIFEST_URL/latest" 2>/dev/null \
@@ -134,34 +134,43 @@ for t in tags:
         # Show current version
         CURRENT=$(grep "image:" docker-compose.yml | sed "s|.*${IMAGE}:||" | tr -d ' ')
 
-        # When pinned to 'latest', resolve the actual locally-installed version
-        # by comparing the local image digest against remote tag digests.
+        # When pinned to 'latest', resolve the actual locally-installed version.
         LOCAL_VERSION=""
         if [ "$CURRENT" = "latest" ]; then
             case "$COMPOSE" in
                 docker*)  RUNTIME_CMD="docker" ;;
                 *)        RUNTIME_CMD="podman" ;;
             esac
-            LOCAL_DIGEST=$($RUNTIME_CMD image inspect "${IMAGE}:latest" \
-                --format '{{index .RepoDigests 0}}' 2>/dev/null \
-                | sed 's/.*@//' || true)
-            if [ -n "$LOCAL_DIGEST" ]; then
-                if [ -n "$LATEST_DIGEST" ] && [ "$LOCAL_DIGEST" = "$LATEST_DIGEST" ]; then
-                    LOCAL_VERSION="$LATEST_VERSION"
-                else
-                    # Local image differs from remote latest — check recent tags
-                    _lc=0
-                    while IFS= read -r _ltag; do
-                        [ $_lc -ge 10 ] && break
-                        _ld=$(curl -sf -I -H "$AUTH_HDR" -H "$ACCEPT_HDR" \
-                            "$MANIFEST_URL/$_ltag" 2>/dev/null \
-                            | grep -i docker-content-digest | awk '{print $2}' | tr -d '\r' || true)
-                        if [ "$_ld" = "$LOCAL_DIGEST" ]; then
-                            LOCAL_VERSION="$_ltag"
-                            break
-                        fi
-                        _lc=$((_lc + 1))
-                    done <<< "$TAGS"
+
+            # Method 1: Read the version label baked into the image by CI.
+            # The docker/metadata-action sets org.opencontainers.image.version.
+            LOCAL_VERSION=$($RUNTIME_CMD image inspect "${IMAGE}:latest" \
+                --format '{{index .Config.Labels "org.opencontainers.image.version"}}' 2>/dev/null || true)
+
+            # Method 2: Fall back to digest comparison against remote tags.
+            if [ -z "$LOCAL_VERSION" ] || [ "$LOCAL_VERSION" = "<no value>" ]; then
+                LOCAL_VERSION=""
+                LOCAL_DIGEST=$($RUNTIME_CMD image inspect "${IMAGE}:latest" \
+                    --format '{{index .RepoDigests 0}}' 2>/dev/null \
+                    | sed 's/.*@//' || true)
+                if [ -n "$LOCAL_DIGEST" ]; then
+                    MULTI_ACCEPT="Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json"
+                    if [ -n "$LATEST_DIGEST" ] && [ "$LOCAL_DIGEST" = "$LATEST_DIGEST" ]; then
+                        LOCAL_VERSION="$LATEST_VERSION"
+                    else
+                        _lc=0
+                        while IFS= read -r _ltag; do
+                            [ $_lc -ge 10 ] && break
+                            _ld=$(curl -sf -I -H "$AUTH_HDR" -H "$MULTI_ACCEPT" \
+                                "$MANIFEST_URL/$_ltag" 2>/dev/null \
+                                | grep -i docker-content-digest | awk '{print $2}' | tr -d '\r' || true)
+                            if [ "$_ld" = "$LOCAL_DIGEST" ]; then
+                                LOCAL_VERSION="$_ltag"
+                                break
+                            fi
+                            _lc=$((_lc + 1))
+                        done <<< "$TAGS"
+                    fi
                 fi
             fi
         fi
