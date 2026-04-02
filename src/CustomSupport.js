@@ -24,6 +24,7 @@
 // - Proper cleanup when mirrors are destroyed
 
 import {
+    addGUIFolder,
     FileManager,
     getEffectiveUserID,
     GlobalDateTimeNode,
@@ -39,8 +40,7 @@ import {
     TrackManager,
     UndoManager,
     Units,
-    withTestUser,
-    addGUIFolder
+    withTestUser
 } from "./Globals";
 import {isKeyHeld, toggler} from "./KeyBoardHandler";
 import {ECEFToLLAVD_radii, LLAToECEF} from "./LLA-ECEF-ENU";
@@ -84,7 +84,7 @@ import {collectActiveTrackSourceFileIDs, shouldSerializeLoadedFileEntry} from ".
 import {encodeShareParam, resolveURLForFetch, toShareableCustomValue} from "./SitrecObjectResolver";
 import {getEnvBool} from "./envUtils";
 import {CNodeFloodSim} from "./nodes/CNodeFloodSim";
-import {importSoundingDialog, getNearbyWeatherBalloons} from "./SondeFetch";
+import {getNearbyWeatherBalloons, importSoundingDialog} from "./SondeFetch";
 
 export class CCustomManager {
     constructor() {
@@ -3653,56 +3653,54 @@ export class CCustomManager {
             }
         }
 
-        // the custom sitch is a special case
-        // and allows dropped videos and other files
-        // (we might want to allow this for modded sitches too, later)
-        if (Sit.isCustom) {
-            // if there's a dropped video url
-            if (NodeMan.exists("video")) {
-                console.log("Exporting: Found video node")
-                const videoNode = NodeMan.get("video")
-                
-                // Serialize multiple videos if present
-                if (videoNode.videos && videoNode.videos.length > 0) {
-                    videoNode.updateCurrentVideoEntry();
-                    const videosToExport = videoNode.videos.map(entry => {
-                        const exported = {
-                            fileName: entry.fileName,
-                            isImage: entry.isImage || false
-                        };
-                        if (local && entry.localStaticURL) {
-                            exported.staticURL = entry.localStaticURL;
-                        } else if (entry.staticURL) {
-                            exported.staticURL = entry.staticURL;
-                        } else if (local && entry.fileName) {
-                            exported.staticURL = entry.fileName;
-                        }
-                        if (entry.imageFileID) {
-                            exported.imageFileID = entry.imageFileID;
-                        }
-                        return exported;
-                    });
-                    out.videos = videosToExport;
-                    out.currentVideoIndex = videoNode.currentVideoIndex;
-                    console.log("Exporting: videos array with", videosToExport.length, "entries");
-                } else if (local && videoNode.localStaticURL) {
-                    console.log("Exporting: LOCAL Found video node with localStaticURL = ", videoNode.localStaticURL)
-                    out.videoFile = videoNode.localStaticURL;
-                } else if (videoNode.staticURL) {
-                    // Fallback for legacy single video
-                    console.log("Exporting: Found video node with staticURL = ", videoNode.staticURL)
-                    out.videoFile = videoNode.staticURL;
-                } else {
-                    console.log("Exporting: Found video node, but no staticURL")
-                    if (local && videoNode.fileName) {
-                        console.log("Exporting: LOCAL Found video node with filename = ", videoNode.fileName)
-                        out.videoFile = videoNode.fileName;
-                    }
-                }
-            } else {
-                console.log("Exporting: No video node found")
-            }
+        // Serialize video state for any sitch with a video node
+        // (applies to both custom and modded sitches like the video viewer)
+        if (NodeMan.exists("video")) {
+            console.log("Exporting: Found video node")
+            const videoNode = NodeMan.get("video")
 
+            // Serialize multiple videos if present
+            if (videoNode.videos && videoNode.videos.length > 0) {
+                videoNode.updateCurrentVideoEntry();
+                const videosToExport = videoNode.videos.map(entry => {
+                    const exported = {
+                        fileName: entry.fileName,
+                        isImage: entry.isImage || false
+                    };
+                    if (local && entry.localStaticURL) {
+                        exported.staticURL = entry.localStaticURL;
+                    } else if (entry.staticURL) {
+                        exported.staticURL = entry.staticURL;
+                    } else if (local && entry.fileName) {
+                        exported.staticURL = entry.fileName;
+                    }
+                    if (entry.imageFileID) {
+                        exported.imageFileID = entry.imageFileID;
+                    }
+                    return exported;
+                });
+                out.videos = videosToExport;
+                out.currentVideoIndex = videoNode.currentVideoIndex;
+                console.log("Exporting: videos array with", videosToExport.length, "entries");
+            } else if (local && videoNode.localStaticURL) {
+                console.log("Exporting: LOCAL Found video node with localStaticURL = ", videoNode.localStaticURL)
+                out.videoFile = videoNode.localStaticURL;
+            } else if (videoNode.staticURL) {
+                // Fallback for legacy single video
+                console.log("Exporting: Found video node with staticURL = ", videoNode.staticURL)
+                out.videoFile = videoNode.staticURL;
+            } else {
+                console.log("Exporting: Found video node, but no staticURL")
+                if (local && videoNode.fileName) {
+                    console.log("Exporting: LOCAL Found video node with filename = ", videoNode.fileName)
+                    out.videoFile = videoNode.fileName;
+                }
+            }
+        } else {
+            console.log("Exporting: No video node found")
+        }
+
+        if (Sit.isCustom) {
 
             // modify the terrain model directly, as we don't want to load terrain twice
             // For a modded sitch this has probably not changed
@@ -4513,6 +4511,21 @@ export class CCustomManager {
             for (let key in sitchData.Sit) {
                 //console.log("Applying Sit "+key+" with value "+sitchData.Sit[key])
                 Sit[key] = sitchData.Sit[key];
+            }
+        }
+
+        // Restore video state for modded sitches.
+        // Custom sitches handle this during SituationSetup (pendingVideoRestore is already set).
+        // For modded sitches (e.g., saved video viewer), the video node exists but has no video.
+        if (sitchData.videos && sitchData.videos.length > 0 && NodeMan.exists("video")) {
+            const videoNode = NodeMan.get("video");
+            if (!videoNode.videoData && !videoNode.pendingVideoRestore) {
+                Globals.pendingActions++;
+                videoNode.pendingVideoRestore = {
+                    videos: sitchData.videos,
+                    targetIndex: sitchData.currentVideoIndex ?? 0
+                };
+                videoNode.loadVideoFromEntry(sitchData.videos[0]);
             }
         }
 
