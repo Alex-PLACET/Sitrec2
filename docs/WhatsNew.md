@@ -45,7 +45,120 @@ Example entry format:
 
 ---
 
-## Version 2.40.0 (unreleased)
+## Version 2.40.10 (2026-04-03)
+
+### Improvements
+- **Native Context Menu on DOM Elements**: Right-clicking on Notes, debug log, chatbot, lil-gui inputs, and context menu text now shows the browser's native context menu with copy/paste support
+- **Selectable Celestial Info**: Satellite and star context menu info (NORAD number, name, RA/DEC) is now selectable and copyable
+- **Ctrl+C/X/A on Mac**: Ctrl+C, Ctrl+X, and Ctrl+A now work as copy/cut/select-all (same as Cmd), including for users with swapped Ctrl/Cmd keys
+- **Video-Only Sitches**: Save and load video-only sitches (from SitVideo)
+
+### Bug Fixes
+- Fixed context menu showing satellites behind the Earth or far from the cursor; now uses screen-pixel distance (15px threshold) matching star/planet picking
+- Fixed Ctrl/Cmd+letter combos (e.g. Cmd+C) triggering camera/game-style keyboard shortcuts
+- Fixed right-clicking on lil-gui slider values starting an unintended drag when the context menu is dismissed
+- Fixed right-click on GUI tab/menu titles showing the browser context menu instead of acting like a regular click
+- Fixed "Zoom (fov)" display jumping to a wrong value when dragging altitude with the FOV Editor active
+- Fixed extra pending actions in the video load pipeline
+- Fixed sitrec.sh version detection when pinned to latest
+
+---
+
+## Version 2.40.9 (2026-04-01)
+
+### Improvements
+- **Curve Editor**: Margin drag, FOV sentinel value support, improved show() defaults, menu pointer fix
+- **Resize Handles**: Positioned on panel edges (macOS-style) to avoid scrollbar overlap
+
+### Bug Fixes
+- Fixed curve editor yMax clamping output; added frame snap and disabled out-of-range points
+
+---
+
+## Version 2.40.8 (2026-04-01)
+
+### Bug Fixes
+- Fixed curve editor OOM crash when window is very small
+- Fixed floating/sidebar menus not hiding when sitch browser is open
+- Consolidated panel event/drag handling with blockViewEvents() utility
+
+---
+
+## Version 2.40.7 (2026-03-31)
+
+### New Features
+- **Image Import with EXIF Support**: Import images directly with automatic EXIF metadata extraction (camera position, orientation, FOV)
+- **Stabilize Centers**: New option for auto tracking stabilization
+
+### Improvements
+- EXIF info panel no longer passes mouse/wheel events through to 3D views
+- Consolidated EXIF metadata application into loadedCallback
+- Serialized yMax in FOV editor (vertical range)
+
+### Bug Fixes
+- Fixed "Show Video Info" master toggle not hiding video info overlay
+- Fixed auto tracking serialization round-trip
+- Fixed Moon position using exact same angles across different code paths
+
+---
+
+## Version 2.40.6 (2026-03-31)
+
+### Improvements
+- **SitrecBridge Security Hardening**: Narrowed permissions, added nonce authentication, stronger detection
+- Wrapped render-path camera state restoration in try/finally for robustness
+
+---
+
+## Version 2.40.5 (2026-03-30)
+
+### New Features
+- **Video Pan & Zoom**: Pan and zoom in the video view with automatic lookView synchronization
+- **Video Adjustments Context Menu**: Right-click on video for quick access to adjustments
+- **Auto-Stretch 16-bit NITF Images**: Mono NITF images that underuse their bit range are automatically stretched
+
+### Improvements
+- Cached convolution filter results when image and parameters are unchanged
+- Used effective FOV and pan for terrain tile LOD evaluation
+- Raised default Max G to 10 for track loading/filtering
+
+### Bug Fixes
+- Fixed pixel-match zoom: split FOV zoom and pixel shader cleanly
+- Fixed lookView pan sync for pillarbox/letterbox aspect ratios
+- Fixed LOD camera prep to save/restore aspect and apply matchVideoAspect
+
+---
+
+## Version 2.40.4 (2026-03-30)
+
+### New Features
+- **Video Pan & Zoom**: Added pan and zoom to video view with lookView sync
+
+---
+
+## Version 2.40.3 (2026-03-29)
+
+### Improvements
+- NITF resize dialog now shown before tile decode instead of after
+
+---
+
+## Version 2.40.1 (2026-03-29)
+
+### New Features
+- **HeightMap Flood Simulation**: Grid-based shallow water simulation on terrain heightmaps with Manning friction, velocity advection, and CFL stability
+- **Free Terrain Map Sources**: Added fetch-based tile loader with additional free terrain map services
+
+### Improvements
+- MCP server: robust stale server detection and auto-kill on startup
+
+### Bug Fixes
+- Fixed USGS 3DEP elevation: concurrency limiting, caching, and tile alignment
+- Fixed numerical instability in flood simulation: velocity clamping, diffusion, advection blend
+
+---
+
+## Version 2.40.0 (2026-03-29)
 
 ### New Features
 - **TLE Merge/Replace on Import**: When importing TLE files with data already loaded, a dialog offers Merge, Merge All (sticky for batch), or Replace, with a detailed assessment of how the new data relates to the existing set and simulation date
