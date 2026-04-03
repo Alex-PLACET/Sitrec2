@@ -4520,7 +4520,6 @@ export class CCustomManager {
         if (sitchData.videos && sitchData.videos.length > 0 && NodeMan.exists("video")) {
             const videoNode = NodeMan.get("video");
             if (!videoNode.videoData && !videoNode.pendingVideoRestore) {
-                Globals.pendingActions++;
                 videoNode.pendingVideoRestore = {
                     videos: sitchData.videos,
                     targetIndex: sitchData.currentVideoIndex ?? 0
