@@ -2338,9 +2338,7 @@ function renderMain(elapsed) {
     // Profile overall frame
     if (globalProfiler) globalProfiler.push('#1f77b4', 'Frame');
 
-    // since we are no longer call the logic on very frame, we need to update the listeners here
-    // so that the GUI and other things can update
-    Globals.menuBar.updateListeners();
+    // GUI listener update moved below node update loop (see updateListeners call after node updates)
 
     // Update AR mode if enabled
     if (Globals.arMode) {
@@ -2476,6 +2474,10 @@ function renderMain(elapsed) {
 
         }
 
+
+        // Update GUI .listen() controllers after node updates so they display
+        // freshly-computed values (avoids one-frame stale reads, e.g. FOV jump)
+        Globals.menuBar.updateListeners();
 
         windowChanged();
         
