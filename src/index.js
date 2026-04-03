@@ -141,14 +141,15 @@ import {
 // Initialize debug log capture BEFORE any console output
 debugLog.init();
 
-// CRITICAL: Global context menu blocker - ensures system context menu NEVER appears
+// Global context menu blocker for 3D canvas views only
 // Uses capture mode (true) so it catches events before other listeners
-// This is a safety net to catch any contextmenu events that escape individual element listeners
+// Allows the native browser context menu (copy/paste) on DOM elements like
+// the Notes view, debug log, chatbot, and the custom context menu itself
 document.addEventListener('contextmenu', (event) => {
-    // ALWAYS block the system context menu
-    // The custom context menu system will show our menu in CMouseHandler/CNodeView3D
-    event.preventDefault();
-    event.stopPropagation();
+    if (event.target.tagName === 'CANVAS') {
+        event.preventDefault();
+        event.stopPropagation();
+    }
 }, { capture: true });
 
 // CRITICAL: Prevent pull-to-refresh on mobile browsers (especially Android)
