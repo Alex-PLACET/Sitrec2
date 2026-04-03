@@ -3,6 +3,7 @@ import {createVideoExporter, DefaultVideoFormat, getBestFormatForResolution, get
 import {drawVideoWatermark, ExportProgressWidget} from "../utils";
 import {drawAttributionOnCanvas} from "../AttributionOverlay";
 import {earthCenterECEF, XYZ2EA, XYZJ2PR} from "../SphericalMath";
+import {wgs84} from "../LLA-ECEF-ENU";
 import {raDec2Celestial} from "../CelestialMath";
 import {Frame2Az, Frame2El} from "../JetUtils";
 import {
@@ -62,7 +63,7 @@ import {getCameraNode} from "./CNodeCamera";
 import {CNode3DObject} from "./CNode3DObject";
 import {CNodeEffect} from "./CNodeEffect";
 import {assert} from "../assert";
-import {V3} from "../threeUtils";
+import {V3, intersectSphere2} from "../threeUtils";
 import {ACESFilmicToneMappingShader} from "../shaders/ACESFilmicToneMappingShader";
 import {ShaderPass} from "three/addons/postprocessing/ShaderPass.js";
 import {isLocal, SITREC_APP} from "../configUtils"
@@ -2737,34 +2738,54 @@ export class CNodeView3D extends CNodeViewCanvas {
             // Restore camera position temporarily for satellite picking
             this.camera.position.copy(savedCameraPos);
             this.camera.updateMatrixWorld();
-            
-            // Recompute ray direction with actual camera position
-            this.raycaster.setFromCamera(mouseRay, this.camera);
-            const satRayDirection = this.raycaster.ray.direction.clone();
-            
+
+            const globe = new Sphere(new Vector3(0, 0, 0), wgs84.POLAR_RADIUS);
+            const satRaycaster = new Raycaster();
+            const earthHit = new Vector3();
+            const containerOffsetX = ViewMan.screenOffsetX || 0;
+            const maxSatPixelDistance = 15;
+            let closestSatDistance = maxSatPixelDistance;
+
             for (const satData of nightSkyNode.TLEData.satData) {
                 if (!satData.visible || !satData.ecef) continue;
 
-                // Get satellite direction from actual camera position
                 const satPos = satData.ecef.clone();
-                const satDir = satPos.clone().sub(this.camera.position).normalize();
 
-                // Calculate angle between ray and satellite direction
-                const dot = satRayDirection.dot(satDir);
-                const angle = Math.acos(Math.max(-1, Math.min(1, dot))) * 180 / Math.PI;
+                // Project satellite position to screen
+                const projected = satPos.clone().project(this.camera);
 
-                if (angle < closestAngle) {
-                    closestAngle = angle;
-                    closestObject = {
-                        type: 'satellite',
-                        name: satData.name,
-                        number: satData.number,
-                        data: satData,
-                        angle: angle
-                    };
+                // Skip satellites behind the camera (outside NDC range)
+                if (projected.z < -1 || projected.z > 1) continue;
+
+                // Convert NDC to screen coordinates
+                const screenX = (projected.x + 1) * this.widthPx / 2 + this.leftPx + containerOffsetX;
+                const screenY = (-projected.y + 1) * this.heightPx / 2 + this.topPx;
+
+                const dx = screenX - mouseX;
+                const dy = screenY - mouseY;
+                const pixelDistance = Math.sqrt(dx * dx + dy * dy);
+
+                if (pixelDistance >= closestSatDistance) continue;
+
+                // Skip satellites occluded by the Earth (Earth hit is closer than the satellite)
+                const camToSat = satPos.clone().sub(this.camera.position);
+                const satDir = camToSat.clone().normalize();
+                satRaycaster.set(this.camera.position, satDir);
+                if (intersectSphere2(satRaycaster.ray, globe, earthHit)) {
+                    if (earthHit.distanceTo(this.camera.position) < camToSat.length()) continue;
                 }
+
+                closestSatDistance = pixelDistance;
+                closestObject = {
+                    type: 'satellite',
+                    name: satData.name,
+                    number: satData.number,
+                    data: satData,
+                    pixelDistance: pixelDistance,
+                    angle: pixelDistance
+                };
             }
-            
+
             // Move camera back to origin for remaining celestial object checks (stars)
             this.camera.position.set(0, 0, 0);
             this.camera.updateMatrixWorld();
