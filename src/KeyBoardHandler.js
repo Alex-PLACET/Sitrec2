@@ -302,6 +302,36 @@ export function initKeyboard() {
             return;
         }
 
+        // Handle undo/redo with Ctrl/Cmd modifiers
+        if (UndoManager) {
+            // Undo: Ctrl+Z or Cmd+Z
+            if ((e.ctrlKey || e.metaKey) && !e.shiftKey && keyCode === 'KeyZ') {
+                e.preventDefault();
+                UndoManager.undo();
+                return;
+            }
+
+            // Redo: Ctrl+Y or Cmd+Y or Ctrl+Shift+Z or Cmd+Shift+Z
+            if ((e.ctrlKey || e.metaKey) && (keyCode === 'KeyY' || (e.shiftKey && keyCode === 'KeyZ'))) {
+                e.preventDefault();
+                UndoManager.redo();
+                return;
+            }
+        }
+
+        // On Mac, Ctrl+C/X/A don't natively copy/cut/select-all (only Cmd does).
+        // Map Ctrl+C/X/A to their clipboard actions so both modifier keys work,
+        // which also covers users who have swapped Ctrl and Cmd in system settings.
+        if (e.ctrlKey && !e.metaKey) {
+            if (keyCode === 'KeyC') { document.execCommand('copy'); e.preventDefault(); return; }
+            if (keyCode === 'KeyX') { document.execCommand('cut'); e.preventDefault(); return; }
+            if (keyCode === 'KeyA') { document.execCommand('selectAll'); e.preventDefault(); return; }
+        }
+
+        // Don't intercept other Ctrl/Cmd combos (e.g. Cmd+C for copy, Cmd+V for paste)
+        // Let the browser handle them natively
+        if (e.ctrlKey || e.metaKey) return;
+
         KeyMan.handleKeyDown(e);
 
         EventManager.dispatchEvent("keydown", {key: key, keyCode: keyCode, event: e});
@@ -362,23 +392,6 @@ export function initKeyboard() {
 
                     c.lookAt(new Vector3(0, 0, 0));
                     break;
-            }
-        }
-
-        // Handle undo/redo with Ctrl/Cmd modifiers
-        if (UndoManager) {
-            // Undo: Ctrl+Z or Cmd+Z
-            if ((e.ctrlKey || e.metaKey) && !e.shiftKey && keyCode === 'KeyZ') {
-                e.preventDefault();
-                UndoManager.undo();
-                return;
-            }
-            
-            // Redo: Ctrl+Y or Cmd+Y or Ctrl+Shift+Z or Cmd+Shift+Z
-            if ((e.ctrlKey || e.metaKey) && (keyCode === 'KeyY' || (e.shiftKey && keyCode === 'KeyZ'))) {
-                e.preventDefault();
-                UndoManager.redo();
-                return;
             }
         }
 
