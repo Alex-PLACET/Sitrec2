@@ -2637,13 +2637,6 @@ export class CNodeView3D extends CNodeViewCanvas {
             }
         }
         
-        // Add distance information (how close to the click)
-        if (celestialObject.type === 'star') {
-            standaloneMenu.add({distance: celestialObject.pixelDistance.toFixed(1)}, 'distance').name('Distance (pixels)').listen().disable();
-        } else {
-            standaloneMenu.add({angle: celestialObject.angle.toFixed(3)}, 'angle').name('Angle (degrees)').listen().disable();
-        }
-        
         // Open the menu
         standaloneMenu.open();
     }
