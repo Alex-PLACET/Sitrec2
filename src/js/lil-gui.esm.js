@@ -1021,6 +1021,7 @@ class NumberController extends Controller {
         const DRAG_THRESH = 5;
 
         const onMouseDown = e => {
+            if (e.button === 2) return; // right-click opens context menu, not drag
 
             initClientX = prevClientX = e.clientX;
             initClientY = prevClientY = e.clientY;
@@ -2175,6 +2176,8 @@ class GUI {
         this.$title.addEventListener( 'mousedown', () => {
             this.openAnimated( this._closed )
         } );
+        // Right-click on title acts like a regular click (no browser context menu)
+        this.$title.addEventListener( 'contextmenu', e => e.preventDefault() );
         this.$title.addEventListener( 'keydown', e => {
             if ( e.code === 'Enter' || e.code === 'Space' ) {
                 e.preventDefault();

@@ -76,6 +76,7 @@ import {addAlignedGlobe} from "./Globe";
 import JSURL from "jsurl";
 import {configParams, localSituation} from "./runtimeConfig";
 import {
+    checkLocal,
     checkServerlessMode,
     isConsole,
     isLocal,
@@ -105,7 +106,6 @@ import {ViewMan} from "./CViewManager";
 import {glareSprite, targetSphere} from "./JetStuffVars";
 import {CCustomManager} from "./CustomSupport";
 import {EventManager} from "./CEventManager";
-import {checkLocal} from "./configUtils";
 import {CNodeView3D} from "./nodes/CNodeView3D";
 import {getApproximateLocationFromIP} from "./GeoLocation";
 import {LLAToECEF} from "./LLA-ECEF-ENU";
@@ -145,10 +145,26 @@ debugLog.init();
 // Uses capture mode (true) so it catches events before other listeners
 // Allows the native browser context menu (copy/paste) on DOM elements like
 // the Notes view, debug log, chatbot, and the custom context menu itself
+let contextMenuWasOpen = false;
 document.addEventListener('contextmenu', (event) => {
     if (event.target.tagName === 'CANVAS') {
         event.preventDefault();
         event.stopPropagation();
+    } else {
+        // Track that a native context menu was shown, so we can suppress
+        // the mousedown that dismisses it (prevents accidental slider drags)
+        contextMenuWasOpen = true;
+    }
+}, { capture: true });
+
+// When a native context menu is dismissed by clicking, the browser fires mousedown
+// on whatever element is underneath. Suppress that event to prevent unintended
+// interactions (e.g. starting a slider drag).
+document.addEventListener('mousedown', (event) => {
+    if (contextMenuWasOpen) {
+        contextMenuWasOpen = false;
+        event.stopPropagation();
+        event.preventDefault();
     }
 }, { capture: true });
 

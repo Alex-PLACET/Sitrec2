@@ -63,7 +63,7 @@ import {getCameraNode} from "./CNodeCamera";
 import {CNode3DObject} from "./CNode3DObject";
 import {CNodeEffect} from "./CNodeEffect";
 import {assert} from "../assert";
-import {V3, intersectSphere2} from "../threeUtils";
+import {intersectSphere2, V3} from "../threeUtils";
 import {ACESFilmicToneMappingShader} from "../shaders/ACESFilmicToneMappingShader";
 import {ShaderPass} from "three/addons/postprocessing/ShaderPass.js";
 import {isLocal, SITREC_APP} from "../configUtils"
@@ -2637,6 +2637,18 @@ export class CNodeView3D extends CNodeViewCanvas {
             }
         }
         
+        // Make disabled controller values selectable and copyable
+        // Override lil-gui's user-select:none and pointer-events:none on disabled controllers
+        const style = document.createElement('style');
+        style.textContent = `
+            .lil-gui.celestial-info { user-select: text; -webkit-user-select: text; }
+            .lil-gui.celestial-info .controller.disabled,
+            .lil-gui.celestial-info .controller.disabled * { pointer-events: auto !important; }
+            .lil-gui.celestial-info .controller.disabled input { cursor: text; }
+        `;
+        standaloneMenu.domElement.prepend(style);
+        standaloneMenu.domElement.classList.add('celestial-info');
+
         // Open the menu
         standaloneMenu.open();
     }
