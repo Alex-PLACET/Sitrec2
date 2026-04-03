@@ -56,9 +56,6 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Pin npm version to match local dev
-        run: npm install -g npm@11
-
       - name: Install dependencies
         run: npm ci || npm install
         env:
@@ -198,9 +195,6 @@ jobs:
         with:
           node-version: 22
           cache: npm
-
-      - name: Pin npm version to match local dev
-        run: npm install -g npm@11
 
       - name: Install dependencies
         run: npm ci || npm install
