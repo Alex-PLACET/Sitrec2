@@ -542,6 +542,19 @@ export class CCustomManager {
             cameraLOSController.addOption("Celestial Lock", celestialController);
         }
 
+        // When the PTZ controller is disabled (i.e. another angles source like a track
+        // is driving the camera), sync the PTZ az/el/roll from the resulting camera orientation.
+        // This way switching back to Manual PTZ preserves the current view.
+        const ptzController = NodeMan.get("ptzAngles", false);
+        const lookCamera = NodeMan.get("lookCamera", false);
+        if (lookCamera && ptzController) {
+            lookCamera.postApplyControllers = () => {
+                if (!ptzController.enabled) {
+                    ptzController.syncFromCamera(lookCamera.camera);
+                }
+            };
+        }
+
         // if (Sit.canMod) {
         //     // we have "SAVE MOD", but "SAVE CUSTOM" is no more, replaced by standard "Save", "Save As", etc.
         //     this.buttonText = "SAVE MOD"

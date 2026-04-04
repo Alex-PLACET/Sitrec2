@@ -1,6 +1,6 @@
 import {ExpandKeyframes, radians} from "../utils";
 import {RollingAverage} from "../smoothing";
-import {getLocalDownVector, getLocalUpVector, getNorthPole} from "../SphericalMath";
+import {getAzElFromPositionAndForward, getLocalDownVector, getLocalNorthVector, getLocalUpVector, getNorthPole} from "../SphericalMath";
 import {NodeMan, Sit} from "../Globals";
 
 import {CNodeController} from "./CNodeController";
@@ -205,6 +205,66 @@ export class CNodeControllerPTZUI extends CNodeControllerAzElZoom {
 
         // don't think this is needed
         this.recalculateCascade();
+    }
+
+    // Extract az/el/roll from the camera's current orientation and update this controller's values.
+    // Called when another controller (e.g. a track) is driving the camera,
+    // so switching back to Manual PTZ preserves the current view.
+    syncFromCamera(camera) {
+        camera.updateMatrixWorld();
+
+        const fwd = new Vector3();
+        camera.getWorldDirection(fwd);
+        const localUp = getLocalUpVector(camera.position);
+        const dotUpFwd = fwd.dot(localUp);
+
+        // Camera Y axis (up direction) from world matrix
+        const cameraUp = new Vector3();
+        cameraUp.setFromMatrixColumn(camera.matrixWorld, 1);
+
+        if (Math.abs(dotUpFwd) > 1 - 1e-6) {
+            // Near-vertical (nadir/zenith): az/el decomposition has gimbal lock.
+            // At nadir, az and roll both rotate around the vertical axis, so they're
+            // interchangeable. Fold the combined heading into az, set roll=0.
+            this.el = dotUpFwd > 0 ? 89.99 : -89.99;
+
+            // Camera Y projected to horizontal gives the effective heading
+            const cameraUpH = cameraUp.clone().sub(localUp.clone().multiplyScalar(cameraUp.dot(localUp)));
+            if (cameraUpH.lengthSq() > 1e-10) {
+                cameraUpH.normalize();
+                const north = getLocalNorthVector(camera.position);
+                const east = north.clone().cross(localUp);
+                let heading = Math.atan2(cameraUpH.dot(east), cameraUpH.dot(north)) * 180 / Math.PI;
+                // Convert to -180..180
+                if (heading > 180) heading -= 360;
+                this.az = heading;
+            } else {
+                this.az = 0;
+            }
+            if (this.roll !== undefined) this.roll = 0;
+        } else {
+            // Normal case: extract az/el from camera direction
+            let [az, el] = getAzElFromPositionAndForward(camera.position, fwd);
+            // Convert from 0..360 to -180..180 to match PTZ range
+            if (az > 180) az -= 360;
+            this.az = az;
+            this.el = el;
+
+            // Extract roll: angle between the zero-roll up and the actual camera up,
+            // measured around the view axis.
+            if (this.roll !== undefined) {
+                const zeroRollUp = localUp.clone().sub(fwd.clone().multiplyScalar(localUp.dot(fwd)));
+                if (zeroRollUp.lengthSq() > 1e-10) {
+                    zeroRollUp.normalize();
+                    // Signed angle: rotateZ(+angle) rotates counterclockwise around +Z (camera backward),
+                    // which is clockwise around fwd. So negate the atan2 result.
+                    const cross = new Vector3().crossVectors(zeroRollUp, cameraUp);
+                    const sinAngle = cross.dot(fwd);
+                    const cosAngle = zeroRollUp.dot(cameraUp);
+                    this.roll = -Math.atan2(sinAngle, cosAngle) * 180 / Math.PI;
+                }
+            }
+        }
     }
 
 }

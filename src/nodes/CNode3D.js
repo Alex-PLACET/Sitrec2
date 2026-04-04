@@ -105,6 +105,8 @@ export class CNode3D extends CNode {
             }
         }
 
+        if (this.postApplyControllers) this.postApplyControllers(f);
+
     }
 
     addController(type, def) {
