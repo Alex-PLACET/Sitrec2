@@ -3654,6 +3654,7 @@ export class CCustomManager {
                     ...Sit.TerrainModel,
                     showBuildings: terrainModel.showBuildings,
                     buildingsSource: terrainModel.buildingsSource,
+                    showBuildingEdges: terrainModel.showBuildingEdges,
                     showOceanSurface: terrainModel.showOceanSurface,
                 }
             }
@@ -3736,6 +3737,7 @@ export class CCustomManager {
                     dynamic: terrainModel.dynamic,
                     showBuildings: terrainModel.showBuildings,
                     buildingsSource: terrainModel.buildingsSource,
+                    showBuildingEdges: terrainModel.showBuildingEdges,
                     showOceanSurface: terrainModel.showOceanSurface,
                 }
             }

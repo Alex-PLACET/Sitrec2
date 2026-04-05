@@ -16,6 +16,7 @@ import {TilesRenderer} from "3d-tiles-renderer";
 import {GLTFExtensionsPlugin, TilesFadePlugin} from "3d-tiles-renderer/plugins";
 import {DRACOLoader} from "three/addons/loaders/DRACOLoader.js";
 import {TilesDayNightPlugin} from "../TilesDayNightPlugin";
+import {TilesEdgesPlugin} from "../TilesEdgesPlugin";
 import {
     getSharedGooglePhotorealisticState,
     SharedGoogleCloudAuthPlugin,
@@ -66,6 +67,8 @@ class PerViewTiles {
         }
 
         this.renderer.registerPlugin(new TilesDayNightPlugin({source}));
+        this.edgesPlugin = new TilesEdgesPlugin();
+        this.renderer.registerPlugin(this.edgesPlugin);
         // Fade plugin smooths LOD transitions so parent/child tile swaps are less abrupt in exports.
         this.fadePlugin = new TilesFadePlugin({
             fadeDuration: 250,
@@ -193,6 +196,15 @@ export class CNodeBuildings3DTiles extends CNode {
         }
         this._perView = {};
         this._initialized = false;
+    }
+
+    // Toggle shader-based wireframe edge rendering on all tile meshes.
+    setShowEdges(show) {
+        // All per-view plugins share the same uniform; calling any one suffices.
+        const firstPv = Object.values(this._perView)[0];
+        if (firstPv?.edgesPlugin) {
+            firstPv.edgesPlugin.setVisible(show);
+        }
     }
 
     // Switch between data sources at runtime

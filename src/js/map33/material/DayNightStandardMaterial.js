@@ -30,6 +30,7 @@ export class DayNightStandardMaterial extends MeshStandardMaterial {
             sunGlobalTotal: sharedUniforms.sunGlobalTotal,
             sunAmbientIntensity: sharedUniforms.sunAmbientIntensity,
             tileOutputGamma: {value: this.tileOutputGamma},
+            showBuildingEdges: sharedUniforms.showBuildingEdges,
         };
 
         this.onBeforeCompile = this._onBeforeCompile.bind(this);
@@ -38,15 +39,18 @@ export class DayNightStandardMaterial extends MeshStandardMaterial {
     _onBeforeCompile(shader) {
         Object.assign(shader.uniforms, this._dayNightUniforms);
 
-        // --- Vertex shader: pass world position for terminator calculation ---
+        // --- Vertex shader: pass world position and barycentric coords ---
         shader.vertexShader = shader.vertexShader.replace(
             '#include <common>',
             `#include <common>
+attribute vec3 barycentric;
+varying vec3 vBarycentric;
 varying vec3 vWorldPositionDN;`
         );
 
         const vertexInjection =
-            `vWorldPositionDN = (modelMatrix * vec4(transformed, 1.0)).xyz;`;
+            `vWorldPositionDN = (modelMatrix * vec4(transformed, 1.0)).xyz;
+vBarycentric = barycentric;`;
 
         if (shader.vertexShader.includes('#include <worldpos_vertex>')) {
             shader.vertexShader = shader.vertexShader.replace(
@@ -72,7 +76,9 @@ uniform bool useDayNight;
 uniform float sunGlobalTotal;
 uniform float sunAmbientIntensity;
 uniform float tileOutputGamma;
-varying vec3 vWorldPositionDN;`
+uniform bool showBuildingEdges;
+varying vec3 vWorldPositionDN;
+varying vec3 vBarycentric;`
         );
 
         // After the full PBR pipeline (including dithering), darken fragments
@@ -82,6 +88,14 @@ varying vec3 vWorldPositionDN;`
         shader.fragmentShader = shader.fragmentShader.replace(
             '#include <dithering_fragment>',
             `#include <dithering_fragment>
+if (showBuildingEdges) {
+    // Screen-space anti-aliased wireframe via barycentric coords
+    vec3 d = fwidth(vBarycentric);
+    vec3 a3 = smoothstep(vec3(0.0), d * 1.2, vBarycentric);
+    float edgeFactor = min(min(a3.x, a3.y), a3.z);
+    vec3 edgeColor = vec3(0.25);
+    gl_FragColor.rgb = mix(edgeColor, gl_FragColor.rgb, edgeFactor);
+}
 if (useDayNight) {
     vec3 globalNormal = normalize(vWorldPositionDN - earthCenter);
     vec3 sunNorm = normalize(sunDirection);

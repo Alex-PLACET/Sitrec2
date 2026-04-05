@@ -665,6 +665,13 @@ export class CNodeTerrainUI extends CNode {
                 this.toggleBuildings(v);
             }).tooltip("Show 3D building tiles from Cesium Ion or Google");
 
+            this.showBuildingEdges = v.showBuildingEdges ?? true;
+            this.gui.add(this, "showBuildingEdges").name("Building Edges").onChange(v => {
+                if (this.buildingsNode) {
+                    this.buildingsNode.setShowEdges(v);
+                }
+            }).tooltip("Show wireframe edges on 3D building tiles");
+
             if (hasGoogle) {
                 this.gui.add(this, "showOceanSurface").name("Ocean Surface (Beta)").onChange(() => {
                     this.updateTerrainAndOceanVisibility();
@@ -900,6 +907,7 @@ export class CNodeTerrainUI extends CNode {
                 cesiumIonToken: cesiumToken,
                 googleApiKey: googleKey,
             });
+            this.buildingsNode.setShowEdges(this.showBuildingEdges);
         } else if (!show && this.buildingsNode) {
             NodeMan.disposeRemove(this.buildingsNode);
             this.buildingsNode = null;
