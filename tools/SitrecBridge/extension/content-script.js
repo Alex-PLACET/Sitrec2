@@ -57,22 +57,32 @@ let bridgeNonce = null;
 let keepalivePort = null;
 let sitrecDetected = false;
 let sitrecBuildDir = null;
+let keepaliveRetryDelay = 1000;
+const MAX_KEEPALIVE_RETRY_DELAY = 30000;
 
 function openKeepalivePort() {
     try {
         keepalivePort = chrome.runtime.connect({ name: "sitrec-keepalive" });
+        keepaliveRetryDelay = 1000; // Reset backoff on successful connect
         // Send build directory metadata so background can match MCP sessions to tabs
         if (sitrecBuildDir) {
             keepalivePort.postMessage({ type: "metadata", buildDir: sitrecBuildDir });
         }
         keepalivePort.onDisconnect.addListener(() => {
             keepalivePort = null;
-            // Service worker may have restarted -- reconnect after a short delay
-            if (sitrecDetected) setTimeout(openKeepalivePort, 1000);
+            // Service worker may have restarted -- reconnect with backoff
+            if (sitrecDetected) {
+                setTimeout(openKeepalivePort, keepaliveRetryDelay);
+                keepaliveRetryDelay = Math.min(keepaliveRetryDelay * 1.5, MAX_KEEPALIVE_RETRY_DELAY);
+            }
         });
     } catch {
-        // Extension context invalidated (e.g., extension was reloaded)
+        // Extension context invalidated (e.g., extension was reloaded) — retry with backoff
         keepalivePort = null;
+        if (sitrecDetected) {
+            setTimeout(openKeepalivePort, keepaliveRetryDelay);
+            keepaliveRetryDelay = Math.min(keepaliveRetryDelay * 1.5, MAX_KEEPALIVE_RETRY_DELAY);
+        }
     }
 }
 

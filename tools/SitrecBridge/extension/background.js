@@ -180,6 +180,41 @@ async function findSitrecTab() {
         }
     }
 
+    // Fallback: scan all open tabs by URL pattern.
+    // This handles the case where the service worker restarted and
+    // knownSitrecTabs was cleared (in-memory state lost on MV3 suspension).
+    return discoverSitrecTabByURL();
+}
+
+/**
+ * Scan all open tabs for Sitrec URLs and try to re-establish the content
+ * script keepalive connection. Returns the first matching tab ID, or null.
+ */
+async function discoverSitrecTabByURL() {
+    try {
+        const allTabs = await chrome.tabs.query({});
+        for (const tab of allTabs) {
+            if (!isSitrecUrl(tab.url)) continue;
+            // Try to (re-)inject the content script so the keepalive port is re-established
+            try {
+                await chrome.scripting.executeScript({
+                    target: { tabId: tab.id },
+                    files: ["content-script.js"],
+                });
+            } catch {
+                // Content script may already be injected, or tab not injectable — that's OK
+            }
+            // Register tentatively so the tab is usable immediately
+            if (!knownSitrecTabs.has(tab.id)) {
+                knownSitrecTabs.set(tab.id, { buildDir: null });
+            }
+            sitrecTabId = tab.id;
+            updatePopupState();
+            return tab.id;
+        }
+    } catch {
+        // tabs.query failed
+    }
     return null;
 }
 
@@ -198,17 +233,31 @@ async function findSitrecTabByTarget(target, cwd) {
         if (typeof target === "number") {
             try {
                 const tab = await chrome.tabs.get(target);
-                if (tab && knownSitrecTabs.has(tab.id)) return tab.id;
+                if (knownSitrecTabs.has(tab.id)) return tab.id;
+                // Tab exists but not registered — try to recover it
+                if (isSitrecUrl(tab.url)) {
+                    knownSitrecTabs.set(tab.id, { buildDir: null });
+                    return tab.id;
+                }
             } catch {}
             return null;
         }
 
-        // String — match against URL of known Sitrec tabs
+        // String — match against URL of known Sitrec tabs first,
+        // then fall back to scanning all tabs by URL
         if (typeof target === "string") {
             const needle = target.toLowerCase();
             const tabs = await chrome.tabs.query({});
+            // First pass: check known tabs
             for (const tab of tabs) {
                 if (knownSitrecTabs.has(tab.id) && tab.url.toLowerCase().includes(needle)) {
+                    return tab.id;
+                }
+            }
+            // Second pass: check ALL tabs with matching Sitrec URL
+            for (const tab of tabs) {
+                if (isSitrecUrl(tab.url) && tab.url.toLowerCase().includes(needle)) {
+                    knownSitrecTabs.set(tab.id, { buildDir: null });
                     return tab.id;
                 }
             }
@@ -242,7 +291,11 @@ async function findAllSitrecTabs() {
     const tabs = await chrome.tabs.query({});
     const results = [];
     for (const tab of tabs) {
-        if (knownSitrecTabs.has(tab.id)) {
+        // Include known tabs AND tabs matching Sitrec URLs (recovering from state loss)
+        if (knownSitrecTabs.has(tab.id) || isSitrecUrl(tab.url)) {
+            if (!knownSitrecTabs.has(tab.id)) {
+                knownSitrecTabs.set(tab.id, { buildDir: null });
+            }
             const info = knownSitrecTabs.get(tab.id);
             results.push({ id: tab.id, url: tab.url, title: tab.title || "", buildDir: info.buildDir || null });
         }
@@ -510,9 +563,14 @@ chrome.alarms.create(KEEPALIVE_ALARM_NAME, {
     periodInMinutes: KEEPALIVE_ALARM_PERIOD_MIN,
 });
 
-chrome.alarms.onAlarm.addListener((alarm) => {
+chrome.alarms.onAlarm.addListener(async (alarm) => {
     if (alarm.name !== KEEPALIVE_ALARM_NAME) return;
-    // Each alarm wake-up: ensure WebSocket is connected
+    // Each alarm wake-up: if we have no known tabs, try URL-based discovery
+    // (handles service worker restart where in-memory state was lost)
+    if (knownSitrecTabs.size === 0) {
+        await discoverSitrecTabByURL();
+    }
+    // Ensure WebSocket is connected
     if (!ws || ws.readyState !== WebSocket.OPEN) {
         connect();
     }
