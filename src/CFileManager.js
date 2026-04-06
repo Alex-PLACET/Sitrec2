@@ -27,9 +27,9 @@ import {
     CTrackFileJSON,
     CTrackFileKML,
     CTrackFileMISB,
+    CTrackFileSonde,
     CTrackFileSRT,
     CTrackFileSTANAG,
-    CTrackFileSonde,
     parseXml
 } from "./KMLUtils";
 import {CRehoster} from "./CRehoster";
@@ -3401,6 +3401,13 @@ export class CFileManager extends CManager {
             // Calling makeImageVideo here would trigger loadedCallback and corrupt the restore sequence
             if (NodeMan.exists("video")) {
                 const videoNode = NodeMan.get("video");
+                const alreadyLoaded = Globals.deserializing && videoNode.videos?.some(videoEntry =>
+                    (videoEntry.imageFileID === filename || videoEntry.fileName === filename) && videoEntry.videoData
+                );
+                if (alreadyLoaded) {
+                    console.log(`[CFileManager] Skipping video image restore for "${filename}" - already loaded`);
+                    return false;
+                }
                 if (videoNode.pendingVideoRestore) {
                     console.log(`[CFileManager] Skipping video image restore for "${filename}" - pendingVideoRestore active`);
                     return false;
@@ -3423,7 +3430,7 @@ export class CFileManager extends CManager {
                 img.onload = () => {
                     if (NodeMan.exists("video")) {
                         const videoNode = NodeMan.get("video");
-                        videoNode.makeImageVideo(filename, img);
+                        videoNode.makeImageVideo(filename, img, false, filename);
                         videoNode.imageFileID = filename;
                         console.log(`Restored video image "${filename}" (${img.width}x${img.height})`);
                     }
@@ -3768,7 +3775,17 @@ export class CFileManager extends CManager {
                         const choice = await DragDropHandler.showImageChoiceDialog(filename);
                         if (choice === 'video') {
                             if (NodeMan.exists("video")) {
-                                NodeMan.get("video").makeImageVideo(filename, parsedFile, true);
+                                const videoNode = NodeMan.get("video");
+                                const alreadyLoaded = Globals.deserializing && videoNode.videos?.some(videoEntry =>
+                                    (videoEntry.imageFileID === filename || videoEntry.fileName === filename) && videoEntry.videoData
+                                );
+                                if (alreadyLoaded) {
+                                    console.log(`[CFileManager] Skipping image->video restore for "${filename}" - already loaded`);
+                                    return false;
+                                }
+                                fileManagerEntry.dataType = "videoImage";
+                                videoNode.makeImageVideo(filename, parsedFile, true, filename);
+                                videoNode.imageFileID = filename;
                                 return true;
                             }
                         } else if (choice === 'overlay') {
@@ -3785,7 +3802,17 @@ export class CFileManager extends CManager {
                     console.warn("No video node found to load video file");
                     return false;
                 }
-                NodeMan.get("video").makeImageVideo(filename, parsedFile, true);
+                const videoNode = NodeMan.get("video");
+                const alreadyLoaded = Globals.deserializing && videoNode.videos?.some(videoEntry =>
+                    (videoEntry.imageFileID === filename || videoEntry.fileName === filename) && videoEntry.videoData
+                );
+                if (alreadyLoaded) {
+                    console.log(`[CFileManager] Skipping image->video restore for "${filename}" - already loaded`);
+                    return false;
+                }
+                fileManagerEntry.dataType = "videoImage";
+                videoNode.makeImageVideo(filename, parsedFile, true, filename);
+                videoNode.imageFileID = filename;
                 return true;
             }
 

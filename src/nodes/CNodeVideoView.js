@@ -486,14 +486,17 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
      */
     async loadVideoFromEntry(entry) {
         const nextIdx = this.videos.length;
-        console.log(`[VideoLoad] loadVideoFromEntry[${nextIdx}]: "${entry.fileName}", isImage=${entry.isImage}, staticURL=${entry.staticURL?.substring(0, 50)}...`);
-        
-        if (entry.isImage && entry.imageFileID) {
-            const { FileManager } = require("../Globals");
-            const fileEntry = FileManager.list[entry.imageFileID];
+        const storedRef = entry.staticURL || Sit.loadedFiles?.[entry.fileName] || entry.fileName;
+        console.log(`[VideoLoad] loadVideoFromEntry[${nextIdx}]: "${entry.fileName}", isImage=${entry.isImage}, source=${storedRef?.substring(0, 80)}...`);
+        const { FileManager } = require("../Globals");
+
+        if (entry.isImage) {
+            const imageFileID = entry.imageFileID || entry.fileName;
+            const fileEntry = FileManager.list[imageFileID] || FileManager.list[entry.fileName];
+
             // Use .original which contains the ArrayBuffer (not .data which may be the parsed Image object)
             if (fileEntry && fileEntry.original) {
-                console.log(`[VideoLoad] Loading image[${nextIdx}] from FileManager`);
+                console.log(`[VideoLoad] Loading image[${nextIdx}] from FileManager (id=${imageFileID})`);
                 Globals.pendingActions++;
                 const ext = entry.fileName.split('.').pop().toLowerCase();
                 const mimeType = ext === 'png' ? 'image/png' :
@@ -505,8 +508,8 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
                 const img = new Image();
                 img.onload = () => {
                     console.log(`[VideoLoad] Image[${nextIdx}] loaded: ${img.width}x${img.height}`);
-                    this.makeImageVideo(entry.fileName, img);
-                    this.imageFileID = entry.imageFileID;
+                    this.makeImageVideo(entry.fileName, img, false, imageFileID);
+                    this.imageFileID = imageFileID;
                     // NOTE: Don't call loadedCallback here - CVideoImageData constructor
                     // already queues it via queueMicrotask. Calling it twice would
                     // corrupt the video array by adding duplicate entries.
@@ -517,13 +520,21 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
                     this.skipCurrentVideoRestore();
                 };
                 img.src = blobURL;
+                return;
+            }
+
+            const url = await resolveURLForFetch(storedRef).catch(error => {
+                console.error(`[VideoLoad] Failed to resolve image[${nextIdx}] "${entry.fileName}":`, error);
+                return null;
+            });
+            if (this.isValidVideoURL(url)) {
+                console.log(`[VideoLoad] Loading image[${nextIdx}] from URL fallback: ${url.substring(0, 80)}...`);
+                this.newVideo(url, false, storedRef);
             } else {
-                console.warn(`[VideoLoad] Cannot restore image[${nextIdx}] "${entry.fileName}" - file original data not available`);
+                console.warn(`[VideoLoad] Cannot restore image[${nextIdx}] "${entry.fileName}" - source unavailable`);
                 this.skipCurrentVideoRestore();
             }
         } else {
-            const { FileManager } = require("../Globals");
-            const storedRef = entry.staticURL || entry.fileName;
             const isImportedLocalPath = FileManager?.isLikelyImportedLocalAssetPath?.(storedRef);
             if (isImportedLocalPath) {
                 const hasWorkingFolder = await FileManager.ensureWorkingFolderForImportedLocalAsset(storedRef);
@@ -1174,6 +1185,7 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
     makeImageVideo(filename, img, deleteAfterUsing = false, imageFileID = undefined, importMetadata = undefined, pauseTimelineOnLoad = false) {
 
         this.fileName = filename;
+        this.imageFileID = imageFileID ?? null;
         this.invalidateELAResult();
 
         this.videoData = new CVideoImageData({
