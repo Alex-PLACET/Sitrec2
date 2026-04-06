@@ -1547,6 +1547,7 @@ async function initializeOnce() {
     addHelpLink("How to set up a sitch", "docs/CustomSitchTool")
     addHelpLink("How to Investigate Starlink Flares", "docs/Starlink")
     addHelpLink("Objects and 3D Models (Planes)", "docs/CustomModels")
+    addHelpLink("Camera Modes (Normal & Satellite)", "docs/satcam")
 
     if (getEnvBool("LOCAL_DOCS", process.env.LOCAL_DOCS)) {
         docs.addExternalLink("Third-Party Notices", "./ThirdPartyNotices.txt").perm()
