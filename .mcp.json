@@ -1,12 +1,7 @@
 {
   "mcpServers": {
     "sitrec-bridge": {
-      "command": "node",
-      "args": ["./tools/SitrecBridge/mcp-server.js"]
-    },
-    "sitrec-comms": {
-      "command": "node",
-      "args": ["./tools/sitrec-comms/mcp-server.js"]
+      "command": "/Users/mick/Dropbox/sitrec-dev/sitrec/tools/SitrecBridge/run.sh"
     }
   }
 }

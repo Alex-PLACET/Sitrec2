@@ -45,6 +45,39 @@ Example entry format:
 
 ---
 
+## Version 2.41.1 (2026-04-06)
+
+### Improvements
+- **Stable Track IDs**: Track IDs now persist across save/load even when the underlying file parser changes (e.g. NITF vs MISB CSV), preventing broken references in saved custom sitches
+- **Deferred Switch Selection**: Switch nodes gracefully handle options that aren't registered yet during deserialization, applying the saved choice once the option becomes available
+
+### Bug Fixes
+- Fixed double-loading error when using single images as video sources
+- Fixed legacy saved sitches failing to load due to the `angelsSwitch` typo rename (now `anglesSwitch` with automatic migration)
+
+---
+
+## Version 2.41.0 (2026-04-06)
+
+### New Features
+- **Satellite Camera Mode**: Gimbal-lock-free nadir camera control for satellite viewing
+- **Wireframe Building Edges**: Shader-based wireframe edge rendering for OSM 3D building tiles
+
+### Improvements
+- Improved satellite look-camera mode with smoother controls
+- Manual PTZ values now sync from the active camera controller
+- Suppressed native context menu on sitch browser items
+
+---
+
+## Version 2.40.12 (2026-04-03)
+
+### Improvements
+- Bumped Electron to 39.8.4 for video-viewer desktop app
+- Removed npm self-upgrade step from Docker CI workflow
+
+---
+
 ## Version 2.40.10 (2026-04-03)
 
 ### Improvements
