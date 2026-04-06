@@ -549,7 +549,7 @@ export class CCustomManager {
         const lookCamera = NodeMan.get("lookCamera", false);
         if (lookCamera && ptzController) {
             lookCamera.postApplyControllers = () => {
-                if (!ptzController.enabled) {
+                if (!ptzController.enabled && !Globals.deserializing) {
                     ptzController.syncFromCamera(lookCamera.camera);
                 }
             };

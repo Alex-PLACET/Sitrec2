@@ -975,12 +975,16 @@ class CameraMapControls {
 
 
 					ptzControls.az -= degrees(xRotate) * ptzControls.fov / 45
-					ptzControls.el += degrees(yRotate) * ptzControls.fov / 45
+					ptzControls.el += degrees(yRotate) * ptzControls.fov / 45 * (ptzControls.satellite ? -1 : 1)
 
 					if (ptzControls.az < -180) ptzControls.az += 360
 					if (ptzControls.az >= 180) ptzControls.az -= 360
-					if (ptzControls.el <= -89) ptzControls.el = -89
-					if (ptzControls.el >= 89) ptzControls.el = 89
+					if (ptzControls.satellite) {
+						// Free look: no el clamp — allow looking anywhere
+					} else {
+						if (ptzControls.el <= -89) ptzControls.el = -89
+						if (ptzControls.el >= 89) ptzControls.el = 89
+					}
 
 					//Globals.debugRecalculate = true
 					ptzControls.recalculateCascade();

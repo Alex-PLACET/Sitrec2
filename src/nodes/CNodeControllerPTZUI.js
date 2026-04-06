@@ -119,6 +119,7 @@ export class CNodeControllerPTZUI extends CNodeControllerAzElZoom {
         this.yOffset = v.yOffset ?? 0;
         this.nearPlane = v.nearPlane ?? 0.1;
         this.relative = false;
+        this.satellite = v.satellite ?? false;
 
         assert(v.fov !== undefined, "CNodeControllerPTZUI: initial fov is undefined")
 
@@ -127,8 +128,8 @@ export class CNodeControllerPTZUI extends CNodeControllerAzElZoom {
             this.setGUI(v,"camera");
             const guiPTZ = this.gui;
 
-            guiPTZ.add(this, "az", -180, 180, 0.01, false).listen().name("Pan (Az)").tooltip("Camera azimuth / pan angle in degrees").onChange(v => this.refresh()).setLabelColor(pszUIColor).wrap()
-            guiPTZ.add(this, "el", -89, 89, 0.01, false).listen().name("Tilt (El)").tooltip("Camera elevation / tilt angle in degrees").onChange(v => this.refresh()).setLabelColor(pszUIColor)
+            this.azController = guiPTZ.add(this, "az", -180, 180, 0.01, false).listen().name("Pan (Az)").tooltip("Camera azimuth / pan angle in degrees").onChange(v => this.refresh()).setLabelColor(pszUIColor).wrap()
+            this.elController = guiPTZ.add(this, "el", -89, 89, 0.01, false).listen().name("Tilt (El)").tooltip("Camera elevation / tilt angle in degrees").onChange(v => this.refresh()).setLabelColor(pszUIColor)
             if (this.fov !== undefined) {
                 guiPTZ.add(this, "fov", 0.0001, 170, 0.01, false).listen().name("Zoom (fov)").tooltip("Camera vertical field of view in degrees").onChange(v => {
                     this.refresh()
@@ -141,6 +142,12 @@ export class CNodeControllerPTZUI extends CNodeControllerAzElZoom {
             guiPTZ.add(this, "yOffset", -10, 10, 0.001).listen().name("yOffset").tooltip("Vertical offset of the camera from center").onChange(v => this.refresh()).setLabelColor(pszUIColor)
             guiPTZ.add(this, "nearPlane", 0.001, 1, 0.001).listen().name("Near Plane (m)").tooltip("Camera near clipping plane distance in meters").onChange(v => this.refresh()).setLabelColor(pszUIColor)
             guiPTZ.add(this, "relative").listen().name("Relative").tooltip("Use relative angles instead of absolute").onChange(v => this.refresh())
+            guiPTZ.add(this, "satellite").listen().name("Satellite").tooltip("Satellite mode: screen-space panning from nadir.\nRoll = heading, Az = left/right, El = up/down (−90 = nadir)").onChange(v => {
+                this.updateSatelliteSliderRanges();
+                this.refresh();
+            }).setLabelColor(pszUIColor)
+
+            if (this.satellite) this.updateSatelliteSliderRanges();
         }
        // this.refresh()
     }
@@ -155,7 +162,8 @@ export class CNodeControllerPTZUI extends CNodeControllerAzElZoom {
             xOffset: this.xOffset,
             yOffset: this.yOffset,
             nearPlane: this.nearPlane,
-            relative: this.relative
+            relative: this.relative,
+            satellite: this.satellite,
         }
     }
 
@@ -171,6 +179,7 @@ export class CNodeControllerPTZUI extends CNodeControllerAzElZoom {
         this.yOffset = v.yOffset ?? 0;
         this.nearPlane = v.nearPlane ?? 0.1;
         this.relative = v.relative ?? false;
+        this.satellite = v.satellite ?? false;
     }
 
     // Note this has to be in apply, not update, as there are update orders issues
@@ -185,11 +194,106 @@ export class CNodeControllerPTZUI extends CNodeControllerAzElZoom {
             this.fov = extractFOV(fovSwitch.getValue(f));
         }
 
-        super.apply(f, objectNode);
+        if (this.satellite) {
+            this.applySatellite(objectNode);
+        } else {
+            super.apply(f, objectNode);
+        }
 
         const camera = objectNode.camera;
         camera.near = this.nearPlane;
         camera.updateProjectionMatrix();
+    }
+
+    // Satellite mode: screen-space panning from nadir, no gimbal lock.
+    // Roll = heading (rotation of the view — which direction is "up" on screen)
+    // El   = vertical pan in screen space (-90 = nadir, moving toward 0 = pan up)
+    // Az   = horizontal pan in screen space (left/right)
+    //
+    // The camera orientation is constructed by two sequential rotations of the nadir
+    // (straight-down) frame:
+    //   1) Pitch: tilt from nadir toward the heading direction by (90 + el) degrees
+    //      around the right axis.  This is a screen-vertical pan.
+    //   2) Yaw: rotate around the resulting camera-up axis by -az degrees.  This is
+    //      a screen-horizontal pan.
+    //
+    // The entire camera frame (lookDir, cameraUp, cameraRight) is transformed by
+    // both rotations.  Because yaw is applied around the camera-up axis (not the
+    // world up axis), it always produces purely horizontal screen motion regardless
+    // of elevation.  Pitch around the right axis always produces purely vertical
+    // screen motion.  This guarantees zero cross-coupling: dragging right always
+    // shifts the view right, dragging up always shifts the view up, with no
+    // on-screen rotation at any (az, el).
+    applySatellite(objectNode) {
+        const camera = objectNode.camera;
+        const up = getLocalUpVector(camera.position);
+
+        // Compute local north (same method as parent class)
+        const northPoleECEF = getNorthPole();
+        const toNorth = northPoleECEF.clone().sub(camera.position).normalize();
+        const dotN = toNorth.dot(up);
+        const north = toNorth.clone().sub(up.clone().multiplyScalar(dotN));
+        assert(north.lengthSq() >= 1e-10, "applySatellite: north vector is zero (at pole?)");
+        north.normalize();
+
+        // Heading direction: north rotated by the roll angle around the up axis.
+        const heading = north.clone();
+        if (this.roll !== undefined && Math.abs(this.roll) > 0.0001) {
+            heading.applyAxisAngle(up, -radians(this.roll));
+        }
+
+        // Right axis: perpendicular to both up and heading.
+        const right = new Vector3().crossVectors(up, heading).normalize();
+        const down = up.clone().negate();
+
+        // Start from the nadir camera frame:
+        //   lookDir = down, cameraUp = heading
+        const lookDir = down.clone();
+        let cameraUp = heading.clone();
+
+        // Step 1: Pitch — tilt from nadir toward heading by (90 + el) degrees
+        // around the right axis.  At el=-90 this is 0 (nadir), at el=0 it's 90 (horizon).
+        const pitchAngle = radians(90 + this.el);
+        if (Math.abs(pitchAngle) > 1e-10) {
+            lookDir.applyAxisAngle(right, pitchAngle);
+            cameraUp.applyAxisAngle(right, pitchAngle);
+        }
+
+        // Step 2: Yaw — rotate around the camera-up axis by -az degrees.
+        // Because this rotates around the screen-up direction, it always produces
+        // purely horizontal motion on screen, regardless of elevation.
+        if (Math.abs(this.az) > 1e-10) {
+            lookDir.applyAxisAngle(cameraUp, -radians(this.az));
+            // cameraUp is unchanged (it's the rotation axis)
+        }
+
+        lookDir.normalize();
+        cameraUp.normalize();
+
+        // Apply orientation via lookAt
+        const target = camera.position.clone().add(lookDir);
+        camera.up.copy(cameraUp);
+        camera.lookAt(target);
+
+        // Apply FOV
+        camera.fov = extractFOV(this.fov);
+        assert(!Number.isNaN(camera.fov), "applySatellite: camera.fov is NaN");
+        assert(camera.fov > 0 && camera.fov <= 180, `applySatellite: bad fov ${camera.fov}`);
+    }
+
+    updateSatelliteSliderRanges() {
+        if (this.elController) {
+            if (this.satellite) {
+                // Free look: -270 to +90 covers full sphere.
+                // -90 = nadir, 0 = heading horizon, +90 = zenith,
+                // -180 = back horizon, -270 = zenith (from below)
+                this.elController.min(-270).max(90);
+            } else {
+                this.el = Math.max(-89, Math.min(89, this.el));
+                this.elController.min(-89).max(89);
+            }
+            this.elController.updateDisplay();
+        }
     }
 
     refresh(v) {
@@ -223,26 +327,30 @@ export class CNodeControllerPTZUI extends CNodeControllerAzElZoom {
         cameraUp.setFromMatrixColumn(camera.matrixWorld, 1);
 
         if (Math.abs(dotUpFwd) > 1 - 1e-6) {
-            // Near-vertical (nadir/zenith): az/el decomposition has gimbal lock.
-            // At nadir, az and roll both rotate around the vertical axis, so they're
-            // interchangeable. Fold the combined heading into az, set roll=0.
-            this.el = dotUpFwd > 0 ? 89.99 : -89.99;
+            // Near-vertical (nadir/zenith): normal az/el has gimbal lock.
+            // Switch to satellite mode where roll=heading, az=horizontal pan, el=vertical pan.
+            this.satellite = true;
+            this.updateSatelliteSliderRanges();
+            this.el = dotUpFwd > 0 ? 90 : -90;
+            this.az = 0; // no horizontal pan offset
 
-            // Camera Y projected to horizontal gives the effective heading
+            // Camera Y projected to horizontal gives the heading → store in roll
             const cameraUpH = cameraUp.clone().sub(localUp.clone().multiplyScalar(cameraUp.dot(localUp)));
-            if (cameraUpH.lengthSq() > 1e-10) {
-                cameraUpH.normalize();
-                const north = getLocalNorthVector(camera.position);
-                const east = north.clone().cross(localUp);
-                let heading = Math.atan2(cameraUpH.dot(east), cameraUpH.dot(north)) * 180 / Math.PI;
-                // Convert to -180..180
-                if (heading > 180) heading -= 360;
-                this.az = heading;
-            } else {
-                this.az = 0;
+            if (this.roll !== undefined) {
+                if (cameraUpH.lengthSq() > 1e-10) {
+                    cameraUpH.normalize();
+                    const north = getLocalNorthVector(camera.position);
+                    const east = north.clone().cross(localUp);
+                    let heading = Math.atan2(cameraUpH.dot(east), cameraUpH.dot(north)) * 180 / Math.PI;
+                    if (heading > 180) heading -= 360;
+                    this.roll = heading;
+                } else {
+                    this.roll = 0;
+                }
             }
-            if (this.roll !== undefined) this.roll = 0;
         } else {
+            this.satellite = false;
+            this.updateSatelliteSliderRanges();
             // Normal case: extract az/el from camera direction
             let [az, el] = getAzElFromPositionAndForward(camera.position, fwd);
             // Convert from 0..360 to -180..180 to match PTZ range
