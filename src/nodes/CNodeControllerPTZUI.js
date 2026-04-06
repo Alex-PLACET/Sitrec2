@@ -450,6 +450,7 @@ export class CNodeControllerPTZUI extends CNodeControllerAzElZoom {
             // Switch to satellite mode where roll=heading, az=horizontal pan, el=vertical pan.
             this.satellite = true;
             this.updateSatelliteSliderRanges();
+            this.updateSatelliteSliderVisibility();
             this.el = dotUpFwd > 0 ? 90 : -90;
             this.az = 0; // no horizontal pan offset
 
@@ -467,9 +468,12 @@ export class CNodeControllerPTZUI extends CNodeControllerAzElZoom {
                     this.roll = 0;
                 }
             }
+            this.rotation = 0;
+            this._satQuatDirty = true;
         } else {
             this.satellite = false;
             this.updateSatelliteSliderRanges();
+            this.updateSatelliteSliderVisibility();
             // Normal case: extract az/el from camera direction
             let [az, el] = getAzElFromPositionAndForward(camera.position, fwd);
             // Convert from 0..360 to -180..180 to match PTZ range

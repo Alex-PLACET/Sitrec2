@@ -45,15 +45,17 @@ Mouse dragging pans the view in screen space — left/right and up/down always m
 
 ### Seamless Transitions
 
-Toggling the Satellite checkbox preserves the exact camera orientation. The current camera quaternion is captured and decomposed into the target mode's parameters, so there is no visible jump in either direction.
+Toggling the Satellite checkbox preserves the camera orientation as closely as possible. The current camera quaternion is captured and decomposed into the target mode's parameters.
 
 Internally the two modes use different parameterizations of the same rotation:
 - **Normal → Satellite**: The camera quaternion is factored into a nadir reference frame and a satellite quaternion, from which the internal roll/elevation/azimuth are extracted.
 - **Satellite → Normal**: Azimuth, elevation, and roll are extracted from the camera's world-space direction and up vector.
 
+**Note**: Normal mode clamps elevation to -89 to +89 degrees, so a pure nadir or zenith view cannot be exactly preserved when switching from satellite to normal mode. In practice the difference is imperceptible except at the extreme poles.
+
 ### Automatic Switching
 
-Sitrec detects when you drag the camera into a near-vertical orientation (within ~0.001 degrees of nadir or zenith) and **automatically enables satellite mode** to prevent gimbal lock. The switch happens transparently — your viewing direction is preserved.
+When another controller (such as a track) is driving the camera and it reaches a near-vertical orientation (within ~0.08 degrees of nadir or zenith), Sitrec **automatically enables satellite mode** to prevent gimbal lock. This only occurs while the Manual PTZ controller is inactive — it does not trigger during manual mouse dragging.
 
 ### Manual Toggle
 
@@ -97,7 +99,7 @@ The camera orientation is: `nadirFrame * satQuat`
 | Satellite imagery comparison | Satellite |
 | Drone nadir footage | Satellite |
 | Horizontal scene reconstruction | Normal |
-| Near-vertical viewing angles | Satellite (auto-activates) |
+| Near-vertical viewing angles | Satellite (auto-activates when track-driven) |
 | General-purpose 3D navigation | Normal |
 
 ### Serialization
