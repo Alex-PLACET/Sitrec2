@@ -1,15 +1,23 @@
-import {ExpandKeyframes, radians} from "../utils";
+import {degrees, ExpandKeyframes, radians} from "../utils";
 import {RollingAverage} from "../smoothing";
-import {getAzElFromPositionAndForward, getLocalDownVector, getLocalNorthVector, getLocalUpVector, getNorthPole} from "../SphericalMath";
+import {
+    getAzElFromPositionAndForward,
+    getLocalDownVector,
+    getLocalNorthVector,
+    getLocalUpVector,
+    getNorthPole
+} from "../SphericalMath";
 import {NodeMan, Sit} from "../Globals";
 
 import {CNodeController} from "./CNodeController";
 import {V3} from "../threeUtils";
 import {assert} from "../assert";
-import {Vector3} from "three";
+import {Euler, Matrix4, Quaternion, Vector3} from "three";
 import {extractFOV} from "./CNodeControllerVarious";
 
 const pszUIColor = "#C0C0FF";
+const _xAxis = new Vector3(1, 0, 0);
+const _yAxis = new Vector3(0, 1, 0);
 
 // Generic controller that has azimuth, elevation, and zoom
 export class CNodeControllerAzElZoom extends CNodeController {
@@ -120,6 +128,8 @@ export class CNodeControllerPTZUI extends CNodeControllerAzElZoom {
         this.nearPlane = v.nearPlane ?? 0.1;
         this.relative = false;
         this.satellite = v.satellite ?? false;
+        this.satQuat = new Quaternion(); // satellite mode orientation (relative to nadir frame)
+        this._satQuatDirty = true;       // rebuild from angles on next applySatellite
 
         assert(v.fov !== undefined, "CNodeControllerPTZUI: initial fov is undefined")
 
@@ -205,75 +215,94 @@ export class CNodeControllerPTZUI extends CNodeControllerAzElZoom {
         camera.updateProjectionMatrix();
     }
 
-    // Satellite mode: screen-space panning from nadir, no gimbal lock.
-    // Roll = heading (rotation of the view — which direction is "up" on screen)
-    // El   = vertical pan in screen space (-90 = nadir, moving toward 0 = pan up)
-    // Az   = horizontal pan in screen space (left/right)
+    // Satellite mode: quaternion-based orientation, no gimbal lock.
     //
-    // The camera orientation is constructed by two sequential rotations of the nadir
-    // (straight-down) frame:
-    //   1) Pitch: tilt from nadir toward the heading direction by (90 + el) degrees
-    //      around the right axis.  This is a screen-vertical pan.
-    //   2) Yaw: rotate around the resulting camera-up axis by -az degrees.  This is
-    //      a screen-horizontal pan.
+    // The camera orientation is stored as a quaternion (satQuat) relative to a
+    // "nadir frame" defined by the camera's position on the Earth:
+    //   nadir frame: camera X = east, Y = north, Z = up (looking down along -Z)
     //
-    // The entire camera frame (lookDir, cameraUp, cameraRight) is transformed by
-    // both rotations.  Because yaw is applied around the camera-up axis (not the
-    // world up axis), it always produces purely horizontal screen motion regardless
-    // of elevation.  Pitch around the right axis always produces purely vertical
-    // screen motion.  This guarantees zero cross-coupling: dragging right always
-    // shifts the view right, dragging up always shifts the view up, with no
-    // on-screen rotation at any (az, el).
-    applySatellite(objectNode) {
-        const camera = objectNode.camera;
-        const up = getLocalUpVector(camera.position);
+    // satQuat encodes intrinsic ZXY Euler rotations:
+    //   Z = roll (heading — which world direction is "up" on screen)
+    //   X = pitch (tilt from nadir: 0° = nadir, 90° = horizon)
+    //   Y = yaw (horizontal pan)
+    //
+    // Mouse drag applies incremental rotations in camera-local space:
+    //   horizontal drag → rotate around camera Y (up on screen)
+    //   vertical drag   → rotate around camera X (right on screen)
+    // This always produces correct screen-space motion at any orientation.
 
-        // Compute local north (same method as parent class)
+    // Build the nadir-frame quaternion from the camera's position.
+    // Nadir frame: X=east, Y=north, Z=up → camera looks along -Z = down.
+    _buildNadirQuat(cameraPosition) {
+        const up = getLocalUpVector(cameraPosition);
         const northPoleECEF = getNorthPole();
-        const toNorth = northPoleECEF.clone().sub(camera.position).normalize();
-        const dotN = toNorth.dot(up);
-        const north = toNorth.clone().sub(up.clone().multiplyScalar(dotN));
+        const toNorth = northPoleECEF.clone().sub(cameraPosition).normalize();
+        const north = toNorth.clone().sub(up.clone().multiplyScalar(toNorth.dot(up)));
         assert(north.lengthSq() >= 1e-10, "applySatellite: north vector is zero (at pole?)");
         north.normalize();
+        const east = new Vector3().crossVectors(north, up).normalize();
 
-        // Heading direction: north rotated by the roll angle around the up axis.
-        const heading = north.clone();
-        if (this.roll !== undefined && Math.abs(this.roll) > 0.0001) {
-            heading.applyAxisAngle(up, -radians(this.roll));
+        const m = new Matrix4().makeBasis(east, north, up);
+        return new Quaternion().setFromRotationMatrix(m);
+    }
+
+    // Construct satQuat from the current (roll, el, az) slider values.
+    // Euler order ZXY: Z=roll, X=pitch(90+el), Y=yaw(-az).
+    buildSatQuatFromAngles() {
+        const euler = new Euler(
+            radians(90 + this.el),   // X: pitch from nadir (0 at nadir, 90 at horizon)
+            radians(-this.az),       // Y: yaw
+            radians(this.roll),      // Z: roll / heading
+            'ZXY'
+        );
+        this.satQuat.setFromEuler(euler);
+        this._satQuatDirty = false;
+    }
+
+    // Decompose satQuat back to (roll, el, az) for slider display.
+    extractAnglesFromSatQuat() {
+        const euler = new Euler().setFromQuaternion(this.satQuat, 'ZXY');
+        this.roll = degrees(euler.z);
+        this.el = degrees(euler.x) - 90;
+        this.az = -degrees(euler.y);
+    }
+
+    // Apply incremental mouse drag as camera-local rotations.
+    applySatelliteMouseDelta(xRotate, yRotate) {
+        if (this._satQuatDirty) {
+            this.buildSatQuatFromAngles();
         }
 
-        // Right axis: perpendicular to both up and heading.
-        const right = new Vector3().crossVectors(up, heading).normalize();
-        const down = up.clone().negate();
+        const fovScale = this.fov / 45;
 
-        // Start from the nadir camera frame:
-        //   lookDir = down, cameraUp = heading
-        const lookDir = down.clone();
-        let cameraUp = heading.clone();
-
-        // Step 1: Pitch — tilt from nadir toward heading by (90 + el) degrees
-        // around the right axis.  At el=-90 this is 0 (nadir), at el=0 it's 90 (horizon).
-        const pitchAngle = radians(90 + this.el);
-        if (Math.abs(pitchAngle) > 1e-10) {
-            lookDir.applyAxisAngle(right, pitchAngle);
-            cameraUp.applyAxisAngle(right, pitchAngle);
+        // Horizontal drag: rotate around camera's local Y (screen-up)
+        if (Math.abs(xRotate) > 1e-10) {
+            const yaw = new Quaternion().setFromAxisAngle(_yAxis, xRotate * fovScale);
+            this.satQuat.multiply(yaw);
         }
 
-        // Step 2: Yaw — rotate around the camera-up axis by -az degrees.
-        // Because this rotates around the screen-up direction, it always produces
-        // purely horizontal motion on screen, regardless of elevation.
-        if (Math.abs(this.az) > 1e-10) {
-            lookDir.applyAxisAngle(cameraUp, -radians(this.az));
-            // cameraUp is unchanged (it's the rotation axis)
+        // Vertical drag: rotate around camera's local X (screen-right)
+        if (Math.abs(yRotate) > 1e-10) {
+            const pitch = new Quaternion().setFromAxisAngle(_xAxis, yRotate * fovScale);
+            this.satQuat.multiply(pitch);
         }
 
-        lookDir.normalize();
-        cameraUp.normalize();
+        this.satQuat.normalize();
+        this.extractAnglesFromSatQuat();
+        this._satQuatDirty = false;
+        this.recalculateCascade();
+    }
 
-        // Apply orientation via lookAt
-        const target = camera.position.clone().add(lookDir);
-        camera.up.copy(cameraUp);
-        camera.lookAt(target);
+    applySatellite(objectNode) {
+        const camera = objectNode.camera;
+
+        if (this._satQuatDirty) {
+            this.buildSatQuatFromAngles();
+        }
+
+        // Final camera orientation = nadirFrame * satQuat
+        const nadirQuat = this._buildNadirQuat(camera.position);
+        camera.quaternion.copy(nadirQuat).multiply(this.satQuat);
 
         // Apply FOV
         camera.fov = extractFOV(this.fov);
@@ -299,6 +328,9 @@ export class CNodeControllerPTZUI extends CNodeControllerAzElZoom {
     refresh(v) {
         // legacy check
         assert(v === undefined, "CNodeControllerPTZUI: refresh called with v, should be undefined");
+
+        // When sliders change, rebuild the satellite quaternion from angles
+        if (this.satellite) this._satQuatDirty = true;
 
 
         // the FOV UI node is also updated, It's a hidden UI element that remains for backwards compatibility.

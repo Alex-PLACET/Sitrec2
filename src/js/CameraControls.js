@@ -969,29 +969,24 @@ class CameraMapControls {
 
 
 				// if we have ptzControls in this view, then update them
-				// not this is notdirectly equzalent to the 	this.camera.rotateY(xRotate), etc
-				// likely due to the up vector.
 				if (ptzControls !== undefined) {
 
-
-					ptzControls.az -= degrees(xRotate) * ptzControls.fov / 45
-					ptzControls.el += degrees(yRotate) * ptzControls.fov / 45 * (ptzControls.satellite ? -1 : 1)
-
-					if (ptzControls.az < -180) ptzControls.az += 360
-					if (ptzControls.az >= 180) ptzControls.az -= 360
 					if (ptzControls.satellite) {
-						// Free look: no el clamp — allow looking anywhere
+						// Satellite mode: camera-local rotations via quaternion
+						ptzControls.applySatelliteMouseDelta(xRotate, yRotate);
 					} else {
+						ptzControls.az -= degrees(xRotate) * ptzControls.fov / 45
+						ptzControls.el += degrees(yRotate) * ptzControls.fov / 45
+
+						if (ptzControls.az < -180) ptzControls.az += 360
+						if (ptzControls.az >= 180) ptzControls.az -= 360
 						if (ptzControls.el <= -89) ptzControls.el = -89
 						if (ptzControls.el >= 89) ptzControls.el = 89
+
+						ptzControls.recalculateCascade();
 					}
 
-					//Globals.debugRecalculate = true
-					ptzControls.recalculateCascade();
-					//Globals.debugRecalculate = false;
-
 				} else {
-
 
 					this.camera.rotateY(xRotate);
 					this.camera.rotateX(yRotate);
