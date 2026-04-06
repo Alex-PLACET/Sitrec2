@@ -12,9 +12,11 @@ My goal here is to create a tool to effectively analyze UAP/UFO cases, and to sh
 
 - [The Sitrec User Interface - How the menus work](docs/UserInterface.md)
 - [The Custom Sitch Tool - Drag and Drop Sitches](docs/CustomSitchTool.md)
+- [Local Custom Sitches - JSON-based sitch definitions for advanced setups](docs/LocalCustomSitches.md)
 - [Loading and Filtering Tracks - Formats, importing, filtering, and display](docs/Tracks.md)
 - [Saving and Loading Sitches - Server saves and local folder workflow](docs/SavingAndLoading.md)
 - [Custom Models and 3D Objects - Add your own planes](docs/CustomModels.md)
+- [Camera Modes - Normal (Az/El) and Satellite (quaternion) view modes](docs/satcam.md)
 - [Recreating Starlink Situations - Horizon Flares](docs/Starlink.md)
 - [GIS, Geodesy, and Altitude - Understanding altitude datums and coordinate systems](docs/GIS.md)
 - [What's New](docs/WhatsNew.md)
@@ -32,7 +34,6 @@ My goal here is to create a tool to effectively analyze UAP/UFO cases, and to sh
 
 ### Legacy documentation
 - [Adding a Sitch in Code (older method)](docs/dev/AddSitchInCode.md)
-- [Local Custom Sitches with JSON files - More complex custom sitches](docs/LocalCustomSitches.md)
 
 The most common use case is to display three views:
 - A video of a UAP situation 
