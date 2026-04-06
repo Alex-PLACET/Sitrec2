@@ -18,6 +18,7 @@ import {extractFOV} from "./CNodeControllerVarious";
 const pszUIColor = "#C0C0FF";
 const _xAxis = new Vector3(1, 0, 0);
 const _yAxis = new Vector3(0, 1, 0);
+const _zAxis = new Vector3(0, 0, 1);
 
 // Generic controller that has azimuth, elevation, and zoom
 export class CNodeControllerAzElZoom extends CNodeController {
@@ -128,6 +129,7 @@ export class CNodeControllerPTZUI extends CNodeControllerAzElZoom {
         this.nearPlane = v.nearPlane ?? 0.1;
         this.relative = false;
         this.satellite = v.satellite ?? false;
+        this.rotation = v.rotation ?? 0; // screen-space rotation around camera look axis (satellite mode only)
         this.satQuat = new Quaternion(); // satellite mode orientation (relative to nadir frame)
         this._satQuatDirty = true;       // rebuild from angles on next applySatellite
 
@@ -146,18 +148,21 @@ export class CNodeControllerPTZUI extends CNodeControllerAzElZoom {
                 }).setLabelColor(pszUIColor) // .elastic(0.0001, 170)
             }
             if (this.roll !== undefined ) {
-                guiPTZ.add(this, "roll", -180, 180, 0.005).listen().name("Roll").tooltip("Camera roll angle in degrees").onChange(v => this.refresh()).setLabelColor(pszUIColor)
+                this.rollController = guiPTZ.add(this, "roll", -180, 180, 0.005).listen().name("Roll").tooltip("Camera roll angle in degrees").onChange(v => this.refresh()).setLabelColor(pszUIColor)
             }
             guiPTZ.add(this, "xOffset", -10, 10, 0.001).listen().name("xOffset").tooltip("Horizontal offset of the camera from center").onChange(v => this.refresh()).setLabelColor(pszUIColor)
             guiPTZ.add(this, "yOffset", -10, 10, 0.001).listen().name("yOffset").tooltip("Vertical offset of the camera from center").onChange(v => this.refresh()).setLabelColor(pszUIColor)
             guiPTZ.add(this, "nearPlane", 0.001, 1, 0.001).listen().name("Near Plane (m)").tooltip("Camera near clipping plane distance in meters").onChange(v => this.refresh()).setLabelColor(pszUIColor)
             guiPTZ.add(this, "relative").listen().name("Relative").tooltip("Use relative angles instead of absolute").onChange(v => this.refresh())
             guiPTZ.add(this, "satellite").listen().name("Satellite").tooltip("Satellite mode: screen-space panning from nadir.\nRoll = heading, Az = left/right, El = up/down (−90 = nadir)").onChange(v => {
-                this.updateSatelliteSliderRanges();
-                this.refresh();
+                this.syncModeTransition();
             }).setLabelColor(pszUIColor)
+            this.rotationController = guiPTZ.add(this, "rotation", -180, 180, 0.1).listen().name("Rotation").tooltip("Screen-space rotation around the camera look axis").onChange(v => this.refresh()).setLabelColor(pszUIColor)
 
-            if (this.satellite) this.updateSatelliteSliderRanges();
+            if (this.satellite) {
+                this.updateSatelliteSliderRanges();
+            }
+            this.updateSatelliteSliderVisibility();
         }
        // this.refresh()
     }
@@ -174,6 +179,7 @@ export class CNodeControllerPTZUI extends CNodeControllerAzElZoom {
             nearPlane: this.nearPlane,
             relative: this.relative,
             satellite: this.satellite,
+            rotation: this.rotation,
         }
     }
 
@@ -190,6 +196,8 @@ export class CNodeControllerPTZUI extends CNodeControllerAzElZoom {
         this.nearPlane = v.nearPlane ?? 0.1;
         this.relative = v.relative ?? false;
         this.satellite = v.satellite ?? false;
+        this.rotation = v.rotation ?? 0;
+        this.updateSatelliteSliderVisibility();
     }
 
     // Note this has to be in apply, not update, as there are update orders issues
@@ -246,8 +254,10 @@ export class CNodeControllerPTZUI extends CNodeControllerAzElZoom {
         return new Quaternion().setFromRotationMatrix(m);
     }
 
-    // Construct satQuat from the current (roll, el, az) slider values.
-    // Euler order ZXY: Z=roll, X=pitch(90+el), Y=yaw(-az).
+    // Construct satQuat from the current (roll, el, az, rotation) slider values.
+    // Euler order ZXY: Z=roll, X=pitch(90+el), Y=yaw(-az),
+    // then a final Z rotation for screen-space spin around the look axis.
+    // Baking rotation into satQuat ensures mouse drags stay screen-aligned.
     buildSatQuatFromAngles() {
         const euler = new Euler(
             radians(90 + this.el),   // X: pitch from nadir (0 at nadir, 90 at horizon)
@@ -256,12 +266,23 @@ export class CNodeControllerPTZUI extends CNodeControllerAzElZoom {
             'ZXY'
         );
         this.satQuat.setFromEuler(euler);
+        if (this.rotation !== 0) {
+            const spin = new Quaternion().setFromAxisAngle(_zAxis, radians(this.rotation));
+            this.satQuat.multiply(spin);
+        }
         this._satQuatDirty = false;
     }
 
-    // Decompose satQuat back to (roll, el, az) for slider display.
+    // Decompose satQuat back to (roll, el, az, rotation) for slider display.
+    // Strips the known screen rotation from satQuat before extracting ZXY euler.
     extractAnglesFromSatQuat() {
-        const euler = new Euler().setFromQuaternion(this.satQuat, 'ZXY');
+        let q = this.satQuat;
+        if (this.rotation !== 0) {
+            // Remove the baked-in screen rotation to get the base orientation
+            const invSpin = new Quaternion().setFromAxisAngle(_zAxis, -radians(this.rotation));
+            q = q.clone().multiply(invSpin);
+        }
+        const euler = new Euler().setFromQuaternion(q, 'ZXY');
         this.roll = degrees(euler.z);
         this.el = degrees(euler.x) - 90;
         this.az = -degrees(euler.y);
@@ -301,6 +322,7 @@ export class CNodeControllerPTZUI extends CNodeControllerAzElZoom {
         }
 
         // Final camera orientation = nadirFrame * satQuat
+        // (rotation is already baked into satQuat)
         const nadirQuat = this._buildNadirQuat(camera.position);
         camera.quaternion.copy(nadirQuat).multiply(this.satQuat);
 
@@ -322,6 +344,71 @@ export class CNodeControllerPTZUI extends CNodeControllerAzElZoom {
                 this.elController.min(-89).max(89);
             }
             this.elController.updateDisplay();
+        }
+    }
+
+    // Seamless mode switch: capture the current camera orientation and decompose it
+    // into the new mode's parameters so the view doesn't jump.
+    syncModeTransition() {
+        const camNode = this.outputs.find(o => o.isCamera) ?? NodeMan.get("lookCamera", false);
+        const camera = camNode?.camera;
+        if (camera) {
+            camera.updateMatrixWorld();
+            if (this.satellite) {
+                // Switching TO satellite mode.
+                // Derive satQuat from current camera orientation: satQuat = nadirQuat^-1 * cameraQuat
+                const nadirQuat = this._buildNadirQuat(camera.position);
+                this.satQuat.copy(nadirQuat).invert().multiply(camera.quaternion);
+                this.satQuat.normalize();
+                // Extract roll/el/az with rotation=0 first, then no residual rotation
+                this.rotation = 0;
+                this.extractAnglesFromSatQuat();
+                this._satQuatDirty = false;
+            } else {
+                // Switching FROM satellite mode back to normal.
+                // Extract az/el/roll from the current camera direction.
+                const fwd = new Vector3();
+                camera.getWorldDirection(fwd);
+                const localUp = getLocalUpVector(camera.position);
+
+                let [az, el] = getAzElFromPositionAndForward(camera.position, fwd);
+                if (az > 180) az -= 360;
+                this.az = az;
+                this.el = el;
+
+                // Extract roll from camera up vs zero-roll up
+                if (this.roll !== undefined) {
+                    const cameraUp = new Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+                    const zeroRollUp = localUp.clone().sub(fwd.clone().multiplyScalar(localUp.dot(fwd)));
+                    if (zeroRollUp.lengthSq() > 1e-10) {
+                        zeroRollUp.normalize();
+                        const cross = new Vector3().crossVectors(zeroRollUp, cameraUp);
+                        const sinAngle = cross.dot(fwd);
+                        const cosAngle = zeroRollUp.dot(cameraUp);
+                        this.roll = -Math.atan2(sinAngle, cosAngle) * 180 / Math.PI;
+                    } else {
+                        this.roll = 0;
+                    }
+                }
+                this.rotation = 0;
+            }
+        }
+        this.updateSatelliteSliderRanges();
+        this.updateSatelliteSliderVisibility();
+        this.refresh();
+    }
+
+    updateSatelliteSliderVisibility() {
+        if (this.satellite) {
+            this.azController?.hide();
+            this.elController?.hide();
+            this.rollController?.hide();
+            this.rotationController?.show();
+        } else {
+            this.azController?.show();
+            this.elController?.show();
+            this.rollController?.show();
+            this.rotationController?.hide();
         }
     }
 
