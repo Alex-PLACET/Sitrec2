@@ -246,6 +246,32 @@ jobs:
       - name: Lowercase image name
         run: echo "IMAGE_NAME_LC=${IMAGE_NAME,,}" >> "$GITHUB_ENV"
 
+      - name: Check if this is the newest version tag
+        id: check-latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Current tag from the ref (e.g. "2.41.1")
+          THIS_TAG="${GITHUB_REF_NAME}"
+          echo "This tag: ${THIS_TAG}"
+
+          # Find the highest semver tag in the repo
+          NEWEST=$(gh api "repos/${{ github.repository }}/git/refs/tags" \
+            --paginate --jq '.[].ref' \
+            | sed 's|refs/tags/||' \
+            | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' \
+            | sort -t. -k1,1n -k2,2n -k3,3n \
+            | tail -1)
+          echo "Newest tag: ${NEWEST}"
+
+          if [ "$THIS_TAG" = "$NEWEST" ]; then
+            echo "is_latest=true" >> "$GITHUB_OUTPUT"
+            echo "→ This IS the newest tag, will update 'latest'"
+          else
+            echo "is_latest=false" >> "$GITHUB_OUTPUT"
+            echo "→ A newer tag exists (${NEWEST}), skipping 'latest'"
+          fi
+
       - name: Extract metadata (tags)
         id: meta
         uses: docker/metadata-action@v6
@@ -253,14 +279,14 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}
           tags: |
             type=semver,pattern={{version}}
-            type=raw,value=latest
+            ${{ steps.check-latest.outputs.is_latest == 'true' && 'type=raw,value=latest' || '' }}
 
       - name: Create and push multi-arch manifest
         run: |
           SOURCE_AMD64="${REGISTRY}/${IMAGE_NAME_LC}:build-amd64-${GITHUB_SHA}"
           SOURCE_ARM64="${REGISTRY}/${IMAGE_NAME_LC}:build-arm64-${GITHUB_SHA}"
 
-          # Create a manifest for each target tag (e.g. 2.36.4, latest)
+          # Create a manifest for each target tag (e.g. 2.41.1, latest)
           echo '${{ steps.meta.outputs.tags }}' | while IFS= read -r tag; do
             [ -z "$tag" ] && continue
             echo "Creating manifest for: $tag"
