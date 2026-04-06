@@ -1307,6 +1307,7 @@ export class CSitchBrowser {
 
             row.addEventListener("click", (e) => this._handleItemClick(e, idx));
             row.addEventListener("mousedown", (e) => this._handleItemMouseDown(e, idx));
+            row.addEventListener("contextmenu", (e) => e.preventDefault());
             row.addEventListener("dblclick", () => { this.close(); this._loadSitch(sitch.key); });
 
             row._setHighlight = setHighlight;
@@ -1517,6 +1518,7 @@ export class CSitchBrowser {
 
             card.addEventListener("click", (e) => this._handleItemClick(e, idx));
             card.addEventListener("mousedown", (e) => this._handleItemMouseDown(e, idx));
+            card.addEventListener("contextmenu", (e) => e.preventDefault());
             card.addEventListener("dblclick", () => { this.close(); this._loadSitch(sitch.key); });
 
             card._setHighlight = setHighlight;
