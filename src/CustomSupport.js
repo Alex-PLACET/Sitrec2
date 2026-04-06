@@ -1188,6 +1188,26 @@ export class CCustomManager {
         return false;
     }
 
+    remapDeprecatedNodeId(id) {
+        const deprecatedNodeIds = {
+            // Typo fix: canonical node id is now anglesSwitch.
+            // Keep this remap so older saved sitches still load.
+            "angelsSwitch": "anglesSwitch",
+            "osdTrackController": "osdDataSeriesController",
+        };
+        const remappedId = deprecatedNodeIds[id];
+        if (!remappedId) return id;
+
+        // Only remap when the current graph actually uses the new id.
+        // Some legacy saved custom files still define the old node id in the base graph.
+        const oldExists = NodeMan.exists(id);
+        const newExists = NodeMan.exists(remappedId);
+        if (newExists && !oldExists) {
+            return remappedId;
+        }
+        return id;
+    }
+
     getSubSitchNodes() {
         const nodeIds = [];
 
@@ -1240,28 +1260,34 @@ export class CCustomManager {
         Globals.dontRecalculate = true;
 
         const restoredIds = [];
-        for (const id in state.mods) {
-            if (!this.shouldIncludeNodeForLoad(id)) continue;
+        for (const rawId in state.mods) {
+            const id = this.remapDeprecatedNodeId(rawId);
+            if (!this.shouldIncludeNodeForLoad(rawId) && !this.shouldIncludeNodeForLoad(id)) continue;
+            if (rawId !== id && state.mods[id] !== undefined) continue;
             const node = NodeMan.get(id, false);
             if (node && node.modDeserialize) {
-                node.modDeserialize(state.mods[id]);
+                node.modDeserialize(state.mods[rawId]);
                 restoredIds.push(id);
             }
         }
 
-        for (const id in state.focusTracks) {
-            if (!this.shouldIncludeNodeForLoad(id)) continue;
+        for (const rawId in state.focusTracks) {
+            const id = this.remapDeprecatedNodeId(rawId);
+            if (!this.shouldIncludeNodeForLoad(rawId) && !this.shouldIncludeNodeForLoad(id)) continue;
+            if (rawId !== id && state.focusTracks[id] !== undefined) continue;
             const node = NodeMan.get(id, false);
             if (node) {
-                node.focusTrackName = state.focusTracks[id];
+                node.focusTrackName = state.focusTracks[rawId];
             }
         }
 
-        for (const id in state.lockTracks) {
-            if (!this.shouldIncludeNodeForLoad(id)) continue;
+        for (const rawId in state.lockTracks) {
+            const id = this.remapDeprecatedNodeId(rawId);
+            if (!this.shouldIncludeNodeForLoad(rawId) && !this.shouldIncludeNodeForLoad(id)) continue;
+            if (rawId !== id && state.lockTracks[id] !== undefined) continue;
             const node = NodeMan.get(id, false);
             if (node) {
-                node.lockTrackName = state.lockTracks[id];
+                node.lockTrackName = state.lockTracks[rawId];
             }
         }
 
@@ -3803,19 +3829,31 @@ export class CCustomManager {
                 }
             }
 
-            // Save which track indices are loaded from each multi-track file
-            // so we can skip the selection dialog on reload
-            const trackIndicesPerFile = {};
+            // Save track import metadata per file:
+            // - selectedTracks: skip multi-track picker on reload
+            // - shortNames: preserve stable track IDs across parser differences
+            //   (notably NITF first-load names vs MISB CSV reload names)
+            const trackInfoPerFile = {};
             TrackManager.iterate((trackId, metaTrack) => {
                 if (metaTrack.isSynthetic || !metaTrack.trackFileName) return;
-                if (!trackIndicesPerFile[metaTrack.trackFileName]) {
-                    trackIndicesPerFile[metaTrack.trackFileName] = [];
+                if (!trackInfoPerFile[metaTrack.trackFileName]) {
+                    trackInfoPerFile[metaTrack.trackFileName] = {
+                        selectedTracks: [],
+                        shortNames: {},
+                    };
                 }
-                trackIndicesPerFile[metaTrack.trackFileName].push(metaTrack.trackIndex);
+                trackInfoPerFile[metaTrack.trackFileName].selectedTracks.push(metaTrack.trackIndex);
+                const shortName = metaTrack.trackNode?.shortName || metaTrack.menuText;
+                if (shortName) {
+                    trackInfoPerFile[metaTrack.trackFileName].shortNames[String(metaTrack.trackIndex)] = shortName;
+                }
             });
-            for (const [fileId, indices] of Object.entries(trackIndicesPerFile)) {
+            for (const [fileId, info] of Object.entries(trackInfoPerFile)) {
                 if (!filesMetadata[fileId]) filesMetadata[fileId] = {};
-                filesMetadata[fileId].selectedTracks = indices;
+                filesMetadata[fileId].selectedTracks = info.selectedTracks;
+                if (Object.keys(info.shortNames).length > 0) {
+                    filesMetadata[fileId].shortNames = info.shortNames;
+                }
             }
 
             // Save autoSelectAsCamera flag for track files that define their own camera
@@ -4359,6 +4397,12 @@ export class CCustomManager {
                                 trackOptions.showDialog = false;
                                 trackOptions.selectedTracks = metadata.selectedTracks;
                             }
+                            if (metadata?.shortNames) {
+                                // Preserve original shortName->nodeID mapping on reload.
+                                // Without this, re-parsing converted track files can generate
+                                // different names and break saved mod IDs.
+                                trackOptions.shortNames = metadata.shortNames;
+                            }
                             // Pass TLE merge/replace action to skip the choice dialog on reload
                             if (metadata?.tleAction) {
                                 trackOptions.tleAction = metadata.tleAction;
@@ -4427,21 +4471,141 @@ export class CCustomManager {
     }
 
     /**
+     * If a legacy switch choice no longer exists, try to resolve it to the
+     * current single matching option with the same prefix.
+     * This is intentionally conservative: only auto-resolve when unambiguous.
+     * @param {string} switchId
+     * @param {string|undefined} legacyChoice
+     * @param {string} prefix
+     * @returns {string|null}
+     */
+    resolveLegacySwitchChoice(switchId, legacyChoice, prefix) {
+        if (typeof legacyChoice !== "string" || legacyChoice.length === 0) return null;
+        if (prefix && !legacyChoice.startsWith(prefix)) return null;
+
+        const switchNode = NodeMan.get(switchId, false);
+        if (!switchNode?.inputs) return null;
+
+        if (switchNode.inputs[legacyChoice] !== undefined) {
+            return legacyChoice;
+        }
+
+        const candidates = Object.keys(switchNode.inputs).filter(key => key.startsWith(prefix));
+        if (candidates.length === 1) {
+            return candidates[0];
+        }
+
+        return null;
+    }
+
+    /**
+     * Build a legacy track-root remap from switch choices, then remap matching
+     * mod IDs so old custom saves can still target newly-generated track IDs.
+     * This is a migration path for pre-metadata saves; new saves should keep
+     * stable IDs via loadedFilesMetadata.shortNames.
+     * @param {Object} mods
+     */
+    remapLegacyTrackMods(mods) {
+        const rootMap = {};
+
+        const remapRoot = (oldRoot, newRoot) => {
+            if (!oldRoot || !newRoot || oldRoot === newRoot) return;
+            if (!rootMap[oldRoot]) {
+                rootMap[oldRoot] = newRoot;
+            }
+        };
+
+        const legacyFovChoice = mods?.fovSwitch?.choice;
+        const resolvedFovChoice = this.resolveLegacySwitchChoice("fovSwitch", legacyFovChoice, "Track_");
+        if (resolvedFovChoice && resolvedFovChoice !== legacyFovChoice) {
+            const oldRoot = legacyFovChoice.substring("Track_".length);
+            const newRoot = resolvedFovChoice.substring("Track_".length);
+            remapRoot(oldRoot, newRoot);
+            mods.fovSwitch.choice = resolvedFovChoice;
+            console.warn(`CustomSupport: remapping legacy fovSwitch choice '${legacyFovChoice}' -> '${resolvedFovChoice}'`);
+        }
+
+        const anglesSwitchMod = mods?.anglesSwitch ?? mods?.angelsSwitch;
+        const legacyAnglesChoice = anglesSwitchMod?.choice;
+        const anglesSwitchId = NodeMan.exists("anglesSwitch") ? "anglesSwitch" : "angelsSwitch";
+        const resolvedAnglesChoice = this.resolveLegacySwitchChoice(anglesSwitchId, legacyAnglesChoice, "Angles_");
+        if (resolvedAnglesChoice && resolvedAnglesChoice !== legacyAnglesChoice) {
+            const oldRoot = legacyAnglesChoice.substring("Angles_".length);
+            const newRoot = resolvedAnglesChoice.substring("Angles_".length);
+            remapRoot(oldRoot, newRoot);
+            anglesSwitchMod.choice = resolvedAnglesChoice;
+            console.warn(`CustomSupport: remapping legacy angles switch choice '${legacyAnglesChoice}' -> '${resolvedAnglesChoice}'`);
+        }
+
+        const legacyCameraChoice = mods?.cameraTrackSwitch?.choice;
+        const cameraSwitch = NodeMan.get("cameraTrackSwitch", false);
+        if (typeof legacyCameraChoice === "string" && cameraSwitch?.inputs && cameraSwitch.inputs[legacyCameraChoice] === undefined) {
+            let resolvedCameraChoice = rootMap[legacyCameraChoice] ?? null;
+            if (!resolvedCameraChoice) {
+                const cameraCandidates = Object.keys(cameraSwitch.inputs).filter(key => key !== "fixedCamera" && key !== "flightSimCamera");
+                if (cameraCandidates.length === 1) {
+                    resolvedCameraChoice = cameraCandidates[0];
+                    remapRoot(legacyCameraChoice, resolvedCameraChoice);
+                }
+            }
+            if (resolvedCameraChoice && cameraSwitch.inputs[resolvedCameraChoice] !== undefined) {
+                mods.cameraTrackSwitch.choice = resolvedCameraChoice;
+                console.warn(`CustomSupport: remapping legacy cameraTrackSwitch choice '${legacyCameraChoice}' -> '${resolvedCameraChoice}'`);
+            }
+        }
+
+        const mappings = Object.entries(rootMap);
+        if (mappings.length === 0) {
+            return;
+        }
+
+        const originalKeys = Object.keys(mods);
+        for (const oldId of originalKeys) {
+            let newId = oldId;
+            for (const [oldRoot, newRoot] of mappings) {
+                if (newId.includes(oldRoot)) {
+                    newId = newId.replaceAll(oldRoot, newRoot);
+                }
+            }
+            if (newId !== oldId) {
+                if (mods[newId] === undefined) {
+                    mods[newId] = mods[oldId];
+                }
+                delete mods[oldId];
+                console.warn(`CustomSupport: remapped legacy mod id '${oldId}' -> '${newId}'`);
+            }
+        }
+    }
+
+    /**
      * Asynchronously deserialize mods, waiting for any pending actions to complete
      * @param {Object} mods - The mods object from sitchData
      * @returns {Promise} - Promise that resolves when all mods are applied and pending actions are complete
      */
     async deserializeMods(mods) {
         const deprecatedIds = {
+            // Typo fix retained for backward compatibility with existing saved sitches.
+            "angelsSwitch": "anglesSwitch",
             "osdTrackController": "osdDataSeriesController",
-            "osdGraphView": "osdGraphView",
         };
         for (const [oldId, newId] of Object.entries(deprecatedIds)) {
-            if (mods[oldId] && !mods[newId]) {
-                mods[newId] = mods[oldId];
+            if (oldId === newId) continue;
+            if (mods[oldId] !== undefined) {
+                const oldExists = NodeMan.exists(oldId);
+                const newExists = NodeMan.exists(newId);
+                if (!newExists || oldExists) {
+                    continue;
+                }
+                if (mods[newId] === undefined) {
+                    mods[newId] = mods[oldId];
+                }
                 delete mods[oldId];
             }
         }
+
+        // Migration for older custom sitches saved before stable shortName metadata
+        // existed for track files.
+        this.remapLegacyTrackMods(mods);
 
         // some things are required to be deserialized before others, so we force them to the top.
         // Here the osdDataSeriesController is used by tracks, and track selector swithches, which normally come early in the order,
@@ -4580,6 +4744,20 @@ export class CCustomManager {
         // and we do it twice as sometimes there's initialization ordering issues
         // like the Tracking overlay depending on the FOV, but coming before the lookCamera
         NodeMan.recalculateAllRootFirst();
+
+        // Ensure camera controllers (PTZ/FOV/etc.) are applied immediately after mod load.
+        // recalculateAllRootFirst() runs recalculate(), but does not run controller apply().
+        // In static/no-logic sitches this can leave camera state stale until the user touches a control.
+        for (const entry of Object.values(NodeMan.list)) {
+            const node = entry.data;
+            if (!node?.isCamera || typeof node.applyControllers !== "function") continue;
+            node.applyControllers(par.frame);
+            if (node.camera) {
+                node.camera.updateMatrix();
+                node.camera.updateMatrixWorld();
+                node.camera.updateProjectionMatrix();
+            }
+        }
 
         Globals.deserializing = false;
         Globals.sitchDirty = false;

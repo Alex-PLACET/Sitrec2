@@ -9,6 +9,7 @@ class CNodeSwitch extends CNode {
     constructor(v, _gui) {
         super(v);
         this.choice = v.default; // this is the key of the entry in choices
+        this.pendingChoice = null; // deferred choice from modDeserialize when option is not available yet
         this.onChangeCallback= v.onChange; // function to call when choice changes
 
                 this.desc = v.desc;
@@ -168,7 +169,18 @@ class CNodeSwitch extends CNode {
             }
 
         } else {
-            this.selectOptionQuietly(v.choice);
+            // Some options (e.g. file-driven choices) may not exist yet during deserialization.
+            // Remember the intended choice and apply it later when addOption() registers it,
+            // so load order does not force users to manually re-select.
+            if (this.inputs[v.choice] === undefined) {
+                this.pendingChoice = v.choice;
+                console.warn(`CNodeSwitch(${this.id}): deferring missing choice '${v.choice}' until option is added`);
+                // Try immediate compatibility remap in case options are already present.
+                this.applyPendingChoiceIfAvailable();
+            } else {
+                this.pendingChoice = null;
+                this.selectOptionQuietly(v.choice);
+            }
         }
     }
 
@@ -218,6 +230,7 @@ class CNodeSwitch extends CNode {
         this.addInput(option, value)
 //        console.log("+++ ADDING   "+option+" to   "+this.id)
         addOptionToGUIMenu(this.controller, option, option)
+        this.applyPendingChoiceIfAvailable();
     }
 
     removeOption(option, dontSelectFirst=false) {
@@ -236,6 +249,29 @@ class CNodeSwitch extends CNode {
     replaceOption(option, value) {
         this.removeOption(option, true) // don't select first option if is this is the current option, as we are replacing it
         this.addOption(option, value)
+    }
+
+    applyPendingChoiceIfAvailable() {
+        if (!this.pendingChoice) return;
+        if (this.inputs[this.pendingChoice] !== undefined) {
+            const choice = this.pendingChoice;
+            this.pendingChoice = null;
+            this.selectOptionQuietly(choice);
+            return;
+        }
+
+        // Backward-compatibility patch for legacy custom saves where fovSwitch
+        // stored an old track-key format that no longer matches current imports.
+        // If there is exactly one track option, map the pending legacy key to it.
+        if (this.id === "fovSwitch" && this.pendingChoice.startsWith("Track_")) {
+            const trackOptions = Object.keys(this.inputs).filter(k => k.startsWith("Track_"));
+            if (trackOptions.length === 1) {
+                const remappedChoice = trackOptions[0];
+                console.warn(`CNodeSwitch(${this.id}): remapping legacy pending choice '${this.pendingChoice}' -> '${remappedChoice}'`);
+                this.pendingChoice = null;
+                this.selectOptionQuietly(remappedChoice);
+            }
+        }
     }
 
     selectOption(option, quiet=false) {

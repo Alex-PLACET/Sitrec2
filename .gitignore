@@ -35,3 +35,8 @@ tests/__image_snapshots__/
 /sam2-service/segment-anything-2/
 /sam2-service/uploads/
 /sam2-service/
+# Playwright snapshot debug artifacts (Bad/Diff/Good comparison images)
+*_Bad.png
+*_Diff.png
+*_Good.png
+AGENTS.md

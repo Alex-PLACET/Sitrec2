@@ -591,7 +591,7 @@ sitch = {
         elSmooth: "customElSmooth",},
 
     // Switch for angles controllers
-    angelsSwitch: {
+    anglesSwitch: {
         kind: "Switch",
         inputs: {
             "Manual PTZ": "ptzAngles",
@@ -610,7 +610,7 @@ sitch = {
     CameraLOSController: {kind: "Switch",
         inputs: {
             "To Target": "trackToTrackController",
-            "Use Angles": "angelsSwitch",
+            "Use Angles": "anglesSwitch",
         },
         default: "Use Angles",
         desc: "Camera Heading",
@@ -854,7 +854,7 @@ sitch = {
 //        "track": ["cameraTrackSwitch", "targetTrackSwitch"],
         "fov": ["fovSwitch"],
         "wind": ["windSwitch"],
-        "angles": ["angelsSwitch"],
+        "angles": ["anglesSwitch"],
     },
 
 

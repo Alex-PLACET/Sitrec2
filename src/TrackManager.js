@@ -422,6 +422,13 @@ class CTrackManager extends CManager {
             // to handle this we pass in an index to the parsing function
 
             const selectedSet = selectedIndicesMap.get(trackFileName);
+            // Optional stable-name metadata restored from custom sitch files.
+            // This prevents ID drift when the same source is parsed by different classes
+            // across save/load boundaries (e.g. NITF-derived track first as CTrackFileNITF,
+            // then reloaded from converted CSV as CTrackFileMISB).
+            const configuredShortNames = options.shortNamesByFile?.[trackFileName]
+                ?? options.shortNames?.[trackFileName]
+                ?? options.shortNames;
 
             let moreTracks = true;
             let trackIndex = 0;
@@ -437,7 +444,7 @@ class CTrackManager extends CManager {
                 moreTracks = false;
 
 
-                const __ret = this.findShortName(trackFileName, trackIndex, moreTracks);
+                const __ret = this.findShortName(trackFileName, trackIndex, moreTracks, configuredShortNames);
                 let shortName = __ret.shortName;
                 moreTracks = __ret.moreTracks;
 
@@ -1189,7 +1196,7 @@ class CTrackManager extends CManager {
         return hasAngles;
     }
 
-    findShortName(trackFileName, trackIndex, moreTracks) {
+    findShortName(trackFileName, trackIndex, moreTracks, configuredShortNames = undefined) {
         // try to find the flight number as a shorter name
         // For check for format like: FlightAware_DAL2158_KCHS_KBOS_20230218.kml
         let shortName = trackFileName
@@ -1204,8 +1211,17 @@ class CTrackManager extends CManager {
         // Check first if the parse file is a CTrackFile,
 
         const file = FileManager.get(trackFileName);
+        // When present, prefer serialized shortName metadata over parser-derived naming.
+        // Parser-derived names can change with file type/format conversions, which would
+        // otherwise change node IDs and orphan saved mods.
+        const preferredShortName = configuredShortNames?.[trackIndex]
+            ?? configuredShortNames?.[String(trackIndex)];
         if (file instanceof CTrackFile) {
-            shortName = file.getShortName(trackIndex, trackFileName);
+            if (preferredShortName !== undefined && preferredShortName !== null && preferredShortName !== "") {
+                shortName = preferredShortName;
+            } else {
+                shortName = file.getShortName(trackIndex, trackFileName);
+            }
             if (file.hasMoreTracks(trackIndex)) {
                 moreTracks = true;
             }
