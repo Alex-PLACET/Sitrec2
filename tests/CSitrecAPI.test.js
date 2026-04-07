@@ -2,24 +2,69 @@
  * @jest-environment jsdom
  */
 
-const mockNodeGet = jest.fn();
-const mockMarkSitchDirty = jest.fn();
+var mockNodeGet = jest.fn();
+var mockMarkSitchDirty = jest.fn();
+var mockSetNewSitchObject = jest.fn();
+var mockWithTestUser = jest.fn((url) => url);
+var mockSetStartDateTime = jest.fn();
 
-jest.mock('../src/Globals', () => ({
-    CustomManager: {},
-    FileManager: {list: {}},
-    GlobalDateTimeNode: {setStartDateTime: jest.fn()},
-    Globals: {sitchDirty: false},
-    guiMenus: {},
-    markSitchDirty: (...args) => mockMarkSitchDirty(...args),
-    NodeMan: {get: (...args) => mockNodeGet(...args)},
-    Sit: {},
-    TrackManager: {},
-    UndoManager: {},
-}));
+var mockCustomManager;
+var mockFileManager;
+var mockGlobalsState;
+var mockSit;
+var mockSitchMan;
+
+const originalFetch = global.fetch;
+
+jest.mock('../src/Globals', () => {
+    mockCustomManager = {
+        getCustomSitchString: jest.fn(() => JSON.stringify({name: 'Serialized'})),
+        customLink: null,
+    };
+
+    mockFileManager = {
+        list: {},
+        hasServerBackedSaves: jest.fn(() => false),
+        saveLocal: jest.fn(async () => false),
+        saveSitch: jest.fn(async () => undefined),
+        saveSitchNamed: jest.fn(async () => undefined),
+        loadSavedFile: jest.fn(),
+        userSaves: undefined,
+    };
+
+    mockGlobalsState = {
+        sitchDirty: false,
+    };
+
+    mockSit = {};
+
+    mockSitchMan = {
+        iterate: jest.fn(),
+        exists: jest.fn(() => false),
+        get: jest.fn(),
+    };
+
+    return {
+        CustomManager: mockCustomManager,
+        FileManager: mockFileManager,
+        GlobalDateTimeNode: {setStartDateTime: (...args) => mockSetStartDateTime(...args)},
+        Globals: mockGlobalsState,
+        guiMenus: {},
+        markSitchDirty: (...args) => mockMarkSitchDirty(...args),
+        NodeMan: {get: (...args) => mockNodeGet(...args)},
+        Sit: mockSit,
+        SitchMan: mockSitchMan,
+        TrackManager: {},
+        UndoManager: {},
+        setNewSitchObject: (...args) => mockSetNewSitchObject(...args),
+        withTestUser: (...args) => mockWithTestUser(...args),
+    };
+});
 
 jest.mock('../src/configUtils', () => ({
     isLocal: false,
+    isServerless: false,
+    SITREC_SERVER: 'https://example.com/sitrecServer/',
 }));
 
 jest.mock('../src/showError', () => ({
@@ -63,9 +108,35 @@ jest.mock('../src/nodes/CNodeViewUI', () => ({
 
 import {sitrecAPI} from '../src/CSitrecAPI.js';
 
+beforeEach(() => {
+    jest.clearAllMocks();
+    Object.keys(mockSit).forEach((key) => delete mockSit[key]);
+    Object.keys(mockGlobalsState).forEach((key) => {
+        if (key !== 'sitchDirty') {
+            delete mockGlobalsState[key];
+        }
+    });
+    mockGlobalsState.sitchDirty = false;
+    mockCustomManager.customLink = null;
+    mockCustomManager.getCustomSitchString.mockImplementation(() => JSON.stringify({name: 'Serialized'}));
+    mockFileManager.userSaves = undefined;
+    mockFileManager.hasServerBackedSaves.mockReturnValue(false);
+    mockFileManager.saveLocal.mockResolvedValue(false);
+    mockFileManager.saveSitch.mockResolvedValue(undefined);
+    mockFileManager.saveSitchNamed.mockResolvedValue(undefined);
+    mockSitchMan.iterate.mockImplementation(() => {});
+    mockSitchMan.exists.mockReturnValue(false);
+    mockSitchMan.get.mockReturnValue(undefined);
+    global.fetch = originalFetch;
+});
+
+afterAll(() => {
+    global.fetch = originalFetch;
+});
+
 describe('CSitrecAPI importMedia', () => {
     beforeEach(() => {
-        jest.clearAllMocks();
+        mockNodeGet.mockReset();
     });
 
     test('imports media into the current video node', async () => {
@@ -135,5 +206,227 @@ describe('CSitrecAPI importMedia', () => {
                 error: 'Media file is required',
             },
         });
+    });
+});
+
+describe('CSitrecAPI notes APIs', () => {
+    test('returns notes text from the notes view', async () => {
+        mockNodeGet.mockImplementation((id) => id === 'notesView' ? {notesText: 'Existing notes', visible: true} : false);
+
+        const result = await sitrecAPI.call('getNotes');
+
+        expect(result).toEqual({
+            success: true,
+            fn: 'getNotes',
+            result: {
+                success: true,
+                text: 'Existing notes',
+                visible: true,
+            },
+        });
+    });
+
+    test('replaces notes text and marks the sitch dirty', async () => {
+        const notesView = {
+            notesText: 'Before',
+            textArea: {value: 'Before'},
+            linkifyContent: jest.fn(),
+        };
+        mockNodeGet.mockImplementation((id) => id === 'notesView' ? notesView : false);
+
+        const result = await sitrecAPI.call('setNotes', {text: 'After'});
+
+        expect(notesView.notesText).toBe('After');
+        expect(notesView.textArea.value).toBe('After');
+        expect(notesView.linkifyContent).toHaveBeenCalled();
+        expect(mockMarkSitchDirty).toHaveBeenCalled();
+        expect(result).toEqual({
+            success: true,
+            fn: 'setNotes',
+            result: {
+                success: true,
+                text: 'After',
+                length: 5,
+            },
+        });
+    });
+
+    test('appends notes text with paragraph separation', async () => {
+        const notesView = {
+            notesText: 'Alpha',
+            textArea: {value: 'Alpha'},
+            linkifyContent: jest.fn(),
+        };
+        mockNodeGet.mockImplementation((id) => id === 'notesView' ? notesView : false);
+
+        const result = await sitrecAPI.call('updateNotes', {mode: 'append', text: 'Beta'});
+
+        expect(notesView.notesText).toBe('Alpha\n\nBeta');
+        expect(result).toEqual({
+            success: true,
+            fn: 'updateNotes',
+            result: {
+                success: true,
+                mode: 'append',
+                text: 'Alpha\n\nBeta',
+                length: 11,
+            },
+        });
+    });
+});
+
+describe('CSitrecAPI sitch APIs', () => {
+    test('lists built-in and saved sitches', async () => {
+        mockSitchMan.iterate.mockImplementation((callback) => {
+            callback('gimbal', {name: 'gimbal', menuName: 'Gimbal'});
+            callback('custom', {name: 'custom', hidden: true});
+        });
+        mockFileManager.hasServerBackedSaves.mockReturnValue(true);
+        global.fetch = jest.fn().mockResolvedValue({
+            ok: true,
+            text: async () => JSON.stringify([['SavedA', '2026-04-02'], ['SavedB', '2026-04-01']]),
+        });
+
+        const result = await sitrecAPI.call('listSitches');
+
+        expect(global.fetch).toHaveBeenCalledWith('https://example.com/sitrecServer/getsitches.php?get=myfiles', {mode: 'cors'});
+        expect(result).toEqual({
+            success: true,
+            fn: 'listSitches',
+            result: {
+                success: true,
+                builtIn: [
+                    {key: 'custom', name: 'custom', menuName: null, hidden: true, kind: 'built-in'},
+                    {key: 'gimbal', name: 'gimbal', menuName: 'Gimbal', hidden: false, kind: 'built-in'},
+                ],
+                saved: ['SavedA', 'SavedB'],
+                counts: {builtIn: 2, saved: 2},
+                current: {name: null, sitchName: null},
+                serverBackedSaves: true,
+                savedFetchError: undefined,
+            },
+        });
+    });
+
+    test('loads a built-in sitch through the sitch registry', async () => {
+        const sitchObject = {name: 'gimbal', menuName: 'Gimbal', nested: {value: 1}};
+        mockSitchMan.exists.mockReturnValue(true);
+        mockSitchMan.get.mockReturnValue(sitchObject);
+
+        const result = await sitrecAPI.call('loadSitch', {name: 'gimbal'});
+
+        expect(mockSetNewSitchObject).toHaveBeenCalledTimes(1);
+        expect(mockSetNewSitchObject.mock.calls[0][0]).toEqual(sitchObject);
+        expect(mockSetNewSitchObject.mock.calls[0][0]).not.toBe(sitchObject);
+        expect(result).toEqual({
+            success: true,
+            fn: 'loadSitch',
+            result: {
+                success: true,
+                source: 'built-in',
+                key: 'gimbal',
+                name: 'gimbal',
+                pending: true,
+            },
+        });
+    });
+
+    test('routes saved sitch loads through FileManager', async () => {
+        mockFileManager.hasServerBackedSaves.mockReturnValue(true);
+
+        const result = await sitrecAPI.call('loadSitch', {name: 'MySavedSitch', source: 'saved', sourceUserID: 42});
+
+        expect(mockFileManager.loadSavedFile).toHaveBeenCalledWith('MySavedSitch', 42);
+        expect(result).toEqual({
+            success: true,
+            fn: 'loadSitch',
+            result: {
+                success: true,
+                source: 'saved',
+                name: 'MySavedSitch',
+                sourceUserID: 42,
+                pending: true,
+            },
+        });
+    });
+
+    test('uses local save flow when server-backed saves are unavailable', async () => {
+        mockFileManager.saveLocal.mockResolvedValue(true);
+        mockSit.sitchName = 'LocalCopy';
+
+        const result = await sitrecAPI.call('saveSitch', {target: 'auto'});
+
+        expect(mockFileManager.saveLocal).toHaveBeenCalledWith({recordAction: false});
+        expect(result).toEqual({
+            success: true,
+            fn: 'saveSitch',
+            result: {
+                success: true,
+                target: 'local',
+                name: 'LocalCopy',
+                dirty: false,
+                shareLink: null,
+            },
+        });
+    });
+
+    test('returns the share link after saving when requested', async () => {
+        mockFileManager.hasServerBackedSaves.mockReturnValue(true);
+        mockFileManager.saveSitch.mockImplementation(async () => {
+            mockCustomManager.customLink = 'https://example.com/?custom=abc';
+        });
+
+        const result = await sitrecAPI.call('getShareLink', {saveIfNeeded: true});
+
+        expect(mockFileManager.saveSitch).toHaveBeenCalledWith(false);
+        expect(result).toEqual({
+            success: true,
+            fn: 'getShareLink',
+            result: {
+                success: true,
+                url: 'https://example.com/?custom=abc',
+            },
+        });
+    });
+
+    test('exports full serialized sitch state', async () => {
+        mockSit.name = 'custom';
+        mockSit.isCustom = true;
+        mockGlobalsState.sitchDirty = true;
+        mockCustomManager.getCustomSitchString.mockReturnValue(JSON.stringify({name: 'custom', mods: {notesView: {notesText: 'A'}}}));
+
+        const result = await sitrecAPI.call('getSitchState');
+
+        expect(result).toEqual({
+            success: true,
+            fn: 'getSitchState',
+            result: {
+                success: true,
+                state: {name: 'custom', mods: {notesView: {notesText: 'A'}}},
+                name: 'custom',
+                dirty: true,
+                isCustom: true,
+                canMod: false,
+            },
+        });
+    });
+});
+
+describe('CSitrecAPI transient state classification', () => {
+    test('treats read-only Phase 0 calls as transient and notes writes as state changes', () => {
+        expect(sitrecAPI.callChangesSerializedState(
+            {fn: 'getSitchState'},
+            {success: true, result: {success: true}}
+        )).toBe(false);
+
+        expect(sitrecAPI.callChangesSerializedState(
+            {fn: 'getShareLink'},
+            {success: true, result: {success: true}}
+        )).toBe(false);
+
+        expect(sitrecAPI.callChangesSerializedState(
+            {fn: 'setNotes'},
+            {success: true, result: {success: true}}
+        )).toBe(true);
     });
 });

@@ -8,10 +8,13 @@ import {
     markSitchDirty,
     NodeMan,
     Sit,
+    SitchMan,
     TrackManager,
-    UndoManager
+    UndoManager,
+    setNewSitchObject,
+    withTestUser,
 } from "./Globals";
-import {isLocal} from "./configUtils";
+import {isLocal, isServerless, SITREC_SERVER} from "./configUtils";
 import {showError} from "./showError";
 import GUI from "./js/lil-gui.esm";
 import {ModelFiles} from "./nodes/CNode3DObject";
@@ -1189,15 +1192,82 @@ class CSitrecAPI {
                 }
             },
 
-            getSitchState: {
-                doc: "Get the current sitch state including whether it has unsaved changes.",
+            getNotes: {
+                doc: "Get the current notes text from the notes view.",
                 fn: () => {
-                    return {
-                        name: Sit?.name,
-                        dirty: Globals.sitchDirty,
-                        isCustom: Sit?.isCustom,
-                        canMod: Sit?.canMod,
-                    };
+                    return this._getNotesState();
+                }
+            },
+
+            setNotes: {
+                doc: "Replace the current notes text.",
+                params: {
+                    text: "Notes text (string)"
+                },
+                fn: (v) => {
+                    return this._setNotesText(v.text ?? "");
+                }
+            },
+
+            updateNotes: {
+                doc: "Update the current notes text using replace, append, or prepend mode.",
+                params: {
+                    mode: "Update mode: 'replace', 'append', or 'prepend' (string, optional, defaults to 'append')",
+                    text: "Notes text to apply (string)"
+                },
+                fn: (v) => {
+                    return this._updateNotesText(v.mode ?? "append", v.text);
+                }
+            },
+
+            saveSitch: {
+                doc: "Save the current sitch using the server-backed or local save flow.",
+                params: {
+                    target: "Save target: 'auto', 'server', or 'local' (string, optional, defaults to 'auto')",
+                    name: "Optional sitch name to save as (string)"
+                },
+                fn: async (v) => {
+                    return await this._saveSitch(v);
+                }
+            },
+
+            getShareLink: {
+                doc: "Get the current share link for the sitch, optionally saving first if needed.",
+                params: {
+                    saveIfNeeded: "If true, save the sitch first when no share link exists (boolean, optional)",
+                    target: "Save target to use when saveIfNeeded is true: 'auto', 'server', or 'local' (string, optional, defaults to 'server')"
+                },
+                fn: async (v) => {
+                    return await this._getShareLink(v);
+                }
+            },
+
+            loadSitch: {
+                doc: "Load a built-in or saved sitch by name.",
+                params: {
+                    name: "Sitch name or built-in sitch key (string)",
+                    source: "Load source: 'auto', 'built-in', or 'saved' (string, optional, defaults to 'auto')",
+                    sourceUserID: "Optional owner user ID for saved sitches (integer, optional)"
+                },
+                fn: async (v) => {
+                    return await this._loadSitch(v);
+                }
+            },
+
+            listSitches: {
+                doc: "List available built-in sitches and any saved sitches visible in the current runtime.",
+                fn: async () => {
+                    return await this._listSitches();
+                }
+            },
+
+            getSitchState: {
+                doc: "Export the current sitch as full serialized JSON state.",
+                params: {
+                    local: "If true, export using local-save paths when available (boolean, optional, defaults to false)"
+                },
+                fn: (v) => {
+                    return this._getSerializedSitchState(v);
                 }
             },
 
@@ -1597,6 +1667,398 @@ class CSitrecAPI {
         return NodeMan.get("video", false) ?? NodeMan.get("videoView", false);
     }
 
+    _getNotesNode() {
+        return NodeMan.get("notesView", false);
+    }
+
+    _syncNotesNode(notesView, text) {
+        notesView.notesText = text;
+        if (notesView.textArea) {
+            notesView.textArea.value = text;
+        }
+        if (typeof notesView.linkifyContent === "function") {
+            notesView.linkifyContent();
+        }
+    }
+
+    _getNotesState() {
+        const notesView = this._getNotesNode();
+        if (!notesView) {
+            return { success: false, error: "notesView node not found" };
+        }
+
+        return {
+            success: true,
+            text: notesView.notesText ?? "",
+            visible: notesView.visible === true,
+        };
+    }
+
+    _setNotesText(text) {
+        const notesView = this._getNotesNode();
+        if (!notesView) {
+            return { success: false, error: "notesView node not found" };
+        }
+
+        const nextText = text == null ? "" : String(text);
+        const previousText = notesView.notesText ?? "";
+        this._syncNotesNode(notesView, nextText);
+        if (previousText !== nextText) {
+            markSitchDirty();
+        }
+
+        return {
+            success: true,
+            text: nextText,
+            length: nextText.length,
+        };
+    }
+
+    _updateNotesText(mode, text) {
+        const notesView = this._getNotesNode();
+        if (!notesView) {
+            return { success: false, error: "notesView node not found" };
+        }
+        if (text === undefined) {
+            return { success: false, error: "text is required" };
+        }
+
+        const currentText = notesView.notesText ?? "";
+        const fragment = String(text);
+        const normalizedMode = String(mode ?? "append").toLowerCase();
+        const separator = currentText && fragment ? "\n\n" : "";
+
+        let nextText;
+        switch (normalizedMode) {
+            case "replace":
+                nextText = fragment;
+                break;
+            case "append":
+                nextText = currentText + separator + fragment;
+                break;
+            case "prepend":
+                nextText = fragment + separator + currentText;
+                break;
+            default:
+                return { success: false, error: `Unknown update mode '${mode}'. Available: replace, append, prepend` };
+        }
+
+        this._syncNotesNode(notesView, nextText);
+        if (currentText !== nextText) {
+            markSitchDirty();
+        }
+
+        return {
+            success: true,
+            mode: normalizedMode,
+            text: nextText,
+            length: nextText.length,
+        };
+    }
+
+    _canUseServerBackedSaves() {
+        if (typeof FileManager?.hasServerBackedSaves === "function") {
+            return FileManager.hasServerBackedSaves();
+        }
+        return !isServerless;
+    }
+
+    _normalizeSavedSitchNames(entries) {
+        if (!Array.isArray(entries)) {
+            return [];
+        }
+
+        const names = entries
+            .map((entry) => Array.isArray(entry) ? entry[0] : entry?.name ?? entry)
+            .filter((entry) => typeof entry === "string" && entry !== "-")
+            .map((entry) => entry.trim())
+            .filter(Boolean);
+
+        return Array.from(new Set(names)).sort((a, b) => a.localeCompare(b));
+    }
+
+    _listBuiltInSitches() {
+        if (!SitchMan?.iterate) {
+            return [];
+        }
+
+        const builtIn = [];
+        SitchMan.iterate((key, sitch) => {
+            if (!sitch) {
+                return;
+            }
+            builtIn.push({
+                key,
+                name: sitch.name ?? key,
+                menuName: sitch.menuName ?? null,
+                hidden: sitch.hidden === true,
+                kind: "built-in",
+            });
+        });
+
+        builtIn.sort((a, b) => a.name.localeCompare(b.name));
+        return builtIn;
+    }
+
+    async _listSavedSitches() {
+        const cached = this._normalizeSavedSitchNames(FileManager?.userSaves);
+        const serverBackedSaves = this._canUseServerBackedSaves();
+
+        if (!serverBackedSaves) {
+            return { items: cached, serverBackedSaves: false };
+        }
+
+        if (cached.length > 0) {
+            return { items: cached, serverBackedSaves: true };
+        }
+
+        if (typeof fetch !== "function") {
+            return {
+                items: cached,
+                serverBackedSaves: true,
+                error: "fetch is not available in this runtime",
+            };
+        }
+
+        try {
+            const response = await fetch(withTestUser(SITREC_SERVER + "getsitches.php?get=myfiles"), {mode: "cors"});
+            if (!response.ok) {
+                throw new Error(`Server returned status ${response.status}`);
+            }
+            const data = await response.text();
+            const parsed = JSON.parse(data);
+            return {
+                items: this._normalizeSavedSitchNames(parsed),
+                serverBackedSaves: true,
+            };
+        } catch (error) {
+            return {
+                items: cached,
+                serverBackedSaves: true,
+                error: error.message,
+            };
+        }
+    }
+
+    _findBuiltInSitch(name) {
+        if (!name || !SitchMan) {
+            return null;
+        }
+
+        if (typeof SitchMan.exists === "function" && SitchMan.exists(name)) {
+            return { key: name, sitch: SitchMan.get(name) };
+        }
+
+        if (!SitchMan.iterate) {
+            return null;
+        }
+
+        const nameLower = String(name).toLowerCase();
+        let match = null;
+        SitchMan.iterate((key, sitch) => {
+            if (match || !sitch) {
+                return;
+            }
+
+            const candidates = [key, sitch.name, sitch.menuName]
+                .filter(Boolean)
+                .map((value) => String(value));
+
+            if (candidates.some((value) => value === name) || candidates.some((value) => value.toLowerCase() === nameLower)) {
+                match = { key, sitch };
+            }
+        });
+
+        return match;
+    }
+
+    _cloneSitchObject(sitchObject) {
+        if (typeof structuredClone === "function") {
+            return structuredClone(sitchObject);
+        }
+
+        try {
+            return JSON.parse(JSON.stringify(sitchObject));
+        } catch (error) {
+            return { ...sitchObject };
+        }
+    }
+
+    async _listSitches() {
+        const builtIn = this._listBuiltInSitches();
+        const saved = await this._listSavedSitches();
+
+        return {
+            success: true,
+            builtIn,
+            saved: saved.items,
+            counts: {
+                builtIn: builtIn.length,
+                saved: saved.items.length,
+            },
+            current: {
+                name: Sit?.name ?? null,
+                sitchName: Sit?.sitchName ?? null,
+            },
+            serverBackedSaves: saved.serverBackedSaves,
+            savedFetchError: saved.error,
+        };
+    }
+
+    async _loadSitch({name, source = "auto", sourceUserID = null} = {}) {
+        const sitchName = typeof name === "string" ? name.trim() : "";
+        if (!sitchName) {
+            return { success: false, error: "name is required" };
+        }
+
+        const normalizedSource = String(source).toLowerCase();
+        if (!["auto", "built-in", "saved"].includes(normalizedSource)) {
+            return { success: false, error: `Unknown source '${source}'. Available: auto, built-in, saved` };
+        }
+
+        const builtInMatch = this._findBuiltInSitch(sitchName);
+        if (normalizedSource === "built-in" || (normalizedSource === "auto" && builtInMatch)) {
+            if (!builtInMatch) {
+                return { success: false, error: `Built-in sitch '${sitchName}' not found` };
+            }
+
+            setNewSitchObject(this._cloneSitchObject(builtInMatch.sitch));
+            return {
+                success: true,
+                source: "built-in",
+                key: builtInMatch.key,
+                name: builtInMatch.sitch?.name ?? sitchName,
+                pending: true,
+            };
+        }
+
+        if (!this._canUseServerBackedSaves()) {
+            return { success: false, error: "Saved sitch loading is not available in this runtime" };
+        }
+        if (typeof FileManager?.loadSavedFile !== "function") {
+            return { success: false, error: "FileManager saved sitch loader is not available" };
+        }
+
+        FileManager.loadSavedFile(sitchName, sourceUserID ?? null);
+        return {
+            success: true,
+            source: "saved",
+            name: sitchName,
+            sourceUserID: sourceUserID ?? null,
+            pending: true,
+        };
+    }
+
+    async _saveSitch({target = "auto", name} = {}) {
+        if (!FileManager) {
+            return { success: false, error: "FileManager not available" };
+        }
+
+        const normalizedTarget = String(target).toLowerCase();
+        if (!["auto", "server", "local"].includes(normalizedTarget)) {
+            return { success: false, error: `Unknown save target '${target}'. Available: auto, server, local` };
+        }
+
+        const trimmedName = typeof name === "string" ? name.trim() : undefined;
+        if (trimmedName === "") {
+            return { success: false, error: "name cannot be empty" };
+        }
+
+        const canServerSave = this._canUseServerBackedSaves();
+        const saveLocally = normalizedTarget === "local" || (normalizedTarget === "auto" && !canServerSave);
+
+        if (!saveLocally && !canServerSave) {
+            return { success: false, error: "Server-backed saves are not available in this runtime" };
+        }
+
+        try {
+            if (saveLocally) {
+                if (trimmedName && typeof FileManager.saveSitchNamed === "function") {
+                    await FileManager.saveSitchNamed(trimmedName, true, null, null);
+                } else if (typeof FileManager.saveLocal === "function") {
+                    const ok = await FileManager.saveLocal({recordAction: false});
+                    if (!ok) {
+                        return { success: false, error: "Local save was cancelled or failed" };
+                    }
+                } else if (typeof FileManager.saveSitch === "function") {
+                    await FileManager.saveSitch(true);
+                } else {
+                    return { success: false, error: "No local save flow is available" };
+                }
+            } else if (trimmedName && typeof FileManager.saveSitchNamed === "function") {
+                await FileManager.saveSitchNamed(trimmedName, false, null, null);
+            } else if (typeof FileManager.saveSitch === "function") {
+                await FileManager.saveSitch(false);
+            } else {
+                return { success: false, error: "No server save flow is available" };
+            }
+        } catch (error) {
+            return { success: false, error: error.message ?? String(error) };
+        }
+
+        return {
+            success: true,
+            target: saveLocally ? "local" : "server",
+            name: Sit?.sitchName ?? trimmedName ?? Sit?.name ?? null,
+            dirty: Globals.sitchDirty === true,
+            shareLink: CustomManager?.customLink ?? null,
+        };
+    }
+
+    async _getShareLink({saveIfNeeded = false, target = "server"} = {}) {
+        if (!CustomManager) {
+            return { success: false, error: "CustomManager not available" };
+        }
+
+        if (!CustomManager.customLink && saveIfNeeded) {
+            const saveResult = await this._saveSitch({target});
+            if (!saveResult.success) {
+                return saveResult;
+            }
+        }
+
+        if (!CustomManager.customLink) {
+            return {
+                success: false,
+                error: isServerless
+                    ? "No share link is available in serverless mode. Save to a server-backed sitch first."
+                    : "No share link is available yet. Save the sitch first.",
+            };
+        }
+
+        return {
+            success: true,
+            url: CustomManager.customLink,
+        };
+    }
+
+    _getSerializedSitchState({local = false} = {}) {
+        if (typeof CustomManager?.getCustomSitchString !== "function") {
+            return { success: false, error: "CustomManager serialization is not available" };
+        }
+
+        try {
+            const serialized = CustomManager.getCustomSitchString(local === true);
+            return {
+                success: true,
+                state: JSON.parse(serialized),
+                name: Sit?.name ?? null,
+                dirty: Globals.sitchDirty === true,
+                isCustom: Sit?.isCustom === true,
+                canMod: Sit?.canMod === true,
+            };
+        } catch (error) {
+            return {
+                success: false,
+                error: error.message ?? String(error),
+                name: Sit?.name ?? null,
+                dirty: Globals.sitchDirty === true,
+                isCustom: Sit?.isCustom === true,
+                canMod: Sit?.canMod === true,
+            };
+        }
+    }
+
     getDocumentation() {
         return Object.entries(this.api).reduce((acc, [key, value]) => {
             let paramsString = Object.entries(value.params || {})
@@ -1696,6 +2158,10 @@ class CSitrecAPI {
             "showChrome",
             "toggleFullscreen",
             "listLayoutTemplates",
+            "getNotes",
+            "listSitches",
+            "getShareLink",
+            "getSitchState",
         ]);
 
         return !transientCalls.has(call.fn);
