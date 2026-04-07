@@ -13,6 +13,8 @@ import {makeDraggable} from "./DragResizeUtils";
 import {
     addGUIFolder,
     addGUIMenu,
+    addTranslatedGUIFolder,
+    addTranslatedGUIMenu,
     CustomManager,
     FileManager,
     GlobalDateTimeNode,
@@ -118,6 +120,7 @@ import {
 import {addObjectTrackingMenu, resetObjectTracking} from "./CObjectTracking";
 import {addTextExtractionMenu} from "./CTextExtraction";
 import {QuadTreeTile} from "./QuadTreeTile";
+import {initI18n, t} from "./i18n";
 import {showError} from "./showError";
 import {destroyGlobalProfiler, globalProfiler, initGlobalProfiler} from "./VisualProfiler";
 import {fileSystemFetch} from "./fileSystemFetch";
@@ -1456,32 +1459,39 @@ async function initializeOnce() {
 //  --name-width: 36%;
 
 
+    initI18n(Globals.settings?.language);
     Globals.menuBar = new CGuiMenuBar();
 
 
     // these area accessed like:
     // guiMenus.main, guiMenus.showhide, guiMenus.tweaks, guiMenus.showhideviews, guiMenus.physics
-    const _gui = addGUIMenu("main", "Sitrec").tooltip("Selecting legacy sitches and tools\nSome legacy sitches have controls here by default");
-    addGUIMenu("file", "File").tooltip("File operations like saving,loading, and exporting");
-    addGUIMenu("view", "View").tooltip("Miscellaneous view controls\nLike all menus, this menu can be dragged off the menu bar to make it a floating menu");
+    const _gui = addTranslatedGUIMenu("main", "menus.main.title")
+        .tooltip(t("menus.main.tooltip"));
+    addTranslatedGUIMenu("file", "menus.file.title")
+        .tooltip(t("menus.file.tooltip"));
+    addTranslatedGUIMenu("view", "menus.view.title")
+        .tooltip(t("menus.view.tooltip"));
 
 
 
-    addGUIMenu("video", "Video").tooltip("Video adjustment, effects, and analysis");
+    addTranslatedGUIMenu("video", "menus.video.title")
+        .tooltip(t("menus.video.tooltip"));
 
 
-    addGUIMenu("time", "Time").tooltip("Time and frame controls\nDragging one time slider past the end will affect the above slider\nNote that the time sliders are UTC");
-    addGUIMenu("objects", "Objects").tooltip("3D Objects and their properties\nEach folder is one object. The traverseObject is the object that traverses the lines of sight - i.e. the UAP we are interested in");
+    addTranslatedGUIMenu("time", "menus.time.title")
+        .tooltip(t("menus.time.tooltip"));
+    addTranslatedGUIMenu("objects", "menus.objects.title")
+        .tooltip(t("menus.objects.tooltip"));
     
     // Add "Add Object" menu item
     const objectMenuActions = {
         addObject: () => {
-            const input = prompt("Enter: [Name] Lat Lon [Alt]\nExamples:\n  MyObject 37.7749 -122.4194 100m\n  37.7749, -122.4194\n  Landmark 37.7749 -122.4194");
+            const input = prompt(t("menus.objects.addObject.prompt"));
             if (input === null || input.trim() === "") return;
             
             const parsed = CustomManager.parseObjectInput(input);
             if (!parsed) {
-                alert("Invalid input. Please enter coordinates in the format:\n[Name] Lat Lon [Alt]");
+                alert(t("menus.objects.addObject.invalidInput"));
                 return;
             }
             
@@ -1501,71 +1511,95 @@ async function initializeOnce() {
 
     
     guiMenus.objects.add(objectMenuActions, 'addObject')
-        .name("Add Object")
-        .tooltip("Create a new object at specified coordinates");
+        .name(t("menus.objects.addObject.label"))
+        .tooltip(t("menus.objects.addObject.tooltip"));
     
-    addGUIMenu("satellites", "Satellites").tooltip("Loading and controlling satellites\nThe satellites.\nStarlink, ISS, etc. Controlls for Horizon flares and other satellite effects");
-    addGUIMenu("terrain", "Terrain").tooltip("Terrain controls\nThe terrain is the 3D model of the ground. The 'Map' is the 2D image of the ground. The 'Elevation' is the height of the ground above sea level");
+    addTranslatedGUIMenu("satellites", "menus.satellites.title")
+        .tooltip(t("menus.satellites.tooltip"));
+    addTranslatedGUIMenu("terrain", "menus.terrain.title")
+        .tooltip(t("menus.terrain.tooltip"));
     // these four have legacy globals
-    const _guiPhysics = addGUIMenu("physics", "Physics").tooltip("Physics controls\nThe physics of the situation, like wind speed and the physics of the traverse object");
+    const _guiPhysics = addTranslatedGUIMenu("physics", "menus.physics.title")
+        .tooltip(t("menus.physics.tooltip"));
 
     // addGUIMenu("missile", "Missile").tooltip("Homing missile parameters\nControls for the missile simulation including mass, thrust, air resistance, and burn time");
 
-    addGUIMenu("camera", "Camera").tooltip("Camera controls for the look view camera\nThe look view defaults to the lower right window, and is intended to match the video.");
-    addGUIMenu("target", "Target").tooltip("Target controls\nPosition and properties of the optional target object");
-    addGUIMenu("traverse", "Traverse").tooltip( "Traverse controls\nThe traverse object is the object that traverses the lines of sight - i.e. the UAP we are interested in\nThis menu defined how the traverse object moves and behaves");
+    addTranslatedGUIMenu("camera", "menus.camera.title")
+        .tooltip(t("menus.camera.tooltip"));
+    addTranslatedGUIMenu("target", "menus.target.title")
+        .tooltip(t("menus.target.tooltip"));
+    addTranslatedGUIMenu("traverse", "menus.traverse.title")
+        .tooltip(t("menus.traverse.tooltip"));
 
-    const _guiShowHide = addGUIMenu("showhide", "Show/Hide").tooltip("Showing or hiding views, object and other elements");
-    const _guiShowHideViews = addGUIFolder("showhideviews", "Views", "showhide").tooltip("Show or hide views (windows) like the look view, the video, the main view, as well as overlays like the MQ9UI");
-    const _guiShowHideGraphs = addGUIFolder("showhidegraphs", "Graphs", "showhide").tooltip("Show or hide various graphs");
-    const _guiTweaks = addGUIMenu("effects", "Effects" ).tooltip("S pecial effects like blur, pixelation, and color adjustments that are applied to the final image in the look view");
-    addGUIMenu("lighting", "Lighting").tooltip("The lighting of the scene, like the sun and the ambient light");
-    addGUIMenu("contents", "Contents").tooltip("The contents of the scene, mostly used for tracks");
+    const _guiShowHide = addTranslatedGUIMenu("showhide", "menus.showHide.title")
+        .tooltip(t("menus.showHide.tooltip"));
+    const _guiShowHideViews = addTranslatedGUIFolder("showhideviews", "menus.showHide.views.title", "showhide")
+        .tooltip(t("menus.showHide.views.tooltip"));
+    const _guiShowHideGraphs = addTranslatedGUIFolder("showhidegraphs", "menus.showHide.graphs.title", "showhide")
+        .tooltip(t("menus.showHide.graphs.tooltip"));
+    const _guiTweaks = addTranslatedGUIMenu("effects", "menus.effects.title")
+        .tooltip(t("menus.effects.tooltip"));
+    addTranslatedGUIMenu("lighting", "menus.lighting.title")
+        .tooltip(t("menus.lighting.tooltip"));
+    addTranslatedGUIMenu("contents", "menus.contents.title")
+        .tooltip(t("menus.contents.tooltip"));
 
-    addGUIMenu("help", "Help").tooltip("Links to the documentation and other help resources");
-    addGUIMenu("debug", "Debug").tooltip("Debug tools and monitoring\nGPU memory usage, performance metrics, and other debugging information");
+    addTranslatedGUIMenu("help", "menus.help.title")
+        .tooltip(t("menus.help.tooltip"));
+    addTranslatedGUIMenu("debug", "menus.debug.title")
+        .tooltip(t("menus.debug.tooltip"));
 
-    const docs = addGUIFolder("doumentation", "Documentation", "help")
-        .tooltip(getEnvBool("LOCAL_DOCS", process.env.LOCAL_DOCS) ?
-            "Links to the documentation (local)" :
-            "Links to the documentation on Github"
+    const localDocsEnabled = getEnvBool("LOCAL_DOCS", process.env.LOCAL_DOCS);
+    const docs = addTranslatedGUIFolder("doumentation", "menus.help.documentation.title", "help")
+        .tooltip(localDocsEnabled
+            ? t("menus.help.documentation.localTooltip")
+            : t("menus.help.documentation.githubTooltip")
         ).perm();
 
 
-    function addHelpLink(name, file) {
-        if (getEnvBool("LOCAL_DOCS", process.env.LOCAL_DOCS) ) {
-            return docs.addExternalLink(name, "./"+file+".html").perm().tooltip(name);
+    function addHelpLink(nameKey, file) {
+        const translatedName = t(nameKey);
+        if (localDocsEnabled) {
+            return docs.addExternalLink(translatedName, "./"+file+".html").perm().tooltip(translatedName);
         } else {
-            return docs.addExternalLink(name+ " (Github)", "https://github.com/MickWest/sitrec2/blob/main/"+file+".md").perm();
+            return docs.addExternalLink(
+                t("menus.help.documentation.githubLinkLabel", {name: translatedName}),
+                "https://github.com/MickWest/sitrec2/blob/main/"+file+".md"
+            ).perm();
         }
     }
 
-    addHelpLink("About Sitrec", "README")
-    addHelpLink("What's New", "docs/WhatsNew")
-    addHelpLink("User Interface Basics", "docs/UserInterface")
-    addHelpLink("Saving and Loading Sitches", "docs/SavingAndLoading")
-    addHelpLink("How to set up a sitch", "docs/CustomSitchTool")
-    addHelpLink("Local Custom Sitches", "docs/LocalCustomSitches")
-    addHelpLink("Tracks and Data Sources", "docs/Tracks")
-    addHelpLink("GIS and Mapping", "docs/GIS")
-    addHelpLink("How to Investigate Starlink Flares", "docs/Starlink")
-    addHelpLink("Objects and 3D Models (Planes)", "docs/CustomModels")
-    addHelpLink("Camera Modes (Normal & Satellite)", "docs/satcam")
+    addHelpLink("menus.help.documentation.about", "README")
+    addHelpLink("menus.help.documentation.whatsNew", "docs/WhatsNew")
+    addHelpLink("menus.help.documentation.uiBasics", "docs/UserInterface")
+    addHelpLink("menus.help.documentation.savingLoading", "docs/SavingAndLoading")
+    addHelpLink("menus.help.documentation.customSitch", "docs/CustomSitchTool")
+    addHelpLink("menus.help.documentation.localCustomSitches", "docs/LocalCustomSitches")
+    addHelpLink("menus.help.documentation.tracks", "docs/Tracks")
+    addHelpLink("menus.help.documentation.gis", "docs/GIS")
+    addHelpLink("menus.help.documentation.starlink", "docs/Starlink")
+    addHelpLink("menus.help.documentation.customModels", "docs/CustomModels")
+    addHelpLink("menus.help.documentation.cameraModes", "docs/satcam")
 
-    if (getEnvBool("LOCAL_DOCS", process.env.LOCAL_DOCS)) {
-        docs.addExternalLink("Third-Party Notices", "./ThirdPartyNotices.txt").perm()
-            .tooltip("Open-source license attributions for bundled third-party software");
+    if (localDocsEnabled) {
+        docs.addExternalLink(t("menus.help.documentation.thirdPartyNotices"), "./ThirdPartyNotices.txt").perm()
+            .tooltip(t("menus.help.documentation.thirdPartyNoticesTooltip"));
     } else {
-        docs.addExternalLink("Third-Party Notices (Github)", "https://github.com/MickWest/Sitrec2/blob/main/ThirdPartyNotices.txt").perm();
+        docs.addExternalLink(
+            t("menus.help.documentation.githubLinkLabel", {
+                name: t("menus.help.documentation.thirdPartyNotices"),
+            }),
+            "https://github.com/MickWest/Sitrec2/blob/main/ThirdPartyNotices.txt"
+        ).perm();
     }
 
-    docs.addExternalLink("Download MCP Bridge", "./tools/SitrecBridge/dist/SitrecBridge.zip").perm()
-        .tooltip("Download the SitrecBridge MCP server + Chrome extension (zero dependencies, just needs Node.js)");
+    docs.addExternalLink(t("menus.help.documentation.downloadBridge"), "./tools/SitrecBridge/dist/SitrecBridge.zip").perm()
+        .tooltip(t("menus.help.documentation.downloadBridgeTooltip"));
 
     if (configParams?.extraHelpLinks !== undefined) {
 
-        const external = addGUIFolder("external", "External Links", "help")
-            .tooltip("External help links"
+        const external = addTranslatedGUIFolder("external", "menus.help.externalLinks.title", "help")
+            .tooltip(t("menus.help.externalLinks.tooltip")
             ).perm();
 
         for (const [key, value] of Object.entries(configParams.extraHelpLinks)) {
@@ -1585,8 +1619,8 @@ async function initializeOnce() {
 
     // Export debug log button
     guiMenus.help.add({ exportDebugLog: () => debugLog.export() }, 'exportDebugLog')
-        .name('Export Debug Log')
-        .tooltip('Download all console output (log, warn, error) as a text file for debugging');
+        .name(t("menus.help.exportDebugLog.label"))
+        .tooltip(t("menus.help.exportDebugLog.tooltip"));
 
     setupHelpSearch(guiMenus.help);
 
@@ -1623,7 +1657,7 @@ async function initializeOnce() {
         const sitchObject = SitchMan.get(sitch);
 
         _gui.add(Globals, ""+key+"Button").name(key).perm()
-            .tooltip(sitchObject.tooltip || "No tooltip defined for this sitch")
+            .tooltip(sitchObject.tooltip || t("menus.main.noTooltip"))
 
     }
 
@@ -1638,18 +1672,18 @@ async function initializeOnce() {
         const sitchObject = SitchMan.get(sitch);
 
         _gui.add(Globals, ""+key+"Button").name(key).perm()
-            .tooltip(sitchObject.tooltip || "No tooltip defined for this sitch")
+            .tooltip(sitchObject.tooltip || t("menus.main.noTooltip"))
 
     }
 
 
 
 
-    const unselectedText = "-Select-";
+    const unselectedText = t("menus.main.selectPlaceholder");
 
     par.nameSelect = unselectedText;
     // Add the menu to select a situation
-    _gui.add(par, "nameSelect", selectableSitches).name("Legacy Sitches").perm().onChange(sitch => {
+    _gui.add(par, "nameSelect", selectableSitches).name(t("menus.main.legacySitches.label")).perm().onChange(sitch => {
         par.name = par.nameSelect;
         console.log("SITCH par.name CHANGE TO: "+sitch+" ->"+par.nameSelect)
         const url = SITREC_APP+"?sitch=" + sitch
@@ -1658,11 +1692,11 @@ async function initializeOnce() {
         par.nameSelect = unselectedText ;
 
     })
-        .tooltip("The Legacy Sitches are older built-in (hard-coded) sitches are predefined situations that often have unique code and assets. Select one to load it.");
+        .tooltip(t("menus.main.legacySitches.tooltip"));
 
     // and one for tools
     par.toolSelect = unselectedText;
-    _gui.add(par, "toolSelect", toolSitches).name("Legacy Tools").perm().listen().onChange(sitch => {
+    _gui.add(par, "toolSelect", toolSitches).name(t("menus.main.legacyTools.label")).perm().listen().onChange(sitch => {
         console.log("SITCH par.name CHANGE TO: "+sitch+" ->"+par.name)
         const url = SITREC_APP+"?sitch=" + sitch
 
@@ -1690,7 +1724,7 @@ async function initializeOnce() {
         window.history.pushState({}, null, url);
         par.toolSelect = unselectedText;
     })
-        .tooltip("Tools are special sitches that are used for custom setups like Starlink or with user tracks, and for testing, debugging, or other special purposes. Select one to load it.");
+        .tooltip(t("menus.main.legacyTools.tooltip"));
 
 
 

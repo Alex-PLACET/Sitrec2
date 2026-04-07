@@ -21,10 +21,21 @@ import {Color} from "three";
 import {getCV, loadOpenCV} from "./openCVLoader";
 import {applyConvolution} from "./nodes/CNodeVideoView";
 import {getFlowAlignRotation, isAlignWithFlowEnabled, setAlignWithFlow, setMotionAnalyzerRef} from "./FlowAlignment";
+import {t} from "./i18n";
 
 let cv = null;
 let analyzeWithEffects = false;
 let exportWithEffects = false;
+
+function mt(key, options = undefined) {
+    return t(`motionAnalysis.${key}`, options);
+}
+
+function setMenuItemLabel(menuItem, key, options = undefined) {
+    if (menuItem) {
+        menuItem.name(mt(key, options));
+    }
+}
 
 function getVideoEffectsFilterString() {
     let filter = '';
@@ -65,13 +76,13 @@ function applyVideoEffectsToCanvas(ctx, width, height) {
 async function ensureOpenCVAndAnalyzer(menuItem, loadingText, defaultText) {
     const videoView = NodeMan.get("video", false);
     if (!videoView) {
-        alert("No video view found.");
+        alert(mt("errors.noVideoView"));
         return null;
     }
 
     const videoData = videoView.videoData;
     if (!videoData) {
-        alert("No video data found.");
+        alert(mt("errors.noVideoData"));
         return null;
     }
 
@@ -81,7 +92,7 @@ async function ensureOpenCVAndAnalyzer(menuItem, loadingText, defaultText) {
             await loadOpenCV();
             cv = getCV();
         } catch (e) {
-            alert("Failed to load OpenCV: " + e.message);
+            alert(mt("errors.failedToLoadOpenCv", {message: e.message}));
             if (menuItem) menuItem.name(defaultText);
             return null;
         }
@@ -2331,7 +2342,7 @@ export function resetMotionAnalysis() {
     removeParamSliders();
     renderHooked = false;
     if (analyzeMenuItem) {
-        analyzeMenuItem.name("Analyze Motion");
+        setMenuItemLabel(analyzeMenuItem, "menu.analyzeMotion.label");
     }
 }
 
@@ -2340,13 +2351,17 @@ export async function toggleMotionAnalysis() {
         motionAnalyzer.stop();
         removeParamSliders();
         if (analyzeMenuItem) {
-            analyzeMenuItem.name("Analyze Motion");
+            setMenuItemLabel(analyzeMenuItem, "menu.analyzeMotion.label");
         }
         setRenderOne(true);
         return;
     }
 
-    await ensureOpenCVAndAnalyzer(analyzeMenuItem, "Loading OpenCV...", "Analyze Motion");
+    await ensureOpenCVAndAnalyzer(
+        analyzeMenuItem,
+        mt("status.loadingOpenCv"),
+        mt("menu.analyzeMotion.label")
+    );
 }
 
 let paramControllers = [];
@@ -2359,7 +2374,7 @@ function startAnalysis(videoView) {
     motionAnalyzer.start();
     
     if (analyzeMenuItem) {
-        analyzeMenuItem.name("Stop Analysis");
+        setMenuItemLabel(analyzeMenuItem, "status.stopAnalysis");
     }
 
     createParamSliders();
@@ -2407,25 +2422,29 @@ async function analyzeAllFrames(progressCallback) {
 }
 
 async function createTrackFromMotion() {
-    const result = await ensureOpenCVAndAnalyzer(createTrackMenuItem, "Loading OpenCV...", "Create Track from Motion");
+    const result = await ensureOpenCVAndAnalyzer(
+        createTrackMenuItem,
+        mt("status.loadingOpenCv"),
+        mt("menu.createTrack.label")
+    );
     if (!result) return;
 
-    if (createTrackMenuItem) createTrackMenuItem.name("Analyzing... 0%");
+    setMenuItemLabel(createTrackMenuItem, "status.analyzingPercent", {pct: 0});
     
     await analyzeAllFrames((current, total) => {
         const pct = Math.round(100 * current / total);
-        if (createTrackMenuItem) createTrackMenuItem.name(`Analyzing... ${pct}%`);
+        setMenuItemLabel(createTrackMenuItem, "status.analyzingPercent", {pct});
     });
 
-    if (createTrackMenuItem) createTrackMenuItem.name("Creating track...");
+    setMenuItemLabel(createTrackMenuItem, "status.creatingTrack");
 
     const originNode = NodeMan.get("LOSTraverseSelect", false) 
         ?? NodeMan.get("targetTrack", false)
         ?? NodeMan.get("cameraTrack", false);
     
     if (!originNode) {
-        alert("No origin track found. Need a target or camera track to determine start position.");
-        if (createTrackMenuItem) createTrackMenuItem.name("Create Track from Motion");
+        alert(mt("errors.noOriginTrack"));
+        setMenuItemLabel(createTrackMenuItem, "menu.createTrack.label");
         return;
     }
 
@@ -2474,7 +2493,7 @@ async function createTrackFromMotion() {
         width: 2,
     });
 
-    if (createTrackMenuItem) createTrackMenuItem.name("Create Track from Motion");
+    setMenuItemLabel(createTrackMenuItem, "menu.createTrack.label");
     setRenderOne(true);
     console.log(`Created motion track '${trackId}' from ${motionAnalyzer.resultCache.size} analyzed frames, ${metersPerPixel.toFixed(3)} m/px`);
 }
@@ -2492,19 +2511,23 @@ let panoFrameStep = 1;
 let removeOuterBlack = false;
 
 async function exportMotionPanorama() {
-    const result = await ensureOpenCVAndAnalyzer(exportPanoMenuItem, "Loading OpenCV...", "Export Motion Panorama");
+    const result = await ensureOpenCVAndAnalyzer(
+        exportPanoMenuItem,
+        mt("status.loadingOpenCv"),
+        mt("menu.panorama.exportImage.label")
+    );
     if (!result) return;
     const {videoData} = result;
 
     if (!motionAnalyzer.isCacheFull()) {
-        if (exportPanoMenuItem) exportPanoMenuItem.name("Analyzing... 0%");
+        setMenuItemLabel(exportPanoMenuItem, "status.analyzingPercent", {pct: 0});
         await analyzeAllFrames((current, total) => {
             const pct = Math.round(100 * current / total);
-            if (exportPanoMenuItem) exportPanoMenuItem.name(`Analyzing... ${pct}%`);
+            setMenuItemLabel(exportPanoMenuItem, "status.analyzingPercent", {pct});
         });
     }
 
-    if (exportPanoMenuItem) exportPanoMenuItem.name("Building panorama...");
+    setMenuItemLabel(exportPanoMenuItem, "status.buildingPanorama");
 
     const startFrame = Sit.aFrame;
     const endFrame = Sit.bFrame;
@@ -2563,7 +2586,7 @@ async function exportMotionPanorama() {
     
     const statusText = document.createElement('div');
     statusText.style.cssText = 'color:#fff;font-size:18px;margin-top:15px;font-family:sans-serif;';
-    statusText.textContent = 'Building panorama... 0%';
+    statusText.textContent = mt("status.buildingPanoramaPercent", {pct: 0});
     
     previewOverlay.appendChild(previewCanvas);
     previewOverlay.appendChild(statusText);
@@ -2583,7 +2606,11 @@ async function exportMotionPanorama() {
     for (let i = 0; i < totalFrames; i++) {
         const fd = frameData[i];
         
-        statusText.textContent = `Loading frame ${fd.frame}... (${i+1}/${totalFrames})`;
+        statusText.textContent = mt("status.loadingFrame", {
+            current: i + 1,
+            frame: fd.frame,
+            total: totalFrames,
+        });
         
         par.frame = fd.frame;
         GlobalDateTimeNode.update(fd.frame);
@@ -2611,19 +2638,30 @@ async function exportMotionPanorama() {
             const pct = Math.round(100 * i / totalFrames);
             updatePreview();
             const skipInfo = skippedFrames > 0 ? ` (${skippedFrames} skipped)` : '';
-            statusText.textContent = `Building panorama... ${pct}% (frame ${i+1}/${totalFrames})${skipInfo}`;
-            if (exportPanoMenuItem) exportPanoMenuItem.name(`Rendering... ${pct}%`);
+            statusText.textContent = skippedFrames > 0
+                ? mt("status.loadingFrameSkipped", {
+                    current: i + 1,
+                    frame: fd.frame,
+                    skipped: skippedFrames,
+                    total: totalFrames,
+                })
+                : mt("status.loadingFrame", {
+                    current: i + 1,
+                    frame: fd.frame,
+                    total: totalFrames,
+                });
+            setMenuItemLabel(exportPanoMenuItem, "status.renderingPercent", {pct});
             await new Promise(r => setTimeout(r, 0));
         }
     }
 
     updatePreview();
-    statusText.textContent = 'Saving...';
+    statusText.textContent = mt("status.saving");
     Globals.justVideoAnalysis = false;
     par.paused = savedPaused;
     par.frame = savedFrame;
     
-    if (exportPanoMenuItem) exportPanoMenuItem.name("Saving...");
+    setMenuItemLabel(exportPanoMenuItem, "status.saving");
 
     panoCanvas.toBlob((blob) => {
         const filename = `${getExportPrefix()}_motion_panorama_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.png`;
@@ -2635,26 +2673,30 @@ async function exportMotionPanorama() {
         URL.revokeObjectURL(url);
         
         console.log(`Motion panorama exported: ${filename}`);
-        if (exportPanoMenuItem) exportPanoMenuItem.name("Export Motion Panorama");
+        setMenuItemLabel(exportPanoMenuItem, "menu.panorama.exportImage.label");
         
         document.body.removeChild(previewOverlay);
     }, 'image/png');
 }
 
 async function exportPanoVideo() {
-    const result = await ensureOpenCVAndAnalyzer(exportPanoVideoMenuItem, "Loading OpenCV...", "Export Animated Pano");
+    const result = await ensureOpenCVAndAnalyzer(
+        exportPanoVideoMenuItem,
+        mt("status.loadingOpenCv"),
+        mt("menu.panorama.exportVideo.label")
+    );
     if (!result) return;
     const {videoData} = result;
 
     if (!motionAnalyzer.isCacheFull()) {
-        if (exportPanoVideoMenuItem) exportPanoVideoMenuItem.name("Analyzing... 0%");
+        setMenuItemLabel(exportPanoVideoMenuItem, "status.analyzingPercent", {pct: 0});
         await analyzeAllFrames((current, total) => {
             const pct = Math.round(100 * current / total);
-            if (exportPanoVideoMenuItem) exportPanoVideoMenuItem.name(`Analyzing... ${pct}%`);
+            setMenuItemLabel(exportPanoVideoMenuItem, "status.analyzingPercent", {pct});
         });
     }
 
-    if (exportPanoVideoMenuItem) exportPanoVideoMenuItem.name("Building panorama...");
+    setMenuItemLabel(exportPanoVideoMenuItem, "status.buildingPanorama");
 
     const startFrame = Sit.aFrame;
     const endFrame = Sit.bFrame;
@@ -2712,12 +2754,12 @@ async function exportPanoVideo() {
 
         if (i % 20 === 0) {
             const pct = Math.round(100 * i / totalFrames);
-            if (exportPanoVideoMenuItem) exportPanoVideoMenuItem.name(`Pano... ${pct}%`);
+            setMenuItemLabel(exportPanoVideoMenuItem, "status.panoPercent", {pct});
             await new Promise(r => setTimeout(r, 0));
         }
     }
 
-    if (exportPanoVideoMenuItem) exportPanoVideoMenuItem.name("Rendering video...");
+    setMenuItemLabel(exportPanoVideoMenuItem, "status.renderingVideo");
 
     const outputWidth = PANO_VIDEO_4K_WIDTH;
     const outputHeight = PANO_VIDEO_4K_HEIGHT;
@@ -2747,27 +2789,27 @@ async function exportPanoVideo() {
 
     const encodingSupport = await checkVideoEncodingSupport();
     if (!encodingSupport.supported) {
-        alert("Video encoding not supported in this browser");
+        alert(mt("errors.videoEncodingUnsupported"));
         Globals.justVideoAnalysis = false;
         par.paused = savedPaused;
-        if (exportPanoVideoMenuItem) exportPanoVideoMenuItem.name("Export Pano Video");
+        setMenuItemLabel(exportPanoVideoMenuItem, "menu.panorama.exportVideo.label");
         return;
     }
 
     const formatId = encodingSupport.h264 ? 'mp4-h264' : 'webm-vp8';
     const bestFormat = await getBestFormatForResolution(formatId, outputWidth, outputHeight);
     if (!bestFormat.formatId) {
-        alert(`Video export failed: ${bestFormat.reason}`);
+        alert(mt("errors.exportFailed", {reason: bestFormat.reason}));
         Globals.justVideoAnalysis = false;
         par.paused = savedPaused;
-        if (exportPanoVideoMenuItem) exportPanoVideoMenuItem.name("Export Pano Video");
+        setMenuItemLabel(exportPanoVideoMenuItem, "menu.panorama.exportVideo.label");
         return;
     }
 
     const extension = getVideoExtension(bestFormat.formatId);
     const fps = Sit.fps;
 
-    const progress = new ExportProgressWidget('Exporting pano video...', totalFrames);
+    const progress = new ExportProgressWidget(mt("status.exportProgressTitle"), totalFrames);
 
     const compositeCanvas = document.createElement('canvas');
     compositeCanvas.width = outputWidth;
@@ -2856,7 +2898,7 @@ async function exportPanoVideo() {
             if (i % 10 === 0) {
                 progress.update(i + 1);
                 const pct = Math.round(100 * i / totalFrames);
-                if (exportPanoVideoMenuItem) exportPanoVideoMenuItem.name(`Video... ${pct}%`);
+                setMenuItemLabel(exportPanoVideoMenuItem, "status.videoPercent", {pct});
                 await new Promise(r => setTimeout(r, 0));
             }
         }
@@ -2880,31 +2922,35 @@ async function exportPanoVideo() {
 
     } catch (e) {
         console.error('Pano video export failed:', e);
-        alert('Pano video export failed: ' + e.message);
+        alert(mt("errors.panoVideoExportFailed", {message: e.message}));
     } finally {
         progress.remove();
         par.frame = savedFrame;
         Globals.justVideoAnalysis = false;
         par.paused = savedPaused;
-        if (exportPanoVideoMenuItem) exportPanoVideoMenuItem.name("Export Pano Video");
+        setMenuItemLabel(exportPanoVideoMenuItem, "menu.panorama.exportVideo.label");
         setRenderOne(true);
     }
 }
 
 async function stabilizeVideoFromMotion() {
-    const result = await ensureOpenCVAndAnalyzer(stabilizeMenuItem, "Loading OpenCV...", "Stabilize Video");
+    const result = await ensureOpenCVAndAnalyzer(
+        stabilizeMenuItem,
+        mt("status.loadingOpenCv"),
+        mt("menu.panorama.stabilize.label")
+    );
     if (!result) return;
     const {videoData} = result;
 
     if (!motionAnalyzer.isCacheFull()) {
-        if (stabilizeMenuItem) stabilizeMenuItem.name("Analyzing... 0%");
+        setMenuItemLabel(stabilizeMenuItem, "status.analyzingPercent", {pct: 0});
         await analyzeAllFrames((current, total) => {
             const pct = Math.round(100 * current / total);
-            if (stabilizeMenuItem) stabilizeMenuItem.name(`Analyzing... ${pct}%`);
+            setMenuItemLabel(stabilizeMenuItem, "status.analyzingPercent", {pct});
         });
     }
 
-    if (stabilizeMenuItem) stabilizeMenuItem.name("Building stabilization...");
+    setMenuItemLabel(stabilizeMenuItem, "status.buildingStabilization");
 
     const motionData = motionAnalyzer.getMotionDataForAllFrames();
 
@@ -2928,7 +2974,7 @@ async function stabilizeVideoFromMotion() {
     videoData.setStabilizationEnabled(true);
     stabilizationEnabled = true;
 
-    if (stabilizeMenuItem) stabilizeMenuItem.name("Disable Stabilization");
+    setMenuItemLabel(stabilizeMenuItem, "menu.panorama.stabilize.disableLabel");
     console.log(`Video stabilization enabled with ${stabilizationData.size} frames of motion data`);
 }
 
@@ -2939,14 +2985,14 @@ function toggleStabilization() {
     if (stabilizationEnabled) {
         videoView.videoData.setStabilizationEnabled(false);
         stabilizationEnabled = false;
-        if (stabilizeMenuItem) stabilizeMenuItem.name("Stabilize Video");
+        setMenuItemLabel(stabilizeMenuItem, "menu.panorama.stabilize.label");
         console.log("Video stabilization disabled");
     } else {
         // If we have cached motion data, re-enable; otherwise run full analysis
         if (videoView.videoData.stabilizationData && videoView.videoData.stabilizationData.size > 0) {
             videoView.videoData.setStabilizationEnabled(true);
             stabilizationEnabled = true;
-            if (stabilizeMenuItem) stabilizeMenuItem.name("Disable Stabilization");
+            setMenuItemLabel(stabilizeMenuItem, "menu.panorama.stabilize.disableLabel");
             console.log("Video stabilization re-enabled");
         } else {
             stabilizeVideoFromMotion();
@@ -2957,7 +3003,7 @@ function toggleStabilization() {
 export function addMotionAnalysisMenu() {
     if (!guiMenus.view) return;
     
-    motionFolder = guiMenus.video.addFolder("Motion Analysis").close().perm();
+    motionFolder = guiMenus.video.addFolder(mt("menu.title")).close().perm();
     
     const menuActions = {
         analyzeMotion: toggleMotionAnalysis,
@@ -2968,13 +3014,13 @@ export function addMotionAnalysisMenu() {
     };
 
     analyzeMenuItem = motionFolder.add(menuActions, 'analyzeMotion')
-        .name("Analyze Motion")
-        .tooltip("Toggle real-time motion analysis overlay on video")
+        .name(mt("menu.analyzeMotion.label"))
+        .tooltip(mt("menu.analyzeMotion.tooltip"))
         .perm();
 
     createTrackMenuItem = motionFolder.add(menuActions, 'createTrack')
-        .name("Create Track from Motion")
-        .tooltip("Analyze all frames and create a ground track from motion vectors")
+        .name(mt("menu.createTrack.label"))
+        .tooltip(mt("menu.createTrack.tooltip"))
         .perm();
 
     const flowParams = {
@@ -2985,25 +3031,25 @@ export function addMotionAnalysisMenu() {
         }
     };
     motionFolder.add(flowParams, 'alignWithFlow')
-        .name("Align with Flow")
-        .tooltip("Rotate image so motion direction is horizontal")
+        .name(mt("menu.alignWithFlow.label"))
+        .tooltip(mt("menu.alignWithFlow.tooltip"))
         .perm();
 
-    const panoFolder = motionFolder.addFolder("Panorama").close().perm();
+    const panoFolder = motionFolder.addFolder(mt("menu.panorama.title")).close().perm();
     
     exportPanoMenuItem = panoFolder.add(menuActions, 'exportPanorama')
-        .name("Export Motion Panorama")
-        .tooltip("Create a panorama image from video frames using motion tracking offsets")
+        .name(mt("menu.panorama.exportImage.label"))
+        .tooltip(mt("menu.panorama.exportImage.tooltip"))
         .perm();
 
     exportPanoVideoMenuItem = panoFolder.add(menuActions, 'exportPanoVideo')
-        .name("Export Pano Video")
-        .tooltip("Create a 4K video showing the panorama with video frame overlay")
+        .name(mt("menu.panorama.exportVideo.label"))
+        .tooltip(mt("menu.panorama.exportVideo.tooltip"))
         .perm();
 
     stabilizeMenuItem = panoFolder.add(menuActions, 'stabilizeVideo')
-        .name("Stabilize Video")
-        .tooltip("Stabilize video using global motion analysis (removes camera shake)")
+        .name(mt("menu.panorama.stabilize.label"))
+        .tooltip(mt("menu.panorama.stabilize.tooltip"))
         .perm();
 
     const panoParams = {
@@ -3015,28 +3061,28 @@ export function addMotionAnalysisMenu() {
         get removeOuterBlack() { return removeOuterBlack; }, set removeOuterBlack(v) { removeOuterBlack = v; }
     };
     panoFolder.add(panoParams, 'panoFrameStep', 1, 60, 1)
-        .name("Pano Frame Step")
-        .tooltip("How many frames to step between each panorama frame (1 = every frame)")
+        .name(mt("menu.panorama.panoFrameStep.label"))
+        .tooltip(mt("menu.panorama.panoFrameStep.tooltip"))
         .perm();
     panoFolder.add(panoParams, 'panoCrop', 0, 100, 1)
-        .name("Panorama Crop")
-        .tooltip("Pixels to crop from each edge of video frames")
+        .name(mt("menu.panorama.crop.label"))
+        .tooltip(mt("menu.panorama.crop.tooltip"))
         .perm();
     panoFolder.add(panoParams, 'useMaskInPano')
-        .name("Use Mask in Pano")
-        .tooltip("Apply motion tracking mask as transparency when rendering panorama")
+        .name(mt("menu.panorama.useMask.label"))
+        .tooltip(mt("menu.panorama.useMask.tooltip"))
         .perm();
     panoFolder.add(panoParams, 'analyzeWithEffects')
-        .name("Analyze With Effects")
-        .tooltip("Apply video adjustments (contrast, etc.) to frames used for motion analysis")
+        .name(mt("menu.panorama.analyzeWithEffects.label"))
+        .tooltip(mt("menu.panorama.analyzeWithEffects.tooltip"))
         .perm();
     panoFolder.add(panoParams, 'exportWithEffects')
-        .name("Export With Effects")
-        .tooltip("Apply video adjustments to panorama exports")
+        .name(mt("menu.panorama.exportWithEffects.label"))
+        .tooltip(mt("menu.panorama.exportWithEffects.tooltip"))
         .perm();
     panoFolder.add(panoParams, 'removeOuterBlack')
-        .name("Remove Outer Black")
-        .tooltip("Make black pixels at the edges of each row transparent")
+        .name(mt("menu.panorama.removeOuterBlack.label"))
+        .tooltip(mt("menu.panorama.removeOuterBlack.tooltip"))
         .perm();
 }
 
@@ -3065,54 +3111,54 @@ function createParamSliders() {
     const invalidate = () => motionAnalyzer.onParamChange();
     const update = () => setRenderOne(true);
     
-    const trackingFolder = motionFolder.addFolder("Tracking Parameters").close();
+    const trackingFolder = motionFolder.addFolder(mt("menu.trackingParameters.title")).close();
     paramControllers.push(trackingFolder);
     
     if (isAdmin()) {
         const techniqueOptions = Object.values(MOTION_TECHNIQUES);
-        paramControllers.push(trackingFolder.add(p, 'technique', techniqueOptions).name("Technique").onChange((newTechnique) => {
+        paramControllers.push(trackingFolder.add(p, 'technique', techniqueOptions).name(mt("menu.trackingParameters.technique.label")).onChange((newTechnique) => {
             console.log("Technique changed to:", newTechnique);
             invalidate();
             removeParamSliders();
             createParamSliders();
-        }).tooltip("Motion estimation algorithm"));
+        }).tooltip(mt("menu.trackingParameters.technique.tooltip")));
     }
     
     const isTracklet = p.technique === MOTION_TECHNIQUES.LINEAR_TRACKLET;
     paramControllers.push(trackingFolder.add(p, 'frameSkip', 1, 10, 1)
-        .name(isTracklet ? "Tracklet Length" : "Frame Skip")
+        .name(isTracklet ? mt("menu.trackingParameters.trackletLength.label") : mt("menu.trackingParameters.frameSkip.label"))
         .onChange(invalidate)
-        .tooltip(isTracklet ? "Number of frames in tracklet (longer = stricter coherence)" : "Frames between comparisons (higher = detect slower motion)"));
-    paramControllers.push(trackingFolder.add(p, 'blurSize', 1, 15, 2).name("Blur Size").onChange(invalidate)
-        .tooltip("Gaussian blur for macro features (odd numbers)"));
-    paramControllers.push(trackingFolder.add(p, 'minMotion', 0, 2, 0.1).name("Min Motion").onChange(invalidate)
-        .tooltip("Minimum motion magnitude (pixels/frame)"));
-    paramControllers.push(trackingFolder.add(p, 'maxMotion', 10, 200, 5).name("Max Motion").onChange(invalidate)
-        .tooltip("Maximum motion magnitude"));
-    paramControllers.push(trackingFolder.add(p, 'smoothingAlpha', 0.5, 0.99, 0.01).name("Smoothing").onChange(invalidate)
-        .tooltip("Direction smoothing (higher = more smoothing)"));
-    paramControllers.push(trackingFolder.add(p, 'minVectorCount', 1, 50, 1).name("Min Vector Count").onChange(invalidate)
-        .tooltip("Minimum number of motion vectors for a valid frame"));
-    paramControllers.push(trackingFolder.add(p, 'minConsensusConfidence', 0, 0.5, 0.01).name("Min Confidence").onChange(invalidate)
-        .tooltip("Minimum consensus confidence for a valid frame"));
+        .tooltip(isTracklet ? mt("menu.trackingParameters.trackletLength.tooltip") : mt("menu.trackingParameters.frameSkip.tooltip")));
+    paramControllers.push(trackingFolder.add(p, 'blurSize', 1, 15, 2).name(mt("menu.trackingParameters.blurSize.label")).onChange(invalidate)
+        .tooltip(mt("menu.trackingParameters.blurSize.tooltip")));
+    paramControllers.push(trackingFolder.add(p, 'minMotion', 0, 2, 0.1).name(mt("menu.trackingParameters.minMotion.label")).onChange(invalidate)
+        .tooltip(mt("menu.trackingParameters.minMotion.tooltip")));
+    paramControllers.push(trackingFolder.add(p, 'maxMotion', 10, 200, 5).name(mt("menu.trackingParameters.maxMotion.label")).onChange(invalidate)
+        .tooltip(mt("menu.trackingParameters.maxMotion.tooltip")));
+    paramControllers.push(trackingFolder.add(p, 'smoothingAlpha', 0.5, 0.99, 0.01).name(mt("menu.trackingParameters.smoothing.label")).onChange(invalidate)
+        .tooltip(mt("menu.trackingParameters.smoothing.tooltip")));
+    paramControllers.push(trackingFolder.add(p, 'minVectorCount', 1, 50, 1).name(mt("menu.trackingParameters.minVectorCount.label")).onChange(invalidate)
+        .tooltip(mt("menu.trackingParameters.minVectorCount.tooltip")));
+    paramControllers.push(trackingFolder.add(p, 'minConsensusConfidence', 0, 0.5, 0.01).name(mt("menu.trackingParameters.minConfidence.label")).onChange(invalidate)
+        .tooltip(mt("menu.trackingParameters.minConfidence.tooltip")));
     
     const usesFeatures = p.technique === MOTION_TECHNIQUES.SPARSE_CONSENSUS || p.technique === MOTION_TECHNIQUES.AFFINE_RANSAC || p.technique === MOTION_TECHNIQUES.LINEAR_TRACKLET;
     if (usesFeatures) {
-        paramControllers.push(trackingFolder.add(p, 'maxFeatures', 50, 500, 10).name("Max Features").onChange(invalidate)
-            .tooltip("Maximum tracked features"));
-        paramControllers.push(trackingFolder.add(p, 'minDistance', 5, 50, 1).name("Min Distance").onChange(invalidate)
-            .tooltip("Minimum distance between features"));
-        paramControllers.push(trackingFolder.add(p, 'qualityLevel', 0.001, 0.1, 0.001).name("Quality Level").onChange(invalidate)
-            .tooltip("Feature detection quality threshold"));
-        paramControllers.push(trackingFolder.add(p, 'maxTrackError', 5, 50, 1).name("Max Track Error").onChange(invalidate)
-            .tooltip("Maximum tracking error threshold"));
+        paramControllers.push(trackingFolder.add(p, 'maxFeatures', 50, 500, 10).name(mt("menu.trackingParameters.maxFeatures.label")).onChange(invalidate)
+            .tooltip(mt("menu.trackingParameters.maxFeatures.tooltip")));
+        paramControllers.push(trackingFolder.add(p, 'minDistance', 5, 50, 1).name(mt("menu.trackingParameters.minDistance.label")).onChange(invalidate)
+            .tooltip(mt("menu.trackingParameters.minDistance.tooltip")));
+        paramControllers.push(trackingFolder.add(p, 'qualityLevel', 0.001, 0.1, 0.001).name(mt("menu.trackingParameters.qualityLevel.label")).onChange(invalidate)
+            .tooltip(mt("menu.trackingParameters.qualityLevel.tooltip")));
+        paramControllers.push(trackingFolder.add(p, 'maxTrackError', 5, 50, 1).name(mt("menu.trackingParameters.maxTrackError.label")).onChange(invalidate)
+            .tooltip(mt("menu.trackingParameters.maxTrackError.tooltip")));
     }
     
     if (p.technique === MOTION_TECHNIQUES.SPARSE_CONSENSUS) {
-        paramControllers.push(trackingFolder.add(p, 'minQuality', 0, 1, 0.05).name("Min Quality").onChange(invalidate)
-            .tooltip("Minimum quality to display arrow"));
-        paramControllers.push(trackingFolder.add(p, 'staticThreshold', 0.1, 2, 0.1).name("Static Threshold").onChange(invalidate)
-            .tooltip("Motion below this is considered static (HUD)"));
+        paramControllers.push(trackingFolder.add(p, 'minQuality', 0, 1, 0.05).name(mt("menu.trackingParameters.minQuality.label")).onChange(invalidate)
+            .tooltip(mt("menu.trackingParameters.minQuality.tooltip")));
+        paramControllers.push(trackingFolder.add(p, 'staticThreshold', 0.1, 2, 0.1).name(mt("menu.trackingParameters.staticThreshold.label")).onChange(invalidate)
+            .tooltip(mt("menu.trackingParameters.staticThreshold.tooltip")));
         paramControllers.push(trackingFolder.add(p, 'staticFrames', 5, 30, 1).name("Static Frames").onChange(invalidate)
             .tooltip("Frames to confirm static detection"));
         paramControllers.push(trackingFolder.add(p, 'inlierThreshold', 0.3, 0.9, 0.05).name("Inlier Threshold").onChange(invalidate)

@@ -85,6 +85,7 @@ import {encodeShareParam, resolveURLForFetch, toShareableCustomValue} from "./Si
 import {getEnvBool} from "./envUtils";
 import {CNodeFloodSim} from "./nodes/CNodeFloodSim";
 import {getNearbyWeatherBalloons, importSoundingDialog} from "./SondeFetch";
+import {getCurrentLanguage, setLanguage, SUPPORTED_LANGUAGE_OPTIONS} from "./i18n";
 
 export class CCustomManager {
     constructor() {
@@ -225,6 +226,25 @@ export class CCustomManager {
         const settingsFolder = guiMenus.main.addFolder("Settings")
             .tooltip(tooltipText)
             .close();
+
+        if (!Globals.settings.language) {
+            Globals.settings.language = getCurrentLanguage();
+        }
+
+        settingsFolder.add(Globals.settings, "language", SUPPORTED_LANGUAGE_OPTIONS)
+            .name("Language")
+            .tooltip("Select interface language. Changing this reloads the UI.")
+            .onChange((value) => {
+                const previousLanguage = getCurrentLanguage();
+                const normalizedLanguage = setLanguage(value);
+                Globals.settings.language = normalizedLanguage;
+                this.saveGlobalSettings(true);
+
+                if (normalizedLanguage !== previousLanguage) {
+                    window.location.reload();
+                }
+            })
+            .listen();
 
         // Add Max Details slider
         settingsFolder.add(Globals.settings, "maxDetails", 5, 30, 1)

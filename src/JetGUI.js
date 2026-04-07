@@ -9,6 +9,7 @@ import {f2m} from "./utils";
 import {DebugArrows} from "./threeExt";
 import {ViewMan} from "./CViewManager";
 import {FA18, PODBack} from "./nodes/ATFLIRVars";
+import {t} from "./i18n";
 
 
 function guiRemove(gui, obj, property) {
@@ -32,12 +33,15 @@ export function updateGUIFrames() {
     guiRemove(guiFrames, par, 'frame')
     guiRemove(guiFrames, par, 'paused')
 
-    guiFrames.add(par, 'time', 0, Sit.frames / Sit.fps, 1 / Sit.fps).onChange(UIChangedTime).listen().name("Time (sec)")
-        .tooltip("Current time from the start of the video in seconds (frame / fps)")
-    guiFrames.add(par, 'frame', 0, Sit.frames - 1, 0.0001).onChange(UIChangedFrame).listen().name("Frame in Video")
-        .tooltip("Current frame number in the video")
+    guiFrames.add(par, 'time', 0, Sit.frames / Sit.fps, 1 / Sit.fps).onChange(UIChangedTime).listen()
+        .name(t("jet.frames.time.label"))
+        .tooltip(t("jet.frames.time.tooltip"))
+    guiFrames.add(par, 'frame', 0, Sit.frames - 1, 0.0001).onChange(UIChangedFrame).listen()
+        .name(t("jet.frames.frame.label"))
+        .tooltip(t("jet.frames.frame.tooltip"))
     guiFrames.add(par, 'paused').listen()
-        .tooltip("Toggle the paused state (also spacebar)")
+        .name(t("jet.frames.paused.label"))
+        .tooltip(t("jet.frames.paused.tooltip"))
 
 }
 
@@ -55,29 +59,29 @@ export function SetupJetGUI() {
     //     par.frame = Sit.bFrame;
     //     UIChangedFrame()
     // })
-    guiTweaks.add(par, 'pingPong').listen().name("A-B Ping-Pong")
+    guiTweaks.add(par, 'pingPong').listen().name(t("jet.controls.pingPong"))
 
-    guiJetTweaks.add(par, 'podPitchPhysical', -20, 150, 1).onChange(UIChangedPR).listen().name("Pod (Ball) Pitch")
-    guiJetTweaks.add(par, 'podRollPhysical', -180, 180, 1).onChange(UIChangedPR).listen().name("Pod Head Roll")
-    guiJetTweaks.add(par, 'deroFromGlare').listen().name("Derotation = Glare Angle").onChange(curveChanged);
+    guiJetTweaks.add(par, 'podPitchPhysical', -20, 150, 1).onChange(UIChangedPR).listen().name(t("jet.controls.podPitchPhysical"))
+    guiJetTweaks.add(par, 'podRollPhysical', -180, 180, 1).onChange(UIChangedPR).listen().name(t("jet.controls.podRollPhysical"))
+    guiJetTweaks.add(par, 'deroFromGlare').listen().name(t("jet.controls.deroFromGlare")).onChange(curveChanged);
 
 
     guiJetTweaks.add(par, 'jetPitch', -8, 8, 0.01).onChange(function () {
         curveChanged();
         calculateGlareStartAngle();
 
-    }).listen().name('Jet Pitch')
+    }).listen().name(t("jet.controls.jetPitch"))
 
     guiTweaks.add(Sit, 'lookFOV', 0.1, 10, 0.01).onChange(value => {
         const lookCamera = NodeMan.get("lookCamera").camera;
         lookCamera.fov = value
         lookCamera.updateProjectionMatrix()
-    }).listen().name("Narrow FOV")
+    }).listen().name(t("jet.controls.lookFov"))
 
-    guiTweaks.add(par, 'el', -8, 8, 0.01).onChange(curveChanged).name('elevation')
+    guiTweaks.add(par, 'el', -8, 8, 0.01).onChange(curveChanged).name(t("jet.controls.elevation"))
 
-    guiTweaks.add(par, 'glareStartAngle', 40, 80, 0.1).listen().name("Glare Start Angle").onChange(curveChanged);
-    guiTweaks.add(par, 'initialGlareRotation', 0, 20, 0.1).listen().name("Glare Initial Rotation").onChange(
+    guiTweaks.add(par, 'glareStartAngle', 40, 80, 0.1).listen().name(t("jet.controls.glareStartAngle")).onChange(curveChanged);
+    guiTweaks.add(par, 'initialGlareRotation', 0, 20, 0.1).listen().name(t("jet.controls.initialGlareRotation")).onChange(
         function () {
             calculateGlareStartAngle();
             curveChanged()
@@ -90,14 +94,17 @@ export function SetupJetGUI() {
         curveChanged();
         calculateGlareStartAngle();
 
-    }).name('Scale Jet Pitch with Roll')
+    }).name(t("jet.controls.scaleJetPitch"))
 
-    guiPhysics.add(par, 'horizonMethod', ["Human Horizon", "Horizon Angle"])
-        .name("Horizon Method")
+    guiPhysics.add(par, 'horizonMethod', [
+        t("jet.controls.horizonMethodOptions.humanHorizon"),
+        t("jet.controls.horizonMethodOptions.horizonAngle"),
+    ])
+        .name(t("jet.controls.horizonMethod"))
         .onChange(curveChanged)
 
-    guiTweaks.add(par, 'speed', 1, 10, 0.1).listen().name("Video Speed")
-    guiTweaks.add(par, 'podWireframe').listen().name("[B]ack Pod Wireframe").onChange(value => {
+    guiTweaks.add(par, 'speed', 1, 10, 0.1).listen().name(t("jet.controls.videoSpeed"))
+    guiTweaks.add(par, 'podWireframe').listen().name(t("jet.controls.podWireframe")).onChange(value => {
         PODBack.traverse(child => {
             if (child.isMesh) {
                 child.material.wireframe = value;
@@ -109,13 +116,13 @@ export function SetupJetGUI() {
     // guiTweaks.add(par, 'lockCameraToJet').listen().name("Lock Camera to Jet");
     //
 
-    toggler('v', guiShowHide.add(par, 'showVideo').listen().name("[V]ideo").onChange(value => {
+    toggler('v', guiShowHide.add(par, 'showVideo').listen().name(t("jet.controls.showVideo")).onChange(value => {
         ViewMan.get("video").setVisible(value);
     }))
-    toggler('g', guiShowHide.add(par, 'showChart').listen().name("[G]raph").onChange(value => {
+    toggler('g', guiShowHide.add(par, 'showChart').listen().name(t("jet.controls.showGraph")).onChange(value => {
         ViewMan.get("chart").setVisible(value);
     }))
-    toggler('k', guiShowHide.add(par, 'showKeyboardShortcuts').listen().name("[K]eyboard Shortcuts").onChange(value => {
+    toggler('k', guiShowHide.add(par, 'showKeyboardShortcuts').listen().name(t("jet.controls.showKeyboardShortcuts")).onChange(value => {
         if (value) {
             infoDiv.style.display = 'block';
         } else
@@ -124,13 +131,13 @@ export function SetupJetGUI() {
     }))
 
 
-    toggler('p', guiShowHide.add(par, 'showPodHead').listen().name("[P]od Head Roll")
+    toggler('p', guiShowHide.add(par, 'showPodHead').listen().name(t("jet.controls.showPodHead"))
         .onChange(value => {
             ViewMan.get("podBackView").setVisible(value)
         })
     );
 
-    toggler('e', guiShowHide.add(par, 'showPodsEye').listen().name("Pod's [E]ye views w' dero")
+    toggler('e', guiShowHide.add(par, 'showPodsEye').listen().name(t("jet.controls.showPodsEye"))
         .onChange(value => {
             //       viewMan.get("podsEyeView").setVisible(value);
             ViewMan.get("podsEyeViewDero").setVisible(value);
@@ -140,7 +147,7 @@ export function SetupJetGUI() {
         })
     );
 
-    toggler('n', guiShowHide.add(par, 'showLookCam').listen().name("[N]AR view w' dero")
+    toggler('n', guiShowHide.add(par, 'showLookCam').listen().name(t("jet.controls.showLookCam"))
         .onChange(value => {
             ViewMan.get("lookView").setVisible(value);
             ViewMan.get("ATFLIRUIOverlay").setVisible(value);
@@ -148,7 +155,7 @@ export function SetupJetGUI() {
     );
 
 
-    toggler('c', guiShowHide.add(par, 'showCueData').listen().name("[C]ue Data").onChange(value => {
+    toggler('c', guiShowHide.add(par, 'showCueData').listen().name(t("jet.controls.showCueData")).onChange(value => {
         DebugArrows["Projected Cue"].visible = value;
         DebugArrows["Cue Az"].visible = value;
         DebugArrows["Projected Az"].visible = value;
@@ -156,18 +163,18 @@ export function SetupJetGUI() {
         curveChanged() // to toggle the graph lines
     }))
 
-    toggler('x', guiShowHide.add(par, 'showGlareGraph').listen().name("Sh[o]w Glare Graph")
+    toggler('x', guiShowHide.add(par, 'showGlareGraph').listen().name(t("jet.controls.showGlareGraph"))
         .onChange(curveChanged));
 
-    togglerNodes('z', ['azEditorView'], guiShowHide, "Show A[Z] Graph", curveChanged);
+    togglerNodes('z', ['azEditorView'], guiShowHide, t("jet.controls.showAzGraph"), curveChanged);
 
     togglerNodes('d', ['azEditorView', 'speedGraphView', 'cloudSpeedEditorView', 'tailAngleGraphView',
             'speedGraphFleetView', 'altitudeGraphView', 'sizePercentGraphView'],
-        guiShowHide, "[D]eclutter]", curveChanged);
+        guiShowHide, t("jet.controls.declutter"), curveChanged);
 
-    guiTweaks.add(par, 'jetOffset', f2m(-30), f2m(10), 0.01).listen().name("Jet Y offset").onChange(value => FA18.position.y = value)
-    guiTweaks.add(par, 'TAS', 340, 360, 0.01).listen().name("TAS True Airspeed").onChange(curveChanged)
-    guiTweaks.add(par, 'integrate', 1, 100, 1).listen().name("Integration Steps").onChange(curveChanged)
+    guiTweaks.add(par, 'jetOffset', f2m(-30), f2m(10), 0.01).listen().name(t("jet.controls.jetOffset")).onChange(value => FA18.position.y = value)
+    guiTweaks.add(par, 'TAS', 340, 360, 0.01).listen().name(t("jet.controls.tas")).onChange(curveChanged)
+    guiTweaks.add(par, 'integrate', 1, 100, 1).listen().name(t("jet.controls.integrate")).onChange(curveChanged)
 
 
 }
