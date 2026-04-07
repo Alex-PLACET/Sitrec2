@@ -13,6 +13,7 @@ sitrecServer/vendor
 sitrecServer/config.php
 config/config.php
 CLAUDE.md
+CLAUDE.local.md
 .claude/
 debug/
 __image_snapshots__/
