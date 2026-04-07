@@ -9,7 +9,7 @@ const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
 export const SUPPORTED_LANGUAGE_OPTIONS = Object.freeze({
     English: "en",
-    Francais: "fr",
+    Français: "fr",
 });
 
 let initialized = false;
