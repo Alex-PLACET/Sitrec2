@@ -199,11 +199,14 @@ export class CNodeBuildings3DTiles extends CNode {
     }
 
     // Toggle shader-based wireframe edge rendering on all tile meshes.
+    // Edges only apply to OSM buildings — Google Photorealistic tiles are
+    // terrain imagery where wireframe edges are not meaningful.
     setShowEdges(show) {
-        // All per-view plugins share the same uniform; calling any one suffices.
+        this._showEdges = show;
+        const effective = show && this._activeSource === "cesium-osm";
         const firstPv = Object.values(this._perView)[0];
         if (firstPv?.edgesPlugin) {
-            firstPv.edgesPlugin.setVisible(show);
+            firstPv.edgesPlugin.setVisible(effective);
         }
     }
 
@@ -212,6 +215,10 @@ export class CNodeBuildings3DTiles extends CNode {
         if (source === this.source) return;
         this.source = source;
         this.initTilesRenderers();
+        // Re-apply edge setting — edges are only valid for OSM source
+        if (this._showEdges !== undefined) {
+            this.setShowEdges(this._showEdges);
+        }
     }
 
     update(f) {
