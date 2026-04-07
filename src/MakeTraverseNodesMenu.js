@@ -13,6 +13,12 @@ export function MakeTraverseNodesMenu(id, traverseInputs, defaultTraverse, idExt
         traverseInputs2[inputID] = traverseInputs[inputID] + idExtra
     }
 
+    // Global least-squares fits are always available
+    traverseInputs2["Global Fit: Constant Velocity"] = "LOSFitCV" + idExtra;
+    traverseInputs2["Global Fit: Const Acceleration"] = "LOSFitCA" + idExtra;
+    traverseInputs2["Global Fit: Kalman Smoother"] = "LOSFitKalman" + idExtra;
+    traverseInputs2["Global Fit: Monte Carlo"] = "LOSFitMonteCarlo" + idExtra;
+
     let nodeMenu = new CNodeSwitch({
         id: id,
         inputs: traverseInputs2,

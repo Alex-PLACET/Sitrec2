@@ -41,6 +41,10 @@ import {
 } from "./nodes/CNodeLOSTraverseStraightLine";
 import {CNodeLOSTraverseConstantAltitude} from "./nodes/CNodeLOSTraverseConstantAltitude";
 import {CNodeLOSTraversePerspective} from "./nodes/CNodeLOSTraversePerspective";
+import {CNodeLOSFitCV} from "./nodes/CNodeLOSFitCV";
+import {CNodeLOSFitCA} from "./nodes/CNodeLOSFitCA";
+import {CNodeLOSFitKalman} from "./nodes/CNodeLOSFitKalman";
+import {CNodeLOSFitMonteCarlo} from "./nodes/CNodeLOSFitMonteCarlo";
 import {makeMatLine, updateMatLineResolution} from "./MatLines";
 import {CNodeViewUI} from "./nodes/CNodeViewUI";
 import {
@@ -791,6 +795,77 @@ export function CreateTraverseNodes(idExtra="", los = "JetLOS") {
         },
     })
 
+    // Global least-squares fits
+    new CNodeLOSFitCV({
+        id: "LOSFitCV"+idExtra,
+        LOS: los,
+    })
+
+    new CNodeLOSFitCA({
+        id: "LOSFitCA"+idExtra,
+        LOS: los,
+    })
+
+    // Kalman smoother parameters
+    if (!NodeMan.exists("kalmanProcessNoise")) {
+        new CNodeGUIValue({
+            id: "kalmanProcessNoise",
+            value: -4, start: -8, end: 2, step: 0.1,
+            desc: "KF Process",
+            color: "#C0C0FF",
+            tooltip: "Kalman process noise exponent. Higher = tracks maneuvers, lower = smoother.",
+        }, guiMenus.traverse)
+
+        new CNodeGUIValue({
+            id: "kalmanMeasurementNoise",
+            value: 0, start: -4, end: 4, step: 0.1,
+            desc: "KF Noise",
+            color: "#C0C0FF",
+            tooltip: "Kalman measurement noise exponent. Higher = smoother, lower = follows LOS more closely.",
+        }, guiMenus.traverse)
+    }
+
+    new CNodeLOSFitKalman({
+        id: "LOSFitKalman"+idExtra,
+        LOS: los,
+        processNoise: "kalmanProcessNoise",
+        measurementNoise: "kalmanMeasurementNoise",
+    })
+
+    // Monte Carlo parameters
+    if (!NodeMan.exists("mcNumTrials")) {
+        new CNodeGUIValue({
+            id: "mcNumTrials",
+            value: 1000, start: 100, end: 10000, step: 100,
+            desc: "MC Num Trials",
+            color: "#FFC0FF",
+            tooltip: "Number of Monte Carlo random trials. More = better fit, slower.",
+        }, guiMenus.traverse)
+
+        new CNodeGUIValue({
+            id: "mcLOSUncertainty",
+            value: 2, start: 0, end: 10, step: 0.1,
+            desc: "MC LOS Uncertainty (deg)",
+            color: "#FFC0FF",
+            tooltip: "Max random perturbation of LOS direction per trial.",
+        }, guiMenus.traverse)
+
+        new CNodeGUIValue({
+            id: "mcOrder",
+            value: 1, start: 1, end: 5, step: 1,
+            desc: "MC Polynomial Order",
+            color: "#FFC0FF",
+            tooltip: "Polynomial degree. 1=linear, 2=quadratic, 3=cubic.",
+        }, guiMenus.traverse)
+    }
+
+    new CNodeLOSFitMonteCarlo({
+        id: "LOSFitMonteCarlo"+idExtra,
+        LOS: los,
+        numTrials: "mcNumTrials",
+        losUncertaintyDeg: "mcLOSUncertainty",
+        order: "mcOrder",
+    })
 
     if (!NodeMan.exists("startAltitude")) {
         new CNodeGUIValue({
