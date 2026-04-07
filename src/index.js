@@ -1545,7 +1545,7 @@ async function initializeOnce() {
     addHelpLink("User Interface Basics", "docs/UserInterface")
     addHelpLink("Saving and Loading Sitches", "docs/SavingAndLoading")
     addHelpLink("How to set up a sitch", "docs/CustomSitchTool")
-    addHelpLink("Local Custom Sitches", "docs/LocalCustomSitches")
+
     addHelpLink("Tracks and Data Sources", "docs/Tracks")
     addHelpLink("GIS and Mapping", "docs/GIS")
     addHelpLink("How to Investigate Starlink Flares", "docs/Starlink")
