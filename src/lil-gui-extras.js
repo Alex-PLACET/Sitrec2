@@ -5,7 +5,6 @@ import {Globals, setMouseOverGUI, Units} from "./Globals";
 import {Color} from "three";
 import {assert} from "./assert";
 import {ViewMan} from "./CViewManager";
-import {parseBoolean} from "./utils";
 import {getEnv, getEnvBool} from "./envUtils";
 import Stats from "stats.js";
 import {
@@ -2540,12 +2539,16 @@ NumberController.prototype._initSlider = function() {
         }
     };
 
+    const suppressContextMenu = (e) => e.preventDefault();
+
     if (this.$slider) {
         this.$slider.addEventListener('mousedown', handleRightClick);
+        this.$slider.addEventListener('contextmenu', suppressContextMenu);
     }
-    
+
     // Also allow right-click on the name/label
     this.$name.addEventListener('mousedown', handleRightClick);
+    this.$name.addEventListener('contextmenu', suppressContextMenu);
 };
 
 // text width helper function
