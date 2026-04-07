@@ -1,0 +1,53 @@
+// Monte Carlo 2 — least-squares polynomial fit to LOS rays.
+// Perturbs all frames per trial and fits an overdetermined polynomial,
+// producing stable results for higher polynomial orders.
+
+import {CNodeTrack} from "./CNodeTrack";
+import {fitConstantVelocity, fitMonteCarlo2, buildLOSDataset, unpackFitPositions} from "../LOSFitting";
+
+export class CNodeLOSFitMonteCarlo2 extends CNodeTrack {
+    constructor(v) {
+        super(v);
+        this.requireInputs(["LOS"]);
+        this.optionalInputs(["numTrials", "losUncertaintyDeg", "order"]);
+        this.array = [];
+        this.recalculate();
+    }
+
+    recalculate() {
+        this.array = [];
+        this.frames = this.in.LOS.frames;
+        if (this.frames < 2) return;
+
+        const {dataset, originLat, originLon} = buildLOSDataset(this.in.LOS);
+
+        // Run CV fit to get per-frame range estimates for focused MC sampling.
+        const options = {};
+        const cvResult = fitConstantVelocity(dataset, new Set());
+        if (cvResult) {
+            const rangeEstimates = new Float32Array(dataset.count);
+            for (let i = 0; i < dataset.count; i++) {
+                const b = i * 3;
+                const dx = cvResult.positions[b] - dataset.sensorPos[b];
+                const dy = cvResult.positions[b + 1] - dataset.sensorPos[b + 1];
+                const dz = cvResult.positions[b + 2] - dataset.sensorPos[b + 2];
+                const range = dx * dataset.losDir[b] + dy * dataset.losDir[b + 1] + dz * dataset.losDir[b + 2];
+                rangeEstimates[i] = Math.max(range, 1);
+            }
+            options.rangeEstimates = rangeEstimates;
+        }
+
+        if (this.in.numTrials) options.numTrials = this.in.numTrials.v0;
+        if (this.in.losUncertaintyDeg) options.losUncertaintyDeg = this.in.losUncertaintyDeg.v0;
+        if (this.in.order) options.order = this.in.order.v0;
+
+        const result = fitMonteCarlo2(dataset, new Set(), options);
+        if (!result) return;
+
+        this.array = unpackFitPositions(result.positions, this.frames, originLat, originLon);
+    }
+
+    getValueFrame(f) {
+        return this.array[Math.floor(f)];
+    }
+}

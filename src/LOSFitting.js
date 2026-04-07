@@ -271,7 +271,7 @@ export function fitConstantAcceleration(dataset, excluded) {
 }
 
 // ---------------------------------------------------------------------------
-// Monte Carlo Trajectory Fit
+// Monte Carlo 1 — RANSAC-style: pick minimal random samples, fit exactly
 // ---------------------------------------------------------------------------
 
 export function fitMonteCarlo(dataset, excluded, options = {}) {
@@ -443,6 +443,211 @@ export function fitMonteCarlo(dataset, excluded, options = {}) {
 
     for (let i = 0; i < count; i++) {
         const ti = times[i] - t0;
+        const fx = _evalPoly(bestCoeffsX, ti);
+        const fy = _evalPoly(bestCoeffsY, ti);
+        const fz = _evalPoly(bestCoeffsZ, ti);
+        positions[i * 3] = fx;
+        positions[i * 3 + 1] = fy;
+        positions[i * 3 + 2] = fz;
+        if (!excluded.has(i)) {
+            const b = i * 3;
+            residuals[i] = _angularError(fx, fy, fz,
+                sensorPos[b], sensorPos[b + 1], sensorPos[b + 2],
+                losDir[b], losDir[b + 1], losDir[b + 2]);
+        }
+    }
+    return {positions, residuals, params: {order, bestScore, numTrials}, activeCount: active.length};
+}
+
+// ---------------------------------------------------------------------------
+// Monte Carlo 2 — Least-squares: perturb all frames, fit overdetermined poly
+// ---------------------------------------------------------------------------
+
+export function fitMonteCarlo2(dataset, excluded, options = {}) {
+    const {sensorPos, losDir, times, count} = dataset;
+
+    const order = Math.max(1, Math.round(options.order ?? 1));
+    const losUncertDeg = options.losUncertaintyDeg ?? 2;
+    const losUncertRad = losUncertDeg * (Math.PI / 180);
+    const numTrials = Math.max(1, Math.round(options.numTrials ?? 500));
+
+    const rangeEstimates = options.rangeEstimates ?? null;
+
+    let maxDistance = options.maxDistance;
+    if (maxDistance == null) {
+        let sceneExtent = 1;
+        if (count > 0) {
+            let minX = Infinity, maxX = -Infinity;
+            let minY = Infinity, maxY = -Infinity;
+            let minZ = Infinity, maxZ = -Infinity;
+            for (let i = 0; i < count; i++) {
+                const b = i * 3;
+                if (sensorPos[b] < minX) minX = sensorPos[b];
+                if (sensorPos[b] > maxX) maxX = sensorPos[b];
+                if (sensorPos[b + 1] < minY) minY = sensorPos[b + 1];
+                if (sensorPos[b + 1] > maxY) maxY = sensorPos[b + 1];
+                if (sensorPos[b + 2] < minZ) minZ = sensorPos[b + 2];
+                if (sensorPos[b + 2] > maxZ) maxZ = sensorPos[b + 2];
+            }
+            sceneExtent = Math.max(maxX - minX, maxY - minY, maxZ - minZ) || 1;
+        }
+        maxDistance = sceneExtent * 10;
+    }
+
+    const active = [];
+    for (let i = 0; i < count; i++) {
+        if (!excluded.has(i)) active.push(i);
+    }
+    const needed = order + 1;
+    if (active.length < needed) return null;
+
+    const t0 = times[active[0]];
+    const tLast = times[active[active.length - 1]];
+    const tSpan = (tLast - t0) || 1;
+
+    function _rotate(vx, vy, vz, ax, ay, az, theta) {
+        const cosT = Math.cos(theta), sinT = Math.sin(theta);
+        const dot = ax * vx + ay * vy + az * vz;
+        const cx = ay * vz - az * vy, cy = az * vx - ax * vz, cz = ax * vy - ay * vx;
+        return [
+            vx * cosT + cx * sinT + ax * dot * (1 - cosT),
+            vy * cosT + cy * sinT + ay * dot * (1 - cosT),
+            vz * cosT + cz * sinT + az * dot * (1 - cosT),
+        ];
+    }
+
+    function _perpUnit(dx, dy, dz) {
+        const ax = Math.abs(dx), ay = Math.abs(dy), az = Math.abs(dz);
+        let ux = 0, uy = 0, uz = 0;
+        if (ax <= ay && ax <= az) ux = 1;
+        else if (ay <= ax && ay <= az) uy = 1;
+        else uz = 1;
+        let px = dy * uz - dz * uy, py = dz * ux - dx * uz, pz = dx * uy - dy * ux;
+        const len = Math.sqrt(px * px + py * py + pz * pz);
+        return [px / len, py / len, pz / len];
+    }
+
+    // Least-squares polynomial fit via normal equations: (V^T V) c = V^T y
+    function _fitPoly1D(ts, ys, polyOrder) {
+        const m = ts.length;
+        const n = polyOrder + 1;
+        const VtV = Array.from({length: n}, () => new Array(n).fill(0));
+        const Vty = new Array(n).fill(0);
+        for (let i = 0; i < m; i++) {
+            const pw = [1];
+            for (let j = 1; j < n; j++) pw.push(pw[j - 1] * ts[i]);
+            for (let j = 0; j < n; j++) {
+                Vty[j] += pw[j] * ys[i];
+                for (let k = j; k < n; k++) {
+                    VtV[j][k] += pw[j] * pw[k];
+                }
+            }
+        }
+        for (let j = 0; j < n; j++)
+            for (let k = 0; k < j; k++)
+                VtV[j][k] = VtV[k][j];
+        return _solveLinearSystem(VtV, Vty);
+    }
+
+    function _evalPoly(coeffs, t) {
+        let val = 0, pw = 1;
+        for (let k = 0; k < coeffs.length; k++) { val += coeffs[k] * pw; pw *= t; }
+        return val;
+    }
+
+    function _angularError(fx, fy, fz, sx, sy, sz, dx, dy, dz) {
+        let rx = fx - sx, ry = fy - sy, rz = fz - sz;
+        const rlen = Math.sqrt(rx * rx + ry * ry + rz * rz);
+        if (rlen < 1e-12) return Math.PI;
+        rx /= rlen; ry /= rlen; rz /= rlen;
+        const dot = Math.max(-1, Math.min(1, rx * dx + ry * dy + rz * dz));
+        return Math.acos(dot);
+    }
+
+    // Precompute per-frame perpendicular vectors (fixed per frame, reused across trials)
+    let perpVecs = null;
+    if (losUncertRad > 1e-10) {
+        perpVecs = new Float32Array(count * 3);
+        for (const fi of active) {
+            const b = fi * 3;
+            const [ex, ey, ez] = _perpUnit(losDir[b], losDir[b + 1], losDir[b + 2]);
+            perpVecs[b] = ex; perpVecs[b + 1] = ey; perpVecs[b + 2] = ez;
+        }
+    }
+
+    // Precompute normalized times for active frames
+    const normTimes = new Float64Array(count);
+    for (const fi of active) {
+        normTimes[fi] = (times[fi] - t0) / tSpan;
+    }
+
+    let bestScore = Infinity;
+    let bestCoeffsX = null, bestCoeffsY = null, bestCoeffsZ = null;
+
+    for (let trial = 0; trial < numTrials; trial++) {
+        const sampleTs = [], sampleX = [], sampleY = [], sampleZ = [];
+        for (const fi of active) {
+            const b = fi * 3;
+            const sx = sensorPos[b], sy = sensorPos[b + 1], sz = sensorPos[b + 2];
+            const dx = losDir[b], dy = losDir[b + 1], dz = losDir[b + 2];
+
+            let pdx, pdy, pdz;
+            if (perpVecs) {
+                const theta = Math.random() * losUncertRad;
+                const phi = Math.random() * 2 * Math.PI;
+                const [rx2, ry2, rz2] = _rotate(perpVecs[b], perpVecs[b + 1], perpVecs[b + 2], dx, dy, dz, phi);
+                [pdx, pdy, pdz] = _rotate(dx, dy, dz, rx2, ry2, rz2, theta);
+            } else {
+                [pdx, pdy, pdz] = [dx, dy, dz];
+            }
+
+            let lambda;
+            if (rangeEstimates) {
+                const est = rangeEstimates[fi];
+                lambda = est * (0.9 + Math.random() * 0.2);
+            } else {
+                let effectiveMax = maxDistance;
+                if (dataset.maxRange) {
+                    const mr = dataset.maxRange[fi];
+                    if (mr > 0) effectiveMax = Math.min(effectiveMax, mr);
+                }
+                lambda = Math.random() * effectiveMax;
+            }
+
+            sampleTs.push(normTimes[fi]);
+            sampleX.push(sx + lambda * pdx);
+            sampleY.push(sy + lambda * pdy);
+            sampleZ.push(sz + lambda * pdz);
+        }
+
+        const cx = _fitPoly1D(sampleTs, sampleX, order);
+        const cy = _fitPoly1D(sampleTs, sampleY, order);
+        const cz = _fitPoly1D(sampleTs, sampleZ, order);
+        if (!cx || !cy || !cz) continue;
+
+        let totalErr = 0;
+        for (const fi of active) {
+            const ti = normTimes[fi];
+            const b = fi * 3;
+            totalErr += _angularError(
+                _evalPoly(cx, ti), _evalPoly(cy, ti), _evalPoly(cz, ti),
+                sensorPos[b], sensorPos[b + 1], sensorPos[b + 2],
+                losDir[b], losDir[b + 1], losDir[b + 2]);
+        }
+        const score = totalErr / active.length;
+        if (score < bestScore) {
+            bestScore = score;
+            bestCoeffsX = cx; bestCoeffsY = cy; bestCoeffsZ = cz;
+        }
+    }
+
+    if (!bestCoeffsX) return null;
+
+    const positions = new Float32Array(count * 3);
+    const residuals = new Float32Array(count).fill(NaN);
+
+    for (let i = 0; i < count; i++) {
+        const ti = (times[i] - t0) / tSpan;
         const fx = _evalPoly(bestCoeffsX, ti);
         const fy = _evalPoly(bestCoeffsY, ti);
         const fz = _evalPoly(bestCoeffsZ, ti);

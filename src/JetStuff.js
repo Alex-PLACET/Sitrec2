@@ -45,6 +45,7 @@ import {CNodeLOSFitCV} from "./nodes/CNodeLOSFitCV";
 import {CNodeLOSFitCA} from "./nodes/CNodeLOSFitCA";
 import {CNodeLOSFitKalman} from "./nodes/CNodeLOSFitKalman";
 import {CNodeLOSFitMonteCarlo} from "./nodes/CNodeLOSFitMonteCarlo";
+import {CNodeLOSFitMonteCarlo2} from "./nodes/CNodeLOSFitMonteCarlo2";
 import {makeMatLine, updateMatLineResolution} from "./MatLines";
 import {CNodeViewUI} from "./nodes/CNodeViewUI";
 import {
@@ -861,6 +862,14 @@ export function CreateTraverseNodes(idExtra="", los = "JetLOS") {
 
     new CNodeLOSFitMonteCarlo({
         id: "LOSFitMonteCarlo"+idExtra,
+        LOS: los,
+        numTrials: "mcNumTrials",
+        losUncertaintyDeg: "mcLOSUncertainty",
+        order: "mcOrder",
+    })
+
+    new CNodeLOSFitMonteCarlo2({
+        id: "LOSFitMonteCarlo2"+idExtra,
         LOS: los,
         numTrials: "mcNumTrials",
         losUncertaintyDeg: "mcLOSUncertainty",
