@@ -981,6 +981,166 @@ export function fitKalmanFilter(dataset, excluded, options = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// Physics Model Trajectory Fit (Nelder-Mead + RK4 integration)
+// ---------------------------------------------------------------------------
+
+export function fitPhysicsModel(dataset, excluded, model, options = {}) {
+    const {sensorPos, losDir, times, count} = dataset;
+
+    const active = [];
+    for (let i = 0; i < count; i++) {
+        if (!excluded.has(i)) active.push(i);
+    }
+    if (active.length < 2) return null;
+
+    const paramDefs = model.getParameterDefs();
+    const nParams = paramDefs.length;
+
+    // Build initial guess, bounds, and scales from model definition
+    const x0 = paramDefs.map(p => p.default);
+    const lo = paramDefs.map(p => p.min);
+    const hi = paramDefs.map(p => p.max);
+    const scales = paramDefs.map(p => p.scale);
+
+    // Apply GUI overrides to initial guesses
+    const overrides = options.paramOverrides;
+    if (overrides) {
+        for (let i = 0; i < nParams; i++) {
+            if (overrides[paramDefs[i].name] !== undefined) {
+                x0[i] = overrides[paramDefs[i].name];
+            }
+        }
+    }
+
+    // Collect sample times relative to first active frame
+    const t0 = times[active[0]];
+    const sampleTimes = active.map(i => times[i] - t0);
+
+    function _angularError(fx, fy, fz, sx, sy, sz, dx, dy, dz) {
+        let rx = fx - sx, ry = fy - sy, rz = fz - sz;
+        const rlen = Math.sqrt(rx * rx + ry * ry + rz * rz);
+        if (rlen < 1e-12) return Math.PI;
+        rx /= rlen; ry /= rlen; rz /= rlen;
+        const dot = Math.max(-1, Math.min(1, rx * dx + ry * dy + rz * dz));
+        return Math.acos(dot);
+    }
+
+    // Cost function: integrate trajectory, measure angular error against LOS
+    function costFn(params) {
+        const initialState = model.getInitialState(params, dataset);
+        let states;
+        try {
+            states = _integrateRK4_inline(model, initialState, params, sampleTimes);
+        } catch (e) {
+            return 1e10; // diverged
+        }
+
+        let totalErr = 0;
+        for (let k = 0; k < active.length; k++) {
+            const fi = active[k];
+            const s = states[k];
+            if (!s) return 1e10;
+            const b = fi * 3;
+            totalErr += _angularError(
+                s[0], s[1], s[2],
+                sensorPos[b], sensorPos[b + 1], sensorPos[b + 2],
+                losDir[b], losDir[b + 1], losDir[b + 2]
+            );
+        }
+        return totalErr / active.length;
+    }
+
+    // Inline RK4 to avoid import overhead — same logic as PhysicsModel.js
+    function _integrateRK4_inline(mdl, initState, prms, sTimes) {
+        const results = [];
+        const state = initState.slice();
+        const n = state.length;
+        let t = sTimes[0];
+        let si = 0;
+        const maxDt = 0.02;
+
+        if (Math.abs(t - sTimes[si]) < 1e-10) {
+            results.push(state.slice());
+            si++;
+        }
+
+        while (si < sTimes.length) {
+            const tNext = sTimes[si];
+            while (t < tNext - 1e-10) {
+                const dt = Math.min(maxDt, tNext - t);
+                const k1 = mdl.derivatives(state, prms, t);
+                const s2 = new Array(n);
+                for (let i = 0; i < n; i++) s2[i] = state[i] + 0.5 * dt * k1[i];
+                const k2 = mdl.derivatives(s2, prms, t + 0.5 * dt);
+                const s3 = new Array(n);
+                for (let i = 0; i < n; i++) s3[i] = state[i] + 0.5 * dt * k2[i];
+                const k3 = mdl.derivatives(s3, prms, t + 0.5 * dt);
+                const s4 = new Array(n);
+                for (let i = 0; i < n; i++) s4[i] = state[i] + dt * k3[i];
+                const k4 = mdl.derivatives(s4, prms, t + dt);
+                for (let i = 0; i < n; i++) {
+                    state[i] += (dt / 6) * (k1[i] + 2 * k2[i] + 2 * k3[i] + k4[i]);
+                }
+                t += dt;
+                // Bail on divergence
+                if (Math.abs(state[0]) > 1e8 || Math.abs(state[2]) > 1e6) throw new Error("diverged");
+            }
+            t = tNext;
+            results.push(state.slice());
+            si++;
+        }
+        return results;
+    }
+
+    // Run Nelder-Mead
+    const {nelderMead} = require("./NelderMead");
+    const maxIter = options.maxIter ?? 5000;
+    const result = nelderMead(costFn, x0, {lo, hi, initialScale: scales, maxIter});
+
+    // Generate full trajectory at all frames using best params
+    const bestParams = result.params;
+    const bestState0 = model.getInitialState(bestParams, dataset);
+    const allTimes = [];
+    for (let i = 0; i < count; i++) allTimes.push(times[i] - t0);
+
+    let allStates;
+    try {
+        allStates = _integrateRK4_inline(model, bestState0, bestParams, allTimes);
+    } catch (e) {
+        return null;
+    }
+
+    const positions = new Float32Array(count * 3);
+    const residuals = new Float32Array(count).fill(NaN);
+
+    for (let i = 0; i < count; i++) {
+        const s = allStates[i];
+        positions[i * 3] = s[0];
+        positions[i * 3 + 1] = s[1];
+        positions[i * 3 + 2] = s[2];
+        if (!excluded.has(i)) {
+            const b = i * 3;
+            residuals[i] = _angularError(s[0], s[1], s[2],
+                sensorPos[b], sensorPos[b + 1], sensorPos[b + 2],
+                losDir[b], losDir[b + 1], losDir[b + 2]);
+        }
+    }
+
+    // Package solved parameter values with names for display
+    const solvedParams = {};
+    for (let i = 0; i < nParams; i++) {
+        solvedParams[paramDefs[i].name] = bestParams[i];
+    }
+
+    return {
+        positions,
+        residuals,
+        params: {model: model.getName(), cost: result.cost, solved: solvedParams},
+        activeCount: active.length
+    };
+}
+
+// ---------------------------------------------------------------------------
 // Shared: build LOS dataset from a sitrec LOS node (ECEF -> ENU)
 // ---------------------------------------------------------------------------
 

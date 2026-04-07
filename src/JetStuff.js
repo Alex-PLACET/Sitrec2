@@ -46,6 +46,7 @@ import {CNodeLOSFitCA} from "./nodes/CNodeLOSFitCA";
 import {CNodeLOSFitKalman} from "./nodes/CNodeLOSFitKalman";
 import {CNodeLOSFitMonteCarlo} from "./nodes/CNodeLOSFitMonteCarlo";
 import {CNodeLOSFitMonteCarlo2} from "./nodes/CNodeLOSFitMonteCarlo2";
+import {CNodeLOSFitPhysics} from "./nodes/CNodeLOSFitPhysics";
 import {makeMatLine, updateMatLineResolution} from "./MatLines";
 import {CNodeViewUI} from "./nodes/CNodeViewUI";
 import {
@@ -874,6 +875,50 @@ export function CreateTraverseNodes(idExtra="", los = "JetLOS") {
         numTrials: "mcNumTrials",
         losUncertaintyDeg: "mcLOSUncertainty",
         order: "mcOrder",
+    })
+
+    // Physics model parameters
+    if (!NodeMan.exists("physicsMaxIter")) {
+        new CNodeGUIValue({
+            id: "physicsMaxIter",
+            value: 5000, start: 500, end: 20000, step: 500,
+            desc: "Physics Max Iterations",
+            color: "#C0FFC0",
+            tooltip: "Maximum Nelder-Mead optimizer iterations.",
+        }, guiMenus.traverse)
+
+        new CNodeGUIValue({
+            id: "physicsWindSpeed",
+            value: 18, start: 0, end: 60, step: 0.5,
+            desc: "Physics Wind Speed (kt)",
+            color: "#C0FFC0",
+            tooltip: "Initial guess for wind speed. Optimizer refines this.",
+        }, guiMenus.traverse)
+
+        new CNodeGUIValue({
+            id: "physicsWindFrom",
+            value: 70, start: 0, end: 360, step: 1,
+            desc: "Physics Wind From (°)",
+            color: "#C0FFC0",
+            tooltip: "Initial guess for wind direction (meteorological, degrees). Optimizer refines this.",
+        }, guiMenus.traverse)
+
+        new CNodeGUIValue({
+            id: "physicsInitialRange",
+            value: 3000, start: 100, end: 20000, step: 100,
+            desc: "Physics Initial Range (m)",
+            color: "#C0FFC0",
+            tooltip: "Initial guess for distance along first LOS ray.",
+        }, guiMenus.traverse)
+    }
+
+    new CNodeLOSFitPhysics({
+        id: "LOSFitPhysics"+idExtra,
+        LOS: los,
+        maxIter: "physicsMaxIter",
+        windSpeed: "physicsWindSpeed",
+        windFrom: "physicsWindFrom",
+        initialRange: "physicsInitialRange",
     })
 
     if (!NodeMan.exists("startAltitude")) {
