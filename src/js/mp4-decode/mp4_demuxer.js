@@ -198,8 +198,11 @@ export class MP4Source {
     this.videoTrackId = track.id;
     this.file.setExtractionOptions(track.id);
     if (!this._extractionStarted) {
-      this.file.start();
+      // Set flag before file.start() because start() can call onSamples
+      // synchronously. If the callback throws, the flag must already be
+      // set to prevent the catch handler from calling start() again.
       this._extractionStarted = true;
+      this.file.start();
     }
   }
 
@@ -222,8 +225,9 @@ export class MP4Source {
     
     if (!this._extractionStarted) {
       console.log("MP4Source.startWithAudio: calling file.start()");
-      this.file.start();
+      // Set flag before file.start() - see comment in start() above
       this._extractionStarted = true;
+      this.file.start();
     }
   }
 
@@ -233,8 +237,9 @@ export class MP4Source {
     this.audioTrackId = track.id;
     this.file.setExtractionOptions(track.id);
     if (!this._extractionStarted) {
-      this.file.start();
+      // Set flag before file.start() - see comment in start() above
       this._extractionStarted = true;
+      this.file.start();
     }
   }
 

@@ -267,7 +267,21 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
                             )
                         } else {
                             const lastGroup = this.groups[this.groups.length - 1]
-                            lastGroup.length++;
+                            if (lastGroup) {
+                                lastGroup.length++;
+                            } else {
+                                // Some MP4 files have the first sample not marked as a key frame
+                                // (e.g. certain screen recorders). Without this guard, groups is
+                                // empty so lastGroup is undefined and lastGroup.length++ crashes
+                                // with "Cannot read properties of undefined (reading 'length')".
+                                this.groups.push({
+                                    frame: this.chunks.length - 1,
+                                    length: 1,
+                                    pending: 0,
+                                    loaded: false,
+                                    timestamp: chunk.timestamp,
+                                });
+                            }
                         }
 
                         this.frames++;
@@ -309,7 +323,18 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
                         )
                     } else {
                         const lastGroup = this.groups[this.groups.length - 1]
-                        lastGroup.length++;
+                        if (lastGroup) {
+                            lastGroup.length++;
+                        } else {
+                            // Same guard as above - see comment in the .then() callback
+                            this.groups.push({
+                                frame: this.chunks.length - 1,
+                                length: 1,
+                                pending: 0,
+                                loaded: false,
+                                timestamp: chunk.timestamp,
+                            });
+                        }
                     }
                     this.frames++;
                     Sit.videoFrames = this.frames * this.videoSpeed;
