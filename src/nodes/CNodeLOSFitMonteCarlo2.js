@@ -11,17 +11,22 @@ export class CNodeLOSFitMonteCarlo2 extends CNodeTrack {
         this.requireInputs(["LOS"]);
         this.optionalInputs(["numTrials", "losUncertaintyDeg", "order"]);
         this.array = [];
-        this.recalculate();
+        this._dirty = true;
     }
 
     recalculate() {
+        if (!this.visible) { this._dirty = true; return; }
+        this._doCompute();
+    }
+
+    _doCompute() {
+        this._dirty = false;
         this.array = [];
         this.frames = this.in.LOS.frames;
         if (this.frames < 2) return;
 
         const {dataset, originLat, originLon} = buildLOSDataset(this.in.LOS);
 
-        // Run CV fit to get per-frame range estimates for focused MC sampling.
         const options = {};
         const cvResult = fitConstantVelocity(dataset, new Set());
         if (cvResult) {
@@ -48,6 +53,7 @@ export class CNodeLOSFitMonteCarlo2 extends CNodeTrack {
     }
 
     getValueFrame(f) {
+        if (this._dirty) this._doCompute();
         return this.array[Math.floor(f)];
     }
 }

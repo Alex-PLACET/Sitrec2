@@ -11,19 +11,22 @@ export class CNodeLOSFitMonteCarlo extends CNodeTrack {
         this.requireInputs(["LOS"]);
         this.optionalInputs(["numTrials", "losUncertaintyDeg", "order"]);
         this.array = [];
-        this.recalculate();
+        this._dirty = true;
     }
 
     recalculate() {
+        if (!this.visible) { this._dirty = true; return; }
+        this._doCompute();
+    }
+
+    _doCompute() {
+        this._dirty = false;
         this.array = [];
         this.frames = this.in.LOS.frames;
         if (this.frames < 2) return;
 
         const {dataset, originLat, originLon} = buildLOSDataset(this.in.LOS);
 
-        // Run CV fit to get per-frame range estimates for focused MC sampling.
-        // For each frame, compute the distance from sensor to the CV-predicted position
-        // projected onto the LOS direction.
         const options = {};
         const cvResult = fitConstantVelocity(dataset, new Set());
         if (cvResult) {
@@ -33,9 +36,8 @@ export class CNodeLOSFitMonteCarlo extends CNodeTrack {
                 const dx = cvResult.positions[b] - dataset.sensorPos[b];
                 const dy = cvResult.positions[b + 1] - dataset.sensorPos[b + 1];
                 const dz = cvResult.positions[b + 2] - dataset.sensorPos[b + 2];
-                // Project onto LOS direction to get signed range
                 const range = dx * dataset.losDir[b] + dy * dataset.losDir[b + 1] + dz * dataset.losDir[b + 2];
-                rangeEstimates[i] = Math.max(range, 1); // floor at 1m
+                rangeEstimates[i] = Math.max(range, 1);
             }
             options.rangeEstimates = rangeEstimates;
         }
@@ -51,6 +53,7 @@ export class CNodeLOSFitMonteCarlo extends CNodeTrack {
     }
 
     getValueFrame(f) {
+        if (this._dirty) this._doCompute();
         return this.array[Math.floor(f)];
     }
 }

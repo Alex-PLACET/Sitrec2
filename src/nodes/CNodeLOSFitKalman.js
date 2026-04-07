@@ -11,10 +11,16 @@ export class CNodeLOSFitKalman extends CNodeTrack {
         this.requireInputs(["LOS"]);
         this.optionalInputs(["processNoise", "measurementNoise"]);
         this.array = [];
-        this.recalculate();
+        this._dirty = true;
     }
 
     recalculate() {
+        if (!this.visible) { this._dirty = true; return; }
+        this._doCompute();
+    }
+
+    _doCompute() {
+        this._dirty = false;
         this.array = [];
         this.frames = this.in.LOS.frames;
         if (this.frames < 2) return;
@@ -22,7 +28,6 @@ export class CNodeLOSFitKalman extends CNodeTrack {
         const {dataset, originLat, originLon} = buildLOSDataset(this.in.LOS);
 
         const options = {};
-        // GUI values are log10 exponents; convert to actual noise values
         if (this.in.processNoise) options.processNoise = Math.pow(10, this.in.processNoise.v0);
         if (this.in.measurementNoise) options.measurementNoise = Math.pow(10, this.in.measurementNoise.v0);
 
@@ -33,6 +38,7 @@ export class CNodeLOSFitKalman extends CNodeTrack {
     }
 
     getValueFrame(f) {
+        if (this._dirty) this._doCompute();
         return this.array[Math.floor(f)];
     }
 }

@@ -23,11 +23,17 @@ export class CNodeLOSFitPhysics extends CNodeTrack {
         this.array = [];
         this.solvedParams = null;
         this.guiFolder = null;
-        this.guiDisplay = {};  // object whose properties are bound to GUI controllers
-        this.recalculate();
+        this.guiDisplay = {};
+        this._dirty = true;
     }
 
     recalculate() {
+        if (!this.visible) { this._dirty = true; return; }
+        this._doCompute();
+    }
+
+    _doCompute() {
+        this._dirty = false;
         this.array = [];
         this.solvedParams = null;
         this.frames = this.in.LOS.frames;
@@ -35,7 +41,6 @@ export class CNodeLOSFitPhysics extends CNodeTrack {
 
         const {dataset, originLat, originLon} = buildLOSDataset(this.in.LOS);
 
-        // Select physics model
         const modelName = this.in.physicsModel ? this.in.physicsModel.v0 : "Chinese Lantern";
         const model = physicsModels[modelName];
         if (!model) return;
@@ -43,13 +48,10 @@ export class CNodeLOSFitPhysics extends CNodeTrack {
         const options = {};
         if (this.in.maxIter) options.maxIter = this.in.maxIter.v0;
 
-        // Override model defaults with GUI initial guesses
         const overrides = {};
         if (this.in.windSpeed && this.in.windFrom) {
-            const speedMs = this.in.windSpeed.v0 * 0.514444; // kt to m/s
+            const speedMs = this.in.windSpeed.v0 * 0.514444;
             const fromDeg = this.in.windFrom.v0;
-            // "Wind from X°" means wind blows toward (X+180)°
-            // In ENU: E = sin(towardDeg), N = cos(towardDeg)
             const towardRad = (fromDeg + 180) * Math.PI / 180;
             overrides.windE = speedMs * Math.sin(towardRad);
             overrides.windN = speedMs * Math.cos(towardRad);
@@ -115,6 +117,7 @@ export class CNodeLOSFitPhysics extends CNodeTrack {
     }
 
     getValueFrame(f) {
+        if (this._dirty) this._doCompute();
         return this.array[Math.floor(f)];
     }
 

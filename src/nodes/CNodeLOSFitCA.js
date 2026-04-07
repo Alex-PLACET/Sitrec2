@@ -9,10 +9,16 @@ export class CNodeLOSFitCA extends CNodeTrack {
         super(v);
         this.requireInputs(["LOS"]);
         this.array = [];
-        this.recalculate();
+        this._dirty = true;
     }
 
     recalculate() {
+        if (!this.visible) { this._dirty = true; return; }
+        this._doCompute();
+    }
+
+    _doCompute() {
+        this._dirty = false;
         this.array = [];
         this.frames = this.in.LOS.frames;
         if (this.frames < 3) return;
@@ -25,6 +31,7 @@ export class CNodeLOSFitCA extends CNodeTrack {
     }
 
     getValueFrame(f) {
+        if (this._dirty) this._doCompute();
         return this.array[Math.floor(f)];
     }
 }
