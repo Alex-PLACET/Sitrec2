@@ -7,6 +7,7 @@ import {Raycaster, Vector3} from "three";
 import {assert} from "./assert";
 import {intersectSurface} from "./threeExt";
 import * as LAYER from "./LayerMasks";
+import {t} from "./i18n";
 
 const MAX_PANORAMA_WIDTH = 20000;
 const DEFAULT_BACKGROUND_DISTANCE = 50000;
@@ -254,6 +255,6 @@ export async function exportPanorama() {
 }
 
 export function setupPanoramaExport(folder) {
-    folder.add({exportPanorama}, "exportPanorama").name("Export Look Panorama")
-        .tooltip("Create a panorama image from lookView across all frames based on background position");
+    folder.add({exportPanorama}, "exportPanorama").name(t("panoramaExport.exportLookPanorama.label"))
+        .tooltip(t("panoramaExport.exportLookPanorama.tooltip"));
 }

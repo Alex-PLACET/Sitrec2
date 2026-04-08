@@ -10,6 +10,7 @@ import {updateGUIFrames} from "../JetGUI";
 import {updateFrameSlider} from "./CNodeFrameSlider";
 import {getOffsetFromDateTimeString} from "../DateTimeUtils";
 import {EventManager} from "../CEventManager";
+import {t} from "../i18n";
 
 const timeZoneOffsets = {
     "IDLW UTC-12": -12,     // International Date Line West
@@ -146,13 +147,13 @@ export class CNodeDateTime extends CNode {
         this.liveMode = (Sit.startLive === true);
         Sit.startLive = false; // only start in live mode once, we can't serialize live mode,  as it only applies to the local user, Saving a sitch with live mode will save at that time.
 
-        this.dateTimeFolder.add( this, "liveMode").name("Live Mode").listen().onChange(v=>{
+        this.dateTimeFolder.add( this, "liveMode").name(t("dateTime.liveMode.label")).listen().onChange(v=>{
             if (this.liveMode === true) {
                 par.paused = true;
             }
             setRenderOne(true);
         })
-            .tooltip("If Live Mode is on, then the playback will always be synced to the current time.\nPausing or scrubbing the time will disable live mode")
+            .tooltip(t("dateTime.liveMode.tooltip"))
 
 
         // var for the menu to sync the time to the start time or the now time or a track
@@ -170,21 +171,21 @@ export class CNodeDateTime extends CNode {
 
 
         this.dateTimeFolder.add(Sit, "startTime").listen()
-            .tooltip("The START time of first frame of the video, in UTC format")
+            .tooltip(t("dateTime.startTime.tooltip"))
         this.dateTimeFolder.add(Sit, "nowTime").listen()
-            .tooltip("The CURRENT time of the video. This is what the below date and time refer to")
+            .tooltip(t("dateTime.currentTime.tooltip"))
 
         let fiveYearsFromNow = new Date();
         fiveYearsFromNow.setFullYear(fiveYearsFromNow.getFullYear() + 5);
 
       // The UI will update the dateNow member, and then we will update the dateStart member
-        const guiYear = this.dateTimeFolder.add(this.dateTime, "year", 1947, fiveYearsFromNow.getFullYear(), 1).listen().onChange(v => this.updateDateTime(v)).tooltip("Year of the current frame")
-        const guiMonth = this.dateTimeFolder.add(this.dateTime, "month", 1, 12, 1).listen().onChange(v => this.updateDateTime(v)).wrap(guiYear).tooltip("Month (1-12)")
-        this.guiDay = this.dateTimeFolder.add(this.dateTime, "day", 1, 31, 1).listen().onChange(v => this.updateDateTime(v)).wrap(guiMonth).tooltip("Day of month")
-        const guiHour =  this.dateTimeFolder.add(this.dateTime, "hour", 0, 23, 1).listen().onChange(v => this.updateDateTime(v)).wrap(this.guiDay).tooltip("Hour (0-23)")
-        const guiMinute = this.dateTimeFolder.add(this.dateTime, "minute", 0, 59, 1).listen().onChange(v => this.updateDateTime(v)).wrap(guiHour).tooltip("Minute (0-59)")
-        const guiSecond = this.dateTimeFolder.add(this.dateTime, "second", 0, 59, 1).listen().onChange(v => this.updateDateTime(v)).wrap(guiMinute).tooltip("Second (0-59)")
-        const guiMillisecond = this.dateTimeFolder.add(this.dateTime, "millisecond", 0, 999, 1).listen().onChange(v => this.updateDateTime(v)).wrap(guiSecond).tooltip("Millisecond (0-999)")
+        const guiYear = this.dateTimeFolder.add(this.dateTime, "year", 1947, fiveYearsFromNow.getFullYear(), 1).listen().onChange(v => this.updateDateTime(v)).tooltip(t("dateTime.year"))
+        const guiMonth = this.dateTimeFolder.add(this.dateTime, "month", 1, 12, 1).listen().onChange(v => this.updateDateTime(v)).wrap(guiYear).tooltip(t("dateTime.month"))
+        this.guiDay = this.dateTimeFolder.add(this.dateTime, "day", 1, 31, 1).listen().onChange(v => this.updateDateTime(v)).wrap(guiMonth).tooltip(t("dateTime.day"))
+        const guiHour =  this.dateTimeFolder.add(this.dateTime, "hour", 0, 23, 1).listen().onChange(v => this.updateDateTime(v)).wrap(this.guiDay).tooltip(t("dateTime.hour"))
+        const guiMinute = this.dateTimeFolder.add(this.dateTime, "minute", 0, 59, 1).listen().onChange(v => this.updateDateTime(v)).wrap(guiHour).tooltip(t("dateTime.minute"))
+        const guiSecond = this.dateTimeFolder.add(this.dateTime, "second", 0, 59, 1).listen().onChange(v => this.updateDateTime(v)).wrap(guiMinute).tooltip(t("dateTime.second"))
+        const guiMillisecond = this.dateTimeFolder.add(this.dateTime, "millisecond", 0, 999, 1).listen().onChange(v => this.updateDateTime(v)).wrap(guiSecond).tooltip(t("dateTime.millisecond"))
 
         this.adjustGUIForTimezone();
 
@@ -207,16 +208,16 @@ export class CNodeDateTime extends CNode {
 
 
         // add the time zon flag
-        this.dateTimeFolder.add( this, "useTimeZone").name("Use Time Zone in UI").listen().onChange(v=>{
+        this.dateTimeFolder.add( this, "useTimeZone").name(t("dateTime.useTimeZone.label")).listen().onChange(v=>{
             this.adjustGUIForTimezone();
             this.populate();
             forceUpdateUIText();
             setRenderOne(true);
         })
-        .tooltip("Use the time zone in the UI above\nThis will change the date and time to be in the selected time zone, rather than UTC.\nThis is useful for displaying the date and time in a specific time zone, such as the local time zone of the video or the location.");
+        .tooltip(t("dateTime.useTimeZone.tooltip"));
 
 
-        this.dateTimeFolder.add(this, "timeZoneName", timeZoneKeys).name("Time Zone").listen().onChange(
+        this.dateTimeFolder.add(this, "timeZoneName", timeZoneKeys).name(t("dateTime.timeZone.label")).listen().onChange(
             v => {
                 console.log("Timezone "+v)
                 this.populate();
@@ -224,11 +225,11 @@ export class CNodeDateTime extends CNode {
                 setRenderOne(true);
             }
         )
-            .tooltip("The time zone to display the date and time in in the look view\nAlso in the UI if the 'Use Time Zone in UI' is checked");
+            .tooltip(t("dateTime.timeZone.tooltip"));
 
         this.oldSimSpeed = Sit.simSpeed;
 
-        this.dateTimeFolder.add(Sit, 'simSpeed', 0.01, 120, 0.01).name("Simulation Speed").listen().onChange(
+        this.dateTimeFolder.add(Sit, 'simSpeed', 0.01, 120, 0.01).name(t("dateTime.simSpeed.label")).listen().onChange(
             v => {
                 // if the simSpeed changes, we need to update the start time
                 // but we want the nowTime to remain the same, so we need to calculate
@@ -237,7 +238,7 @@ export class CNodeDateTime extends CNode {
                 this.recalculateCascade();
             }
         )
-            .tooltip("The speed of the simulation, 1 is real time, 2 is twice as fast, etc\nThis does not change the video replay speed, just the time calculations for the simulation.")
+            .tooltip(t("dateTime.simSpeed.tooltip"))
 
 
         /// these are duplicate of the "Sync Time to" menu
@@ -252,17 +253,17 @@ export class CNodeDateTime extends CNode {
             this.dateTimeFolder.close();
         }
 
-        this.guiSitchFrames = this.dateTimeFolder.add(Sit, "frames",1,2000,1).name("Sitch Frames").listen().elastic()
+        this.guiSitchFrames = this.dateTimeFolder.add(Sit, "frames",1,2000,1).name(t("dateTime.sitchFrames.label")).listen().elastic()
             .onChange((v) => {
                 this.sitchDuration = this.framesToDuration(Sit.frames);
             })
             .onFinishChange((v) => {
                 this.changedFrames();
             })
-            .tooltip("The number of frames in the sitch. If there's a video then this will be the number of frames in the video, but you can change it if you want to add more frames to the sitch, or if you want to use the sitch without a video")
+            .tooltip(t("dateTime.sitchFrames.tooltip"))
 
         this.sitchDuration = this.framesToDuration(Sit.frames);
-        this.guiSitchDuration = this.dateTimeFolder.add(this, "sitchDuration").name("Sitch Duration").listen().onFinishChange((v) => {
+        this.guiSitchDuration = this.dateTimeFolder.add(this, "sitchDuration").name(t("dateTime.sitchDuration.label")).listen().onFinishChange((v) => {
             const frames = this.durationToFrames(v);
             if (frames !== null && frames !== Sit.frames) {
                 Sit.frames = frames;
@@ -276,9 +277,9 @@ export class CNodeDateTime extends CNode {
                 this.changedFrames();
             }
         })
-            .tooltip("Duration of the sitch in HH:MM:SS.sss format")
+            .tooltip(t("dateTime.sitchDuration.tooltip"))
 
-        this.guiAFrame = this.dateTimeFolder.add(Sit, "aFrame",1,Sit.frames,1).name("A Frame").listen().onChange((v) => {
+        this.guiAFrame = this.dateTimeFolder.add(Sit, "aFrame",1,Sit.frames,1).name(t("dateTime.aFrame.label")).listen().onChange((v) => {
 
             if (Sit.aFrame > Sit.bFrame) Sit.bFrame = Sit.aFrame
             updateFrameSlider();
@@ -287,13 +288,13 @@ export class CNodeDateTime extends CNode {
         }).onFinishChange(() => {
             EventManager.dispatchEvent("abFrameChanged");
         })
-            .tooltip("limited the playback to between A and B, displayed as green and red on the frame slider")
+            .tooltip(t("dateTime.aFrame.tooltip"))
 
         if (Sit.bFrame === undefined) {
             Sit.bFrame = Sit.frames-1
         }
 
-        this.guiBFrame = this.dateTimeFolder.add(Sit, "bFrame",1,Sit.frames,1).name("B Frame").listen().onChange((v) => {
+        this.guiBFrame = this.dateTimeFolder.add(Sit, "bFrame",1,Sit.frames,1).name(t("dateTime.bFrame.label")).listen().onChange((v) => {
             if (Sit.bFrame < Sit.aFrame) Sit.aFrame = Sit.bFrame
             updateFrameSlider();
             NodeMan.recalculateAllRootFirst();
@@ -302,13 +303,13 @@ export class CNodeDateTime extends CNode {
         }).onFinishChange(() => {
             EventManager.dispatchEvent("abFrameChanged");
         })
-            .tooltip("limited the playback to between A and B, displayed as green and red on the frame slider")
+            .tooltip(t("dateTime.bFrame.tooltip"))
 
 
-        this.dateTimeFolder.add(Sit, "fps",1,120,0.01).name("Video FPS").listen().onChange((v) => {
+        this.dateTimeFolder.add(Sit, "fps",1,120,0.01).name(t("dateTime.videoFps.label")).listen().onChange((v) => {
             this.changedFrames()
         })
-            .tooltip("The frames per second of the video. This will change the playback speed of the video (e.g. 30 fps, 25 fps, etc). It will also change the duration of the sitch (in secods) as it changes how long an individual frame is\n This is derived from the video were possible, but you can change it if you want to speed up or slow down the video")
+            .tooltip(t("dateTime.videoFps.tooltip"))
         this.update(0);
 
         this.lastFrames = Sit.frames;
@@ -468,7 +469,7 @@ export class CNodeDateTime extends CNode {
     // add a select node that has the start time
     addSyncSwitch() {
 
-        this.syncSwitch = this.dateTimeFolder.add(this, "syncMethod", ["-","Start Time", "Now Time"]).name("Sync Time to")
+        this.syncSwitch = this.dateTimeFolder.add(this, "syncMethod", ["-","Start Time", "Now Time"]).name(t("dateTime.syncTimeTo.label"))
             .onChange( v => {
                 if (v === "-") {
                     // do nothing
@@ -492,7 +493,7 @@ export class CNodeDateTime extends CNode {
 
             }
         )
-            .tooltip("Sync the video start time to the original start time, the current time, or the start time of a track track (if loaded)");
+            .tooltip(t("dateTime.syncTimeTo.tooltip"));
     }
 
     addSyncToTrack(timedTrack) {

@@ -344,6 +344,86 @@ const fr = {
         average: "Mémoire moyenne",
         reset: "Réinitialiser l'historique",
     },
+    situationSetup: {
+        mainFov: {
+            label: "FOV principal",
+            tooltip: "Champ de vision de la caméra de la vue principale (VERTICAL)",
+        },
+        lookCameraFov: "FOV caméra look",
+        azimuth: "azimut",
+        jetPitch: "Tangage de l'avion",
+    },
+    featureManager: {
+        labelText: "Texte du label",
+        latitude: "Latitude",
+        longitude: "Longitude",
+        altitude: "Altitude (m)",
+        arrowLength: "Longueur de la flèche",
+        arrowColor: "Couleur de la flèche",
+        textColor: "Couleur du texte",
+        deleteFeature: "Supprimer le repère",
+    },
+    panoramaExport: {
+        exportLookPanorama: {
+            label: "Exporter le panorama look",
+            tooltip: "Créer une image panoramique à partir de la vue look sur toutes les images selon la position d'arrière-plan",
+        },
+    },
+    dateTime: {
+        liveMode: {
+            label: "Mode en direct",
+            tooltip: "Si le mode en direct est activé, la lecture sera toujours synchronisée avec l'heure actuelle.\nMettre en pause ou naviguer désactivera le mode en direct",
+        },
+        startTime: {
+            tooltip: "L'heure de DÉBUT de la première image de la vidéo, au format UTC",
+        },
+        currentTime: {
+            tooltip: "L'heure ACTUELLE de la vidéo. C'est à quoi se réfèrent la date et l'heure ci-dessous",
+        },
+        year: "Année de l'image courante",
+        month: "Mois (1-12)",
+        day: "Jour du mois",
+        hour: "Heure (0-23)",
+        minute: "Minute (0-59)",
+        second: "Seconde (0-59)",
+        millisecond: "Milliseconde (0-999)",
+        useTimeZone: {
+            label: "Utiliser le fuseau horaire dans l'interface",
+            tooltip: "Utiliser le fuseau horaire dans l'interface ci-dessus\nCela changera la date et l'heure pour le fuseau horaire sélectionné, plutôt qu'UTC.\nUtile pour afficher la date et l'heure dans un fuseau horaire spécifique.",
+        },
+        timeZone: {
+            label: "Fuseau horaire",
+            tooltip: "Le fuseau horaire pour afficher la date et l'heure dans la vue look\nAussi dans l'interface si 'Utiliser le fuseau horaire' est coché",
+        },
+        simSpeed: {
+            label: "Vitesse de simulation",
+            tooltip: "La vitesse de la simulation, 1 est en temps réel, 2 est deux fois plus rapide, etc.\nCela ne change pas la vitesse de lecture vidéo, seulement les calculs de temps pour la simulation.",
+        },
+        sitchFrames: {
+            label: "Images du sitch",
+            tooltip: "Le nombre d'images dans le sitch. S'il y a une vidéo, ce sera le nombre d'images de la vidéo, mais vous pouvez le modifier si vous souhaitez ajouter plus d'images ou utiliser le sitch sans vidéo",
+        },
+        sitchDuration: {
+            label: "Durée du sitch",
+            tooltip: "Durée du sitch au format HH:MM:SS.sss",
+        },
+        aFrame: {
+            label: "Image A",
+            tooltip: "Limiter la lecture entre A et B, affichés en vert et rouge sur le curseur d'images",
+        },
+        bFrame: {
+            label: "Image B",
+            tooltip: "Limiter la lecture entre A et B, affichés en vert et rouge sur le curseur d'images",
+        },
+        videoFps: {
+            label: "IPS vidéo",
+            tooltip: "Les images par seconde de la vidéo. Cela changera la vitesse de lecture (ex: 30 ips, 25 ips, etc). Cela changera aussi la durée du sitch car cela modifie la durée d'une image individuelle\nDérivé de la vidéo quand possible, mais modifiable",
+        },
+        syncTimeTo: {
+            label: "Synchroniser le temps avec",
+            tooltip: "Synchroniser l'heure de début de la vidéo avec l'heure de début originale, l'heure actuelle, ou l'heure de début d'une piste (si chargée)",
+        },
+    },
     jet: {
         frames: {
             time: {

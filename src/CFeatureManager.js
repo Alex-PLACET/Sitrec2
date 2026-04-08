@@ -3,6 +3,7 @@ import {CNodeFeatureMarker} from "./nodes/CNodeLabels3D";
 import {Globals, NodeMan} from "./Globals";
 import {Vector3} from "three";
 import {ViewMan} from "./CViewManager";
+import {t} from "./i18n";
 
 /**
  * CFeatureManager
@@ -238,7 +239,7 @@ class CFeatureManager extends CManager {
         };
         
         const textController = standaloneMenu.add(editableData, 'text')
-            .name('Label Text')
+            .name(t("featureManager.labelText"))
             .listen()
             .onChange((value) => {
                 // Update the feature's text
@@ -249,14 +250,14 @@ class CFeatureManager extends CManager {
         
         // Add location info (read-only)
         if (featureNode.lla) {
-            standaloneMenu.add({lat: featureNode.lla.lat.toFixed(6)}, 'lat').name('Latitude').listen().disable();
-            standaloneMenu.add({lon: featureNode.lla.lon.toFixed(6)}, 'lon').name('Longitude').listen().disable();
-            standaloneMenu.add({alt: featureNode.lla.alt.toFixed(2)}, 'alt').name('Altitude (m)').listen().disable();
+            standaloneMenu.add({lat: featureNode.lla.lat.toFixed(6)}, 'lat').name(t("featureManager.latitude")).listen().disable();
+            standaloneMenu.add({lon: featureNode.lla.lon.toFixed(6)}, 'lon').name(t("featureManager.longitude")).listen().disable();
+            standaloneMenu.add({alt: featureNode.lla.alt.toFixed(2)}, 'alt').name(t("featureManager.altitude")).listen().disable();
         }
         
         // Add arrow length slider
         standaloneMenu.add(featureNode, 'arrowLength', 0, 300, 1)
-            .name('Arrow Length')
+            .name(t("featureManager.arrowLength"))
             .listen()
             .onChange((value) => {
                 // Update the offset.y to match the new arrow length
@@ -266,12 +267,12 @@ class CFeatureManager extends CManager {
         
         // Add arrow color picker
         standaloneMenu.addColor(featureNode, 'arrowColor')
-            .name('Arrow Color')
+            .name(t("featureManager.arrowColor"))
             .listen();
         
         // Add text color picker
         standaloneMenu.addColor(featureNode, 'textColor')
-            .name('Text Color')
+            .name(t("featureManager.textColor"))
             .listen()
             .onChange((value) => {
                 // Convert hex number to CSS color string for the overlay text
@@ -293,7 +294,7 @@ class CFeatureManager extends CManager {
             }
         };
         standaloneMenu.add(deleteObj, 'deleteFeature')
-            .name('🗑️ Delete Feature')
+            .name('🗑️ ' + t("featureManager.deleteFeature"))
             .setLabelColor('#ff4444');
         
         // Open the menu

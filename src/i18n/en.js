@@ -344,6 +344,86 @@ const en = {
         average: "Average Memory",
         reset: "Reset History",
     },
+    situationSetup: {
+        mainFov: {
+            label: "Main FOV",
+            tooltip: "Field of View of the main view's camera (VERTICAL)",
+        },
+        lookCameraFov: "Look Camera FOV",
+        azimuth: "azimuth",
+        jetPitch: "Jet Pitch",
+    },
+    featureManager: {
+        labelText: "Label Text",
+        latitude: "Latitude",
+        longitude: "Longitude",
+        altitude: "Altitude (m)",
+        arrowLength: "Arrow Length",
+        arrowColor: "Arrow Color",
+        textColor: "Text Color",
+        deleteFeature: "Delete Feature",
+    },
+    panoramaExport: {
+        exportLookPanorama: {
+            label: "Export Look Panorama",
+            tooltip: "Create a panorama image from lookView across all frames based on background position",
+        },
+    },
+    dateTime: {
+        liveMode: {
+            label: "Live Mode",
+            tooltip: "If Live Mode is on, then the playback will always be synced to the current time.\nPausing or scrubbing the time will disable live mode",
+        },
+        startTime: {
+            tooltip: "The START time of first frame of the video, in UTC format",
+        },
+        currentTime: {
+            tooltip: "The CURRENT time of the video. This is what the below date and time refer to",
+        },
+        year: "Year of the current frame",
+        month: "Month (1-12)",
+        day: "Day of month",
+        hour: "Hour (0-23)",
+        minute: "Minute (0-59)",
+        second: "Second (0-59)",
+        millisecond: "Millisecond (0-999)",
+        useTimeZone: {
+            label: "Use Time Zone in UI",
+            tooltip: "Use the time zone in the UI above\nThis will change the date and time to be in the selected time zone, rather than UTC.\nThis is useful for displaying the date and time in a specific time zone, such as the local time zone of the video or the location.",
+        },
+        timeZone: {
+            label: "Time Zone",
+            tooltip: "The time zone to display the date and time in in the look view\nAlso in the UI if the 'Use Time Zone in UI' is checked",
+        },
+        simSpeed: {
+            label: "Simulation Speed",
+            tooltip: "The speed of the simulation, 1 is real time, 2 is twice as fast, etc\nThis does not change the video replay speed, just the time calculations for the simulation.",
+        },
+        sitchFrames: {
+            label: "Sitch Frames",
+            tooltip: "The number of frames in the sitch. If there's a video then this will be the number of frames in the video, but you can change it if you want to add more frames to the sitch, or if you want to use the sitch without a video",
+        },
+        sitchDuration: {
+            label: "Sitch Duration",
+            tooltip: "Duration of the sitch in HH:MM:SS.sss format",
+        },
+        aFrame: {
+            label: "A Frame",
+            tooltip: "limited the playback to between A and B, displayed as green and red on the frame slider",
+        },
+        bFrame: {
+            label: "B Frame",
+            tooltip: "limited the playback to between A and B, displayed as green and red on the frame slider",
+        },
+        videoFps: {
+            label: "Video FPS",
+            tooltip: "The frames per second of the video. This will change the playback speed of the video (e.g. 30 fps, 25 fps, etc). It will also change the duration of the sitch (in secods) as it changes how long an individual frame is\n This is derived from the video were possible, but you can change it if you want to speed up or slow down the video",
+        },
+        syncTimeTo: {
+            label: "Sync Time to",
+            tooltip: "Sync the video start time to the original start time, the current time, or the start time of a track track (if loaded)",
+        },
+    },
     jet: {
         frames: {
             time: {

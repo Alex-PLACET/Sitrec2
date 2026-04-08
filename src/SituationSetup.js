@@ -45,6 +45,7 @@ import {assert} from "./assert";
 import {makePositionLLA} from "./nodes/CNodePositionLLA";
 import {MV3} from "./threeUtils";
 import {registerNodeConsole} from "./RegisterNodes"
+import {t} from "./i18n"
 import {Frame2Az} from "./JetUtils";
 import {isConsole} from "./configUtils";
 import {CNodeMirrorVideoView} from "./nodes/CNodeMirrorVideoView";
@@ -525,8 +526,8 @@ export async function SetupFromKeyAndData(key, _data, depth=0) {
 
             guiMenus.view.add(cameraNode.camera, 'fov', 0.35, 80, 0.01).onChange(value => {
                 cameraNode.camera.updateProjectionMatrix()
-            }).listen().name("Main FOV")
-                .tooltip("Field of View of the main view's camera (VERTICAL)");
+            }).listen().name(t("situationSetup.mainFov.label"))
+                .tooltip(t("situationSetup.mainFov.tooltip"));
 
             node = cameraNode;
             break;
@@ -564,7 +565,7 @@ export async function SetupFromKeyAndData(key, _data, depth=0) {
                 if (data.addFOVController) {
                     guiMenus.camera.add(lookCameraNode.camera, 'fov', 0.35, 80, 0.01).onChange(value => {
                         lookCameraNode.camera.updateProjectionMatrix()
-                    }).listen().name("Look Camera FOV")
+                    }).listen().name(t("situationSetup.lookCameraFov"))
                 }
             }
 
@@ -1250,7 +1251,7 @@ export async function SetupFromKeyAndData(key, _data, depth=0) {
                     aZMin = aZMax;
                     aZMax = t;
                 }
-                guiPhysics.add(par, 'az', aZMin, aZMax, 0.2).listen().onChange(UIChangedAz).name("azimuth")
+                guiPhysics.add(par, 'az', aZMin, aZMax, 0.2).listen().onChange(UIChangedAz).name(t("situationSetup.azimuth"))
             }
             break;
 
@@ -1427,7 +1428,7 @@ export async function SetupFromKeyAndData(key, _data, depth=0) {
                 curveChanged();
                 // calculateGlareStartAngle();
                 setRenderOne(true);
-            }).listen().name('Jet Pitch')
+            }).listen().name(t("situationSetup.jetPitch"))
             Sit.update = function(f) {
                 let IRW = true;
                 if (f>=536 && f<1236) {

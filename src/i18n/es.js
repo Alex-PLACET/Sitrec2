@@ -344,6 +344,86 @@ const es = {
         average: "Memoria promedio",
         reset: "Restablecer historial",
     },
+    situationSetup: {
+        mainFov: {
+            label: "FOV principal",
+            tooltip: "Campo de visión de la cámara de la vista principal (VERTICAL)",
+        },
+        lookCameraFov: "FOV cámara look",
+        azimuth: "acimut",
+        jetPitch: "Cabeceo del avión",
+    },
+    featureManager: {
+        labelText: "Texto de etiqueta",
+        latitude: "Latitud",
+        longitude: "Longitud",
+        altitude: "Altitud (m)",
+        arrowLength: "Longitud de la flecha",
+        arrowColor: "Color de la flecha",
+        textColor: "Color del texto",
+        deleteFeature: "Eliminar característica",
+    },
+    panoramaExport: {
+        exportLookPanorama: {
+            label: "Exportar panorama look",
+            tooltip: "Crear una imagen panorámica desde la vista look a través de todos los fotogramas según la posición del fondo",
+        },
+    },
+    dateTime: {
+        liveMode: {
+            label: "Modo en vivo",
+            tooltip: "Si el modo en vivo está activado, la reproducción siempre estará sincronizada con la hora actual.\nPausar o desplazar el tiempo desactivará el modo en vivo",
+        },
+        startTime: {
+            tooltip: "La hora de INICIO del primer fotograma del vídeo, en formato UTC",
+        },
+        currentTime: {
+            tooltip: "La hora ACTUAL del vídeo. Es a lo que se refieren la fecha y hora siguientes",
+        },
+        year: "Año del fotograma actual",
+        month: "Mes (1-12)",
+        day: "Día del mes",
+        hour: "Hora (0-23)",
+        minute: "Minuto (0-59)",
+        second: "Segundo (0-59)",
+        millisecond: "Milisegundo (0-999)",
+        useTimeZone: {
+            label: "Usar zona horaria en la interfaz",
+            tooltip: "Usar la zona horaria en la interfaz superior\nEsto cambiará la fecha y hora a la zona horaria seleccionada, en lugar de UTC.\nÚtil para mostrar la fecha y hora en una zona horaria específica.",
+        },
+        timeZone: {
+            label: "Zona horaria",
+            tooltip: "La zona horaria para mostrar la fecha y hora en la vista look\nTambién en la interfaz si 'Usar zona horaria' está marcado",
+        },
+        simSpeed: {
+            label: "Velocidad de simulación",
+            tooltip: "La velocidad de la simulación, 1 es tiempo real, 2 es el doble de rápido, etc.\nEsto no cambia la velocidad de reproducción del vídeo, solo los cálculos de tiempo para la simulación.",
+        },
+        sitchFrames: {
+            label: "Fotogramas del sitch",
+            tooltip: "El número de fotogramas en el sitch. Si hay un vídeo, será el número de fotogramas del vídeo, pero puede cambiarlo si desea añadir más fotogramas o usar el sitch sin vídeo",
+        },
+        sitchDuration: {
+            label: "Duración del sitch",
+            tooltip: "Duración del sitch en formato HH:MM:SS.sss",
+        },
+        aFrame: {
+            label: "Fotograma A",
+            tooltip: "Limitar la reproducción entre A y B, mostrados en verde y rojo en el deslizador de fotogramas",
+        },
+        bFrame: {
+            label: "Fotograma B",
+            tooltip: "Limitar la reproducción entre A y B, mostrados en verde y rojo en el deslizador de fotogramas",
+        },
+        videoFps: {
+            label: "FPS de vídeo",
+            tooltip: "Los fotogramas por segundo del vídeo. Esto cambiará la velocidad de reproducción (ej: 30 fps, 25 fps, etc). También cambiará la duración del sitch ya que modifica la duración de un fotograma individual\nDerivado del vídeo cuando es posible, pero modificable",
+        },
+        syncTimeTo: {
+            label: "Sincronizar tiempo con",
+            tooltip: "Sincronizar la hora de inicio del vídeo con la hora de inicio original, la hora actual, o la hora de inicio de una pista (si está cargada)",
+        },
+    },
     jet: {
         frames: {
             time: {
