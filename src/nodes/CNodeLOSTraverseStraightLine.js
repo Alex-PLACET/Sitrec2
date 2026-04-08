@@ -12,7 +12,8 @@ export class CNodeLOSTraverseStraightLine extends CNodeTrack {
         super(v);
         this.requireInputs(["LOS", "startDist", "lineHeading"])
         this.array = []
-        this.recalculate()
+        this.frames = this.in.LOS.frames;
+        this._needsRecalculate = true;
     }
 
     recalculate() {
@@ -115,10 +116,6 @@ export class CNodeLOSTraverseStraightLine extends CNodeTrack {
 
     }
 
-    getValueFrame(f) {
-        return this.array[Math.floor(f)]
-    }
-
 }
 
 
@@ -130,7 +127,8 @@ export class CNodeLOSTraverseStraightLineFixed extends CNodeTrack {
         super(v);
         this.requireInputs(["LOS", "speed", "startDist", "lineHeading"])
         this.array = []
-        this.recalculate()
+        this.frames = this.in.LOS.frames;
+        this._needsRecalculate = true;
     }
 
     recalculate() {
@@ -175,10 +173,6 @@ export class CNodeLOSTraverseStraightLineFixed extends CNodeTrack {
 
     }
 
-    getValueFrame(f) {
-        return this.array[Math.floor(f)]
-    }
-
 }
 
 
@@ -191,7 +185,8 @@ export class CNodeLOSTraverseWind extends CNodeTrack {
         this.requireInputs(["LOS", "startDist", "wind"])
         this.input("targetStart", true)
         this.array = []
-        this.recalculate()
+        this.frames = this.in.LOS.frames;
+        this._needsRecalculate = true;
     }
 
     recalculate() {
@@ -233,10 +228,6 @@ export class CNodeLOSTraverseWind extends CNodeTrack {
             this.array.push(result)
         }
 
-    }
-
-    getValueFrame(f) {
-        return this.array[Math.floor(f)]
     }
 
 }

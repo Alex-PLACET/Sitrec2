@@ -294,15 +294,17 @@ export class CNodeManager extends CManager{
 
     }
 
-    nodeDepth(node) {
+    nodeDepth(node, cache) {
+        if (cache && cache.has(node)) return cache.get(node);
         let depth = 0;
         let inputs = node.inputs;
         if (Object.keys(inputs).length > 0) {
             depth=1;
             for (let key in inputs) {
-                depth = Math.max(depth, this.nodeDepth(inputs[key])+1);
+                depth = Math.max(depth, this.nodeDepth(inputs[key], cache)+1);
             }
         }
+        if (cache) cache.set(node, depth);
         return depth;
     }
 
@@ -323,6 +325,10 @@ export class CNodeManager extends CManager{
             return;
         }
 
+        const timing = Globals.timeRecalculate;
+        const t0_all = timing ? performance.now() : 0;
+        const timings = timing ? [] : null;
+
         // we will creat an array indexed by how deep the node is in the tree
         // a node with no inputs is at depth 0
         // a node with inputs that are all at depth 0 is at depth 1, etc
@@ -330,15 +336,15 @@ export class CNodeManager extends CManager{
         // so we can recalculate all the nodes in the correct order
         let depthMap = []
         let maxDepth = 0;
+        const depthCache = new Map();
         this.iterate((key, node) => {
-            let depth = this.nodeDepth(node);
+            let depth = this.nodeDepth(node, depthCache);
             if (depthMap[depth] === undefined) {
                 depthMap[depth] = [];
             }
             depthMap[depth].push(node);
             maxDepth = Math.max(maxDepth, depth);
         })
-        //console.log("Max depth = "+maxDepth)
         for (let i=0; i<=maxDepth; i++) {
             let nodes = depthMap[i];
             if (nodes !== undefined) {
@@ -347,10 +353,25 @@ export class CNodeManager extends CManager{
 
                     if (withTerrain || (node.id !== "TerrainModel" && node.id !== "terrainUI")) {
                         if (!node.checkDisplayOutputs || node.countVisibleOutputs(0, true) > 0) {
+                            const t0 = timing ? performance.now() : 0;
                             node.recalculate();
+                            node._needsRecalculate = false;
+                            if (timing) {
+                                const dt = performance.now() - t0;
+                                if (dt > 1) timings.push({id: node.id, type: node.constructor.name, ms: dt});
+                            }
                         }
                     }
                 }
+            }
+        }
+
+        if (timing) {
+            const total = performance.now() - t0_all;
+            timings.sort((a, b) => b.ms - a.ms);
+            console.log(`recalculateAllRootFirst: ${total.toFixed(0)}ms total, ${timings.length} slow nodes:`);
+            for (const t of timings.slice(0, 20)) {
+                console.log(`  ${t.ms.toFixed(1)}ms  ${t.type}  ${t.id}`);
             }
         }
     }

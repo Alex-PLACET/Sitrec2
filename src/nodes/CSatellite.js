@@ -970,6 +970,7 @@ export class CSatellite {
                 return null;
             }
             // Use the track node's pre-computed position for the current frame
+            assert(!trackNode._needsRecalculate, "call ensureRecalculated() before direct array access on " + trackNode.id);
             const trackValue = trackNode.array[par.frame];
             if (trackValue && trackValue.position) {
                 return {ecef: trackValue.position};

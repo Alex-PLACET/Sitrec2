@@ -12,10 +12,10 @@ export class CNodeLOSTraverseConstantSpeed extends CNodeTrack {
         this.checkInputs(["LOS", "startDist", "speed", "wind"])
         this.optionalInputs(["keyframeSource", "preferredDirection", "slack"])
         this.array = []
-        this.recalculate()
         this.useKeyFrames = true;
         this.airSpeed = v.airSpeed ?? false;
-        this.recalculate();
+        this.frames = this.in.LOS.frames;
+        this._needsRecalculate = true;
     }
 
     recalculate() {
@@ -169,10 +169,6 @@ export class CNodeLOSTraverseConstantSpeed extends CNodeTrack {
             this.array.push(result)
         }
 
-    }
-
-    getValueFrame(f) {
-        return this.array[Math.floor(f)]
     }
 
 }

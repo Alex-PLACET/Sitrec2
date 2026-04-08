@@ -21,7 +21,8 @@ export class CNodeLOSTrackAzEl extends CNodeLOS {
             NodeMan.addExportButton(this, "exportMISBCompliantCSV")
         }
         
-        this.recalculate()
+        this.frames = this.in.jetTrack.frames;
+        this._needsRecalculate = true;
     }
 
     recalculate() {
@@ -72,10 +73,6 @@ export class CNodeLOSTrackAzEl extends CNodeLOS {
 
             this.array.push({position: A, heading: fwd})
         }
-    }
-
-    getValueFrame(f) {
-        return this.array[Math.floor(f)]
     }
 
 }

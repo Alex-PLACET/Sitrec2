@@ -932,6 +932,7 @@ function recalculateNodesBreadthFirstRecurse(list, f, noControllers, depth, debu
             // for example, there might be a switch node that cuts this off
             if (!node.checkDisplayOutputs || node.countVisibleOutputs(0, true) > 0) {
                 node.recalculate();
+                node._needsRecalculate = false;
             }
 
             // ---- timing end --------------------------------------------

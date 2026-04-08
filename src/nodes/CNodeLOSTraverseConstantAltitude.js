@@ -42,7 +42,8 @@ export class CNodeLOSTraverseConstantAltitude extends CNodeTrack {
         this.optionalInputs(["radius", "verticalSpeed"])
         this.checkExclusiveInputs(["altitude", "startDist"])
         this.array = []
-        this.recalculate()
+        this.frames = this.in.LOS.frames;
+        this._needsRecalculate = true;
     }
 
     recalculate() {
@@ -140,10 +141,6 @@ export class CNodeLOSTraverseConstantAltitude extends CNodeTrack {
             this.array.push(result)
         }
 
-    }
-
-    getValueFrame(f) {
-        return this.array[Math.floor(f)]
     }
 
 }

@@ -9,7 +9,8 @@ export class CNodeLOSTrackTarget extends CNodeLOS {
         super(v);
         this.input("cameraTrack")
         this.input("targetTrack")
-        this.recalculate()
+        this.frames = this.in.cameraTrack.frames;
+        this._needsRecalculate = true;
     }
 
     recalculate() {

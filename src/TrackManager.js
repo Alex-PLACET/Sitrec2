@@ -1982,9 +1982,15 @@ class CTrackManager extends CManager {
 
                     if (splineEditorNode) {
                         splineEditorNode.recalculate();
+                        splineEditorNode._needsRecalculate = false;
+                        assert(splineEditorNode.frames === 0 || splineEditorNode.getValueFrame(0)?.position !== undefined,
+                            "Spline editor node was recalculated but is not materialized");
                     }
                     if (trackOb.smoothedTrackNode) {
                         trackOb.smoothedTrackNode.recalculate();
+                        trackOb.smoothedTrackNode._needsRecalculate = false;
+                        assert(trackOb.smoothedTrackNode.frames === 0 || trackOb.smoothedTrackNode.getValueFrame(0)?.position !== undefined,
+                            "Smoothed track node was recalculated but is not materialized");
                     }
                     if (trackOb.displayTrack) {
                         trackOb.displayTrack.recalculate();

@@ -13,7 +13,8 @@ export class CNodeLOSTraverseTerrain extends CNodeTrack {
         //   this.checkInputs(["LOS", "terrain"])
         this.input("LOS")
         this.input("terrain")
-        this.recalculate()
+        this.frames = this.in.LOS.frames;
+        this._needsRecalculate = true;
     }
 
     recalculate() {

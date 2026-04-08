@@ -14,7 +14,8 @@ export class CNodeLOSTraverse extends CNodeTrack {
         this.units = v.units ?? "NM";
 
         this.array = []
-        this.recalculate()
+        this.frames = this.in.LOS.frames;
+        this._needsRecalculate = true;
     }
 
     recalculate() {
@@ -65,10 +66,6 @@ export class CNodeLOSTraverse extends CNodeTrack {
                 dist += distStep
             }
         }
-    }
-
-    getValueFrame(f) {
-        return this.array[Math.floor(f)]
     }
 
 }

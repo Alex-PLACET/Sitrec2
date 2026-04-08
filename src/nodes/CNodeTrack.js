@@ -1,4 +1,5 @@
 import {CNodeEmptyArray} from "./CNodeArray";
+import {assert} from "../assert";
 import {GlobalDateTimeNode, NodeMan, Sit} from "../Globals";
 import {ECEFToLLAVD_radii, LLAToECEF} from "../LLA-ECEF-ENU";
 import {EventManager} from "../CEventManager";
@@ -21,6 +22,40 @@ export class CNodeTrack extends CNodeEmptyArray {
         // and skip the recalculation if there are no display outputs
         this.checkDisplayOutputs = true;
         this.elevationCache = null;
+        this._needsRecalculate = false;
+    }
+
+    // Ensure deferred recalculation has run. Call this instead of recalculate()
+    // when you need the data to be ready (e.g. before reading .array directly,
+    // or when eagerly materializing a track from external code).
+    // Calling recalculate() directly still works but won't clear the lazy flag,
+    // causing a redundant second pass from getValue/getValueFrame.
+    ensureRecalculated() {
+        if (this._needsRecalculate) {
+            this._needsRecalculate = false;
+            this.recalculate();
+            assert(!this._needsRecalculate,
+                this.id + ": recalculate() left _needsRecalculate set");
+        }
+    }
+
+    // Lazy recalculation: if a subclass deferred its constructor recalculate
+    // (by setting _needsRecalculate = true instead of calling this.recalculate()),
+    // the first data access triggers the recalculation on demand.
+    // This avoids expensive O(frames) computation for track nodes that are never accessed
+    // (e.g. traverse modes not selected by the switch).
+    // The check is in both getValue and getValueFrame because CNodeSwitch calls
+    // getValueFrame directly on its inputs, bypassing getValue.
+    getValue(f) {
+        this.ensureRecalculated();
+        return super.getValue(f);
+    }
+
+    getValueFrame(f) {
+        this.ensureRecalculated();
+        assert(this.array.length > 0,
+            this.constructor.name + " " + this.id + ": array empty after ensureRecalculated");
+        return super.getValueFrame(f);
     }
 
     getPointBelowCached(terrainNode, pos, agl, frame) {

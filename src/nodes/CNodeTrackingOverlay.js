@@ -415,6 +415,8 @@ n
         const maxDistNM = 200;
 
         const calcTraverseDistance = (distNM) => {
+            assert(!traverseNode._needsRecalculate,
+                "minimizeTraverseSpeed assumes traverse node is already materialized");
             startDistNode.value = distNM;
             startDistNode.recalculate();
             traverseNode.recalculate();

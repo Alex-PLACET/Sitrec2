@@ -13,7 +13,7 @@ export class CNodeOrbitTrack extends CNodeTrack {
         this.optionalInputs(["altitude"]);
         this.isNumber = false;
 
-        this.recalculate();
+        this._needsRecalculate = true;
     }
 
     recalculate() {

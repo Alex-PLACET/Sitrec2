@@ -6,7 +6,8 @@ export class CNodeLOSTraversePerspective extends CNodeTrack {
         super(v);
         this.requireInputs(["LOS", "startDist"])
         this.array = []
-        this.recalculate()
+        this.frames = this.in.LOS.frames;
+        this._needsRecalculate = true;
     }
 
     recalculate() {
@@ -144,9 +145,5 @@ export class CNodeLOSTraversePerspective extends CNodeTrack {
 
             this.array.push({position: position});
         }
-    }
-
-    getValueFrame(f) {
-        return this.array[Math.floor(f)];
     }
 }

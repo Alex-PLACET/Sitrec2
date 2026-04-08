@@ -12,7 +12,8 @@ export class CNodeLOSTraverseCloseToTarget extends CNodeTrack {
         this.input("LOS")
         this.input("target")
         this.array = []
-        this.recalculate()
+        this.frames = this.in.LOS.frames;
+        this._needsRecalculate = true;
     }
 
     recalculate() {
@@ -49,10 +50,6 @@ export class CNodeLOSTraverseCloseToTarget extends CNodeTrack {
             this.array.push(result)
         }
 
-    }
-
-    getValueFrame(f) {
-        return this.array[Math.floor(f)]
     }
 
 }

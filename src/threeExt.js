@@ -388,6 +388,7 @@ export function updateTrackPositionIndicator(view) {
 
         if (splineEditor.enable && splineEditor.positionIndicatorCone) {
             const trackNode = trackOb.splineEditorNode;
+            assert(!trackNode?._needsRecalculate, "call ensureRecalculated() before direct array access on " + trackNode?.id);
             if (trackNode && trackNode.array && trackNode.array.length > 0) {
                 const currentFrame = Math.floor(par.frame);
                 if (currentFrame >= 0 && currentFrame < trackNode.array.length) {

@@ -46,7 +46,7 @@ export class CNodeSmoothedPositionTrack extends CNodeTrack {
 
         this.copyData = v.copyData ?? false;
 
-        this.recalculate()
+        this._needsRecalculate = true;
 
         if (this.isDynamicSmoothing) {
             this._setupDynamicSmoothingGUI()
@@ -120,6 +120,8 @@ export class CNodeSmoothedPositionTrack extends CNodeTrack {
     recalculate() {
 
         assert(this.in.source !== undefined, "CNodeSmoothedPositionTrack: source input is undefined, id=" + this.id)
+        assert(!this.in.source._needsRecalculate,
+            "CNodeSmoothedPositionTrack(" + this.id + "): direct lazy source " + this.in.source.id + " not supported; use a switch or materialize first");
         this.sourceArray = this.in.source.array;
 
         if (this.sourceArray === undefined) {
@@ -393,6 +395,10 @@ export class CNodeSmoothedPositionTrack extends CNodeTrack {
     }
 
     getValueFrame(frame) {
+        if (this._needsRecalculate) {
+            this._needsRecalculate = false;
+            this.recalculate();
+        }
         let pos;
         if (this.method === "none" || this.method === "moving" || this.method === "movingPolyEdge" || this.method === "sliding" || this.method === "savgol" || this.method === "spline") {
             assert(this.array[frame] !== undefined, "CNodeSmoothedPositionTrack: array[frame] is undefined, frame=" + frame + " id=" + this.id)
