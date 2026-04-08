@@ -679,6 +679,32 @@ export function intersectEllipsoid(point, headingVector) {
     return point.clone().add(dir.clone().multiplyScalar(t));
 }
 
+// Boolean-only ray-ellipsoid intersection test (no hit point allocation).
+// Returns true if the ray from origin in the given direction intersects the WGS84 ellipsoid.
+// Direction does not need to be normalized.
+export function rayIntersectsEllipsoid(origin, direction) {
+    const a = Globals.equatorRadius;
+    const b = Globals.polarRadius;
+
+    const ox = origin.x, oy = origin.y, oz = origin.z;
+    const dx = direction.x, dy = direction.y, dz = direction.z;
+
+    const a2 = a * a, b2 = b * b;
+
+    const A = (dx * dx + dy * dy) / a2 + (dz * dz) / b2;
+    const B = 2 * ((ox * dx + oy * dy) / a2 + (oz * dz) / b2);
+    const C = (ox * ox + oy * oy) / a2 + (oz * oz) / b2 - 1;
+
+    const discriminant = B * B - 4 * A * C;
+    if (discriminant < 0) return false;
+
+    const sqrtDisc = Math.sqrt(discriminant);
+    const t1 = (-B - sqrtDisc) / (2 * A);
+    const t2 = (-B + sqrtDisc) / (2 * A);
+
+    return t1 > 0 || t2 > 0;
+}
+
 export class CDisplayLine {
     constructor(v) {
         this.color = v.color ?? [1, 0, 1];

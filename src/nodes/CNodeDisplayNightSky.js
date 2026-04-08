@@ -9,6 +9,7 @@ import {
     DebugArrowAB,
     DebugWireframeSphere,
     propagateLayerMaskObject,
+    rayIntersectsEllipsoid,
     setLayerMaskRecursive
 } from "../threeExt";
 import {ECEFToLLAVD_radii, ECEFToLLAVD_Sphere, getLST, raDecToAzElRADIANS, wgs84} from "../LLA-ECEF-ENU";
@@ -1022,8 +1023,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
 
             if (fade > 0) {
                 const camToSat = satPosition.clone().sub(cameraPos);
-                raycaster.set(cameraPos, camToSat);
-                const belowHorizon = intersectSphere2(raycaster.ray, this.globe, hitPoint, hitPoint2);
+                const belowHorizon = rayIntersectsEllipsoid(cameraPos, camToSat);
 
                 if (!belowHorizon) {
                     if (satData.number === 25544) {
