@@ -31,6 +31,7 @@ import {mouseInViewOnly} from "../ViewUtils";
 import {getPointBelow, patchMaterialForLinearOutput, pointAbove} from "../threeExt";
 import {EventManager} from "../CEventManager";
 import {isInLeftSidebar, isInRightSidebar} from "../PageStructure";
+import {t} from "../i18n";
 
 export class CNodeSynthBuilding extends CNode3DGroup {
     constructor(v) {
@@ -2354,18 +2355,18 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         
         this.guiFolder = guiMenus.objects.addFolder(`Building: ${this.name}`);
         
-        this.guiFolder.add(this, 'name').name('Name').onChange(() => {
+        this.guiFolder.add(this, 'name').name(t("synthBuilding.name.label")).onChange(() => {
             this.guiFolder.title = `Building: ${this.name}`;
             setRenderOne(true);
         }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
         
         const editModeData = {editMode: this.editMode};
-        this.guiFolder.add(this, 'visible').name('Visible').onChange((value) => {
+        this.guiFolder.add(this, 'visible').name(t("synthBuilding.visible.label")).onChange((value) => {
             this.show(value);
             setRenderOne(true);
         }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
 
-        this.editModeController = this.guiFolder.add(editModeData, 'editMode').name('Edit Mode').onChange((value) => {
+        this.editModeController = this.guiFolder.add(editModeData, 'editMode').name(t("synthBuilding.editMode.label")).onChange((value) => {
 
             if (value && Globals.editingBuilding && Globals.editingBuilding !== this) {
                 Globals.editingBuilding.setEditMode(false);
@@ -2382,7 +2383,7 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         };
         this.roofEdgeProxy = roofEdgeProxy;
         this.roofEdgeHeightController = heightFolder.add(roofEdgeProxy, 'height', 0.1, 100, 0.01)
-            .name('Roof Edge Height')
+            .name(t("synthBuilding.roofEdgeHeight.label"))
             .setUnitType('small')
             .onChange(() => {
                 const siValue = this.roofEdgeHeightController.getSIValue();
@@ -2398,7 +2399,7 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         };
         this.ridgelineProxy = ridgelineHeightProxy;
         this.ridgelineHeightController = heightFolder.add(ridgelineHeightProxy, 'height', 0.1, 100, 0.01)
-            .name('Ridgeline Height')
+            .name(t("synthBuilding.ridgelineHeight.label"))
             .setUnitType('small')
             .onChange(() => {
                 const siValue = this.ridgelineHeightController.getSIValue();
@@ -2415,7 +2416,7 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         };
         this.ridgelineInsetProxy = ridgelineInsetProxy;
         this.ridgelineInsetController = heightFolder.add(ridgelineInsetProxy, 'inset', 0, 20, 0.01)
-            .name('Ridgeline Inset')
+            .name(t("synthBuilding.ridgelineInset.label"))
             .setUnitType('small')
             .onChange(() => {
                 const siValue = this.ridgelineInsetController.getSIValue();
@@ -2431,7 +2432,7 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         };
         this.roofEavesProxy = roofEavesProxy;
         this.roofEavesController = heightFolder.add(roofEavesProxy, 'eaves', 0, 3, 0.01)
-            .name('Roof Eaves')
+            .name(t("synthBuilding.roofEaves.label"))
             .setUnitType('small')
             .onChange(() => {
                 const siValue = this.roofEavesController.getSIValue();
@@ -2443,42 +2444,42 @@ export class CNodeSynthBuilding extends CNode3DGroup {
         this.materialFolder = this.guiFolder.addFolder('Material').close();
         
         this.materialFolder.add(this, 'materialType', ['basic', 'lambert', 'phong', 'physical'])
-            .name('Type')
+            .name(t("synthBuilding.type.label"))
             .onChange(() => this.rebuildMaterial())
             .onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
         
         this.materialFolder.addColor(this, 'wallColor')
-            .name('Wall Color')
+            .name(t("synthBuilding.wallColor.label"))
             .onChange(() => this.rebuildMaterial())
             .onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
         
         this.materialFolder.addColor(this, 'roofColor')
-            .name('Roof Color')
+            .name(t("synthBuilding.roofColor.label"))
             .onChange(() => this.rebuildMaterial())
             .onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
         
         this.materialFolder.add(this, 'materialOpacity', 0, 1, 0.01)
-            .name('Opacity')
+            .name(t("synthBuilding.opacity.label"))
             .onChange(() => this.rebuildMaterial())
             .onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
         
         this.materialFolder.add(this, 'materialTransparent')
-            .name('Transparent')
+            .name(t("synthBuilding.transparent.label"))
             .onChange(() => this.rebuildMaterial())
             .onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
         
         this.materialFolder.add(this, 'materialWireframe')
-            .name('Wireframe')
+            .name(t("synthBuilding.wireframe.label"))
             .onChange(() => this.rebuildMaterial());
         
         this.materialFolder.add(this, 'materialDepthTest')
-            .name('Depth Test')
+            .name(t("synthBuilding.depthTest.label"))
             .onChange(() => this.rebuildMaterial());
         
         const actions = {
             delete: () => this.deleteBuilding()
         };
-        this.guiFolder.add(actions, 'delete').name('Delete Building');
+        this.guiFolder.add(actions, 'delete').name(t("synthBuilding.deleteBuilding.label"));
         
         this.guiFolder.close();
     }
