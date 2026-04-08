@@ -3034,25 +3034,25 @@ let guiVideoNoiseFolder = null;
 export function addFiltersToVideoNode(videoNode) {
 
     if (guiVideoEffectsFolder === null) {
-        guiVideoEffectsFolder = guiMenus.video.addFolder("Video Adjustments").close().perm();
+        guiVideoEffectsFolder = guiMenus.video.addFolder(t("videoView.folders.videoAdjustments")).close().perm();
     }
 
     if (guiVideoProcessingFolder === null) {
-        guiVideoProcessingFolder = guiMenus.video.addFolder("Video Processing").close().perm();
+        guiVideoProcessingFolder = guiMenus.video.addFolder(t("videoView.folders.videoProcessing")).close().perm();
     }
 
     if (guiVideoForensicsFolder === null) {
-        guiVideoForensicsFolder = guiMenus.video.addFolder("Forensics").close().perm();
+        guiVideoForensicsFolder = guiMenus.video.addFolder(t("videoView.folders.forensics")).close().perm();
         guiVideoForensicsFolder.onOpenClose(() => setRenderOne(true));
     }
 
     if (guiVideoELAFolder === null) {
-        guiVideoELAFolder = guiVideoForensicsFolder.addFolder("Error Level Analysis").close().perm();
+        guiVideoELAFolder = guiVideoForensicsFolder.addFolder(t("videoView.folders.errorLevelAnalysis")).close().perm();
         guiVideoELAFolder.onOpenClose(() => setRenderOne(true));
     }
 
     if (guiVideoNoiseFolder === null) {
-        guiVideoNoiseFolder = guiVideoForensicsFolder.addFolder("Noise Analysis").close().perm();
+        guiVideoNoiseFolder = guiVideoForensicsFolder.addFolder(t("videoView.folders.noiseAnalysis")).close().perm();
         guiVideoNoiseFolder.onOpenClose(() => setRenderOne(true));
     }
 
@@ -3330,7 +3330,7 @@ export function addFiltersToVideoNode(videoNode) {
     });
 
     if (!NodeMan.exists("videoGridOverlay")) {
-        const gridFolder = guiMenus.video.addFolder("Grid").close();
+        const gridFolder = guiMenus.video.addFolder(t("videoView.folders.grid")).close();
 
         const gridOverlay = new CNodeGridOverlay({
             id: "videoGridOverlay",

@@ -877,6 +877,14 @@ const en = {
     },
 
     videoView: {
+        folders: {
+            videoAdjustments: "Video Adjustments",
+            videoProcessing: "Video Processing",
+            forensics: "Forensics",
+            errorLevelAnalysis: "Error Level Analysis",
+            noiseAnalysis: "Noise Analysis",
+            grid: "Grid",
+        },
         currentVideo: { label: "Current Video" },
         videoRotation: { label: "Video Rotation" },
         setCameraToExifGps: { label: "Set Camera To EXIF GPS" },
