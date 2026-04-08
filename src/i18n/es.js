@@ -727,6 +727,29 @@ const es = {
             exitEditMode: "Salir del modo edición",
         },
     },
+    view3d: {
+        northUp: { label: "Vista look norte arriba", tooltip: "La vista look se orienta con el norte arriba, en lugar del mundo arriba.\nPara vistas de satélite y similares, mirando directamente hacia abajo.\nNo se aplica en modo PTZ" },
+        atmosphere: { label: "Atmósfera", tooltip: "Atenuación por distancia que mezcla el terreno y los objetos 3D hacia el color del cielo actual" },
+        atmoVisibility: { label: "Visibilidad atmo (km)", tooltip: "Distancia donde el contraste atmosférico cae a aproximadamente 50% (más pequeño = atmósfera más densa)" },
+        atmoHDR: { label: "Atmo HDR", tooltip: "Niebla/tone mapping HDR físicamente realista para reflejos solares a través de la bruma" },
+        atmoExposure: { label: "Exposición atmo", tooltip: "Multiplicador de exposición de tone mapping HDR para suavizado de luces altas" },
+        startXR: { label: "Iniciar VR/XR", tooltip: "Iniciar sesión WebXR para pruebas (funciona con Immersive Web Emulator)" },
+        effects: { label: "Efectos", tooltip: "Activar/desactivar todos los efectos" },
+        focusTrack: { label: "Pista de enfoque", tooltip: "Seleccionar una pista para que la cámara la mire y gire a su alrededor" },
+        lockTrack: { label: "Bloquear en pista", tooltip: "Seleccionar una pista para bloquear la cámara en ella, de modo que se mueva con la pista" },
+        debug: {
+            clearBackground: "Limpiar fondo", renderSky: "Renderizar cielo", renderDaySky: "Renderizar cielo diurno",
+            renderMainScene: "Renderizar escena principal", renderEffects: "Renderizar efectos", copyToScreen: "Copiar a pantalla",
+            updateCameraMatrices: "Actualizar matrices de cámara", mainUseLookLayers: "Principal usa capas look",
+            sRGBOutputEncoding: "Codificación de salida sRGB", tileLoadDelay: "Retardo de carga de teselas (s)",
+            updateStarScales: "Actualizar escalas de estrellas", updateSatelliteScales: "Actualizar escalas de satélites",
+            renderNightSky: "Renderizar cielo nocturno", renderFullscreenQuad: "Renderizar quad pantalla completa", renderSunSky: "Renderizar cielo solar",
+        },
+        celestial: {
+            raHours: "AR (horas)", decDegrees: "Dec (grados)", magnitude: "Magnitud",
+            noradNumber: "Número NORAD", name: "Nombre",
+        },
+    },
 };
 
 export default es;

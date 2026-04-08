@@ -727,6 +727,29 @@ const fr = {
             exitEditMode: "Quitter le mode édition",
         },
     },
+    view3d: {
+        northUp: { label: "Vue look nord en haut", tooltip: "La vue look est orientée nord en haut, au lieu du monde en haut.\nPour les vues satellite et similaires, en regardant droit vers le bas.\nNe s'applique pas en mode PTZ" },
+        atmosphere: { label: "Atmosphère", tooltip: "Atténuation par la distance qui mélange le terrain et les objets 3D vers la couleur du ciel actuelle" },
+        atmoVisibility: { label: "Visibilité atmo (km)", tooltip: "Distance où le contraste atmosphérique chute à environ 50 % (plus petit = atmosphère plus épaisse)" },
+        atmoHDR: { label: "Atmo HDR", tooltip: "Brouillard/tone mapping HDR physiquement réaliste pour les reflets du soleil à travers la brume" },
+        atmoExposure: { label: "Exposition atmo", tooltip: "Multiplicateur d'exposition de tone mapping HDR pour l'adoucissement des hautes lumières" },
+        startXR: { label: "Démarrer VR/XR", tooltip: "Démarrer une session WebXR pour les tests (fonctionne avec Immersive Web Emulator)" },
+        effects: { label: "Effets", tooltip: "Activer/désactiver tous les effets" },
+        focusTrack: { label: "Piste de focus", tooltip: "Sélectionner une piste pour que la caméra la regarde et tourne autour" },
+        lockTrack: { label: "Verrouiller sur piste", tooltip: "Sélectionner une piste pour verrouiller la caméra dessus, afin qu'elle se déplace avec la piste" },
+        debug: {
+            clearBackground: "Effacer l'arrière-plan", renderSky: "Rendu du ciel", renderDaySky: "Rendu du ciel diurne",
+            renderMainScene: "Rendu de la scène principale", renderEffects: "Rendu des effets", copyToScreen: "Copie à l'écran",
+            updateCameraMatrices: "Mise à jour matrices caméra", mainUseLookLayers: "Principal utilise calques look",
+            sRGBOutputEncoding: "Encodage de sortie sRGB", tileLoadDelay: "Délai de chargement des tuiles (s)",
+            updateStarScales: "Mise à jour échelles étoiles", updateSatelliteScales: "Mise à jour échelles satellites",
+            renderNightSky: "Rendu du ciel nocturne", renderFullscreenQuad: "Rendu du quad plein écran", renderSunSky: "Rendu du ciel solaire",
+        },
+        celestial: {
+            raHours: "AD (heures)", decDegrees: "Déc (degrés)", magnitude: "Magnitude",
+            noradNumber: "Numéro NORAD", name: "Nom",
+        },
+    },
 };
 
 export default fr;

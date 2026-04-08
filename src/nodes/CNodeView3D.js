@@ -77,6 +77,7 @@ import {globalProfiler} from "../VisualProfiler";
 import {FeatureManager} from "../CFeatureManager";
 import {fixXRLayerMasks, renderCelestialScene, renderFullscreenQuadStereo} from "../CXRRenderer";
 import {waitForExportFrameSettled} from "../ExportFrameSettler";
+import {t} from "../i18n";
 
 
 function linearToSrgb(color) {
@@ -122,31 +123,31 @@ export class CNodeView3D extends CNodeViewCanvas {
 
         this.northUp = v.northUp ?? false;
         if (this.id === "lookView") {
-            guiMenus.view.add(this, "northUp").name("Look View North Up").onChange(value => {
+            guiMenus.view.add(this, "northUp").name(t("view3d.northUp.label")).onChange(value => {
                 this.recalculate();
             })
-                .tooltip("Set the look view to be north up, instead of world up.\nfor Satellite views and similar, looking straight down.\nDoes not apply in PTZ mode")
+                .tooltip(t("view3d.northUp.tooltip"))
 
-            guiTweaks.add(this, "atmosphereEnabled").name("Atmosphere").listen().onChange(() => {
+            guiTweaks.add(this, "atmosphereEnabled").name(t("view3d.atmosphere.label")).listen().onChange(() => {
                 setRenderOne(true);
-            }).tooltip("Distance attenuation that blends terrain and 3D objects toward the current sky color");
+            }).tooltip(t("view3d.atmosphere.tooltip"));
 
-            guiTweaks.add(this, "atmosphereVisibilityKm", 1, 500, 0.1).name("Atmo Visibility (km)").listen().onChange(() => {
+            guiTweaks.add(this, "atmosphereVisibilityKm", 1, 500, 0.1).name(t("view3d.atmoVisibility.label")).listen().onChange(() => {
                 setRenderOne(true);
-            }).tooltip("Distance where atmospheric contrast drops to about 50% (smaller = thicker atmosphere)");
+            }).tooltip(t("view3d.atmoVisibility.tooltip"));
 
-            guiTweaks.add(this, "atmosphereHDR").name("Atmo HDR").listen().onChange(() => {
+            guiTweaks.add(this, "atmosphereHDR").name(t("view3d.atmoHDR.label")).listen().onChange(() => {
                 setRenderOne(true);
-            }).tooltip("Physically-based HDR fog/tone mapping for bright sun reflections through haze");
+            }).tooltip(t("view3d.atmoHDR.tooltip"));
 
-            guiTweaks.add(this, "atmosphereExposure", 0.1, 5.0, 0.01).name("Atmo Exposure").listen().onChange(() => {
+            guiTweaks.add(this, "atmosphereExposure", 0.1, 5.0, 0.01).name(t("view3d.atmoExposure.label")).listen().onChange(() => {
                 setRenderOne(true);
-            }).tooltip("HDR atmosphere tone-mapping exposure multiplier for highlight rolloff");
+            }).tooltip(t("view3d.atmoExposure.tooltip"));
             
             // Add XR test button if VR is enabled
             if (Globals.canVR) {
-                guiMenus.view.add(this, "startXR").name("Start VR/XR")
-                    .tooltip("Start WebXR session for testing (works with Immersive Web Emulator)");
+                guiMenus.view.add(this, "startXR").name(t("view3d.startXR.label"))
+                    .tooltip(t("view3d.startXR.tooltip"));
             }
         }
         this.addSimpleSerial("northUp");
@@ -190,25 +191,25 @@ export class CNodeView3D extends CNodeViewCanvas {
             const debugFolder = guiMenus.debug.addFolder("Render Debug");
             
             // Add controls for global render debug flags (affects ALL views)
-            debugFolder.add(Globals.renderDebugFlags, "dbg_clearBackground").name("Clear Background").onChange(() => setRenderOne(true));
-            debugFolder.add(Globals.renderDebugFlags, "dbg_renderSky").name("Render Sky").onChange(() => setRenderOne(true));
-            debugFolder.add(Globals.renderDebugFlags, "dbg_renderDaySky").name("Render Day Sky").onChange(() => setRenderOne(true));
-            debugFolder.add(Globals.renderDebugFlags, "dbg_renderMainScene").name("Render Main Scene").onChange(() => setRenderOne(true));
-            debugFolder.add(Globals.renderDebugFlags, "dbg_renderEffects").name("Render Effects").onChange(() => setRenderOne(true));
-            debugFolder.add(Globals.renderDebugFlags, "dbg_copyToScreen").name("Copy To Screen").onChange(() => setRenderOne(true));
-            debugFolder.add(Globals.renderDebugFlags, "dbg_updateCameraMatrices").name("Update Camera Matrices").onChange(() => setRenderOne(true));
-            debugFolder.add(Globals.renderDebugFlags, "dbg_mainViewUseLookLayers").name("Main Use Look Layers").onChange(() => setRenderOne(true));
-            debugFolder.add(Globals.renderDebugFlags, "dbg_sRGBOutputEncoding").name("sRGB Output Encoding").onChange(() => setRenderOne(true));
-            
-            debugFolder.add(Globals, "tileDelay", 0, 5, 0.01).name("Tile Load Delay (s)").onChange(() => setRenderOne(true));
+            debugFolder.add(Globals.renderDebugFlags, "dbg_clearBackground").name(t("view3d.debug.clearBackground")).onChange(() => setRenderOne(true));
+            debugFolder.add(Globals.renderDebugFlags, "dbg_renderSky").name(t("view3d.debug.renderSky")).onChange(() => setRenderOne(true));
+            debugFolder.add(Globals.renderDebugFlags, "dbg_renderDaySky").name(t("view3d.debug.renderDaySky")).onChange(() => setRenderOne(true));
+            debugFolder.add(Globals.renderDebugFlags, "dbg_renderMainScene").name(t("view3d.debug.renderMainScene")).onChange(() => setRenderOne(true));
+            debugFolder.add(Globals.renderDebugFlags, "dbg_renderEffects").name(t("view3d.debug.renderEffects")).onChange(() => setRenderOne(true));
+            debugFolder.add(Globals.renderDebugFlags, "dbg_copyToScreen").name(t("view3d.debug.copyToScreen")).onChange(() => setRenderOne(true));
+            debugFolder.add(Globals.renderDebugFlags, "dbg_updateCameraMatrices").name(t("view3d.debug.updateCameraMatrices")).onChange(() => setRenderOne(true));
+            debugFolder.add(Globals.renderDebugFlags, "dbg_mainViewUseLookLayers").name(t("view3d.debug.mainUseLookLayers")).onChange(() => setRenderOne(true));
+            debugFolder.add(Globals.renderDebugFlags, "dbg_sRGBOutputEncoding").name(t("view3d.debug.sRGBOutputEncoding")).onChange(() => setRenderOne(true));
+
+            debugFolder.add(Globals, "tileDelay", 0, 5, 0.01).name(t("view3d.debug.tileLoadDelay")).onChange(() => setRenderOne(true));
             
             // Add renderSky sub-folder
             const skyFolder = debugFolder.addFolder("Sky Steps");
-            skyFolder.add(Globals.renderDebugFlags, "dbg_updateStarScales").name("Update Star Scales").onChange(() => setRenderOne(true));
-            skyFolder.add(Globals.renderDebugFlags, "dbg_updateSatelliteScales").name("Update Satellite Scales").onChange(() => setRenderOne(true));
-            skyFolder.add(Globals.renderDebugFlags, "dbg_renderNightSky").name("Render Night Sky").onChange(() => setRenderOne(true));
-            skyFolder.add(Globals.renderDebugFlags, "dbg_renderFullscreenQuad").name("Render Fullscreen Quad").onChange(() => setRenderOne(true));
-            skyFolder.add(Globals.renderDebugFlags, "dbg_renderSunSky").name("Render Sun Sky").onChange(() => setRenderOne(true));
+            skyFolder.add(Globals.renderDebugFlags, "dbg_updateStarScales").name(t("view3d.debug.updateStarScales")).onChange(() => setRenderOne(true));
+            skyFolder.add(Globals.renderDebugFlags, "dbg_updateSatelliteScales").name(t("view3d.debug.updateSatelliteScales")).onChange(() => setRenderOne(true));
+            skyFolder.add(Globals.renderDebugFlags, "dbg_renderNightSky").name(t("view3d.debug.renderNightSky")).onChange(() => setRenderOne(true));
+            skyFolder.add(Globals.renderDebugFlags, "dbg_renderFullscreenQuad").name(t("view3d.debug.renderFullscreenQuad")).onChange(() => setRenderOne(true));
+            skyFolder.add(Globals.renderDebugFlags, "dbg_renderSunSky").name(t("view3d.debug.renderSunSky")).onChange(() => setRenderOne(true));
             
             // Mark that we've added the render debug folder to avoid duplicates
             guiMenus.help._renderDebugFolderAdded = true;
@@ -1917,9 +1918,9 @@ export class CNodeView3D extends CNodeViewCanvas {
         if (effects) {
 
             this.effectsEnabled = true;
-            guiTweaks.add(this, "effectsEnabled").name("Effects").onChange(() => {
+            guiTweaks.add(this, "effectsEnabled").name(t("view3d.effects.label")).onChange(() => {
                 setRenderOne(true)
-            }).tooltip("Enable/Disable All Effects")
+            }).tooltip(t("view3d.effects.tooltip"))
 
             this.effects = effects;
 
@@ -2087,13 +2088,13 @@ export class CNodeView3D extends CNodeViewCanvas {
         this.lockTrackName = select
         guiMenus.view.add(this, "focusTrackName", focusTracks).onChange(focusTrackName => {
             //
-        }).name("Focus Track").listen()
-            .tooltip("Select a track to make the camera look at it and rotate around it")
+        }).name(t("view3d.focusTrack.label")).listen()
+            .tooltip(t("view3d.focusTrack.tooltip"))
         guiMenus.view.add(this, "lockTrackName", focusTracks).onChange(lockTrackName => {
             //
             console.log(this.lockTrackName)
-        }).name("Lock Track").listen()
-            .tooltip("Select a track to lock the camera to it, so it moves with the track")
+        }).name(t("view3d.lockTrack.label")).listen()
+            .tooltip(t("view3d.lockTrack.tooltip"))
     }
 
     get camera() {
@@ -2614,26 +2615,26 @@ export class CNodeView3D extends CNodeViewCanvas {
         if (celestialObject.type === 'planet') {
             const data = celestialObject.data;
             if (data.ra !== undefined) {
-                standaloneMenu.add({raHours: (data.ra * 12 / Math.PI).toFixed(3)}, 'raHours').name('RA (hours)').listen().disable();
+                standaloneMenu.add({raHours: (data.ra * 12 / Math.PI).toFixed(3)}, 'raHours').name(t("view3d.celestial.raHours")).listen().disable();
             }
             if (data.dec !== undefined) {
-                standaloneMenu.add({decDegrees: (data.dec * 180 / Math.PI).toFixed(3)}, 'decDegrees').name('Dec (degrees)').listen().disable();
+                standaloneMenu.add({decDegrees: (data.dec * 180 / Math.PI).toFixed(3)}, 'decDegrees').name(t("view3d.celestial.decDegrees")).listen().disable();
             }
             if (data.mag !== undefined) {
-                standaloneMenu.add({magnitude: data.mag.toFixed(2)}, 'magnitude').name('Magnitude').listen().disable();
+                standaloneMenu.add({magnitude: data.mag.toFixed(2)}, 'magnitude').name(t("view3d.celestial.magnitude")).listen().disable();
             }
         } else if (celestialObject.type === 'satellite') {
-            standaloneMenu.add({noradNum: String(celestialObject.number)}, 'noradNum').name('NORAD Number').listen().disable();
-            standaloneMenu.add({name: celestialObject.name}, 'name').name('Name').listen().disable();
+            standaloneMenu.add({noradNum: String(celestialObject.number)}, 'noradNum').name(t("view3d.celestial.noradNumber")).listen().disable();
+            standaloneMenu.add({name: celestialObject.name}, 'name').name(t("view3d.celestial.name")).listen().disable();
         } else if (celestialObject.type === 'star') {
             if (celestialObject.ra !== undefined) {
-                standaloneMenu.add({raHours: (celestialObject.ra * 12 / Math.PI).toFixed(3)}, 'raHours').name('RA (hours)').listen().disable();
+                standaloneMenu.add({raHours: (celestialObject.ra * 12 / Math.PI).toFixed(3)}, 'raHours').name(t("view3d.celestial.raHours")).listen().disable();
             }
             if (celestialObject.dec !== undefined) {
-                standaloneMenu.add({decDegrees: (celestialObject.dec * 180 / Math.PI).toFixed(3)}, 'decDegrees').name('Dec (degrees)').listen().disable();
+                standaloneMenu.add({decDegrees: (celestialObject.dec * 180 / Math.PI).toFixed(3)}, 'decDegrees').name(t("view3d.celestial.decDegrees")).listen().disable();
             }
             if (celestialObject.magnitude !== undefined && celestialObject.magnitude !== 'Unknown') {
-                standaloneMenu.add({magnitude: celestialObject.magnitude.toFixed(2)}, 'magnitude').name('Magnitude').listen().disable();
+                standaloneMenu.add({magnitude: celestialObject.magnitude.toFixed(2)}, 'magnitude').name(t("view3d.celestial.magnitude")).listen().disable();
             }
         }
         

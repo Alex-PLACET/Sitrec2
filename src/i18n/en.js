@@ -727,6 +727,29 @@ const en = {
             exitEditMode: "Exit Edit Mode",
         },
     },
+    view3d: {
+        northUp: { label: "Look View North Up", tooltip: "Set the look view to be north up, instead of world up.\nfor Satellite views and similar, looking straight down.\nDoes not apply in PTZ mode" },
+        atmosphere: { label: "Atmosphere", tooltip: "Distance attenuation that blends terrain and 3D objects toward the current sky color" },
+        atmoVisibility: { label: "Atmo Visibility (km)", tooltip: "Distance where atmospheric contrast drops to about 50% (smaller = thicker atmosphere)" },
+        atmoHDR: { label: "Atmo HDR", tooltip: "Physically-based HDR fog/tone mapping for bright sun reflections through haze" },
+        atmoExposure: { label: "Atmo Exposure", tooltip: "HDR atmosphere tone-mapping exposure multiplier for highlight rolloff" },
+        startXR: { label: "Start VR/XR", tooltip: "Start WebXR session for testing (works with Immersive Web Emulator)" },
+        effects: { label: "Effects", tooltip: "Enable/Disable All Effects" },
+        focusTrack: { label: "Focus Track", tooltip: "Select a track to make the camera look at it and rotate around it" },
+        lockTrack: { label: "Lock Track", tooltip: "Select a track to lock the camera to it, so it moves with the track" },
+        debug: {
+            clearBackground: "Clear Background", renderSky: "Render Sky", renderDaySky: "Render Day Sky",
+            renderMainScene: "Render Main Scene", renderEffects: "Render Effects", copyToScreen: "Copy To Screen",
+            updateCameraMatrices: "Update Camera Matrices", mainUseLookLayers: "Main Use Look Layers",
+            sRGBOutputEncoding: "sRGB Output Encoding", tileLoadDelay: "Tile Load Delay (s)",
+            updateStarScales: "Update Star Scales", updateSatelliteScales: "Update Satellite Scales",
+            renderNightSky: "Render Night Sky", renderFullscreenQuad: "Render Fullscreen Quad", renderSunSky: "Render Sun Sky",
+        },
+        celestial: {
+            raHours: "RA (hours)", decDegrees: "Dec (degrees)", magnitude: "Magnitude",
+            noradNumber: "NORAD Number", name: "Name",
+        },
+    },
 };
 
 export default en;
