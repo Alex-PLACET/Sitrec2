@@ -226,18 +226,18 @@ export class CCustomManager {
 
         // Create Settings folder in the Sitrec menu
         const tooltipText = getEffectiveUserID() > 0
-            ? "Per-user settings saved to server (with cookie backup)"
-            : "Per-user settings saved in browser cookies";
+            ? t("custom.settings.tooltipLoggedIn")
+            : t("custom.settings.tooltipAnonymous");
 
-        const settingsFolder = guiMenus.main.addFolder("Settings")
+        const settingsFolder = guiMenus.main.addFolder(t("custom.settings.title"))
             .tooltip(tooltipText)
             .close();
 
         Globals.settings.language = getCurrentLanguage();
 
         settingsFolder.add(Globals.settings, "language", SUPPORTED_LANGUAGE_OPTIONS)
-            .name("Language")
-            .tooltip("Select interface language. Changing this reloads the page. You will lose any unsaved work, so save first!")
+            .name(t("custom.settings.language.label"))
+            .tooltip(t("custom.settings.language.tooltip"))
             .onChange((value) => {
                 const previousLanguage = getCurrentLanguage();
                 const normalizedLanguage = setLanguage(value);
@@ -252,8 +252,8 @@ export class CCustomManager {
 
         // Add Max Details slider
         settingsFolder.add(Globals.settings, "maxDetails", 5, 30, 1)
-            .name("Max Details")
-            .tooltip("Maximum level of detail for terrain subdivision (5-30)")
+            .name(t("custom.settings.maxDetails.label"))
+            .tooltip(t("custom.settings.maxDetails.tooltip"))
             .onChange((value) => {
                 // Sanitize the value
                 const newValue = Math.max(5, Math.min(30, Math.round(value)));
@@ -274,8 +274,8 @@ export class CCustomManager {
 
         // Add FPS Limit dropdown - dropdown doesn't need onFinishChange, immediate save is fine
         settingsFolder.add(Globals.settings, "fpsLimit", [60, 30, 20, 15])
-            .name("Frame Rate Limit")
-            .tooltip("Set maximum frame rate (60, 30, 20, or 15 fps)")
+            .name(t("custom.settings.fpsLimit.label"))
+            .tooltip(t("custom.settings.fpsLimit.tooltip"))
             .onChange(() => {
                 this.saveGlobalSettings(true);
             })
@@ -283,8 +283,8 @@ export class CCustomManager {
 
         // Add Tile Segments dropdown
         settingsFolder.add(Globals.settings, "tileSegments", [8, 16, 32, 64, 128])
-            .name("Tile Segments")
-            .tooltip("Mesh resolution for terrain tiles. Higher values = more detail but slower")
+            .name(t("custom.settings.tileSegments.label"))
+            .tooltip(t("custom.settings.tileSegments.tooltip"))
             .onFinishChange(() => {
                 // When selection is finalized, force immediate save and refresh terrain
                 this.saveGlobalSettings(true);
@@ -299,8 +299,8 @@ export class CCustomManager {
 
         // Add Max Resolution dropdown - dropdown doesn't need onFinishChange
         settingsFolder.add(Globals.settings, "videoMaxSize", ["None", "1080P", "720P", "480P", "360P"])
-            .name("Max Resolution")
-            .tooltip("Maximum video frame resolution (longer side). Reduces GPU memory usage. Applies to newly loaded frames.")
+            .name(t("custom.settings.maxResolution.label"))
+            .tooltip(t("custom.settings.maxResolution.tooltip"))
             .onChange(() => {
                 this.saveGlobalSettings(true);
             })
@@ -309,16 +309,16 @@ export class CCustomManager {
         // Add AI Model selector dropdown (bound directly to Globals.settings.chatModel)
         this.availableChatModels = [];
         this.chatModelController = settingsFolder.add(Globals.settings, "chatModel", { "Loading...": "" })
-            .name("AI Model")
-            .tooltip("Select the AI model for the chat assistant")
+            .name(t("custom.settings.aiModel.label"))
+            .tooltip(t("custom.settings.aiModel.tooltip"))
             .onChange(() => {
                 this.saveGlobalSettings(true);
             });
 
         // Add Center Sidebar toggle
         settingsFolder.add(Globals.settings, "centerSidebar")
-            .name("Center Sidebar")
-            .tooltip("Enable center sidebar between split views (drag menus to the divider line)")
+            .name(t("custom.settings.centerSidebar.label"))
+            .tooltip(t("custom.settings.centerSidebar.tooltip"))
             .onChange((value) => {
                 Globals.settings.centerSidebar = Boolean(value);
                 this.saveGlobalSettings(true);
@@ -327,8 +327,8 @@ export class CCustomManager {
 
         // Add Show Attribution toggle
         settingsFolder.add(Globals.settings, "showAttribution")
-            .name("Show Attribution")
-            .tooltip("Show map and elevation data source attribution overlay")
+            .name(t("custom.settings.showAttribution.label"))
+            .tooltip(t("custom.settings.showAttribution.tooltip"))
             .onChange((value) => {
                 Globals.settings.showAttribution = Boolean(value);
                 this.saveGlobalSettings(true);

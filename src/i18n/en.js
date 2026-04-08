@@ -675,6 +675,19 @@ const en = {
         },
     },
     custom: {
+        settings: {
+            title: "Settings",
+            tooltipLoggedIn: "Per-user settings saved to server (with cookie backup)",
+            tooltipAnonymous: "Per-user settings saved in browser cookies",
+            language: { label: "Language", tooltip: "Select interface language. Changing this reloads the page. You will lose any unsaved work, so save first!" },
+            maxDetails: { label: "Max Details", tooltip: "Maximum level of detail for terrain subdivision (5-30)" },
+            fpsLimit: { label: "Frame Rate Limit", tooltip: "Set maximum frame rate (60, 30, 20, or 15 fps)" },
+            tileSegments: { label: "Tile Segments", tooltip: "Mesh resolution for terrain tiles. Higher values = more detail but slower" },
+            maxResolution: { label: "Max Resolution", tooltip: "Maximum video frame resolution (longer side). Reduces GPU memory usage. Applies to newly loaded frames." },
+            aiModel: { label: "AI Model", tooltip: "Select the AI model for the chat assistant" },
+            centerSidebar: { label: "Center Sidebar", tooltip: "Enable center sidebar between split views (drag menus to the divider line)" },
+            showAttribution: { label: "Show Attribution", tooltip: "Show map and elevation data source attribution overlay" },
+        },
         balloons: {
             count: { label: "Count", tooltip: "Number of nearby stations to import" },
             source: { label: "Source", tooltip: "uwyo = University of Wyoming (needs PHP proxy)\nigra2 = NOAA NCEI archive (direct download)" },

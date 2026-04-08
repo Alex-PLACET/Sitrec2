@@ -675,6 +675,19 @@ const fr = {
         },
     },
     custom: {
+        settings: {
+            title: "Paramètres",
+            tooltipLoggedIn: "Paramètres par utilisateur enregistrés sur le serveur (avec sauvegarde par cookie)",
+            tooltipAnonymous: "Paramètres par utilisateur enregistrés dans les cookies du navigateur",
+            language: { label: "Langue", tooltip: "Sélectionner la langue de l'interface. Changer recharge la page. Vous perdrez tout travail non enregistré, sauvegardez d'abord !" },
+            maxDetails: { label: "Détails max", tooltip: "Niveau de détail maximum pour la subdivision du terrain (5-30)" },
+            fpsLimit: { label: "Limite d'images/s", tooltip: "Définir le taux d'images maximum (60, 30, 20 ou 15 ips)" },
+            tileSegments: { label: "Segments de tuile", tooltip: "Résolution du maillage pour les tuiles de terrain. Plus élevé = plus de détails mais plus lent" },
+            maxResolution: { label: "Résolution max", tooltip: "Résolution maximale de l'image vidéo (côté le plus long). Réduit l'utilisation mémoire GPU. S'applique aux nouvelles images chargées." },
+            aiModel: { label: "Modèle IA", tooltip: "Sélectionner le modèle d'IA pour l'assistant de chat" },
+            centerSidebar: { label: "Barre latérale centrale", tooltip: "Activer la barre latérale centrale entre les vues séparées (glisser les menus vers la ligne de séparation)" },
+            showAttribution: { label: "Afficher l'attribution", tooltip: "Afficher la superposition d'attribution des sources de carte et d'élévation" },
+        },
         balloons: {
             count: { label: "Nombre", tooltip: "Nombre de stations proches à importer" },
             source: { label: "Source", tooltip: "uwyo = University of Wyoming (nécessite un proxy PHP)\nigra2 = Archive NOAA NCEI (téléchargement direct)" },

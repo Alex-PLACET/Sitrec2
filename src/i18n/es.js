@@ -675,6 +675,19 @@ const es = {
         },
     },
     custom: {
+        settings: {
+            title: "Configuración",
+            tooltipLoggedIn: "Configuración por usuario guardada en el servidor (con respaldo por cookie)",
+            tooltipAnonymous: "Configuración por usuario guardada en cookies del navegador",
+            language: { label: "Idioma", tooltip: "Seleccionar idioma de la interfaz. Cambiar recarga la página. Perderá todo trabajo no guardado, ¡guarde primero!" },
+            maxDetails: { label: "Detalles máx.", tooltip: "Nivel máximo de detalle para la subdivisión del terreno (5-30)" },
+            fpsLimit: { label: "Límite de FPS", tooltip: "Establecer la tasa máxima de fotogramas (60, 30, 20 o 15 fps)" },
+            tileSegments: { label: "Segmentos de tesela", tooltip: "Resolución de malla para teselas de terreno. Mayor = más detalle pero más lento" },
+            maxResolution: { label: "Resolución máx.", tooltip: "Resolución máxima del fotograma de vídeo (lado más largo). Reduce el uso de memoria GPU. Se aplica a los nuevos fotogramas cargados." },
+            aiModel: { label: "Modelo de IA", tooltip: "Seleccionar el modelo de IA para el asistente de chat" },
+            centerSidebar: { label: "Barra lateral central", tooltip: "Activar barra lateral central entre vistas divididas (arrastrar menús a la línea divisora)" },
+            showAttribution: { label: "Mostrar atribución", tooltip: "Mostrar superposición de atribución de fuentes de mapa y elevación" },
+        },
         balloons: {
             count: { label: "Cantidad", tooltip: "Cantidad de estaciones cercanas a importar" },
             source: { label: "Fuente", tooltip: "uwyo = University of Wyoming (necesita proxy PHP)\nigra2 = Archivo NOAA NCEI (descarga directa)" },
