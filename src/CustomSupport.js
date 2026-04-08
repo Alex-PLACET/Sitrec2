@@ -1011,7 +1011,7 @@ export class CCustomManager {
         this.setupOSDDataSeriesController();
 
         // Orbit camera - orbits around a selected target track at a given radius and period
-        if (!NodeMan.exists("orbitCameraPosition")) {
+        if (!NodeMan.exists("orbitCameraPosition") && NodeMan.exists("fixedCameraPosition")) {
             new CNodeTrackSwitch({
                 id: "orbitTargetSwitch",
                 inputs: {
