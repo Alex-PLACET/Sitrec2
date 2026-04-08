@@ -9,6 +9,12 @@
  * so page-bridge.js is injected into the page's main world to do the actual work.
  */
 
+// Guard against double-injection (e.g., extension reload while page is open).
+// Must come before any `let` declarations to avoid "already declared" errors.
+if (document.getElementById("sitrec-bridge-injected")) {
+    console.log("[SitrecBridge:content] Already injected, skipping");
+} else {
+
 // Nonce for authenticating the postMessage channel between content script and page bridge.
 // Generated per injection; lives only in the content script's isolated world, so page
 // scripts cannot read it directly.  The nonce is sent to page-bridge once via postMessage
@@ -18,12 +24,8 @@ let bridgeNonce = null;
 // Inject the page-bridge script into the main world
 (function injectPageBridge() {
     console.log("[SitrecBridge:content] Injecting page-bridge on", window.location.href);
-    // Check if already injected
-    if (document.getElementById("sitrec-bridge-injected")) {
-        console.log("[SitrecBridge:content] Already injected, skipping");
-        return;
-    }
 
+    // Mark as injected so the top-of-file guard catches future re-injections
     const marker = document.createElement("div");
     marker.id = "sitrec-bridge-injected";
     marker.style.display = "none";
@@ -167,3 +169,5 @@ window.addEventListener("message", (event) => {
         pending.sendResponse(response);
     }
 });
+
+} // end double-injection guard
