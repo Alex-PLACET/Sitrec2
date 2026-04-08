@@ -179,13 +179,13 @@ export class CNodeDateTime extends CNode {
         fiveYearsFromNow.setFullYear(fiveYearsFromNow.getFullYear() + 5);
 
       // The UI will update the dateNow member, and then we will update the dateStart member
-        const guiYear = this.dateTimeFolder.add(this.dateTime, "year", 1947, fiveYearsFromNow.getFullYear(), 1).listen().onChange(v => this.updateDateTime(v)).tooltip(t("dateTime.year"))
-        const guiMonth = this.dateTimeFolder.add(this.dateTime, "month", 1, 12, 1).listen().onChange(v => this.updateDateTime(v)).wrap(guiYear).tooltip(t("dateTime.month"))
-        this.guiDay = this.dateTimeFolder.add(this.dateTime, "day", 1, 31, 1).listen().onChange(v => this.updateDateTime(v)).wrap(guiMonth).tooltip(t("dateTime.day"))
-        const guiHour =  this.dateTimeFolder.add(this.dateTime, "hour", 0, 23, 1).listen().onChange(v => this.updateDateTime(v)).wrap(this.guiDay).tooltip(t("dateTime.hour"))
-        const guiMinute = this.dateTimeFolder.add(this.dateTime, "minute", 0, 59, 1).listen().onChange(v => this.updateDateTime(v)).wrap(guiHour).tooltip(t("dateTime.minute"))
-        const guiSecond = this.dateTimeFolder.add(this.dateTime, "second", 0, 59, 1).listen().onChange(v => this.updateDateTime(v)).wrap(guiMinute).tooltip(t("dateTime.second"))
-        const guiMillisecond = this.dateTimeFolder.add(this.dateTime, "millisecond", 0, 999, 1).listen().onChange(v => this.updateDateTime(v)).wrap(guiSecond).tooltip(t("dateTime.millisecond"))
+        const guiYear = this.dateTimeFolder.add(this.dateTime, "year", 1947, fiveYearsFromNow.getFullYear(), 1).listen().onChange(v => this.updateDateTime(v)).name(t("dateTime.year.label")).tooltip(t("dateTime.year.tooltip"))
+        const guiMonth = this.dateTimeFolder.add(this.dateTime, "month", 1, 12, 1).listen().onChange(v => this.updateDateTime(v)).wrap(guiYear).name(t("dateTime.month.label")).tooltip(t("dateTime.month.tooltip"))
+        this.guiDay = this.dateTimeFolder.add(this.dateTime, "day", 1, 31, 1).listen().onChange(v => this.updateDateTime(v)).wrap(guiMonth).name(t("dateTime.day.label")).tooltip(t("dateTime.day.tooltip"))
+        const guiHour =  this.dateTimeFolder.add(this.dateTime, "hour", 0, 23, 1).listen().onChange(v => this.updateDateTime(v)).wrap(this.guiDay).name(t("dateTime.hour.label")).tooltip(t("dateTime.hour.tooltip"))
+        const guiMinute = this.dateTimeFolder.add(this.dateTime, "minute", 0, 59, 1).listen().onChange(v => this.updateDateTime(v)).wrap(guiHour).name(t("dateTime.minute.label")).tooltip(t("dateTime.minute.tooltip"))
+        const guiSecond = this.dateTimeFolder.add(this.dateTime, "second", 0, 59, 1).listen().onChange(v => this.updateDateTime(v)).wrap(guiMinute).name(t("dateTime.second.label")).tooltip(t("dateTime.second.tooltip"))
+        const guiMillisecond = this.dateTimeFolder.add(this.dateTime, "millisecond", 0, 999, 1).listen().onChange(v => this.updateDateTime(v)).wrap(guiSecond).name(t("dateTime.millisecond.label")).tooltip(t("dateTime.millisecond.tooltip"))
 
         this.adjustGUIForTimezone();
 
