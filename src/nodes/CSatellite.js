@@ -1,5 +1,5 @@
-import {Color, Raycaster} from "three";
-import {intersectSphere2, V3} from "../threeUtils";
+import {Color} from "three";
+import {V3} from "../threeUtils";
 import {LLAToECEFRadians} from "../LLA-ECEF-ENU";
 import {SITREC_SERVER} from "../configUtils";
 import {FileManager, GlobalDateTimeNode, guiMenus, NodeMan, setRenderOne} from "../Globals";
@@ -8,7 +8,7 @@ import * as satellite from 'satellite.js';
 import {bestSat, CTLEData, satRecToDate} from "../TLEUtils";
 import {degrees} from "../utils";
 import {hideProgress, initProgress, updateProgress} from "../CProgressIndicator";
-import {DebugArrow, DebugArrowAB, getPointBelow, removeDebugArrow} from "../threeExt";
+import {DebugArrow, DebugArrowAB, getPointBelow, rayIntersectsEllipsoid, removeDebugArrow} from "../threeExt";
 import * as LAYER from "../LayerMasks";
 import {assert} from "../assert";
 import {saveAs} from "file-saver";
@@ -1480,12 +1480,9 @@ export class CSatellite {
         const satPosition = satData.currentPosition;
         const camToSat = satPosition.clone().sub(camera.position);
 
-        // check if it's visible
-        const raycaster = new Raycaster(camera.position, camToSat);
-        const hitPoint = V3();
-        const hitPoint2 = V3();
-        var belowHorizon = intersectSphere2(raycaster.ray, globe, hitPoint, hitPoint2);
-        
+        // check if it's visible (use ellipsoid for accurate horizon at all latitudes)
+        const belowHorizon = rayIntersectsEllipsoid(camera.position, camToSat);
+
         if (!belowHorizon) {
             const globeToSat = satPosition.clone().sub(globe.center).normalize();
             const reflected = camToSat.clone().reflect(globeToSat).normalize();

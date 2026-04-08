@@ -2,13 +2,14 @@
 // spatial, orbital, and name criteria. Integrates with CSatellite.filterSatellites()
 // via the tleFilterResults array.
 
-import {Frustum, Matrix4, Ray, Sphere, Vector3} from "three";
+import {Frustum, Matrix4, Vector3} from "three";
 import {NodeMan, setRenderOne, Sit} from "./Globals";
 import {par} from "./par";
-import {ECEFToLLAVD_radii, wgs84} from "./LLA-ECEF-ENU";
+import {ECEFToLLAVD_radii} from "./LLA-ECEF-ENU";
 import {bestSat} from "./TLEUtils";
 import {degrees} from "./mathUtils";
-import {intersectSphere2, V3} from "./threeUtils";
+import {V3} from "./threeUtils";
+import {intersectEllipsoid} from "./threeExt";
 import {blockViewEvents, makeDraggable} from "./DragResizeUtils";
 
 
@@ -278,12 +279,8 @@ function checkSpatialFilters(ecef, filterOptions) {
         const camPos = lookCam.position;
         const toSat = new Vector3().subVectors(ecef, camPos);
         const dist = toSat.length();
-        toSat.normalize();
-        const ray = new Ray(camPos, toSat);
-        const earthSphere = new Sphere(V3(0, 0, 0), wgs84.POLAR_RADIUS);
-        const hit0 = V3(), hit1 = V3();
-        const intersects = intersectSphere2(ray, earthSphere, hit0, hit1);
-        if (intersects && hit0.distanceTo(camPos) < dist) return false;
+        const hitPoint = intersectEllipsoid(camPos, toSat);
+        if (hitPoint && hitPoint.distanceTo(camPos) < dist) return false;
     }
 
     return true;
