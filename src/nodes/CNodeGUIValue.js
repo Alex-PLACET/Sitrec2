@@ -6,6 +6,7 @@ import {Globals, markSitchDirty, NodeMan, setRenderOne, Units} from "../Globals"
 import {roundIfClose, stripComments} from "../utils";
 import {EventManager} from "../CEventManager";
 import {addMathInputs, evaluateExpression} from "./CNodeMath";
+import {t} from "../i18n";
 
 
 export class CNodeGUIConstant extends CNodeConstant {
@@ -25,10 +26,14 @@ export class CNodeGUIValue extends CNodeGUIConstant {
 
         super(v);
 
+        if (v.desc) {
+            v.desc = t("nodeLabels." + this.id, {defaultValue: v.desc});
+        }
+
         if (isLocal)
             v.desc = "*"+v.desc;
 
-        
+
         this.setGUI(v, _guiMenu)
 
         // unitType is "none", "big", "small", "vs", "speed"
@@ -398,6 +403,11 @@ export class CNodeGUIFlag extends CNodeConstant {
     constructor(v, _guiMenu) {
 
         super(v);
+
+        if (v.desc) {
+            v.desc = t("nodeLabels." + this.id, {defaultValue: v.desc});
+        }
+
         this.setGUI(v, _guiMenu)
         this.onChange = v.onChange;
         this.guiEntry = this.gui.add(this, "value").onChange(
