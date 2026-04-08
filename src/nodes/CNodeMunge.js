@@ -14,9 +14,24 @@ export class CNodeMunge extends CNode {
         // we allow a frame count of 0, to indicate a constant
         assert(this.frames !== undefined, "CNodeMunge missing frame count, unexpected, but tecnically legal")
 
+        this.dataVersion = 0;
+        this.recalculate();
+    }
+
+    recalculate() {
+        if (this.frames > 0) {
+            this.cachedValues = new Array(this.frames);
+            for (let f = 0; f < this.frames; f++) {
+                this.cachedValues[f] = this.munge.call(this, f);
+            }
+            this.dataVersion++;
+        }
     }
 
     getValueFrame(f) {
+        if (this.cachedValues) {
+            return this.cachedValues[f];
+        }
         return this.munge.call(this, f)
     }
 

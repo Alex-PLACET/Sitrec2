@@ -346,7 +346,9 @@ export class CNodeManager extends CManager{
                     // we do not want to recalculate terrain nodes
 
                     if (withTerrain || (node.id !== "TerrainModel" && node.id !== "terrainUI")) {
-                        node.recalculate();
+                        if (!node.checkDisplayOutputs || node.countVisibleOutputs(0, true) > 0) {
+                            node.recalculate();
+                        }
                     }
                 }
             }

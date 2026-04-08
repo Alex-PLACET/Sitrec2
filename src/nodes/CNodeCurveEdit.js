@@ -105,7 +105,22 @@ export class CNodeCurveEditorView extends CNodeViewCanvas2D {
             this.editor.compareNode[i].recalculate();
         }
 
-        if (this.visible) {
+        // only redraw the graph if a series actually changed
+        let changed = false;
+        if (!this._lastSeriesVersions || this._lastSeriesVersions.length !== this.editor.compareNode.length) {
+            changed = true;
+        } else {
+            for (let i = 0; i < this.editor.compareNode.length; i++) {
+                const v = this.editor.compareNode[i].dataVersion;
+                if (v === undefined || v !== this._lastSeriesVersions[i]) {
+                    changed = true;
+                    break;
+                }
+            }
+        }
+        this._lastSeriesVersions = this.editor.compareNode.map(n => n.dataVersion);
+
+        if (changed && this.visible) {
             this.editor.dirty = 2; // force a redraw on the next N frames
         }
 

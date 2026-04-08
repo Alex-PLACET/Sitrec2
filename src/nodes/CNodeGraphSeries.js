@@ -27,5 +27,9 @@ export class CNodeGraphSeries extends CNode {
     getValueFrame(f) {
         return this.in.source.getValueFrame(f)
     }
+
+    get dataVersion() {
+        return this.in.source.dataVersion;
+    }
 }
 

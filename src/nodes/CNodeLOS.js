@@ -70,7 +70,12 @@ export class CNodeLOS extends CNodeTrack {
 
         // Use Sit.aFrame and Sit.bFrame to limit the export range
         const startFrame = Sit.aFrame ?? 0;
-        const endFrame = Sit.bFrame ?? (this.frames - 1);
+        let endFrame = Sit.bFrame ?? (this.frames - 1);
+
+        if (inspect) {
+            endFrame = Math.min(startFrame + 3, endFrame); // Limit frames for inspection
+        }
+
 
         for (let f = startFrame; f <= endFrame; f++) {
             const data = this.getValueFrame(f);
