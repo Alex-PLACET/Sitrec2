@@ -835,6 +835,171 @@ const es = {
         depthTest: { label: "Test de profundidad" },
         deleteBuilding: { label: "Eliminar edificio" },
     },
+
+    groundOverlay: {
+        name: { label: "Nombre" },
+        visible: { label: "Visible" },
+        editMode: { label: "Modo edición" },
+        lockShape: { label: "Bloquear forma" },
+        freeTransform: { label: "Transformación libre" },
+        showBorder: { label: "Mostrar borde" },
+        properties: { label: "Propiedades" },
+        imageURL: { label: "URL de imagen" },
+        rehostLocalImage: { label: "Realojar imagen local" },
+        north: { label: "Norte" },
+        south: { label: "Sur" },
+        east: { label: "Este" },
+        west: { label: "Oeste" },
+        rotation: { label: "Rotación" },
+        altitude: { label: "Altitud (ft)" },
+        wireframe: { label: "Malla de alambre" },
+        opacity: { label: "Opacidad" },
+        cloudExtraction: { label: "Extracción de nubes" },
+        extractClouds: { label: "Extraer nubes" },
+        cloudColor: { label: "Color de nubes" },
+        fuzziness: { label: "Difuminado" },
+        feather: { label: "Degradado" },
+        gotoOverlay: { label: "Ir a la superposición" },
+        deleteOverlay: { label: "Eliminar superposición" },
+    },
+
+    videoView: {
+        currentVideo: { label: "Video actual" },
+        videoRotation: { label: "Rotación de video" },
+        setCameraToExifGps: { label: "Posicionar cámara en GPS EXIF" },
+        expandOutput: {
+            label: "Expandir salida",
+            tooltip: "Método para expandir el rango dinámico de la salida ELA",
+        },
+        displayMode: {
+            label: "Modo de visualización",
+            tooltip: "Cómo visualizar los resultados del análisis de ruido",
+        },
+        convolutionFilter: {
+            label: "Filtro de convolución",
+            tooltip: "Tipo de filtro de convolución espacial a aplicar",
+        },
+        resetVideoAdjustments: {
+            label: "Restablecer ajustes de video",
+            tooltip: "Restablecer todos los ajustes de video a sus valores predeterminados",
+        },
+        makeVideo: {
+            label: "Crear video",
+            tooltip: "Exportar el video procesado con todos los efectos actuales aplicados",
+        },
+        gridShow: {
+            label: "Mostrar",
+            tooltip: "Mostrar una cuadrícula superpuesta en el video",
+        },
+        gridSize: {
+            label: "Tamaño",
+            tooltip: "Tamaño de celda de la cuadrícula en píxeles",
+        },
+        gridSubdivisions: {
+            label: "Subdivisiones",
+            tooltip: "Número de subdivisiones dentro de cada celda de la cuadrícula",
+        },
+        gridXOffset: {
+            label: "Desplazamiento X",
+            tooltip: "Desplazamiento horizontal de la cuadrícula en píxeles",
+        },
+        gridYOffset: {
+            label: "Desplazamiento Y",
+            tooltip: "Desplazamiento vertical de la cuadrícula en píxeles",
+        },
+        gridColor: {
+            label: "Color",
+            tooltip: "Color de las líneas de la cuadrícula",
+        },
+    },
+
+    floodSim: {
+        flood: {
+            label: "Inundación",
+            tooltip: "Activar o desactivar la simulación de partículas de inundación",
+        },
+        floodRate: {
+            label: "Tasa de inundación",
+            tooltip: "Número de partículas generadas por fotograma",
+        },
+        sphereSize: {
+            label: "Tamaño de esfera",
+            tooltip: "Radio visual de cada partícula de agua",
+        },
+        dropRadius: {
+            label: "Radio de caída",
+            tooltip: "Radio alrededor del punto de caída donde aparecen las partículas",
+        },
+        maxParticles: {
+            label: "Partículas máx.",
+            tooltip: "Número máximo de partículas de agua activas",
+        },
+        method: {
+            label: "Método",
+            tooltip: "Método de simulación: HeightMap (cuadrícula), Fast (partículas) o PBF (fluidos basados en posición)",
+        },
+        waterSource: {
+            label: "Fuente de agua",
+            tooltip: "Rain: añadir agua con el tiempo. DamBurst: mantener el nivel de agua a la altitud objetivo dentro del radio de caída",
+        },
+        speed: {
+            label: "Velocidad",
+            tooltip: "Pasos de simulación por fotograma (1-20x)",
+        },
+        manningN: {
+            label: "Manning's N",
+            tooltip: "Rugosidad del lecho: 0.01=liso, 0.03=canal natural, 0.05=llanura de inundación rugosa, 0.1=vegetación densa",
+        },
+        edge: {
+            label: "Borde",
+            tooltip: "Blocking: el agua rebota en los bordes de la cuadrícula. Draining: el agua fluye hacia fuera y se elimina",
+        },
+        waterColor: {
+            label: "Color del agua",
+            tooltip: "Color del agua",
+        },
+        reset: {
+            label: "Restablecer",
+            tooltip: "Eliminar todas las partículas y reiniciar la simulación",
+        },
+    },
+
+    flowOrbs: {
+        number: {
+            label: "Número",
+            tooltip: "Número de orbes de flujo a mostrar. Más orbes puede afectar el rendimiento.",
+        },
+        spreadMethod: {
+            label: "Método de dispersión",
+            tooltip: "Método para dispersar los orbes a lo largo del vector de visión de la cámara. \n'Range' dispersa los orbes uniformemente entre las distancias cercana y lejana. \n'Altitude' dispersa los orbes entre las altitudes absolutas baja y alta (MSL)",
+        },
+        near: {
+            label: "Cerca (m)",
+            tooltip: "Distancia más cercana de la cámara para la colocación de orbes",
+        },
+        far: {
+            label: "Lejos (m)",
+            tooltip: "Distancia más lejana de la cámara para la colocación de orbes",
+        },
+        high: { label: "Alto (m)" },
+        low: { label: "Bajo (m)" },
+        colorMethod: {
+            label: "Método de color",
+            tooltip: "Método para determinar el color de los orbes de flujo. \n'Random' asigna un color aleatorio a cada orbe. \n'User' asigna un color seleccionado por el usuario a todos los orbes. \n'Hue From Altitude' asigna un color basado en la altitud del orbe. \n'Hue From Distance' asigna un color basado en la distancia del orbe respecto a la cámara.",
+        },
+        userColor: {
+            label: "Color de usuario",
+            tooltip: "Seleccionar un color para los orbes de flujo cuando el 'Método de color' está configurado en 'User'.",
+        },
+        hueRange: {
+            label: "Rango de tono",
+            tooltip: "Rango sobre el cual se obtiene un espectro completo de colores para el método de color 'Hue From Altitude/Range'.",
+        },
+        windWhilePaused: {
+            label: "Viento en pausa",
+            tooltip: "Si está marcado, el viento seguirá afectando a los orbes de flujo incluso cuando la simulación esté en pausa. Útil para visualizar patrones de viento.",
+        },
+    },
 };
 
 export default es;

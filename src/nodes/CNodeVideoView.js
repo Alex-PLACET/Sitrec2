@@ -56,6 +56,7 @@ import {
 import {applyImportedImageMetadata, extractJPEGImportMetadata} from "../EXIFUtils";
 import {EXIFInfoPanel} from "../EXIFInfoPanel";
 import {isResolvableSitrecReference, resolveURLForFetch} from "../SitrecObjectResolver";
+import {t} from "../i18n";
 
 
 export class CNodeVideoView extends CNodeViewCanvas2D {
@@ -947,7 +948,7 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         this.currentVideoSelection = this.currentVideoIndex;
         console.log(`[VideoSelector] Creating selector with ${Object.keys(options).length} options`);
         this.videoSelectorController = guiMenus.video.add(this, "currentVideoSelection", options)
-            .name("Current Video")
+            .name(t("videoView.currentVideo.label"))
             .onChange((value) => {
                 this.selectVideo(value);
             });
@@ -993,7 +994,7 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         this.currentRotation = this.videoData.userRotation || 0;
 
         this.rotationController = guiMenus.video.add(this, "currentRotation", rotationOptions)
-            .name("Video Rotation")
+            .name(t("videoView.videoRotation.label"))
             .onChange((value) => {
                 if (this.videoData) {
                     this.videoData.setUserRotation(value);
@@ -1083,7 +1084,7 @@ export class CNodeVideoView extends CNodeViewCanvas2D {
         if (!metadata?.placement?.hasLocation) return;
 
         this.exifPositionController = guiMenus.video.add(this, "applyCurrentEXIFCameraPosition")
-            .name("Set Camera To EXIF GPS");
+            .name(t("videoView.setCameraToExifGps.label"));
     }
 
     async promptAddOrReplace() {
@@ -3208,7 +3209,7 @@ export function addFiltersToVideoNode(videoNode) {
                 "Histogram Equalization": "histogramEqualization",
                 "Auto Contrast": "autoContrast",
                 "Auto Contrast Channels": "autoContrastChannels"
-            }).name("Expand Output").tooltip("Method to expand the ELA output dynamic range").onChange(value => {
+            }).name(t("videoView.expandOutput.label")).tooltip(t("videoView.expandOutput.tooltip")).onChange(value => {
                 elaExpandMethod.value = value;
                 updateELAExpandControlVisibility();
                 videoNode.invalidateELAResult();
@@ -3225,13 +3226,13 @@ export function addFiltersToVideoNode(videoNode) {
             noiseDisplayModeDropdown = guiVideoNoiseFolder.add(noiseDisplayModeOptions, "modeValue", {
                 "Noise Heatmap": "heatmap",
                 "Noise Residual": "residual"
-            }).name("Display Mode").tooltip("How to visualize the noise analysis results").onChange(value => {
+            }).name(t("videoView.displayMode.label")).tooltip(t("videoView.displayMode.tooltip")).onChange(value => {
                 noiseDisplayMode.value = value;
                 videoNode.invalidateNoiseResult();
                 setRenderOne(true);
             }),
             convolutionFilter = new CNodeConstant({ id: "videoConvolutionFilter", value: 'none' }),
-            convolutionFilterDropdown = guiVideoEffectsFolder.add(filterOptions, "convolutionFilterValue", ['none', 'sharpen', 'edgeDetect', 'emboss']).name("Convolution Filter").tooltip("Spatial convolution filter type to apply").onChange(value => {
+            convolutionFilterDropdown = guiVideoEffectsFolder.add(filterOptions, "convolutionFilterValue", ['none', 'sharpen', 'edgeDetect', 'emboss']).name(t("videoView.convolutionFilter.label")).tooltip(t("videoView.convolutionFilter.tooltip")).onChange(value => {
                 convolutionFilter.value = value;
                 updateConvolutionControlVisibility();
                 setRenderOne(true);
@@ -3240,10 +3241,10 @@ export function addFiltersToVideoNode(videoNode) {
             edgeDetectThresholdControl = edgeDetectThreshold.guiEntry,
             embossDepthControl = embossDepth.guiEntry,
             updateConvolutionControlVisibility(),
-            guiVideoEffectsFolder.add(reset, "resetFilters").name("Reset Video Adjustments").tooltip("Reset all video adjustments to their default values")
+            guiVideoEffectsFolder.add(reset, "resetFilters").name(t("videoView.resetVideoAdjustments.label")).tooltip(t("videoView.resetVideoAdjustments.tooltip"))
 
         const makeVideoActions = { makeVideo: () => videoNode.makeProcessedVideo() };
-        guiVideoProcessingFolder.add(makeVideoActions, "makeVideo").name("Make Video").tooltip("Export the processed video with all current effects applied");
+        guiVideoProcessingFolder.add(makeVideoActions, "makeVideo").name(t("videoView.makeVideo.label")).tooltip(t("videoView.makeVideo.tooltip"));
     } else {
         brightness = NodeMan.get("videoBrightness");
         contrast = NodeMan.get("videoContrast");
@@ -3336,29 +3337,29 @@ export function addFiltersToVideoNode(videoNode) {
             overlayView: videoNode,
         });
 
-        gridFolder.add(gridOverlay, "gridShow").name("Show").listen().onChange((value) => {
+        gridFolder.add(gridOverlay, "gridShow").name(t("videoView.gridShow.label")).listen().onChange((value) => {
             gridOverlay.setShow(value);
-        }).tooltip("Show a grid overlay on the video");
+        }).tooltip(t("videoView.gridShow.tooltip"));
 
-        gridFolder.add(gridOverlay, "gridSize", 1, 128, 0.1).name("Size").listen().onChange(() => {
+        gridFolder.add(gridOverlay, "gridSize", 1, 128, 0.1).name(t("videoView.gridSize.label")).listen().onChange(() => {
             setRenderOne(true);
-        }).tooltip("Grid cell size in pixels");
+        }).tooltip(t("videoView.gridSize.tooltip"));
 
-        gridFolder.add(gridOverlay, "gridSubdivisions", 1, 16, 1).name("Subdivisions").listen().onChange(() => {
+        gridFolder.add(gridOverlay, "gridSubdivisions", 1, 16, 1).name(t("videoView.gridSubdivisions.label")).listen().onChange(() => {
             setRenderOne(true);
-        }).tooltip("Number of subdivisions within each grid cell");
+        }).tooltip(t("videoView.gridSubdivisions.tooltip"));
 
-        gridFolder.add(gridOverlay, "gridXOffset", 0,127,0.1).name("X Offset").listen().onChange(() => {
+        gridFolder.add(gridOverlay, "gridXOffset", 0,127,0.1).name(t("videoView.gridXOffset.label")).listen().onChange(() => {
             setRenderOne(true);
-        }).tooltip("Horizontal offset of the grid in pixels");
+        }).tooltip(t("videoView.gridXOffset.tooltip"));
 
-        gridFolder.add(gridOverlay, "gridYOffset",0,127,0.1).name("Y Offset").listen().onChange(() => {
+        gridFolder.add(gridOverlay, "gridYOffset",0,127,0.1).name(t("videoView.gridYOffset.label")).listen().onChange(() => {
             setRenderOne(true);
-        }).tooltip("Vertical offset of the grid in pixels");
+        }).tooltip(t("videoView.gridYOffset.tooltip"));
 
-        gridFolder.addColor(gridOverlay, "gridColor").name("Color").listen().onChange(() => {
+        gridFolder.addColor(gridOverlay, "gridColor").name(t("videoView.gridColor.label")).listen().onChange(() => {
             setRenderOne(true);
-        }).tooltip("Color of the grid lines");
+        }).tooltip(t("videoView.gridColor.tooltip"));
     }
 
 }

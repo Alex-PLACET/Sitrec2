@@ -39,6 +39,7 @@ import {sharedUniforms} from "../js/map33/material/SharedUniforms";
 import {assert} from "../assert";
 import {LoadingManager} from "../CLoadingManager";
 import {resolveURLForFetch} from "../SitrecObjectResolver";
+import {t} from "../i18n";
 
 export class CNodeGroundOverlay extends CNode3DGroup {
     constructor(v) {
@@ -2160,21 +2161,21 @@ export class CNodeGroundOverlay extends CNode3DGroup {
     createGUIFolder() {
         this.guiFolder = guiMenus.objects.addFolder(`Overlay: ${this.name}`);
         
-        this.guiFolder.add(this, 'name').name('Name').onChange(() => {
+        this.guiFolder.add(this, 'name').name(t("groundOverlay.name.label")).onChange(() => {
             this.guiFolder.title = `Overlay: ${this.name}`;
         });
-        
-        this.guiFolder.add(this, 'visible').name('Visible').onChange((value) => {
+
+        this.guiFolder.add(this, 'visible').name(t("groundOverlay.visible.label")).onChange((value) => {
             this.show(value);
             setRenderOne(true);
         }).onFinishChange(() => { CustomManager.saveGlobalSettings(true); });
 
         const editModeData = {editMode: this.editMode};
-        this.editModeController = this.guiFolder.add(editModeData, 'editMode').name('Edit Mode').onChange((value) => {
+        this.editModeController = this.guiFolder.add(editModeData, 'editMode').name(t("groundOverlay.editMode.label")).onChange((value) => {
             this.setEditMode(value);
         });
 
-        this.guiFolder.add(this, 'lockShape').name('Lock Shape').onChange(() => {
+        this.guiFolder.add(this, 'lockShape').name(t("groundOverlay.lockShape.label")).onChange(() => {
             if (this.editMode) {
                 if (this.lockShape) {
                     this.removeControlPoints();
@@ -2184,8 +2185,8 @@ export class CNodeGroundOverlay extends CNode3DGroup {
                 setRenderOne(true);
             }
         });
-        
-        this.guiFolder.add(this, 'freeTransform').name('Free Transform').onChange(() => {
+
+        this.guiFolder.add(this, 'freeTransform').name(t("groundOverlay.freeTransform.label")).onChange(() => {
             if (this.freeTransform) {
                 this.corners = this.getCornerLLAs();
                 this.rotation = 0;
@@ -2194,83 +2195,83 @@ export class CNodeGroundOverlay extends CNode3DGroup {
             }
             this.updateMesh();
         });
-        
-        this.guiFolder.add(this, 'showBorder').name('Show Border').onChange(() => {
+
+        this.guiFolder.add(this, 'showBorder').name(t("groundOverlay.showBorder.label")).onChange(() => {
             if (this.showBorder) {
                 this.showHighlightBorder();
             } else {
                 this.hideHighlightBorder();
             }
         });
-        
-        const propsFolder = this.guiFolder.addFolder('Properties').close();
-        
-        propsFolder.add(this, 'imageURL').name('Image URL').onChange(() => {
+
+        const propsFolder = this.guiFolder.addFolder(t("groundOverlay.properties.label")).close();
+
+        propsFolder.add(this, 'imageURL').name(t("groundOverlay.imageURL.label")).onChange(() => {
             this.loadTexture();
         });
-        
-        propsFolder.add({rehost: () => this.showRehostDialog()}, 'rehost').name('Rehost Local Image');
-        
-        propsFolder.add(this, 'north', -90, 90, 0.0001).name('North').onChange(() => {
+
+        propsFolder.add({rehost: () => this.showRehostDialog()}, 'rehost').name(t("groundOverlay.rehostLocalImage.label"));
+
+        propsFolder.add(this, 'north', -90, 90, 0.0001).name(t("groundOverlay.north.label")).onChange(() => {
             this.updateMesh();
         });
-        
-        propsFolder.add(this, 'south', -90, 90, 0.0001).name('South').onChange(() => {
+
+        propsFolder.add(this, 'south', -90, 90, 0.0001).name(t("groundOverlay.south.label")).onChange(() => {
             this.updateMesh();
         });
-        
-        propsFolder.add(this, 'east', -180, 180, 0.0001).name('East').onChange(() => {
+
+        propsFolder.add(this, 'east', -180, 180, 0.0001).name(t("groundOverlay.east.label")).onChange(() => {
             this.updateMesh();
         });
-        
-        propsFolder.add(this, 'west', -180, 180, 0.0001).name('West').onChange(() => {
+
+        propsFolder.add(this, 'west', -180, 180, 0.0001).name(t("groundOverlay.west.label")).onChange(() => {
             this.updateMesh();
         });
-        
-        propsFolder.add(this, 'rotation', -180, 180, 0.1).name('Rotation').onChange(() => {
+
+        propsFolder.add(this, 'rotation', -180, 180, 0.1).name(t("groundOverlay.rotation.label")).onChange(() => {
             this.updateMesh();
         });
-        
-        propsFolder.add(this, 'altitude', 0, 50000, 100).name('Altitude (ft)').onChange(() => {
+
+        propsFolder.add(this, 'altitude', 0, 50000, 100).name(t("groundOverlay.altitude.label")).onChange(() => {
             this.updateMesh();
         });
-        
-        propsFolder.add(this, 'wireframe').name('Wireframe').onChange(() => {
+
+        propsFolder.add(this, 'wireframe').name(t("groundOverlay.wireframe.label")).onChange(() => {
             if (this.overlayMaterial) {
                 this.overlayMaterial.wireframe = this.wireframe;
                 this.overlayMaterial.needsUpdate = true;
             }
             setRenderOne(true);
         });
-        
-        propsFolder.add(this, 'opacity', 0, 1, 0.01).name('Opacity').onChange(() => {
+
+        propsFolder.add(this, 'opacity', 0, 1, 0.01).name(t("groundOverlay.opacity.label")).onChange(() => {
             if (this.overlayMaterial) {
                 this.overlayMaterial.uniforms.opacity.value = this.opacity;
             }
             setRenderOne(true);
         });
-        
-        const cloudFolder = this.guiFolder.addFolder('Cloud Extraction').close();
-        
-        cloudFolder.add(this, 'extractClouds').name('Extract Clouds').onChange(() => {
+
+        const cloudFolder = this.guiFolder.addFolder(t("groundOverlay.cloudExtraction.label")).close();
+
+        cloudFolder.add(this, 'extractClouds').name(t("groundOverlay.extractClouds.label")).onChange(() => {
             this.applyCloudExtraction();
         });
-        
-        cloudFolder.addColor(this, 'cloudColor').name('Cloud Color').onChange(() => {
+
+        cloudFolder.addColor(this, 'cloudColor').name(t("groundOverlay.cloudColor.label")).onChange(() => {
             if (this.extractClouds) this.applyCloudExtraction();
         });
-        
-        cloudFolder.add(this, 'cloudFuzziness', 0, 100, 1).name('Fuzziness').onChange(() => {
+
+        cloudFolder.add(this, 'cloudFuzziness', 0, 100, 1).name(t("groundOverlay.fuzziness.label")).onChange(() => {
             if (this.extractClouds) this.applyCloudExtraction();
         });
-        
-        cloudFolder.add(this, 'cloudFeather', 0, 100, 1).name('Feather').onChange(() => {
+
+        cloudFolder.add(this, 'cloudFeather', 0, 100, 1).name(t("groundOverlay.feather.label")).onChange(() => {
             if (this.extractClouds) this.applyCloudExtraction();
         });
-        
-        this.guiFolder.add({goto: () => this.gotoOverlay()}, 'goto').name('Go to Overlay');
-        
-        this.guiFolder.add({remove: () => this.deleteOverlay()}, 'remove').name('Delete Overlay');
+
+        this.guiFolder.add({goto: () => this.gotoOverlay()}, 'goto').name(t("groundOverlay.gotoOverlay.label"));
+
+        this.guiFolder.add({remove: () => this.deleteOverlay()}, 'remove').name(t("groundOverlay.deleteOverlay.label"));
         
         this.guiFolder.domElement.addEventListener('mouseenter', () => {
             this.showHighlightBorder();

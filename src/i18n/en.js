@@ -835,6 +835,171 @@ const en = {
         depthTest: { label: "Depth Test" },
         deleteBuilding: { label: "Delete Building" },
     },
+
+    groundOverlay: {
+        name: { label: "Name" },
+        visible: { label: "Visible" },
+        editMode: { label: "Edit Mode" },
+        lockShape: { label: "Lock Shape" },
+        freeTransform: { label: "Free Transform" },
+        showBorder: { label: "Show Border" },
+        properties: { label: "Properties" },
+        imageURL: { label: "Image URL" },
+        rehostLocalImage: { label: "Rehost Local Image" },
+        north: { label: "North" },
+        south: { label: "South" },
+        east: { label: "East" },
+        west: { label: "West" },
+        rotation: { label: "Rotation" },
+        altitude: { label: "Altitude (ft)" },
+        wireframe: { label: "Wireframe" },
+        opacity: { label: "Opacity" },
+        cloudExtraction: { label: "Cloud Extraction" },
+        extractClouds: { label: "Extract Clouds" },
+        cloudColor: { label: "Cloud Color" },
+        fuzziness: { label: "Fuzziness" },
+        feather: { label: "Feather" },
+        gotoOverlay: { label: "Go to Overlay" },
+        deleteOverlay: { label: "Delete Overlay" },
+    },
+
+    videoView: {
+        currentVideo: { label: "Current Video" },
+        videoRotation: { label: "Video Rotation" },
+        setCameraToExifGps: { label: "Set Camera To EXIF GPS" },
+        expandOutput: {
+            label: "Expand Output",
+            tooltip: "Method to expand the ELA output dynamic range",
+        },
+        displayMode: {
+            label: "Display Mode",
+            tooltip: "How to visualize the noise analysis results",
+        },
+        convolutionFilter: {
+            label: "Convolution Filter",
+            tooltip: "Spatial convolution filter type to apply",
+        },
+        resetVideoAdjustments: {
+            label: "Reset Video Adjustments",
+            tooltip: "Reset all video adjustments to their default values",
+        },
+        makeVideo: {
+            label: "Make Video",
+            tooltip: "Export the processed video with all current effects applied",
+        },
+        gridShow: {
+            label: "Show",
+            tooltip: "Show a grid overlay on the video",
+        },
+        gridSize: {
+            label: "Size",
+            tooltip: "Grid cell size in pixels",
+        },
+        gridSubdivisions: {
+            label: "Subdivisions",
+            tooltip: "Number of subdivisions within each grid cell",
+        },
+        gridXOffset: {
+            label: "X Offset",
+            tooltip: "Horizontal offset of the grid in pixels",
+        },
+        gridYOffset: {
+            label: "Y Offset",
+            tooltip: "Vertical offset of the grid in pixels",
+        },
+        gridColor: {
+            label: "Color",
+            tooltip: "Color of the grid lines",
+        },
+    },
+
+    floodSim: {
+        flood: {
+            label: "Flood",
+            tooltip: "Enable or disable the flood particle simulation",
+        },
+        floodRate: {
+            label: "Flood Rate",
+            tooltip: "Number of particles spawned per frame",
+        },
+        sphereSize: {
+            label: "Sphere Size",
+            tooltip: "Visual radius of each water particle",
+        },
+        dropRadius: {
+            label: "Drop Radius",
+            tooltip: "Radius around the drop point where particles spawn",
+        },
+        maxParticles: {
+            label: "Max Particles",
+            tooltip: "Maximum number of active water particles",
+        },
+        method: {
+            label: "Method",
+            tooltip: "Simulation method: HeightMap (grid), Fast (particles), or PBF (position-based fluids)",
+        },
+        waterSource: {
+            label: "Water Source",
+            tooltip: "Rain: add water over time. DamBurst: maintain water level at target altitude within drop radius",
+        },
+        speed: {
+            label: "Speed",
+            tooltip: "Simulation steps per frame (1-20x)",
+        },
+        manningN: {
+            label: "Manning's N",
+            tooltip: "Bed roughness: 0.01=smooth, 0.03=natural channel, 0.05=rough floodplain, 0.1=dense vegetation",
+        },
+        edge: {
+            label: "Edge",
+            tooltip: "Blocking: water reflects at grid edges. Draining: water flows out and is removed",
+        },
+        waterColor: {
+            label: "Water Color",
+            tooltip: "Color of the water",
+        },
+        reset: {
+            label: "Reset",
+            tooltip: "Remove all particles and restart the simulation",
+        },
+    },
+
+    flowOrbs: {
+        number: {
+            label: "Number",
+            tooltip: "Number of flow orbs to display. More orbs may impact performance.",
+        },
+        spreadMethod: {
+            label: "Spread Method",
+            tooltip: "Method to spread orbs along the camera look vector. \n'Range' spreads orbs evenly along the look vector between near and far distances. \n'Altitude' spreads orbs evenly along the look vector, between the low and high absolute altitudes (MSL)",
+        },
+        near: {
+            label: "Near (m)",
+            tooltip: "Nearest distance from camera for orb placement",
+        },
+        far: {
+            label: "Far (m)",
+            tooltip: "Farthest distance from camera for orb placement",
+        },
+        high: { label: "High (m)" },
+        low: { label: "Low (m)" },
+        colorMethod: {
+            label: "Color Method",
+            tooltip: "Method to determine the color of the flow orbs. \n'Random' assigns a random color to each orb. \n'User' assigns a user-selected color to all orbs. \n'Hue From Altitude' assigns a color based on the altitude of the orb. \n'Hue From Distance' assigns a color based on the distance of the orb from the camera.",
+        },
+        userColor: {
+            label: "User Color",
+            tooltip: "Select a color for the flow orbs when 'Color Method' is set to 'User'.",
+        },
+        hueRange: {
+            label: "Hue Range",
+            tooltip: "Range over which you get a full spectrum of colors for the 'Hue From Altitude/Range' color method.",
+        },
+        windWhilePaused: {
+            label: "Wind While Paused",
+            tooltip: "If checked, wind will still affect the flow orbs even when the simulation is paused. Useful for visualizing wind patterns.",
+        },
+    },
 };
 
 export default en;

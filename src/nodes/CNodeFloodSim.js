@@ -19,6 +19,7 @@ import * as LAYER from "../LayerMasks";
 import {screenToNDC} from "../mouseMoveView";
 import {ViewMan} from "../CViewManager";
 import {mouseInViewOnly} from "../ViewUtils";
+import {t} from "../i18n";
 
 const GRAVITY = 9.81;
 const DEFAULT_MAX_PARTICLES = 50000;
@@ -217,26 +218,26 @@ export class CNodeFloodSim extends CNode3DGroup {
     setupGUI() {
         if (!guiPhysics) return;
         this.guiFolder = guiPhysics.addFolder("Flood Sim").close();
-        this.guiFolder.add(this, "floodEnabled").name("Flood").tooltip("Enable or disable the flood particle simulation").listen()
+        this.guiFolder.add(this, "floodEnabled").name(t("floodSim.flood.label")).tooltip(t("floodSim.flood.tooltip")).listen()
             .onChange(() => setRenderOne());
-        this.guiFolder.add(this, "floodRate", 1, 500, 1).name("Flood Rate").tooltip("Number of particles spawned per frame");
-        this.guiFolder.add(this, "sphereSize", 0.05, 100.0, 0.05).name("Sphere Size").tooltip("Visual radius of each water particle");
-        this.guiFolder.add(this, "dropRadius", 1, 10000, 1).name("Drop Radius").tooltip("Radius around the drop point where particles spawn");
-        this.guiFolder.add(this, "maxParticles", 1000, 200000, 1000).name("Max Particles").tooltip("Maximum number of active water particles")
+        this.guiFolder.add(this, "floodRate", 1, 500, 1).name(t("floodSim.floodRate.label")).tooltip(t("floodSim.floodRate.tooltip"));
+        this.guiFolder.add(this, "sphereSize", 0.05, 100.0, 0.05).name(t("floodSim.sphereSize.label")).tooltip(t("floodSim.sphereSize.tooltip"));
+        this.guiFolder.add(this, "dropRadius", 1, 10000, 1).name(t("floodSim.dropRadius.label")).tooltip(t("floodSim.dropRadius.tooltip"));
+        this.guiFolder.add(this, "maxParticles", 1000, 200000, 1000).name(t("floodSim.maxParticles.label")).tooltip(t("floodSim.maxParticles.tooltip"))
             .onChange(v => this.resizeBuffers(v));
-        this.guiFolder.add(this, "method", ["HeightMap", "Fast", "PBF"]).name("Method").tooltip("Simulation method: HeightMap (grid), Fast (particles), or PBF (position-based fluids)")
+        this.guiFolder.add(this, "method", ["HeightMap", "Fast", "PBF"]).name(t("floodSim.method.label")).tooltip(t("floodSim.method.tooltip"))
             .onChange(() => this.updateMethodVisibility());
-        this.guiFolder.add(this, "waterSource", ["Rain", "DamBurst"]).name("Water Source").tooltip("Rain: add water over time. DamBurst: maintain water level at target altitude within drop radius");
-        this.guiFolder.add(this, "floodSpeed", 1, 20, 1).name("Speed").tooltip("Simulation steps per frame (1-20x)");
-        this.guiFolder.add(this, "manningN", 0.01, 0.15, 0.005).name("Manning's N").tooltip("Bed roughness: 0.01=smooth, 0.03=natural channel, 0.05=rough floodplain, 0.1=dense vegetation");
-        this.guiFolder.add(this, "edgeCondition", ["Blocking", "Draining"]).name("Edge").tooltip("Blocking: water reflects at grid edges. Draining: water flows out and is removed");
-        this.guiFolder.addColor(this, "waterColor").name("Water Color").tooltip("Color of the water")
+        this.guiFolder.add(this, "waterSource", ["Rain", "DamBurst"]).name(t("floodSim.waterSource.label")).tooltip(t("floodSim.waterSource.tooltip"));
+        this.guiFolder.add(this, "floodSpeed", 1, 20, 1).name(t("floodSim.speed.label")).tooltip(t("floodSim.speed.tooltip"));
+        this.guiFolder.add(this, "manningN", 0.01, 0.15, 0.005).name(t("floodSim.manningN.label")).tooltip(t("floodSim.manningN.tooltip"));
+        this.guiFolder.add(this, "edgeCondition", ["Blocking", "Draining"]).name(t("floodSim.edge.label")).tooltip(t("floodSim.edge.tooltip"));
+        this.guiFolder.addColor(this, "waterColor").name(t("floodSim.waterColor.label")).tooltip(t("floodSim.waterColor.tooltip"))
             .onChange(() => {
                 this.instancedMesh.material.color.set(this.waterColor);
                 if (this.waterMesh) this.waterMesh.material.color.set(this.waterColor);
                 setRenderOne();
             });
-        this.guiFolder.add(this, "resetFlood").name("Reset").tooltip("Remove all particles and restart the simulation");
+        this.guiFolder.add(this, "resetFlood").name(t("floodSim.reset.label")).tooltip(t("floodSim.reset.tooltip"));
     }
 
     resetFlood() {

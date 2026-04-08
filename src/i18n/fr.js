@@ -835,6 +835,171 @@ const fr = {
         depthTest: { label: "Test de profondeur" },
         deleteBuilding: { label: "Supprimer le bâtiment" },
     },
+
+    groundOverlay: {
+        name: { label: "Nom" },
+        visible: { label: "Visible" },
+        editMode: { label: "Mode édition" },
+        lockShape: { label: "Verrouiller la forme" },
+        freeTransform: { label: "Transformation libre" },
+        showBorder: { label: "Afficher la bordure" },
+        properties: { label: "Propriétés" },
+        imageURL: { label: "URL de l'image" },
+        rehostLocalImage: { label: "Réhéberger l'image locale" },
+        north: { label: "Nord" },
+        south: { label: "Sud" },
+        east: { label: "Est" },
+        west: { label: "Ouest" },
+        rotation: { label: "Rotation" },
+        altitude: { label: "Altitude (ft)" },
+        wireframe: { label: "Fil de fer" },
+        opacity: { label: "Opacité" },
+        cloudExtraction: { label: "Extraction de nuages" },
+        extractClouds: { label: "Extraire les nuages" },
+        cloudColor: { label: "Couleur des nuages" },
+        fuzziness: { label: "Flou" },
+        feather: { label: "Contour progressif" },
+        gotoOverlay: { label: "Aller à la superposition" },
+        deleteOverlay: { label: "Supprimer la superposition" },
+    },
+
+    videoView: {
+        currentVideo: { label: "Vidéo actuelle" },
+        videoRotation: { label: "Rotation vidéo" },
+        setCameraToExifGps: { label: "Positionner la caméra sur le GPS EXIF" },
+        expandOutput: {
+            label: "Étendre la sortie",
+            tooltip: "Méthode pour étendre la plage dynamique de la sortie ELA",
+        },
+        displayMode: {
+            label: "Mode d'affichage",
+            tooltip: "Comment visualiser les résultats de l'analyse de bruit",
+        },
+        convolutionFilter: {
+            label: "Filtre de convolution",
+            tooltip: "Type de filtre de convolution spatiale à appliquer",
+        },
+        resetVideoAdjustments: {
+            label: "Réinitialiser les ajustements vidéo",
+            tooltip: "Réinitialiser tous les ajustements vidéo à leurs valeurs par défaut",
+        },
+        makeVideo: {
+            label: "Créer la vidéo",
+            tooltip: "Exporter la vidéo traitée avec tous les effets actuels appliqués",
+        },
+        gridShow: {
+            label: "Afficher",
+            tooltip: "Afficher une grille superposée sur la vidéo",
+        },
+        gridSize: {
+            label: "Taille",
+            tooltip: "Taille des cellules de la grille en pixels",
+        },
+        gridSubdivisions: {
+            label: "Subdivisions",
+            tooltip: "Nombre de subdivisions dans chaque cellule de la grille",
+        },
+        gridXOffset: {
+            label: "Décalage X",
+            tooltip: "Décalage horizontal de la grille en pixels",
+        },
+        gridYOffset: {
+            label: "Décalage Y",
+            tooltip: "Décalage vertical de la grille en pixels",
+        },
+        gridColor: {
+            label: "Couleur",
+            tooltip: "Couleur des lignes de la grille",
+        },
+    },
+
+    floodSim: {
+        flood: {
+            label: "Inondation",
+            tooltip: "Activer ou désactiver la simulation de particules d'inondation",
+        },
+        floodRate: {
+            label: "Débit d'inondation",
+            tooltip: "Nombre de particules créées par image",
+        },
+        sphereSize: {
+            label: "Taille des sphères",
+            tooltip: "Rayon visuel de chaque particule d'eau",
+        },
+        dropRadius: {
+            label: "Rayon de chute",
+            tooltip: "Rayon autour du point de chute où les particules apparaissent",
+        },
+        maxParticles: {
+            label: "Particules max",
+            tooltip: "Nombre maximum de particules d'eau actives",
+        },
+        method: {
+            label: "Méthode",
+            tooltip: "Méthode de simulation : HeightMap (grille), Fast (particules) ou PBF (fluides basés sur la position)",
+        },
+        waterSource: {
+            label: "Source d'eau",
+            tooltip: "Rain : ajouter de l'eau au fil du temps. DamBurst : maintenir le niveau d'eau à l'altitude cible dans le rayon de chute",
+        },
+        speed: {
+            label: "Vitesse",
+            tooltip: "Pas de simulation par image (1-20x)",
+        },
+        manningN: {
+            label: "Manning's N",
+            tooltip: "Rugosité du lit : 0.01=lisse, 0.03=canal naturel, 0.05=plaine d'inondation rugueuse, 0.1=végétation dense",
+        },
+        edge: {
+            label: "Bord",
+            tooltip: "Blocking : l'eau rebondit aux bords de la grille. Draining : l'eau s'écoule et est supprimée",
+        },
+        waterColor: {
+            label: "Couleur de l'eau",
+            tooltip: "Couleur de l'eau",
+        },
+        reset: {
+            label: "Réinitialiser",
+            tooltip: "Supprimer toutes les particules et redémarrer la simulation",
+        },
+    },
+
+    flowOrbs: {
+        number: {
+            label: "Nombre",
+            tooltip: "Nombre d'orbes de flux à afficher. Plus d'orbes peut affecter les performances.",
+        },
+        spreadMethod: {
+            label: "Méthode de répartition",
+            tooltip: "Méthode pour répartir les orbes le long du vecteur de visée de la caméra. \n'Range' répartit les orbes uniformément entre les distances proche et lointaine. \n'Altitude' répartit les orbes entre les altitudes absolues basse et haute (MSL)",
+        },
+        near: {
+            label: "Proche (m)",
+            tooltip: "Distance la plus proche de la caméra pour le placement des orbes",
+        },
+        far: {
+            label: "Loin (m)",
+            tooltip: "Distance la plus éloignée de la caméra pour le placement des orbes",
+        },
+        high: { label: "Haut (m)" },
+        low: { label: "Bas (m)" },
+        colorMethod: {
+            label: "Méthode de couleur",
+            tooltip: "Méthode pour déterminer la couleur des orbes de flux. \n'Random' attribue une couleur aléatoire à chaque orbe. \n'User' attribue une couleur choisie par l'utilisateur à tous les orbes. \n'Hue From Altitude' attribue une couleur basée sur l'altitude de l'orbe. \n'Hue From Distance' attribue une couleur basée sur la distance de l'orbe par rapport à la caméra.",
+        },
+        userColor: {
+            label: "Couleur utilisateur",
+            tooltip: "Sélectionner une couleur pour les orbes de flux lorsque la 'Méthode de couleur' est réglée sur 'User'.",
+        },
+        hueRange: {
+            label: "Plage de teinte",
+            tooltip: "Plage sur laquelle vous obtenez un spectre complet de couleurs pour la méthode de couleur 'Hue From Altitude/Range'.",
+        },
+        windWhilePaused: {
+            label: "Vent en pause",
+            tooltip: "Si coché, le vent affectera toujours les orbes de flux même lorsque la simulation est en pause. Utile pour visualiser les motifs de vent.",
+        },
+    },
 };
 
 export default fr;

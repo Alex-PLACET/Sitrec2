@@ -7,6 +7,7 @@ import {assert} from "../assert";
 import {DebugArrow, removeDebugArrow} from "../threeExt";
 import * as LAYER from "../LayerMasks";
 import {altitudeAboveSphere, getLocalDownVector, pointOnSphereBelow} from "../SphericalMath";
+import {t} from "../i18n";
 
 class CFlowOrb {
     constructor(v) {
@@ -83,31 +84,31 @@ export class CNodeFlowOrbs extends CNodeSpriteGroup {
         this.initializeSprites();
 
         this.oldNSprites = this.nSprites;
-        this.gui.add(this, "nSprites", 1, 2000, 1).name("Number").onChange(() => {
+        this.gui.add(this, "nSprites", 1, 2000, 1).name(t("flowOrbs.number.label")).onChange(() => {
 
             this.nSpritesChanged();
 
         }).elastic(100, 2000, true)
             .listen()
-            .tooltip("Number of flow orbs to display. More orbs may impact performance.");
+            .tooltip(t("flowOrbs.number.tooltip"));
 
-        this.gui.add(this, "spreadMethod", this.spreadMethods).name("Spread Method").onChange(() => {
+        this.gui.add(this, "spreadMethod", this.spreadMethods).name(t("flowOrbs.spreadMethod.label")).onChange(() => {
             this.initializeSprites();
             this.updateColors();
             if (this.spreadMethod === "Altitude") {
-                this.farSlider.name("High (m)");
-                this.nearSlider.name("Low (m)");
+                this.farSlider.name(t("flowOrbs.high.label"));
+                this.nearSlider.name(t("flowOrbs.low.label"));
             }
             else {
-                this.farSlider.name("Far (m)");
-                this.nearSlider.name("Near (m)");
+                this.farSlider.name(t("flowOrbs.far.label"));
+                this.nearSlider.name(t("flowOrbs.near.label"));
             }
         })
             .listen()
-            .tooltip("Method to spread orbs along the camera look vector. \n'Range' spreads orbs evenly along the look vector between near and far distances. \n'Altitude' spreads orbs evenly along the look vector, between the low and high absolute altitudes (MSL)");
+            .tooltip(t("flowOrbs.spreadMethod.tooltip"));
 
         // add near and far sliders
-        this.nearSlider = this.gui.add(this, "near", 1, 1000, 1).listen().name("Near (m)").tooltip("Nearest distance from camera for orb placement").onChange(() => {
+        this.nearSlider = this.gui.add(this, "near", 1, 1000, 1).listen().name(t("flowOrbs.near.label")).tooltip(t("flowOrbs.near.tooltip")).onChange(() => {
             if (this.far <= this.near) {
                 this.far = this.near + 10;
             }
@@ -115,7 +116,7 @@ export class CNodeFlowOrbs extends CNodeSpriteGroup {
         }).elastic(10, 100000, true).listen();
 
         // same for far
-        this.farSlider = this.gui.add(this, "far", 100, 10000, 1).listen().name("Far (m)").tooltip("Farthest distance from camera for orb placement").onChange(() => {
+        this.farSlider = this.gui.add(this, "far", 100, 10000, 1).listen().name(t("flowOrbs.far.label")).tooltip(t("flowOrbs.far.tooltip")).onChange(() => {
             if (this.far <= this.near) {
                 this.near = this.far - 10;
             }
@@ -123,29 +124,29 @@ export class CNodeFlowOrbs extends CNodeSpriteGroup {
         }).elastic(1000, 100000, true).listen();
 
 
-        this.gui.add(this, "colorMethod", this.colorMethods).name("Color Method").onChange(() => {
+        this.gui.add(this, "colorMethod", this.colorMethods).name(t("flowOrbs.colorMethod.label")).onChange(() => {
             this.updateColors();
         })
             .listen()
-            .tooltip("Method to determine the color of the flow orbs. \n'Random' assigns a random color to each orb. \n'User' assigns a user-selected color to all orbs. \n'Hue From Altitude' assigns a color based on the altitude of the orb. \n'Hue From Distance' assigns a color based on the distance of the orb from the camera.");
+            .tooltip(t("flowOrbs.colorMethod.tooltip"));
 
 
-        this.gui.addColor(this, "userColor").name("User Color").onChange(() => {
+        this.gui.addColor(this, "userColor").name(t("flowOrbs.userColor.label")).onChange(() => {
             this.updateColors();
-        }).listen().tooltip("Select a color for the flow orbs when 'Color Method' is set to 'User'.");
+        }).listen().tooltip(t("flowOrbs.userColor.tooltip"));
 
-        this.gui.add(this, "hueAltitudeMax", 100, 10000, 1).name("Hue Range").onChange(() => {
+        this.gui.add(this, "hueAltitudeMax", 100, 10000, 1).name(t("flowOrbs.hueRange.label")).onChange(() => {
             this.rebuildSprites();
             this.updateColors();
         }).elastic(1000, 100000)
             .listen()
-            .tooltip("Range over which you get a full spactrum of colors for the 'Hue From Altitude/Range' color method.");
+            .tooltip(t("flowOrbs.hueRange.tooltip"));
 
 
         this.windWhilePaused = v.windWhilePaused ?? false;
-        this.gui.add(this, "windWhilePaused").name("Wind While Paused")
+        this.gui.add(this, "windWhilePaused").name(t("flowOrbs.windWhilePaused.label"))
             .listen()
-            .tooltip("If checked, wind will still affect the flow orbs even when the simulation is paused. Useful for visualizing wind patterns.");
+            .tooltip(t("flowOrbs.windWhilePaused.tooltip"));
 
         this.rebuildSprites();
 
