@@ -134,7 +134,7 @@ Visibility in 3D views is controlled by layer bit masks, not `node.visible`.
 
 ## Sitrec API (sitrecAPI)
 
-71 functions accessible via `window.sitrecAPI.call(fn, args)`. Type coercion is automatic (strings -> numbers).
+72 functions accessible via `window.sitrecAPI.call(fn, args)`. Type coercion is automatic (strings -> numbers).
 
 ### Camera & Navigation
 - `gotoLLA({lat, lon, alt})` — move camera position
@@ -150,10 +150,11 @@ Visibility in 3D views is controlled by layer bit masks, not `node.visible`.
 ### Notes & Sitches
 - `getNotes()`, `setNotes({text})`, `updateNotes({mode, text})`
 - `listSitches()` — lists built-in sitches and any saved sitches available in the current runtime
-- `loadSitch({name, source, sourceUserID})` — load a built-in or saved sitch
-- `saveSitch({target, name})` — save to `auto`, `server`, or `local`
-- `getShareLink({saveIfNeeded, target})` — returns the current share link, optionally saving first
-- `getSitchState({local})` — exports full serialized sitch JSON state
+- `loadSitch({name, source, sourceUserID})` — load a saved sitch (built-in sitches with setup hooks are rejected)
+- `saveSitch({target, name})` — save to `auto`, `server`, or `local` (`name` required if sitch not previously saved)
+- `getShareLink({saveIfNeeded, target})` — returns the current share link (re-saves if dirty and `saveIfNeeded`)
+- `getSitchState()` — lightweight status: `{name, dirty, isCustom, canMod}`
+- `exportSitchState({local})` — exports full serialized sitch JSON state
 
 ### Satellites
 - `satellitesLoadLEO()`, `satellitesLoadCurrentStarlink()`

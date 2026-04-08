@@ -351,12 +351,11 @@ describe('CSitrecAPI sitch APIs', () => {
     });
 
     test('uses local save flow when server-backed saves are unavailable', async () => {
-        mockFileManager.saveLocal.mockResolvedValue(true);
         mockSit.sitchName = 'LocalCopy';
 
         const result = await sitrecAPI.call('saveSitch', {target: 'auto'});
 
-        expect(mockFileManager.saveLocal).toHaveBeenCalledWith({recordAction: false});
+        expect(mockFileManager.saveSitchNamed).toHaveBeenCalledWith('LocalCopy', true, null, null);
         expect(result).toEqual({
             success: true,
             fn: 'saveSitch',
@@ -371,35 +370,58 @@ describe('CSitrecAPI sitch APIs', () => {
     });
 
     test('returns the share link after saving when requested', async () => {
+        mockSit.sitchName = 'TestSitch';
         mockFileManager.hasServerBackedSaves.mockReturnValue(true);
-        mockFileManager.saveSitch.mockImplementation(async () => {
+        mockFileManager.saveSitchNamed.mockImplementation(async () => {
             mockCustomManager.customLink = 'https://example.com/?custom=abc';
+            mockGlobalsState.sitchDirty = false;
         });
 
         const result = await sitrecAPI.call('getShareLink', {saveIfNeeded: true});
 
-        expect(mockFileManager.saveSitch).toHaveBeenCalledWith(false);
+        expect(mockFileManager.saveSitchNamed).toHaveBeenCalledWith('TestSitch', false, null, null);
         expect(result).toEqual({
             success: true,
             fn: 'getShareLink',
             result: {
                 success: true,
                 url: 'https://example.com/?custom=abc',
+                dirty: false,
             },
         });
     });
 
-    test('exports full serialized sitch state', async () => {
-        mockSit.name = 'custom';
-        mockSit.isCustom = true;
+    test('returns lightweight sitch state', async () => {
+        mockSit.name = 'gimbal';
+        mockSit.isCustom = false;
+        mockSit.canMod = true;
         mockGlobalsState.sitchDirty = true;
-        mockCustomManager.getCustomSitchString.mockReturnValue(JSON.stringify({name: 'custom', mods: {notesView: {notesText: 'A'}}}));
 
         const result = await sitrecAPI.call('getSitchState');
 
         expect(result).toEqual({
             success: true,
             fn: 'getSitchState',
+            result: {
+                name: 'gimbal',
+                dirty: true,
+                isCustom: false,
+                canMod: true,
+            },
+        });
+    });
+
+    test('exports full serialized sitch state via exportSitchState', async () => {
+        mockSit.name = 'custom';
+        mockSit.isCustom = true;
+        mockGlobalsState.sitchDirty = true;
+        mockCustomManager.getCustomSitchString.mockReturnValue(JSON.stringify({name: 'custom', mods: {notesView: {notesText: 'A'}}}));
+
+        const result = await sitrecAPI.call('exportSitchState');
+
+        expect(result).toEqual({
+            success: true,
+            fn: 'exportSitchState',
             result: {
                 success: true,
                 state: {name: 'custom', mods: {notesView: {notesText: 'A'}}},
@@ -410,12 +432,49 @@ describe('CSitrecAPI sitch APIs', () => {
             },
         });
     });
+
+    test('rejects built-in sitch with setup hooks', async () => {
+        mockSitchMan.exists.mockReturnValue(true);
+        mockSitchMan.get.mockReturnValue({name: 'gimbal', setup: function() {}});
+
+        const result = await sitrecAPI.call('loadSitch', {name: 'gimbal'});
+
+        expect(result).toEqual({
+            success: true,
+            fn: 'loadSitch',
+            result: {
+                success: false,
+                error: expect.stringContaining('setup hooks'),
+            },
+        });
+        expect(mockSetNewSitchObject).not.toHaveBeenCalled();
+    });
+
+    test('requires name when sitch has not been previously saved', async () => {
+        mockFileManager.hasServerBackedSaves.mockReturnValue(true);
+
+        const result = await sitrecAPI.call('saveSitch', {target: 'server'});
+
+        expect(result).toEqual({
+            success: true,
+            fn: 'saveSitch',
+            result: {
+                success: false,
+                error: expect.stringContaining('name is required'),
+            },
+        });
+    });
 });
 
 describe('CSitrecAPI transient state classification', () => {
-    test('treats read-only Phase 0 calls as transient and notes writes as state changes', () => {
+    test('treats read-only calls as transient and notes writes as state changes', () => {
         expect(sitrecAPI.callChangesSerializedState(
             {fn: 'getSitchState'},
+            {success: true, result: {success: true}}
+        )).toBe(false);
+
+        expect(sitrecAPI.callChangesSerializedState(
+            {fn: 'exportSitchState'},
             {success: true, result: {success: true}}
         )).toBe(false);
 

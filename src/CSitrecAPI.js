@@ -1262,6 +1262,18 @@ class CSitrecAPI {
             },
 
             getSitchState: {
+                doc: "Get the current sitch state including whether it has unsaved changes.",
+                fn: () => {
+                    return {
+                        name: Sit?.name,
+                        dirty: Globals.sitchDirty,
+                        isCustom: Sit?.isCustom,
+                        canMod: Sit?.canMod,
+                    };
+                }
+            },
+
+            exportSitchState: {
                 doc: "Export the current sitch as full serialized JSON state.",
                 params: {
                     local: "If true, export using local-save paths when available (boolean, optional, defaults to false)"
@@ -1922,6 +1934,10 @@ class CSitrecAPI {
                 return { success: false, error: `Built-in sitch '${sitchName}' not found` };
             }
 
+            if (typeof builtInMatch.sitch?.setup === "function" || typeof builtInMatch.sitch?.setup2 === "function") {
+                return { success: false, error: `Built-in sitch '${sitchName}' has setup hooks that cannot be cloned. Use saved sitches instead.` };
+            }
+
             setNewSitchObject(this._cloneSitchObject(builtInMatch.sitch));
             return {
                 success: true,
@@ -1971,24 +1987,29 @@ class CSitrecAPI {
             return { success: false, error: "Server-backed saves are not available in this runtime" };
         }
 
+        const effectiveName = trimmedName ?? Sit?.sitchName;
+        if (!effectiveName) {
+            return { success: false, error: "name is required when the sitch has not been previously saved" };
+        }
+
+        if (trimmedName) {
+            Sit.sitchName = trimmedName;
+        }
+
         try {
             if (saveLocally) {
-                if (trimmedName && typeof FileManager.saveSitchNamed === "function") {
-                    await FileManager.saveSitchNamed(trimmedName, true, null, null);
+                if (typeof FileManager.saveSitchNamed === "function") {
+                    await FileManager.saveSitchNamed(effectiveName, true, null, null);
                 } else if (typeof FileManager.saveLocal === "function") {
                     const ok = await FileManager.saveLocal({recordAction: false});
                     if (!ok) {
                         return { success: false, error: "Local save was cancelled or failed" };
                     }
-                } else if (typeof FileManager.saveSitch === "function") {
-                    await FileManager.saveSitch(true);
                 } else {
                     return { success: false, error: "No local save flow is available" };
                 }
-            } else if (trimmedName && typeof FileManager.saveSitchNamed === "function") {
-                await FileManager.saveSitchNamed(trimmedName, false, null, null);
-            } else if (typeof FileManager.saveSitch === "function") {
-                await FileManager.saveSitch(false);
+            } else if (typeof FileManager.saveSitchNamed === "function") {
+                await FileManager.saveSitchNamed(effectiveName, false, null, null);
             } else {
                 return { success: false, error: "No server save flow is available" };
             }
@@ -2010,7 +2031,9 @@ class CSitrecAPI {
             return { success: false, error: "CustomManager not available" };
         }
 
-        if (!CustomManager.customLink && saveIfNeeded) {
+        const needsSave = !CustomManager.customLink || Globals.sitchDirty;
+
+        if (needsSave && saveIfNeeded) {
             const saveResult = await this._saveSitch({target});
             if (!saveResult.success) {
                 return saveResult;
@@ -2029,6 +2052,7 @@ class CSitrecAPI {
         return {
             success: true,
             url: CustomManager.customLink,
+            dirty: Globals.sitchDirty === true,
         };
     }
 
@@ -2162,6 +2186,7 @@ class CSitrecAPI {
             "listSitches",
             "getShareLink",
             "getSitchState",
+            "exportSitchState",
         ]);
 
         return !transientCalls.has(call.fn);
