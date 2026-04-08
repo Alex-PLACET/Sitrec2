@@ -254,6 +254,96 @@ const es = {
             tooltip: "Exportar el fotograma de vídeo actual tal como se muestra (con efectos) como archivo PNG",
         },
     },
+    tracking: {
+        enable: {
+            label: "Activar seguimiento automático",
+            disableLabel: "Desactivar seguimiento automático",
+            tooltip: "Mostrar/ocultar el cursor de seguimiento automático en el vídeo",
+        },
+        start: {
+            label: "Iniciar seguimiento automático",
+            stopLabel: "Detener seguimiento automático",
+            tooltip: "Seguir automáticamente el objeto dentro del cursor durante la reproducción",
+        },
+        clearFromHere: {
+            label: "Borrar desde aquí",
+            tooltip: "Borrar todas las posiciones rastreadas desde el fotograma actual hasta el final",
+        },
+        clearTrack: {
+            label: "Borrar pista",
+            tooltip: "Borrar todas las posiciones rastreadas y empezar de nuevo",
+        },
+        stabilize: {
+            label: "Estabilizar",
+            tooltip: "Aplicar posiciones rastreadas para estabilizar el vídeo",
+        },
+        stabilizeToggle: {
+            enableLabel: "Activar estabilización",
+            disableLabel: "Desactivar estabilización",
+            tooltip: "Activar/desactivar la estabilización de vídeo",
+        },
+        stabilizeCenters: {
+            label: "Centrar estabilización",
+            tooltip: "Cuando está marcado, el punto estabilizado queda fijo en el centro. Si no, permanece en su posición inicial.",
+        },
+        renderStabilized: {
+            label: "Renderizar vídeo estabilizado",
+            tooltip: "Exportar vídeo estabilizado a tamaño original (el punto rastreado queda fijo, bordes negros posibles)",
+        },
+        renderStabilizedExpanded: {
+            label: "Renderizar estabilizado expandido",
+            tooltip: "Exportar vídeo estabilizado con lienzo ampliado para no perder píxeles",
+        },
+        trackRadius: {
+            label: "Radio de seguimiento",
+            tooltip: "Tamaño de la plantilla a buscar (tamaño del objeto)",
+        },
+        searchRadius: {
+            label: "Radio de búsqueda",
+            tooltip: "Distancia de búsqueda desde la posición anterior (aumentar para movimientos rápidos)",
+        },
+        trackingMethod: {
+            label: "Método de seguimiento",
+            tooltip: "Coincidencia de plantilla (OpenCV) o flujo óptico (jsfeat Lucas-Kanade)",
+        },
+        centerOnBright: {
+            label: "Centrar en píxeles brillantes",
+            tooltip: "Seguir el centroide de píxeles brillantes (mejor para estrellas/luces puntuales)",
+        },
+        centerOnDark: {
+            label: "Centrar en píxeles oscuros",
+            tooltip: "Seguir el centroide de píxeles oscuros",
+        },
+        brightnessThreshold: {
+            label: "Umbral de brillo",
+            tooltip: "Umbral de brillo (0-255). Usado en los modos centrar en brillante/oscuro",
+        },
+        status: {
+            loadingJsfeat: "Cargando jsfeat...",
+            loadingOpenCv: "Cargando OpenCV...",
+            sam2Connecting: "SAM2: Conectando...",
+            sam2Uploading: "SAM2: Subiendo...",
+        },
+    },
+    trackManager: {
+        removeTrack: "Eliminar pista",
+        createSpline: "Crear spline",
+        editTrack: "Editar pista",
+        constantSpeed: "Velocidad constante",
+        extrapolateTrack: "Extrapolar pista",
+        curveType: "Tipo de curva",
+        altLockAGL: "Bloqueo alt. AGL",
+        deleteTrack: "Eliminar pista",
+    },
+    gpuMonitor: {
+        enabled: "Monitor activado",
+        total: "Memoria total",
+        geometries: "Geometrías",
+        textures: "Texturas",
+        peak: "Memoria máxima",
+        average: "Memoria promedio",
+        reset: "Restablecer historial",
+    },
     jet: {
         frames: {
             time: {

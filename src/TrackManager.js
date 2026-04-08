@@ -42,6 +42,7 @@ import {CNodeAtmosphericProfile} from "./nodes/CNodeAtmosphericProfile";
 import {detectRocketLikeTrack} from "./trackHeuristics";
 import {hasOtherTrackSourceReference} from "./trackSourceUtils";
 import {extractTrackPreviewInfo, showMultiTrackLoadDialog, getCameraFilterState} from "./TrackFilterDialog";
+import {t} from "./i18n";
 
 function disposeDirectTrackDependentControllers(trackNode) {
     if (!trackNode?.outputs?.length) {
@@ -555,14 +556,14 @@ class CTrackManager extends CManager {
                         }
                     }
 
-                    trackOb.guiFolder.add(dummy, "removeTrack").name("Remove Track");
+                    trackOb.guiFolder.add(dummy, "removeTrack").name(t("trackManager.removeTrack"));
 
                     if (trackNode.frames >= 2) {
                         const splineName = shortName + "_sp";
                         let splineExists = false;
                         TrackManager.iterate((k, t) => { if (t.menuText === splineName) splineExists = true; });
                         if (!splineExists) {
-                            trackOb.guiFolder.add(dummy, "createSpline").name("Create Spline");
+                            trackOb.guiFolder.add(dummy, "createSpline").name(t("trackManager.createSpline"));
                         }
                     }
 
@@ -1542,7 +1543,7 @@ class CTrackManager extends CManager {
         
         // Add edit mode checkbox to the GUI folder (before display track controls)
         // This checkbox controls whether the track is in edit mode
-        guiFolder.add(trackOb, 'editMode').name('Edit Track').onChange((value) => {
+        guiFolder.add(trackOb, 'editMode').name(t("trackManager.editTrack")).onChange((value) => {
             splineEditor.setEnable(value);
             
             // Set or clear the global editing track reference
@@ -1574,7 +1575,7 @@ class CTrackManager extends CManager {
         
         // Add constant speed checkbox to the GUI folder
         // This checkbox controls whether the track uses constant speed interpolation
-        guiFolder.add(trackOb, 'constantSpeed').name('Constant Speed').onChange((value) => {
+        guiFolder.add(trackOb, 'constantSpeed').name(t("trackManager.constantSpeed")).onChange((value) => {
             splineEditorNode.constantSpeed = value;
             splineEditorNode.recalculateCascade();
             console.log(`Constant speed ${value ? 'enabled' : 'disabled'} for track: ${shortName}`);
@@ -1582,7 +1583,7 @@ class CTrackManager extends CManager {
         
         // Add extrapolate track checkbox to the GUI folder
         // This checkbox controls whether the track extrapolates beyond first/last control points
-        guiFolder.add(trackOb, 'extrapolateTrack').name('Extrapolate Track').onChange((value) => {
+        guiFolder.add(trackOb, 'extrapolateTrack').name(t("trackManager.extrapolateTrack")).onChange((value) => {
             splineEditorNode.extrapolateTrack = value;
             splineEditorNode.recalculateCascade();
             console.log(`Extrapolate track ${value ? 'enabled' : 'disabled'} for track: ${shortName}`);
@@ -1590,7 +1591,7 @@ class CTrackManager extends CManager {
         
         // Add curve type dropdown
         const curveTypeOptions = ['linear', 'catmull', 'centripetal', 'chordal'];
-        guiFolder.add(trackOb, 'curveType', curveTypeOptions).name('Curve Type').onChange((value) => {
+        guiFolder.add(trackOb, 'curveType', curveTypeOptions).name(t("trackManager.curveType")).onChange((value) => {
             splineEditorNode.setCurveType(value);
             console.log(`Curve type changed to ${value} for track: ${shortName}`);
         });
@@ -1615,7 +1616,7 @@ class CTrackManager extends CManager {
         }, guiFolder);
 
         trackOb.altitudeLockAGL = true;
-        guiFolder.add(trackOb, 'altitudeLockAGL').name('Alt Lock AGL').listen().onChange((value) => {
+        guiFolder.add(trackOb, 'altitudeLockAGL').name(t("trackManager.altLockAGL")).listen().onChange((value) => {
             splineEditorNode.setAltitudeLockAGL(value);
         });
         
@@ -1633,7 +1634,7 @@ class CTrackManager extends CManager {
                 }
             }
         };
-        guiFolder.add(dummy, "deleteTrack").name("Delete Track");
+        guiFolder.add(dummy, "deleteTrack").name(t("trackManager.deleteTrack"));
         
         // Add to drop targets if configured
         if (Sit.dropTargets !== undefined && Sit.dropTargets["track"] !== undefined) {

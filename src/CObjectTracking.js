@@ -8,6 +8,7 @@ import {createVideoExporter, DefaultVideoFormat, getBestFormatForResolution, get
 import {drawVideoWatermark, ExportProgressWidget, getExportPrefix} from "./utils";
 import {drawAttributionOnCanvas} from "./AttributionOverlay";
 import {isLocal} from "./configUtils";
+import {t} from "./i18n";
 
 let cv = null;
 
@@ -299,7 +300,7 @@ class ObjectTracker {
     
     onTrackingComplete() {
         this.stopTracking();
-        if (startMenuItem) startMenuItem.name("Start Auto Tracking");
+        if (startMenuItem) startMenuItem.name(t("tracking.start.label"));
         setRenderOne(true);
     }
     
@@ -1025,13 +1026,13 @@ export function resetObjectTracking() {
     }
     renderHooked = false;
     if (enableMenuItem) {
-        enableMenuItem.name("Enable Auto Tracking");
+        enableMenuItem.name(t("tracking.enable.label"));
     }
     if (startMenuItem) {
-        startMenuItem.name("Start Auto Tracking");
+        startMenuItem.name(t("tracking.start.label"));
     }
     if (stabilizeToggleMenuItem) {
-        stabilizeToggleMenuItem.name("Enable Stabilization");
+        stabilizeToggleMenuItem.name(t("tracking.stabilizeToggle.enableLabel"));
     }
 }
 
@@ -1044,8 +1045,8 @@ function toggleEnableTracking() {
 
     if (objectTracker && objectTracker.enabled) {
         objectTracker.disable();
-        if (enableMenuItem) enableMenuItem.name("Enable Auto Tracking");
-        if (startMenuItem) startMenuItem.name("Start Auto Tracking");
+        if (enableMenuItem) enableMenuItem.name(t("tracking.enable.label"));
+        if (startMenuItem) startMenuItem.name(t("tracking.start.label"));
         if (trackingFolder) trackingFolder.close();
         setRenderOne(true);
         return;
@@ -1056,7 +1057,7 @@ function toggleEnableTracking() {
     }
     
     objectTracker.enable();
-    if (enableMenuItem) enableMenuItem.name("Disable Auto Tracking");
+    if (enableMenuItem) enableMenuItem.name(t("tracking.enable.disableLabel"));
     
     if (!renderHooked) {
         renderHooked = true;
@@ -1082,7 +1083,7 @@ function toggleStartTracking() {
     
     if (objectTracker.tracking) {
         objectTracker.stopTracking();
-        if (startMenuItem) startMenuItem.name("Start Auto Tracking");
+        if (startMenuItem) startMenuItem.name(t("tracking.start.label"));
         setRenderOne(true);
         return;
     }
@@ -1090,7 +1091,7 @@ function toggleStartTracking() {
     // Centroid mode doesn't need external libraries
     if (objectTracker.centerOnBright || objectTracker.centerOnDark) {
         objectTracker.startTracking();
-        if (startMenuItem) startMenuItem.name("Stop Auto Tracking");
+        if (startMenuItem) startMenuItem.name(t("tracking.start.stopLabel"));
         setRenderOne(true);
         return;
     }
@@ -1106,21 +1107,21 @@ function toggleStartTracking() {
         const jsfeat = getJsfeat();
         if (jsfeat) {
             objectTracker.startTracking();
-            if (startMenuItem) startMenuItem.name("Stop Auto Tracking");
+            if (startMenuItem) startMenuItem.name(t("tracking.start.stopLabel"));
             setRenderOne(true);
             return;
         }
 
-        if (startMenuItem) startMenuItem.name("Loading jsfeat...");
+        if (startMenuItem) startMenuItem.name(t("tracking.status.loadingJsfeat"));
 
         loadJsfeat().then(() => {
             objectTracker.startTracking();
-            if (startMenuItem) startMenuItem.name("Stop Auto Tracking");
+            if (startMenuItem) startMenuItem.name(t("tracking.start.stopLabel"));
             setRenderOne(true);
         }).catch(e => {
             console.error("Failed to load jsfeat:", e);
             alert("Failed to load jsfeat.js: " + e.message);
-            if (startMenuItem) startMenuItem.name("Start Auto Tracking");
+            if (startMenuItem) startMenuItem.name(t("tracking.start.label"));
         });
         return;
     }
@@ -1128,22 +1129,22 @@ function toggleStartTracking() {
     // Template matching mode requires OpenCV
     if (cv) {
         objectTracker.startTracking();
-        if (startMenuItem) startMenuItem.name("Stop Auto Tracking");
+        if (startMenuItem) startMenuItem.name(t("tracking.start.stopLabel"));
         setRenderOne(true);
         return;
     }
 
-    if (startMenuItem) startMenuItem.name("Loading OpenCV...");
+    if (startMenuItem) startMenuItem.name(t("tracking.status.loadingOpenCv"));
 
     loadOpenCV().then(() => {
         cv = getCV();
         objectTracker.startTracking();
-        if (startMenuItem) startMenuItem.name("Stop Auto Tracking");
+        if (startMenuItem) startMenuItem.name(t("tracking.start.stopLabel"));
         setRenderOne(true);
     }).catch(e => {
         console.error("Failed to load OpenCV:", e);
         alert("Failed to load OpenCV.js: " + e.message);
-        if (startMenuItem) startMenuItem.name("Start Auto Tracking");
+        if (startMenuItem) startMenuItem.name(t("tracking.start.label"));
     });
 }
 
@@ -1167,7 +1168,7 @@ async function runSAM2Tracking() {
     const clickY = objectTracker.trackY;
     const clickFrame = Math.floor(par.frame);
 
-    if (startMenuItem) startMenuItem.name("SAM2: Connecting...");
+    if (startMenuItem) startMenuItem.name(t("tracking.status.sam2Connecting"));
     setRenderOne(true);
 
     try {
@@ -1176,12 +1177,12 @@ async function runSAM2Tracking() {
         const healthResp = await fetch(`${sam2Base}/health`).catch(() => null);
         if (!healthResp || !healthResp.ok) {
             alert("SAM2 service is not running.\n\nStart it with:\n  cd sam2-service && ./start.sh\n\nMake sure your web server proxies /sam2/ to port 8001.");
-            if (startMenuItem) startMenuItem.name("Start Auto Tracking");
+            if (startMenuItem) startMenuItem.name(t("tracking.start.label"));
             return;
         }
 
         // Upload video and start tracking job
-        if (startMenuItem) startMenuItem.name("SAM2: Uploading...");
+        if (startMenuItem) startMenuItem.name(t("tracking.status.sam2Uploading"));
         setRenderOne(true);
         await new Promise(resolve => setTimeout(resolve, 0));
 
@@ -1257,14 +1258,14 @@ async function runSAM2Tracking() {
             console.log(`[SAM2] First result:`, results[0], `Last:`, results[results.length - 1]);
         }
 
-        if (startMenuItem) startMenuItem.name("Start Auto Tracking");
+        if (startMenuItem) startMenuItem.name(t("tracking.start.label"));
         objectTracker.updateSliderStatus();
         setRenderOne(true);
 
     } catch (e) {
         console.error("[SAM2] Tracking failed:", e);
         alert("SAM2 tracking failed: " + e.message);
-        if (startMenuItem) startMenuItem.name("Start Auto Tracking");
+        if (startMenuItem) startMenuItem.name(t("tracking.start.label"));
     }
 }
 
@@ -1272,7 +1273,7 @@ function clearTrack() {
     if (objectTracker) {
         objectTracker.clearTrack();
         if (stabilizeToggleMenuItem) {
-            stabilizeToggleMenuItem.name("Enable Stabilization");
+            stabilizeToggleMenuItem.name(t("tracking.stabilizeToggle.enableLabel"));
         }
     }
 }
@@ -1316,7 +1317,7 @@ function stabilizeVideo() {
     videoData.setStabilizationEnabled(true);
 
     if (stabilizeToggleMenuItem) {
-        stabilizeToggleMenuItem.name("Disable Stabilization");
+        stabilizeToggleMenuItem.name(t("tracking.stabilizeToggle.disableLabel"));
     }
 
     setRenderOne(true);
@@ -1567,33 +1568,33 @@ export function addObjectTrackingMenu() {
     };
 
     enableMenuItem = trackingFolder.add(menuActions, 'enableTracking')
-        .name("Enable Auto Tracking")
-        .tooltip("Toggle display of the auto tracking cursor on video")
+        .name(t("tracking.enable.label"))
+        .tooltip(t("tracking.enable.tooltip"))
         .perm();
 
     startMenuItem = trackingFolder.add(menuActions, 'startTracking')
-        .name("Start Auto Tracking")
-        .tooltip("Automatically track the object inside the cursor as video plays")
+        .name(t("tracking.start.label"))
+        .tooltip(t("tracking.start.tooltip"))
         .perm();
 
     trackingFolder.add(menuActions, 'clearFromHere')
-        .name("Clear from Here")
-        .tooltip("Clear all tracked positions from current frame to end")
+        .name(t("tracking.clearFromHere.label"))
+        .tooltip(t("tracking.clearFromHere.tooltip"))
         .perm();
 
     trackingFolder.add(menuActions, 'clearTrack')
-        .name("Clear Track")
-        .tooltip("Clear all auto-tracked positions and start fresh")
+        .name(t("tracking.clearTrack.label"))
+        .tooltip(t("tracking.clearTrack.tooltip"))
         .perm();
 
     trackingFolder.add(menuActions, 'stabilizeVideo')
-        .name("Stabilize")
-        .tooltip("Apply auto-tracked positions to stabilize the video")
+        .name(t("tracking.stabilize.label"))
+        .tooltip(t("tracking.stabilize.tooltip"))
         .perm();
 
     stabilizeToggleMenuItem = trackingFolder.add(menuActions, 'toggleStabilization')
-        .name("Enable Stabilization")
-        .tooltip("Toggle video stabilization on/off")
+        .name(t("tracking.stabilizeToggle.enableLabel"))
+        .tooltip(t("tracking.stabilizeToggle.tooltip"))
         .perm();
 
     const stabilizeCentersParams = {
@@ -1612,18 +1613,18 @@ export function addObjectTrackingMenu() {
     };
 
     trackingFolder.add(stabilizeCentersParams, 'stabilizeCenters')
-        .name("Stabilize Centers")
-        .tooltip("When checked, the stabilized point is fixed at the center of the view. When unchecked, it stays at its initial position.")
+        .name(t("tracking.stabilizeCenters.label"))
+        .tooltip(t("tracking.stabilizeCenters.tooltip"))
         .perm();
 
     trackingFolder.add(menuActions, 'renderStabilized')
-        .name("Render Stabilized Video")
-        .tooltip("Export stabilized video at original size (tracked point stays fixed, edges may show black)")
+        .name(t("tracking.renderStabilized.label"))
+        .tooltip(t("tracking.renderStabilized.tooltip"))
         .perm();
 
     trackingFolder.add(menuActions, 'renderStabilizedExpanded')
-        .name("Render Stabilized Expanded")
-        .tooltip("Export stabilized video with expanded canvas so no pixels are lost")
+        .name(t("tracking.renderStabilizedExpanded.label"))
+        .tooltip(t("tracking.renderStabilizedExpanded.tooltip"))
         .perm();
 
     const radiusParams = {
@@ -1637,8 +1638,8 @@ export function addObjectTrackingMenu() {
     };
     
     radiusController = trackingFolder.add(radiusParams, 'trackRadius', 10, 100, 1)
-        .name("Track Radius")
-        .tooltip("Size of the template to match (object size)")
+        .name(t("tracking.trackRadius.label"))
+        .tooltip(t("tracking.trackRadius.tooltip"))
         .perm();
 
     const searchRadiusParams = {
@@ -1652,8 +1653,8 @@ export function addObjectTrackingMenu() {
     };
     
     trackingFolder.add(searchRadiusParams, 'searchRadius', 20, 300, 1)
-        .name("Search Radius")
-        .tooltip("How far from previous position to search (increase for fast motion)")
+        .name(t("tracking.searchRadius.label"))
+        .tooltip(t("tracking.searchRadius.tooltip"))
         .perm();
 
     const trackingMethodOptions = {
@@ -1679,8 +1680,8 @@ export function addObjectTrackingMenu() {
     };
 
     trackingFolder.add(trackingMethodParams, 'trackingMethod', Object.keys(trackingMethodOptions))
-        .name("Tracking Method")
-        .tooltip("Template Match (OpenCV) or Optical Flow (jsfeat Lucas-Kanade)")
+        .name(t("tracking.trackingMethod.label"))
+        .tooltip(t("tracking.trackingMethod.tooltip"))
         .perm();
 
     const centerOnBrightParams = {
@@ -1699,8 +1700,8 @@ export function addObjectTrackingMenu() {
     };
 
     trackingFolder.add(centerOnBrightParams, 'centerOnBright')
-        .name("Center on Bright")
-        .tooltip("Track centroid of bright pixels (better for stars/point lights)")
+        .name(t("tracking.centerOnBright.label"))
+        .tooltip(t("tracking.centerOnBright.tooltip"))
         .perm();
 
     const centerOnDarkParams = {
@@ -1718,8 +1719,8 @@ export function addObjectTrackingMenu() {
     };
 
     trackingFolder.add(centerOnDarkParams, 'centerOnDark')
-        .name("Center on Dark")
-        .tooltip("Track centroid of dark pixels")
+        .name(t("tracking.centerOnDark.label"))
+        .tooltip(t("tracking.centerOnDark.tooltip"))
         .perm();
 
     const brightnessParams = {
@@ -1733,8 +1734,8 @@ export function addObjectTrackingMenu() {
     };
 
     trackingFolder.add(brightnessParams, 'brightnessThreshold', 0, 255, 1)
-        .name("Brightness Threshold")
-        .tooltip("Brightness threshold (0-255). Used in Center on Bright/Dark modes")
+        .name(t("tracking.brightnessThreshold.label"))
+        .tooltip(t("tracking.brightnessThreshold.tooltip"))
         .onChange(() => {
             if (objectTracker) {
                 objectTracker.thresholdPreview = true;
@@ -1790,7 +1791,7 @@ export async function deserializeAutoTracking(data) {
         objectTracker = new ObjectTracker(videoView);
     }
     objectTracker.enable();
-    if (enableMenuItem) enableMenuItem.name("Disable Auto Tracking");
+    if (enableMenuItem) enableMenuItem.name(t("tracking.enable.disableLabel"));
 
     // Hook rendering if not already done
     if (!renderHooked) {
@@ -1842,7 +1843,7 @@ export async function deserializeAutoTracking(data) {
                 );
                 videoData.setStabilizationEnabled(true);
                 if (stabilizeToggleMenuItem) {
-                    stabilizeToggleMenuItem.name("Disable Stabilization");
+                    stabilizeToggleMenuItem.name(t("tracking.stabilizeToggle.disableLabel"));
                 }
             }
         }

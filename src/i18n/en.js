@@ -254,6 +254,96 @@ const en = {
             tooltip: "Export the current video frame as displayed (with effects) as a PNG file",
         },
     },
+    tracking: {
+        enable: {
+            label: "Enable Auto Tracking",
+            disableLabel: "Disable Auto Tracking",
+            tooltip: "Toggle display of the auto tracking cursor on video",
+        },
+        start: {
+            label: "Start Auto Tracking",
+            stopLabel: "Stop Auto Tracking",
+            tooltip: "Automatically track the object inside the cursor as video plays",
+        },
+        clearFromHere: {
+            label: "Clear from Here",
+            tooltip: "Clear all tracked positions from current frame to end",
+        },
+        clearTrack: {
+            label: "Clear Track",
+            tooltip: "Clear all auto-tracked positions and start fresh",
+        },
+        stabilize: {
+            label: "Stabilize",
+            tooltip: "Apply auto-tracked positions to stabilize the video",
+        },
+        stabilizeToggle: {
+            enableLabel: "Enable Stabilization",
+            disableLabel: "Disable Stabilization",
+            tooltip: "Toggle video stabilization on/off",
+        },
+        stabilizeCenters: {
+            label: "Stabilize Centers",
+            tooltip: "When checked, the stabilized point is fixed at the center of the view. When unchecked, it stays at its initial position.",
+        },
+        renderStabilized: {
+            label: "Render Stabilized Video",
+            tooltip: "Export stabilized video at original size (tracked point stays fixed, edges may show black)",
+        },
+        renderStabilizedExpanded: {
+            label: "Render Stabilized Expanded",
+            tooltip: "Export stabilized video with expanded canvas so no pixels are lost",
+        },
+        trackRadius: {
+            label: "Track Radius",
+            tooltip: "Size of the template to match (object size)",
+        },
+        searchRadius: {
+            label: "Search Radius",
+            tooltip: "How far from previous position to search (increase for fast motion)",
+        },
+        trackingMethod: {
+            label: "Tracking Method",
+            tooltip: "Template Match (OpenCV) or Optical Flow (jsfeat Lucas-Kanade)",
+        },
+        centerOnBright: {
+            label: "Center on Bright",
+            tooltip: "Track centroid of bright pixels (better for stars/point lights)",
+        },
+        centerOnDark: {
+            label: "Center on Dark",
+            tooltip: "Track centroid of dark pixels",
+        },
+        brightnessThreshold: {
+            label: "Brightness Threshold",
+            tooltip: "Brightness threshold (0-255). Used in Center on Bright/Dark modes",
+        },
+        status: {
+            loadingJsfeat: "Loading jsfeat...",
+            loadingOpenCv: "Loading OpenCV...",
+            sam2Connecting: "SAM2: Connecting...",
+            sam2Uploading: "SAM2: Uploading...",
+        },
+    },
+    trackManager: {
+        removeTrack: "Remove Track",
+        createSpline: "Create Spline",
+        editTrack: "Edit Track",
+        constantSpeed: "Constant Speed",
+        extrapolateTrack: "Extrapolate Track",
+        curveType: "Curve Type",
+        altLockAGL: "Alt Lock AGL",
+        deleteTrack: "Delete Track",
+    },
+    gpuMonitor: {
+        enabled: "Monitor Enabled",
+        total: "Total Memory",
+        geometries: "Geometries",
+        textures: "Textures",
+        peak: "Peak Memory",
+        average: "Average Memory",
+        reset: "Reset History",
+    },
     jet: {
         frames: {
             time: {

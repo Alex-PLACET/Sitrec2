@@ -254,6 +254,96 @@ const fr = {
             tooltip: "Exporter l'image vidéo actuelle telle qu'affichée (avec effets) en fichier PNG",
         },
     },
+    tracking: {
+        enable: {
+            label: "Activer le suivi automatique",
+            disableLabel: "Désactiver le suivi automatique",
+            tooltip: "Afficher/masquer le curseur de suivi automatique sur la vidéo",
+        },
+        start: {
+            label: "Démarrer le suivi automatique",
+            stopLabel: "Arrêter le suivi automatique",
+            tooltip: "Suivre automatiquement l'objet dans le curseur pendant la lecture",
+        },
+        clearFromHere: {
+            label: "Effacer à partir d'ici",
+            tooltip: "Effacer toutes les positions suivies de l'image courante à la fin",
+        },
+        clearTrack: {
+            label: "Effacer la piste",
+            tooltip: "Effacer toutes les positions suivies et recommencer",
+        },
+        stabilize: {
+            label: "Stabiliser",
+            tooltip: "Appliquer les positions suivies pour stabiliser la vidéo",
+        },
+        stabilizeToggle: {
+            enableLabel: "Activer la stabilisation",
+            disableLabel: "Désactiver la stabilisation",
+            tooltip: "Activer/désactiver la stabilisation vidéo",
+        },
+        stabilizeCenters: {
+            label: "Centrer la stabilisation",
+            tooltip: "Quand coché, le point stabilisé est fixé au centre. Sinon, il reste à sa position initiale.",
+        },
+        renderStabilized: {
+            label: "Rendu vidéo stabilisée",
+            tooltip: "Exporter la vidéo stabilisée à la taille originale (le point suivi reste fixe, bords noirs possibles)",
+        },
+        renderStabilizedExpanded: {
+            label: "Rendu stabilisé étendu",
+            tooltip: "Exporter la vidéo stabilisée avec un canvas élargi pour ne perdre aucun pixel",
+        },
+        trackRadius: {
+            label: "Rayon de suivi",
+            tooltip: "Taille du modèle à rechercher (taille de l'objet)",
+        },
+        searchRadius: {
+            label: "Rayon de recherche",
+            tooltip: "Distance de recherche depuis la position précédente (augmenter pour les mouvements rapides)",
+        },
+        trackingMethod: {
+            label: "Méthode de suivi",
+            tooltip: "Correspondance de modèle (OpenCV) ou flux optique (jsfeat Lucas-Kanade)",
+        },
+        centerOnBright: {
+            label: "Centrer sur les pixels clairs",
+            tooltip: "Suivre le centre de masse des pixels clairs (mieux pour les étoiles/lumières ponctuelles)",
+        },
+        centerOnDark: {
+            label: "Centrer sur les pixels sombres",
+            tooltip: "Suivre le centre de masse des pixels sombres",
+        },
+        brightnessThreshold: {
+            label: "Seuil de luminosité",
+            tooltip: "Seuil de luminosité (0-255). Utilisé dans les modes centrer sur clair/sombre",
+        },
+        status: {
+            loadingJsfeat: "Chargement de jsfeat...",
+            loadingOpenCv: "Chargement d'OpenCV...",
+            sam2Connecting: "SAM2 : Connexion...",
+            sam2Uploading: "SAM2 : Envoi...",
+        },
+    },
+    trackManager: {
+        removeTrack: "Supprimer la piste",
+        createSpline: "Créer une spline",
+        editTrack: "Modifier la piste",
+        constantSpeed: "Vitesse constante",
+        extrapolateTrack: "Extrapoler la piste",
+        curveType: "Type de courbe",
+        altLockAGL: "Verrouillage alt. AGL",
+        deleteTrack: "Supprimer la piste",
+    },
+    gpuMonitor: {
+        enabled: "Moniteur activé",
+        total: "Mémoire totale",
+        geometries: "Géométries",
+        textures: "Textures",
+        peak: "Mémoire maximale",
+        average: "Mémoire moyenne",
+        reset: "Réinitialiser l'historique",
+    },
     jet: {
         frames: {
             time: {

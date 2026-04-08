@@ -1,6 +1,7 @@
 // GPU Memory Monitor - Track WebGL/VRAM usage in real-time
 // Displays texture, geometry, and total memory consumption
 // Only active in local/dev mode - zero overhead in production
+import {t} from "./i18n";
 
 class GPUMemoryMonitor {
     constructor(renderer, scene = null) {
@@ -578,13 +579,13 @@ class GPUMemoryMonitor {
             reset: () => this.reset()
         };
         
-        this.guiFolder.add(this.displayControls, 'enabled').name('Monitor Enabled');
-        this.guiFolder.add(this.displayControls, 'total').name('Total Memory').listen().disable();
-        this.guiFolder.add(this.displayControls, 'geometries').name('Geometries').listen().disable();
-        this.guiFolder.add(this.displayControls, 'textures').name('Textures').listen().disable();
-        this.guiFolder.add(this.displayControls, 'peak').name('Peak Memory').listen().disable();
-        this.guiFolder.add(this.displayControls, 'average').name('Average Memory').listen().disable();
-        this.guiFolder.add(this.displayControls, 'reset').name('Reset History');
+        this.guiFolder.add(this.displayControls, 'enabled').name(t("gpuMonitor.enabled"));
+        this.guiFolder.add(this.displayControls, 'total').name(t("gpuMonitor.total")).listen().disable();
+        this.guiFolder.add(this.displayControls, 'geometries').name(t("gpuMonitor.geometries")).listen().disable();
+        this.guiFolder.add(this.displayControls, 'textures').name(t("gpuMonitor.textures")).listen().disable();
+        this.guiFolder.add(this.displayControls, 'peak').name(t("gpuMonitor.peak")).listen().disable();
+        this.guiFolder.add(this.displayControls, 'average').name(t("gpuMonitor.average")).listen().disable();
+        this.guiFolder.add(this.displayControls, 'reset').name(t("gpuMonitor.reset"));
         
         this.enabled = true;
     }
