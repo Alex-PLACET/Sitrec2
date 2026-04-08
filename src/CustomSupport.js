@@ -220,6 +220,10 @@ export class CCustomManager {
     }
 
     setupSettingsMenu() {
+        // Only add once — perm() keeps it across sitch changes
+        if (this._settingsMenuAdded) return;
+        this._settingsMenuAdded = true;
+
         // Create Settings folder in the Sitrec menu
         const tooltipText = getEffectiveUserID() > 0
             ? "Per-user settings saved to server (with cookie backup)"
@@ -227,13 +231,14 @@ export class CCustomManager {
 
         const settingsFolder = guiMenus.main.addFolder("Settings")
             .tooltip(tooltipText)
-            .close();
+            .close()
+            .perm();
 
         Globals.settings.language = getCurrentLanguage();
 
         settingsFolder.add(Globals.settings, "language", SUPPORTED_LANGUAGE_OPTIONS)
             .name("Language")
-            .tooltip("Select interface language. Changing this reloads the UI.")
+            .tooltip("Select interface language. Changing this reloads the page. You will lose any unsaved work, so save first!")
             .onChange((value) => {
                 const previousLanguage = getCurrentLanguage();
                 const normalizedLanguage = setLanguage(value);

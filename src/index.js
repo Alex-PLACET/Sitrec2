@@ -11,8 +11,6 @@ import {ColorManagement, Group, REVISION, Scene, WebGLRenderer,} from "three";
 import "./js/uPlot/uPlot.css"
 import {makeDraggable} from "./DragResizeUtils";
 import {
-    addGUIFolder,
-    addGUIMenu,
     addTranslatedGUIFolder,
     addTranslatedGUIMenu,
     CustomManager,
@@ -1973,6 +1971,15 @@ async function setupFunctions() {
         initJetStuff()
     }
 
+
+    // Settings must be initialized before the settings menu is created
+    if (!CustomManager.settingsInitialized) {
+        await CustomManager.initializeSettings();
+        CustomManager.settingsInitialized = true;
+    }
+
+    // Settings menu is always available (language, detail level, etc.)
+    CustomManager.setupSettingsMenu();
 
     if (Sit.isCustom || Sit.canMod) {
         await CustomManager.setup()
