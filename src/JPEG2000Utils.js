@@ -222,6 +222,65 @@ function looksLikeYCbCr(decoded, nc, pixelCount, cbIdx) {
 }
 
 /**
+ * Convert raw decoded samples from OpenJPEG to RGBA buffer.
+ * Handles >8-bit multi-component data, optional sYCC→RGB, and RGBA packing.
+ * Used by the tiled decode paths (main-thread and worker) to match the
+ * post-processing pipeline of the whole-image decoder.
+ *
+ * @param {Uint8Array} rawDecoded - Raw decoded buffer from OpenJPEG
+ * @param {number} bps - Bits per sample
+ * @param {number} nc - Component count
+ * @param {number} pixelCount - Total pixels (width * height)
+ * @param {Object} [options] - Color space options
+ * @param {boolean} [options.isYCbCr] - Data is in YCbCr color space
+ * @param {number[]} [options.componentMap] - [Y, Cb, Cr] → component indices
+ * @returns {Uint8Array} RGBA buffer (pixelCount * 4 bytes)
+ */
+function rawSamplesToRGBA(rawDecoded, bps, nc, pixelCount, options) {
+    // Step 1: Convert >8-bit samples to 8-bit (all components)
+    let samples;
+    if (bps > 8) {
+        const maxVal = (1 << bps) - 1;
+        const totalSamples = pixelCount * nc;
+        samples = new Uint8Array(totalSamples);
+        for (let i = 0; i < totalSamples; i++) {
+            samples[i] = Math.round((rawDecoded[i * 2] | (rawDecoded[i * 2 + 1] << 8)) * 255 / maxVal);
+        }
+    } else {
+        samples = rawDecoded;
+    }
+
+    // Step 2: sYCC→RGB conversion if needed
+    if (options && options.isYCbCr && nc >= 3) {
+        if (samples === rawDecoded) {
+            samples = new Uint8Array(rawDecoded.subarray(0, pixelCount * nc));
+        }
+        const cbIdx = options.componentMap ? options.componentMap[1] : 1;
+        const check = looksLikeYCbCr(samples, nc, pixelCount, cbIdx);
+        if (check.isYCbCr) {
+            convertSYCCtoRGB(samples, nc, pixelCount, options.componentMap);
+        }
+    }
+
+    // Step 3: Pack to RGBA
+    const rgba = new Uint8Array(pixelCount * 4);
+    if (nc >= 3) {
+        for (let i = 0; i < pixelCount; i++) {
+            rgba[i * 4]     = samples[i * nc];
+            rgba[i * 4 + 1] = samples[i * nc + 1];
+            rgba[i * 4 + 2] = samples[i * nc + 2];
+            rgba[i * 4 + 3] = nc >= 4 ? samples[i * nc + 3] : 255;
+        }
+    } else {
+        for (let i = 0; i < pixelCount; i++) {
+            rgba[i * 4] = rgba[i * 4 + 1] = rgba[i * 4 + 2] = samples[i];
+            rgba[i * 4 + 3] = 255;
+        }
+    }
+    return rgba;
+}
+
+/**
  * Parse a J2K codestream to extract the main header and tile-part boundaries.
  * Used for per-tile decoding of very large tiled J2K images.
  *
@@ -466,7 +525,7 @@ export async function decodeJ2KTiledToCanvas(arrayBuffer, options) {
     try {
         const onProgress = options && options.onProgress;
         const result = await _decodeWithWorkers(
-            tileEntries, data, cs, numTilesX, numUniqueTiles, drawTile, buildTileData, startTime, reduceLevel, onProgress);
+            tileEntries, data, cs, numTilesX, numUniqueTiles, drawTile, buildTileData, startTime, reduceLevel, onProgress, options);
         const totalTime = ((performance.now() - startTime) / 1000).toFixed(1);
         console.log(`JPEG2000Utils: Tiled decode complete: ${result.decoded}/${numUniqueTiles} tiles `
             + `in ${totalTime}s (${result.failed} failed, ${result.workers} workers)`);
@@ -501,31 +560,17 @@ export async function decodeJ2KTiledToCanvas(arrayBuffer, options) {
                     decoder.decode();
                 }
                 const fi = decoder.getFrameInfo();
-                // decodeSubResolution does NOT update frameInfo — always use calculated dims
-                const useW = reduceLevel > 0 ? Math.ceil(XTsiz / (1 << reduceLevel)) : fi.width;
-                const useH = reduceLevel > 0 ? Math.ceil(YTsiz / (1 << reduceLevel)) : fi.height;
+                // decodeSubResolution does NOT update frameInfo — use actual tile dims
+                // Edge tiles may be smaller than XTsiz×YTsiz
+                const tileX0 = XTOsiz + tileCol * XTsiz;
+                const tileY0 = YTOsiz + tileRow * YTsiz;
+                const actualTileW = Math.min(XTsiz, Xsiz - tileX0);
+                const actualTileH = Math.min(YTsiz, Ysiz - tileY0);
+                const useW = reduceLevel > 0 ? Math.ceil(actualTileW / (1 << reduceLevel)) : fi.width;
+                const useH = reduceLevel > 0 ? Math.ceil(actualTileH / (1 << reduceLevel)) : fi.height;
                 if (!useW || !useH) throw new Error('0×0');
                 const raw = decoder.getDecodedBuffer();
-                const bps = fi.bitsPerSample;
-                const nc = fi.componentCount;
-                const px = useW * useH;
-                const rgba = new Uint8Array(px * 4);
-                if (bps > 8) {
-                    const mv = (1 << bps) - 1;
-                    for (let i = 0; i < px; i++) {
-                        const v = Math.round((raw[i*2] | (raw[i*2+1]<<8)) * 255 / mv);
-                        rgba[i*4] = rgba[i*4+1] = rgba[i*4+2] = v; rgba[i*4+3] = 255;
-                    }
-                } else if (nc >= 3) {
-                    for (let i = 0; i < px; i++) {
-                        rgba[i*4] = raw[i*nc]; rgba[i*4+1] = raw[i*nc+1];
-                        rgba[i*4+2] = raw[i*nc+2]; rgba[i*4+3] = 255;
-                    }
-                } else {
-                    for (let i = 0; i < px; i++) {
-                        rgba[i*4] = rgba[i*4+1] = rgba[i*4+2] = raw[i]; rgba[i*4+3] = 255;
-                    }
-                }
+                const rgba = rawSamplesToRGBA(raw, fi.bitsPerSample, fi.componentCount, useW * useH, options);
                 drawTile(tileIndex, rgba, useW, useH);
                 decoded++;
             } finally { decoder.delete(); }
@@ -551,7 +596,7 @@ export async function decodeJ2KTiledToCanvas(arrayBuffer, options) {
  * Decode tiles in parallel using a pool of Web Workers.
  * Each worker loads its own OpenJPEG WASM instance.
  */
-async function _decodeWithWorkers(tileEntries, data, cs, numTilesX, totalTiles, drawTile, buildTileData, startTime, reduceLevel, onProgress) {
+async function _decodeWithWorkers(tileEntries, data, cs, numTilesX, totalTiles, drawTile, buildTileData, startTime, reduceLevel, onProgress, options) {
     const numWorkers = Math.min(navigator.hardwareConcurrency || 4, 8);
     const baseUrl = location.href.replace(/[^/]*$/, '');
     const wasmScriptUrl = baseUrl + 'libs/openjpeg/openjpegwasm_decode.js';
@@ -638,6 +683,8 @@ async function _decodeWithWorkers(tileEntries, data, cs, numTilesX, totalTiles, 
                 sizOffset: cs.sizOffset,
                 sizParams: cs.sizParams,
                 reduceLevel,
+                isYCbCr: !!(options && options.isYCbCr),
+                componentMap: (options && options.componentMap) || null,
             });
         });
     });

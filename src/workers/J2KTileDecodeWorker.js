@@ -5,13 +5,15 @@
  * Loads OpenJPEG WASM and decodes individual J2K tiles.
  *
  * Protocol:
- *   init → {type:'init', wasmScriptUrl, wasmLocateBase, mainHeader, sizOffset, sizParams}
+ *   init → {type:'init', wasmScriptUrl, wasmLocateBase, mainHeader, sizOffset, sizParams,
+ *            reduceLevel, isYCbCr, componentMap}
  *   ready ← {type:'ready'}
  *   decodeTile → {type:'decodeTile', tileIndex, tileData, tileCol, tileRow}
  *   tileResult ← {type:'tileResult', tileIndex, rgba, width, height} (rgba is transferred)
  *   tileError ← {type:'tileError', tileIndex, error}
  *
- * NOTE: buildSingleTileJ2K is duplicated from JPEG2000Utils.js (pure byte manipulation).
+ * NOTE: buildSingleTileJ2K, convertSYCCtoRGB, and looksLikeYCbCr are duplicated
+ * from JPEG2000Utils.js (pure byte/math manipulation).
  * If you change the logic there, update it here too.
  */
 
@@ -20,6 +22,8 @@ let mainHeader = null;
 let sizOffset = 0;
 let sizParams = null;
 let reduceLevel = 0;
+let isYCbCr = false;
+let componentMap = null;
 
 /**
  * Build a single-tile J2K codestream from the main header + one tile's data.
@@ -67,6 +71,41 @@ function buildSingleTileJ2K(mainHeaderBytes, tileData, sizOff, siz, tileCol, til
     return result;
 }
 
+/**
+ * Convert sYCC (YCbCr) pixel data to RGB in-place.
+ * (Duplicated from JPEG2000Utils.js — keep in sync.)
+ */
+function convertSYCCtoRGB(items, nc, pixelCount, cMap) {
+    const yIdx  = cMap ? cMap[0] : 0;
+    const cbIdx = cMap ? cMap[1] : 1;
+    const crIdx = cMap ? cMap[2] : 2;
+    for (let i = 0; i < pixelCount; i++) {
+        const off = i * nc;
+        const y  = items[off + yIdx];
+        const cb = items[off + cbIdx] - 128;
+        const cr = items[off + crIdx] - 128;
+        items[off]     = Math.max(0, Math.min(255, Math.round(y + 1.402 * cr)));
+        items[off + 1] = Math.max(0, Math.min(255, Math.round(y - 0.34414 * cb - 0.71414 * cr)));
+        items[off + 2] = Math.max(0, Math.min(255, Math.round(y + 1.772 * cb)));
+    }
+}
+
+/**
+ * Check if decoded data looks like YCbCr by examining Cb channel mean.
+ * (Duplicated from JPEG2000Utils.js — keep in sync.)
+ */
+function looksLikeYCbCr(decoded, nc, pixelCount, cbIdx) {
+    const sampleCount = Math.min(pixelCount, 10000);
+    const step = Math.max(1, Math.floor(pixelCount / sampleCount));
+    let cbSum = 0, n = 0;
+    for (let i = 0; i < pixelCount; i += step) {
+        cbSum += decoded[i * nc + cbIdx];
+        n++;
+    }
+    const cbMean = cbSum / n;
+    return {isYCbCr: Math.abs(cbMean - 128) < 15, cbMean};
+}
+
 function decodeTile(tileIndex, tileData, tileCol, tileRow) {
     const miniJ2K = buildSingleTileJ2K(mainHeader, tileData, sizOffset, sizParams, tileCol, tileRow);
 
@@ -82,9 +121,15 @@ function decodeTile(tileIndex, tileData, tileCol, tileRow) {
         }
 
         const fi = decoder.getFrameInfo();
-        // decodeSubResolution does NOT update frameInfo — always use calculated dims
-        const width = reduceLevel > 0 ? Math.ceil(sizParams.XTsiz / (1 << reduceLevel)) : fi.width;
-        const height = reduceLevel > 0 ? Math.ceil(sizParams.YTsiz / (1 << reduceLevel)) : fi.height;
+        // decodeSubResolution does NOT update frameInfo — use actual tile dims.
+        // Edge tiles may be smaller than nominal XTsiz×YTsiz.
+        const {Xsiz, Ysiz, XTsiz, YTsiz, XTOsiz, YTOsiz} = sizParams;
+        const tileX0 = XTOsiz + tileCol * XTsiz;
+        const tileY0 = YTOsiz + tileRow * YTsiz;
+        const actualTileW = Math.min(XTsiz, Xsiz - tileX0);
+        const actualTileH = Math.min(YTsiz, Ysiz - tileY0);
+        const width = reduceLevel > 0 ? Math.ceil(actualTileW / (1 << reduceLevel)) : fi.width;
+        const height = reduceLevel > 0 ? Math.ceil(actualTileH / (1 << reduceLevel)) : fi.height;
         if (!width || !height) throw new Error('0×0 decode');
 
         const rawDecoded = decoder.getDecodedBuffer();
@@ -92,31 +137,43 @@ function decodeTile(tileIndex, tileData, tileCol, tileRow) {
         const nc = fi.componentCount;
         const pixelCount = width * height;
 
-        const rgba = new Uint8Array(pixelCount * 4);
-
+        // Step 1: Convert >8-bit samples to 8-bit (all components, not just first)
+        let samples;
         if (bps > 8) {
             const maxVal = (1 << bps) - 1;
-            for (let i = 0; i < pixelCount; i++) {
-                const lo = rawDecoded[i * 2];
-                const hi = rawDecoded[i * 2 + 1];
-                const val = Math.round((lo | (hi << 8)) * 255 / maxVal);
-                rgba[i * 4] = val;
-                rgba[i * 4 + 1] = val;
-                rgba[i * 4 + 2] = val;
-                rgba[i * 4 + 3] = 255;
+            const totalSamples = pixelCount * nc;
+            samples = new Uint8Array(totalSamples);
+            for (let i = 0; i < totalSamples; i++) {
+                samples[i] = Math.round((rawDecoded[i * 2] | (rawDecoded[i * 2 + 1] << 8)) * 255 / maxVal);
             }
-        } else if (nc >= 3) {
+        } else {
+            samples = rawDecoded;
+        }
+
+        // Step 2: sYCC→RGB conversion if needed
+        if (isYCbCr && nc >= 3) {
+            if (samples === rawDecoded) {
+                samples = new Uint8Array(rawDecoded.subarray(0, pixelCount * nc));
+            }
+            const cbIdx = componentMap ? componentMap[1] : 1;
+            const check = looksLikeYCbCr(samples, nc, pixelCount, cbIdx);
+            if (check.isYCbCr) {
+                convertSYCCtoRGB(samples, nc, pixelCount, componentMap);
+            }
+        }
+
+        // Step 3: Pack to RGBA
+        const rgba = new Uint8Array(pixelCount * 4);
+        if (nc >= 3) {
             for (let i = 0; i < pixelCount; i++) {
-                rgba[i * 4] = rawDecoded[i * nc];
-                rgba[i * 4 + 1] = rawDecoded[i * nc + 1];
-                rgba[i * 4 + 2] = rawDecoded[i * nc + 2];
-                rgba[i * 4 + 3] = 255;
+                rgba[i * 4]     = samples[i * nc];
+                rgba[i * 4 + 1] = samples[i * nc + 1];
+                rgba[i * 4 + 2] = samples[i * nc + 2];
+                rgba[i * 4 + 3] = nc >= 4 ? samples[i * nc + 3] : 255;
             }
         } else {
             for (let i = 0; i < pixelCount; i++) {
-                rgba[i * 4] = rawDecoded[i];
-                rgba[i * 4 + 1] = rawDecoded[i];
-                rgba[i * 4 + 2] = rawDecoded[i];
+                rgba[i * 4] = rgba[i * 4 + 1] = rgba[i * 4 + 2] = samples[i];
                 rgba[i * 4 + 3] = 255;
             }
         }
@@ -142,6 +199,8 @@ self.onmessage = async (e) => {
             sizOffset = msg.sizOffset;
             sizParams = msg.sizParams;
             reduceLevel = msg.reduceLevel || 0;
+            isYCbCr = msg.isYCbCr || false;
+            componentMap = msg.componentMap || null;
             self.postMessage({type: 'ready'});
         } catch (err) {
             self.postMessage({type: 'initError', error: err.message});
