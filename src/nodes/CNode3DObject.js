@@ -74,6 +74,7 @@ import {GlobalScene} from "../LocalFrame";
 import {sharedUniforms} from "../js/map33/material/SharedUniforms";
 import {par} from "../par";
 import {CNodeGUIValue} from "./CNodeGUIValue";
+import {t} from "../i18n";
 
 // Map old/renamed model file paths to their current equivalents.
 // Used to remap file paths in loadedFiles and model name references in serialized sitches.
@@ -887,22 +888,22 @@ export class CNode3DObject extends CNode3DGroup {
             }
         }
 
-        this.modelOrGeometryMenu = this.gui.add(this, "modelOrGeometry", ["geometry", "model"]).listen().name("Model or Geometry").onChange((v) => {
+        this.modelOrGeometryMenu = this.gui.add(this, "modelOrGeometry", ["geometry", "model"]).listen().name(t("nodes3dObject.modelOrGeometry.label")).onChange((v) => {
             this.rebuild();
             setRenderOne(true)
-        }).tooltip("Select whether to use a 3D Model or a generated geometry for this object")
+        }).tooltip(t("nodes3dObject.modelOrGeometry.tooltip"))
             .listen();
 
         this.modelOrGeometryMenu.isCommon = true;
 
         this.selectModel = resolveModelAlias(v.model ?? "F/A-18F");
-        this.modelMenu = this.gui.add(this, "selectModel", Object.keys(ModelFiles)).name("Model").onChange((v) => {
+        this.modelMenu = this.gui.add(this, "selectModel", Object.keys(ModelFiles)).name(t("nodes3dObject.model.label")).onChange((v) => {
             this.modelOrGeometry = "model"
             this.rebuild();
             setRenderOne(true)
         })
             .listen()
-            .tooltip("Selecte a 3D Model to use for this object");
+            .tooltip(t("nodes3dObject.model.tooltip"));
 
         this.modelMenu.isCommon = true;
 
@@ -933,25 +934,25 @@ export class CNode3DObject extends CNode3DGroup {
 
         this.displayBoundingBox = false;
 
-        this.gui.add(this, "displayBoundingBox").name("Display Bounding Box").listen().onChange((v) => {
+        this.gui.add(this, "displayBoundingBox").name(t("nodes3dObject.displayBoundingBox.label")).listen().onChange((v) => {
             this.rebuild();
             setRenderOne(true)
         })
-            .tooltip("Display the bounding box of the object with dimensions")
+            .tooltip(t("nodes3dObject.displayBoundingBox.tooltip"))
             .isCommon = true;
 
         this.forceAboveSurface = v.forceAboveSurface ?? true;
         this.addSimpleSerial("forceAboveSurface");
 
-        this.gui.add(this, "forceAboveSurface").name("Force Above Surface").listen().onChange((v) => {
+        this.gui.add(this, "forceAboveSurface").name(t("nodes3dObject.forceAboveSurface.label")).listen().onChange((v) => {
             setRenderOne(true)
         })
-            .tooltip("Force the object to be fully above the ground surface")
+            .tooltip(t("nodes3dObject.forceAboveSurface.tooltip"))
             .isCommon = true;
 
         // Add export to KML button
-       this.gui.add(this, "exportToKML").name("Export to KML")
-            .tooltip("Export this 3D object as a KML file for Google Earth")
+       this.gui.add(this, "exportToKML").name(t("nodes3dObject.exportToKML.label"))
+            .tooltip(t("nodes3dObject.exportToKML.tooltip"))
             .isCommon = true;
 
         // Reflection Analysis
@@ -962,16 +963,16 @@ export class CNode3DObject extends CNode3DGroup {
         this.reflectionFolder.isCommon = true;
 
         this.reflectionFolder.add(this, "startReflectionAnalysis")
-            .name("Start Analysis").tooltip("Cast rays fromt the camera to find  reflection directions").isCommon = true;
+            .name(t("nodes3dObject.startAnalysis.label")).tooltip(t("nodes3dObject.startAnalysis.tooltip")).isCommon = true;
 
         this.reflectionFolder.add(this, "reflectionGridSize", 5, 100, 1)
-            .name("Grid Size").tooltip("Number of sample points per axis for the reflection grid")
+            .name(t("nodes3dObject.gridSize.label")).tooltip(t("nodes3dObject.gridSize.tooltip"))
             .onFinishChange(() => {
                 if (this.reflectionArrowIds.length > 0) this.startReflectionAnalysis();
             }).isCommon = true;
 
         this.reflectionFolder.add(this, "cleanUpReflectionAnalysis")
-            .name("Clean Up").tooltip("Remove all reflection analysis arrows from the scene").isCommon = true;
+            .name(t("nodes3dObject.cleanUp.label")).tooltip(t("nodes3dObject.cleanUp.tooltip")).isCommon = true;
 
         this.rebuild();
 

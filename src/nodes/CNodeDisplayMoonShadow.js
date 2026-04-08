@@ -7,6 +7,7 @@ import {makeMatLine} from "../MatLines";
 import {perpendicularVector} from "../threeUtils";
 import {Globals, guiShowHide, setRenderOne} from "../Globals";
 import {BufferAttribute, BufferGeometry, Mesh, MeshBasicMaterial, Vector3} from "three";
+import {t} from "../i18n";
 
 
 export class CNodeDisplayMoonShadow extends CNode3DGroup {
@@ -55,20 +56,20 @@ export class CNodeDisplayMoonShadow extends CNode3DGroup {
             side: 2
         });
 
-        this.gui.add(this, "visible").name("Show Moon's Shadow").onChange(() => {
+        this.gui.add(this, "visible").name(t("misc.showMoonShadow.label")).onChange(() => {
             this.show(this.visible);
             this.rebuild();
             setRenderOne(true);
         }).listen()
-            .tooltip("Toggle the display of Moon's shadow cone for eclipse visualization.");
+            .tooltip(t("misc.showMoonShadow.tooltip"));
 
         this.gui.add(this, 'numSegments', 5, 50, 1).listen()
             .onChange(() => {
                 setRenderOne(true);
                 this.rebuild();
             })
-            .name("Shadow Segments")
-            .tooltip("Number of segments in the shadow cone (more = smoother but slower)");
+            .name(t("misc.shadowSegments.label"))
+            .tooltip(t("misc.shadowSegments.tooltip"));
 
         this.addSimpleSerial("numSegments")
 

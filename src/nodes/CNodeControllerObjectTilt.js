@@ -7,6 +7,7 @@ import {radians} from "../utils";
 import {getLocalUpVector} from "../SphericalMath";
 import {CNodeSmoothedPositionTrack} from "./CNodeSmoothedPositionTrack";
 import {getGlareAngleFromFrame} from "../JetUtils";
+import {t} from "../i18n";
 
 
 // Full set of tilt options for sitch-defined objects (Gimbal, etc.)
@@ -111,8 +112,8 @@ export class CNodeControllerObjectTilt extends CNodeController {
         }
         this.tiltTypeGuiParent = parent;
         this.tiltTypeGui = parent.add(this, "tiltType", options)
-            .name("Banking")
-            .tooltip("How the object banks/tilts during turns")
+            .name(t("misc.banking.label"))
+            .tooltip(t("misc.banking.tooltip"))
             .listen(() => { setRenderOne(true) })
         // Mark as common so CNode3DObject.destroyNonCommonUI() preserves it
         // when rebuilding geometry-specific GUI controls during deserialization

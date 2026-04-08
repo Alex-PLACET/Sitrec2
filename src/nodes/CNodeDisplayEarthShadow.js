@@ -7,6 +7,7 @@ import {makeMatLine} from "../MatLines";
 import {perpendicularVector, V3} from "../threeUtils";
 import {Globals, guiShowHide, setRenderOne} from "../Globals";
 import {BufferAttribute, BufferGeometry, Mesh, MeshBasicMaterial} from "three";
+import {t} from "../i18n";
 
 /**
  * CNodeDisplayEarthShadow - Displays Earth's shadow cone in the night sky
@@ -73,20 +74,20 @@ export class CNodeDisplayEarthShadow extends CNode3DGroup {
         });
 
 
-        this.gui.add(this, "visible").name("Show Earth's Shadow").onChange(() => {
+        this.gui.add(this, "visible").name(t("misc.showEarthShadow.label")).onChange(() => {
             this.show(this.visible);
             this.rebuild();
             setRenderOne(true);
         }).listen()
-            .tooltip("Toggle the display of Earth's shadow cone in the night sky.");
+            .tooltip(t("misc.showEarthShadow.tooltip"));
 
         this.gui.add(this, 'altitude', 0, 80000000, 1000).listen()
             .onChange(() => {
                 setRenderOne(true);
                 this.rebuild();
             })
-            .name("Earth's Shadow Altitude")
-            .tooltip("Distance from Earth's center to the plane at which to render Earth's shadow cone (in meters).");
+            .name(t("misc.earthShadowAltitude.label"))
+            .tooltip(t("misc.earthShadowAltitude.tooltip"));
 
         this.addSimpleSerial("altitude")
 

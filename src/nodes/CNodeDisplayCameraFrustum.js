@@ -25,6 +25,7 @@ import * as LAYER from "../LayerMasks";
 import {assert} from "../assert";
 import {intersectSphere2} from "../threeUtils";
 import {CNodeGUIValue} from "./CNodeGUIValue";
+import {t} from "../i18n";
 
 export class CNodeDisplayCameraFrustumATFLIR extends CNode3DGroup {
     constructor(v) {
@@ -95,24 +96,24 @@ export class CNodeDisplayCameraFrustum extends CNode3DGroup {
 
         this.showFrustum = v.showFrustum ?? true;
         this.showHider("Camera View Frustum", undefined, "Show the camera's viewing frustum in the 3D scene");
-        this.guiToggle("showQuad", "Frustum Ground Quad", "Show the camera frustum intersection with the ground")
+        this.guiToggle("showQuad", t("cameraFrustum.frustumGroundQuad.label"), t("cameraFrustum.frustumGroundQuad.tooltip"))
 
         this.showVideoInFrustum = false;
-        guiShowHide.add(this, "showVideoInFrustum").name("Video in Frustum").tooltip("Project the video onto the camera frustum far plane").listen().onChange((v) => {
+        guiShowHide.add(this, "showVideoInFrustum").name(t("cameraFrustum.videoInFrustum.label")).tooltip(t("cameraFrustum.videoInFrustum.tooltip")).listen().onChange((v) => {
             this.updateVideoQuadVisibility();
             setRenderOne(true);
         })
         this.addSimpleSerial("showVideoInFrustum")
 
         this.showVideoOnGround = false;
-        guiShowHide.add(this, "showVideoOnGround").name("Video on Ground").tooltip("Project the video onto the ground").listen().onChange((v) => {
+        guiShowHide.add(this, "showVideoOnGround").name(t("cameraFrustum.videoOnGround.label")).tooltip(t("cameraFrustum.videoOnGround.tooltip")).listen().onChange((v) => {
             this.updateGroundVideoQuadVisibility();
             setRenderOne(true);
         })
         this.addSimpleSerial("showVideoOnGround")
 
         this.showGroundVideoInLookView = false;
-        guiShowHide.add(this, "showGroundVideoInLookView").name("Ground Video in Look View").tooltip("Show the ground-projected video in the look view").listen().onChange((v) => {
+        guiShowHide.add(this, "showGroundVideoInLookView").name(t("cameraFrustum.groundVideoInLookView.label")).tooltip(t("cameraFrustum.groundVideoInLookView.tooltip")).listen().onChange((v) => {
             this.updateGroundVideoLayerMask();
             setRenderOne(true);
         })
@@ -134,13 +135,13 @@ export class CNodeDisplayCameraFrustum extends CNode3DGroup {
         }, guiMenus.showhide);
 
         this.matchVideoAspect = false;
-        guiMenus.camera.add(this, "matchVideoAspect").name("Match Video Aspect")
-            .tooltip("Crop the look view to match the video's aspect ratio, and adjust the frustum accordingly")
+        guiMenus.camera.add(this, "matchVideoAspect").name(t("cameraFrustum.matchVideoAspect.label"))
+            .tooltip(t("cameraFrustum.matchVideoAspect.tooltip"))
             .listen().onChange(() => { setRenderOne(true); });
         this.addSimpleSerial("matchVideoAspect")
 
         this.videoOpacity = 1.0;
-        guiShowHide.add(this, "videoOpacity", 0, 1, 0.01).name("Video Opacity").tooltip("Opacity of the projected video overlay").listen().onChange(() => {
+        guiShowHide.add(this, "videoOpacity", 0, 1, 0.01).name(t("cameraFrustum.videoOpacity.label")).tooltip(t("cameraFrustum.videoOpacity.tooltip")).listen().onChange(() => {
             if (this.videoQuadMaterial) {
                 this.videoQuadMaterial.opacity = this.videoOpacity;
             }

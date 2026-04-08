@@ -1,5 +1,6 @@
 import {CNodeViewCanvas2D} from "./CNodeViewCanvas";
 import {guiMenus, NodeMan} from "../Globals";
+import {t} from "../i18n";
 
 export class CNodeViewDAG extends CNodeViewCanvas2D {
     constructor(v) {
@@ -34,7 +35,7 @@ export class CNodeViewDAG extends CNodeViewCanvas2D {
 
         this.setupMouseHandlers();
 
-        guiMenus.help.add(this, "recalculateLayout").name("Recalc Node Graph");
+        guiMenus.help.add(this, "recalculateLayout").name(t("misc.recalcNodeGraph.label"));
     }
 
     setupMouseHandlers() {

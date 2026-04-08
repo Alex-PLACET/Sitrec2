@@ -14,6 +14,7 @@ import {assert} from "../assert";
 import {saveAs} from "file-saver";
 import {showError} from "../showError";
 import {CPointLightCloud} from "./CPointLightCloud";
+import {t} from "../i18n";
 
 /**
  * CSatellite handles all satellite-related functionality
@@ -704,7 +705,7 @@ export class CSatellite {
                     saveAs(new Blob([tleText]), "satellites.tle");
                 }
             };
-            this.exportTLEButton = guiMenus.file.add(obj, 'exportTLE').name('Export TLE');
+            this.exportTLEButton = guiMenus.file.add(obj, 'exportTLE').name(t("misc.exportTLE.label"));
         }
 
     }
@@ -740,7 +741,7 @@ export class CSatellite {
                 saveAs(new Blob([rawText]), "satellites.tle");
             }
         };
-        this.exportTLEButton = guiMenus.file.add(obj, 'exportTLE').name('Export TLE');
+        this.exportTLEButton = guiMenus.file.add(obj, 'exportTLE').name(t("misc.exportTLE.label"));
     }
 
     removeSatellites() {

@@ -8,6 +8,7 @@ import {Raycaster, Vector3} from "three";
 import * as LAYER from "../LayerMasks";
 import {GlobalScene} from "../LocalFrame";
 import {assert} from "../assert";
+import {t} from "../i18n";
 
 export class CNodeBackgroundFlowIndicator extends CNode {
     constructor(v) {
@@ -29,9 +30,8 @@ export class CNodeBackgroundFlowIndicator extends CNode {
                 this.remove();
             }
         })
-            .name("Background Flow Indicator")
-            .tooltip("Display an arrow indicating how much the background will move in the next frame/n" +
-                "Useful for syncing the sim with video (use View/Vid Overlay)")
+            .name(t("misc.backgroundFlowIndicator.label"))
+            .tooltip(t("misc.backgroundFlowIndicator.tooltip"))
 
 
     }

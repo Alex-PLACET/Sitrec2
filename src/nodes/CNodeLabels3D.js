@@ -15,6 +15,7 @@ import {assert} from "../assert";
 import {V2, V3} from "../threeUtils";
 import {EventManager} from "../CEventManager";
 import {registerLabel3D, unregisterLabel3D} from "./CNodeDisplaySkyOverlay";
+import {t} from "../i18n";
 
 
 export const measurementUIVars = {
@@ -82,7 +83,7 @@ export function setupMeasurementUI() {
 
     refreshMeasurementVisibility();
 
-    measurementUIVars.controller =  guiShowHide.add(Globals, "showMeasurements").name("Measurements").tooltip("Show distance and angle measurement labels and arrows").listen().onChange( (value) => {
+    measurementUIVars.controller =  guiShowHide.add(Globals, "showMeasurements").name(t("labels3d.measurements.label")).tooltip(t("labels3d.measurements.tooltip")).listen().onChange( (value) => {
 //        console.warn("%%%%%%% showMeasurements changed to " + value)
         refreshMeasurementVisibility();
         setRenderOne(true);
@@ -95,12 +96,12 @@ export function setupMeasurementUI() {
 
 
 
-    labelsControllerMain = guiShowHide.add(Globals, "showLabelsMain").name("Labels in Main").tooltip("Show track/object labels in the main 3D view").listen().onChange( (value) => {
+    labelsControllerMain = guiShowHide.add(Globals, "showLabelsMain").name(t("labels3d.labelsInMain.label")).tooltip(t("labels3d.labelsInMain.tooltip")).listen().onChange( (value) => {
        refreshLabelVisibility();
        setRenderOne(true);
     });
 
-    labelsControllerLook = guiShowHide.add(Globals, "showLabelsLook").name("Labels in Look").tooltip("Show track/object labels in the look/camera view").listen().onChange( (value) => {
+    labelsControllerLook = guiShowHide.add(Globals, "showLabelsLook").name(t("labels3d.labelsInLook.label")).tooltip(t("labels3d.labelsInLook.tooltip")).listen().onChange( (value) => {
         refreshLabelVisibility();
         setRenderOne(true);
     })
@@ -110,12 +111,12 @@ export function setupMeasurementUI() {
     Globals.showFeaturesMain = true;
     Globals.showFeaturesLook = false;
 
-    featuresControllerMain = guiShowHide.add(Globals, "showFeaturesMain").name("Features/Pins in Main").tooltip("Show feature markers (pins) in the main 3D view").listen().onChange( (value) => {
+    featuresControllerMain = guiShowHide.add(Globals, "showFeaturesMain").name(t("labels3d.featuresInMain.label")).tooltip(t("labels3d.featuresInMain.tooltip")).listen().onChange( (value) => {
         refreshFeatureVisibility();
         setRenderOne(true);
     });
 
-    featuresControllerLook = guiShowHide.add(Globals, "showFeaturesLook").name("Features in Look").tooltip("Show feature markers in the look/camera view").listen().onChange( (value) => {
+    featuresControllerLook = guiShowHide.add(Globals, "showFeaturesLook").name(t("labels3d.featuresInLook.label")).tooltip(t("labels3d.featuresInLook.tooltip")).listen().onChange( (value) => {
         refreshFeatureVisibility();
         setRenderOne(true);
     })

@@ -1285,6 +1285,291 @@ const fr = {
             tooltip: "Rotation à l'écran autour de l'axe de visée de la caméra",
         },
     },
+
+    nodes3dObject: {
+        modelOrGeometry: {
+            label: "Modèle ou Géométrie",
+            tooltip: "Choisir entre un modèle 3D ou une géométrie générée pour cet objet",
+        },
+        model: {
+            label: "Modèle",
+            tooltip: "Sélectionner un modèle 3D à utiliser pour cet objet",
+        },
+        displayBoundingBox: {
+            label: "Afficher la boîte englobante",
+            tooltip: "Afficher la boîte englobante de l'objet avec ses dimensions",
+        },
+        forceAboveSurface: {
+            label: "Forcer au-dessus de la surface",
+            tooltip: "Forcer l'objet à rester entièrement au-dessus de la surface du sol",
+        },
+        exportToKML: {
+            label: "Exporter en KML",
+            tooltip: "Exporter cet objet 3D en fichier KML pour Google Earth",
+        },
+        startAnalysis: {
+            label: "Lancer l'analyse",
+            tooltip: "Lancer des rayons depuis la caméra pour trouver les directions de réflexion",
+        },
+        gridSize: {
+            label: "Taille de grille",
+            tooltip: "Nombre de points d'échantillonnage par axe pour la grille de réflexion",
+        },
+        cleanUp: {
+            label: "Nettoyer",
+            tooltip: "Supprimer toutes les flèches d'analyse de réflexion de la scène",
+        },
+    },
+
+    trackingOverlay: {
+        showTracking: {
+            label: "Afficher le suivi",
+            tooltip: "Afficher ou masquer les points de suivi et la courbe superposée",
+        },
+        reset: {
+            label: "Réinitialiser",
+            tooltip: "Réinitialiser le suivi manuel à un état vide, en supprimant toutes les images clés et les éléments déplaçables",
+        },
+        limitAB: {
+            label: "Limiter AB",
+            tooltip: "Limiter les images A et B à la plage des images clés de suivi vidéo. Cela empêchera l'extrapolation au-delà des premières et dernières images clés, ce qui n'est pas toujours souhaité.",
+        },
+        curveType: {
+            label: "Type de courbe",
+            tooltip: "Spline utilise la spline cubique naturelle. Spline2 utilise la spline not-a-knot pour un comportement plus lisse aux extrémités. Linéaire utilise des segments de droite. Perspective nécessite exactement 3 images clés et modélise un mouvement linéaire avec projection perspective.",
+        },
+        minimizeGroundSpeed: {
+            label: "Minimiser la vitesse au sol",
+            tooltip: "Trouver la distance de départ cible qui minimise la distance au sol parcourue par la trajectoire de traversée",
+        },
+        minimizeAirSpeed: {
+            label: "Minimiser la vitesse air",
+            tooltip: "Trouver la distance de départ cible qui minimise la distance air parcourue (en tenant compte du vent cible)",
+        },
+    },
+
+    cameraFrustum: {
+        frustumGroundQuad: {
+            label: "Quadrilatère au sol du frustum",
+            tooltip: "Afficher l'intersection du frustum de la caméra avec le sol",
+        },
+        videoInFrustum: {
+            label: "Vidéo dans le frustum",
+            tooltip: "Projeter la vidéo sur le plan éloigné du frustum de la caméra",
+        },
+        videoOnGround: {
+            label: "Vidéo au sol",
+            tooltip: "Projeter la vidéo sur le sol",
+        },
+        groundVideoInLookView: {
+            label: "Vidéo au sol dans la vue caméra",
+            tooltip: "Afficher la vidéo projetée au sol dans la vue caméra",
+        },
+        matchVideoAspect: {
+            label: "Adapter le ratio vidéo",
+            tooltip: "Recadrer la vue caméra pour correspondre au ratio d'aspect de la vidéo et ajuster le frustum en conséquence",
+        },
+        videoOpacity: {
+            label: "Opacité de la vidéo",
+            tooltip: "Opacité de la superposition vidéo projetée",
+        },
+    },
+
+    labels3d: {
+        measurements: {
+            label: "Mesures",
+            tooltip: "Afficher les étiquettes et flèches de mesure de distance et d'angle",
+        },
+        labelsInMain: {
+            label: "Étiquettes dans la vue principale",
+            tooltip: "Afficher les étiquettes de trajectoire/objet dans la vue 3D principale",
+        },
+        labelsInLook: {
+            label: "Étiquettes dans la vue caméra",
+            tooltip: "Afficher les étiquettes de trajectoire/objet dans la vue caméra",
+        },
+        featuresInMain: {
+            label: "Marqueurs/Épingles dans la vue principale",
+            tooltip: "Afficher les marqueurs de points d'intérêt (épingles) dans la vue 3D principale",
+        },
+        featuresInLook: {
+            label: "Marqueurs dans la vue caméra",
+            tooltip: "Afficher les marqueurs de points d'intérêt dans la vue caméra",
+        },
+    },
+
+    losFitPhysics: {
+        model: {
+            label: "Modèle",
+        },
+        avgError: {
+            label: "Erreur moy. (rad)",
+        },
+        windSpeed: {
+            label: "Vitesse du vent (kt)",
+        },
+        windFrom: {
+            label: "Vent venant de (\u00B0)",
+        },
+    },
+
+    misbData: {
+        startTime: {
+            label: "Heure de début",
+            tooltip: "Remplacer l'heure de début (ex. : '10:30', '15 jan', '2024-01-15T10:30:00Z'). Laisser vide pour l'heure de début globale.",
+        },
+        enableFilter: {
+            label: "Activer le filtre",
+        },
+        tryAltitudeFirst: {
+            label: "Essayer l'altitude d'abord",
+        },
+        maxG: {
+            label: "G max",
+        },
+    },
+
+    positionLLA: {
+        aboveGroundLevel: {
+            label: "Au-dessus du sol",
+            tooltip: "L'altitude est relative au niveau du sol, pas au niveau de la mer",
+        },
+        lookup: {
+            label: "Rechercher",
+            tooltip: "Entrer un nom de lieu, des coordonnées lat,lon ou MGRS pour s'y déplacer",
+        },
+        geolocate: {
+            label: "Géolocaliser depuis le navigateur",
+            tooltip: "Utiliser l'API de géolocalisation du navigateur pour définir votre position actuelle",
+        },
+        goTo: {
+            label: "Aller à la position ci-dessus",
+            tooltip: "Déplacer le terrain et la caméra vers la latitude/longitude/altitude saisie",
+        },
+    },
+
+    controllerVarious: {
+        stopAt: {
+            label: "Arrêter à",
+            tooltip: "Arrêter le mouvement de la cible de la caméra à cette image, même si la trajectoire cible continue. Utile pour simuler la perte de verrouillage sur une cible en mouvement. Mettre à 0 pour désactiver.",
+        },
+        horizonMethod: {
+            label: "Méthode d'horizon",
+        },
+        lookFOV: {
+            label: "CDV de la vue",
+        },
+        celestialObject: {
+            label: "Objet céleste",
+            tooltip: "Nom du corps céleste que la caméra suit (ex. : Lune, Vénus, Jupiter)",
+        },
+    },
+
+    spriteGroup: {
+        visible: {
+            label: "Visible",
+            tooltip: "Afficher ou masquer les orbes de flux",
+        },
+        size: {
+            label: "Taille (m)",
+            tooltip: "Diamètre en mètres.",
+        },
+        viewSizeMultiplier: {
+            label: "Multiplicateur de taille de vue",
+            tooltip: "Ajuste la taille des orbes de flux dans la vue principale, sans changer la taille dans les autres vues.",
+        },
+    },
+
+    imageAnalysis: {
+        bestAngleFull: {
+            label: "Meilleur angle, 180° complet, affiné",
+        },
+        bestAngle5: {
+            label: "Meilleur angle dans les 5° de l'actuel",
+        },
+    },
+
+    misc: {
+        snapshotCamera: {
+            label: "Instantané caméra",
+            tooltip: "Sauvegarder la position et l'orientation actuelles de la caméra pour 'Réinitialiser la caméra'",
+        },
+        resetCamera: {
+            label: "Réinitialiser la caméra",
+            tooltip: "Réinitialiser la caméra à la position par défaut, ou au dernier instantané\nAussi Pavé num-.",
+        },
+        showMoonShadow: {
+            label: "Afficher l'ombre de la Lune",
+            tooltip: "Basculer l'affichage du cône d'ombre de la Lune pour la visualisation d'éclipse.",
+        },
+        shadowSegments: {
+            label: "Segments d'ombre",
+            tooltip: "Nombre de segments dans le cône d'ombre (plus = plus lisse mais plus lent)",
+        },
+        showEarthShadow: {
+            label: "Afficher l'ombre de la Terre",
+            tooltip: "Basculer l'affichage du cône d'ombre de la Terre dans le ciel nocturne.",
+        },
+        earthShadowAltitude: {
+            label: "Altitude de l'ombre terrestre",
+            tooltip: "Distance du centre de la Terre au plan de rendu du cône d'ombre terrestre (en mètres).",
+        },
+        exportTLE: {
+            label: "Exporter TLE",
+        },
+        backgroundFlowIndicator: {
+            label: "Indicateur de flux d'arrière-plan",
+            tooltip: "Afficher une flèche indiquant le déplacement de l'arrière-plan à l'image suivante.\nUtile pour synchroniser la simulation avec la vidéo (utiliser Vue/Superposition Vidéo)",
+        },
+        defaultSnap: {
+            label: "Accrochage par défaut",
+            tooltip: "Lorsqu'activé, les points s'aligneront horizontalement par défaut pendant le glissement.\nMaintenir Maj (pendant le glissement) pour faire l'inverse",
+        },
+        recalcNodeGraph: {
+            label: "Recalculer le graphe de nœuds",
+        },
+        downloadVideo: {
+            label: "Télécharger la vidéo",
+        },
+        banking: {
+            label: "Inclinaison",
+            tooltip: "Comment l'objet s'incline pendant les virages",
+        },
+        angularTraverse: {
+            label: "Traversée angulaire",
+        },
+        smoothingMethod: {
+            label: "Méthode de lissage",
+            tooltip: "Algorithme utilisé pour lisser les données de trajectoire de la caméra",
+        },
+        showInLookView: {
+            label: "Afficher dans la vue caméra",
+        },
+        windFrom: {
+            tooltip: "Cap vrai d'où vient le vent (0=Nord, 90=Est)",
+        },
+        windKnots: {
+            tooltip: "Vitesse du vent en nœuds",
+        },
+        fetchWind: {
+            tooltip: "Récupérer les données de vent réelles depuis les services météo pour cette position et cette heure",
+        },
+        debugConsole: {
+            label: "Console de débogage",
+            tooltip: "Console de débogage",
+        },
+        aiAssistant: {
+            label: "Assistant IA",
+        },
+        hide: {
+            label: "Masquer",
+            tooltip: "Masquer cette vue à onglets\nPour la réafficher, utilisez le menu 'Affichage/Masquage -> Vues'.",
+        },
+        notes: {
+            label: "Notes",
+            tooltip: "Afficher/Masquer l'éditeur de notes. Les notes sont sauvegardées avec le sitch et peuvent contenir des hyperliens cliquables.",
+        },
+    },
 };
 
 export default fr;

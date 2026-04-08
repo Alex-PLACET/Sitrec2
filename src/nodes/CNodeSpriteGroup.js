@@ -5,6 +5,7 @@ import * as LAYER from "../LayerMasks";
 
 import {SITREC_APP} from "../configUtils";
 import {sharedUniforms} from "../js/map33/material/SharedUniforms";
+import {t} from "../i18n";
 
 export class CNodeSpriteGroup extends CNode3DGroup {
 
@@ -142,22 +143,22 @@ constructor(v) {
 
     this.group.visible = this.visible;
 
-    this.gui.add(this, "visible").name("Visible").tooltip("Show or hide the flow orbs").onChange(() => {
+    this.gui.add(this, "visible").name(t("spriteGroup.visible.label")).tooltip(t("spriteGroup.visible.tooltip")).onChange(() => {
         this.group.visible = this.visible;
     }).listen();
 
     // Size in meters, used a CNodeGUIValue to create a unit-scaled slider
-    this.gui.add(this, "size", 0.1, 10, 0.01).name("Size (m)").onChange(() => {
+    this.gui.add(this, "size", 0.1, 10, 0.01).name(t("spriteGroup.size.label")).onChange(() => {
         // Adjust size attribute in geometry
         for (let i = 0; i < this.nSprites; i++) {
             this.sizes[i] = this.size;
         }
         this.geometry.attributes.size.needsUpdate = true;
     }).elastic(10, 1000) // elastic is the range of max values for the slider
-        .tooltip("Diameter in meters.").listen();
+        .tooltip(t("spriteGroup.size.tooltip")).listen();
 
 
-    this.gui.add(this, "mainSizeMultiplier", 1, 100,0.1).name("View Size Multiplier").tooltip("Adjusts the size of the flow orbs in the main view, but does not change the size in other views.").listen();
+    this.gui.add(this, "mainSizeMultiplier", 1, 100,0.1).name(t("spriteGroup.viewSizeMultiplier.label")).tooltip(t("spriteGroup.viewSizeMultiplier.tooltip")).listen();
 
     this.simpleSerials.push("size", "mainSizeMultiplier");
 }

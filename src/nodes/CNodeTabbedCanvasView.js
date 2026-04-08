@@ -1,6 +1,7 @@
 import GUI from "../js/lil-gui.esm";
 import {CNodeViewCanvas2D} from "./CNodeViewCanvas";
 import {makeDraggable, removeDraggable} from "../DragResizeUtils";
+import {t} from "../i18n";
 
 class CNodeTabbedCanvasView extends CNodeViewCanvas2D {
     constructor(v) {
@@ -38,8 +39,8 @@ class CNodeTabbedCanvasView extends CNodeViewCanvas2D {
                 this.show(false);
             }
         };
-        this.tabMenu.add(closeObj, 'close').name('Hide')
-            .tooltip("Hide this tabbed canvas view\nTo show it again, use the 'Show/Hide -> Views' menu.");
+        this.tabMenu.add(closeObj, 'close').name(t("misc.hide.label"))
+            .tooltip(t("misc.hide.tooltip"));
 
         this.tabMenu.close();
 

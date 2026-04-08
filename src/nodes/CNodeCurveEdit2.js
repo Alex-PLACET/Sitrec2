@@ -3,6 +3,7 @@ import {NodeMan, setRenderOne, Sit, UndoManager} from "../Globals";
 import {par} from "../par";
 import {CNodeTabbedCanvasView} from "./CNodeTabbedCanvasView";
 import {assert} from "../assert";
+import {t} from "../i18n";
 
 export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
     constructor(v) {
@@ -90,11 +91,11 @@ export class CNodeCurveEditorView2 extends CNodeTabbedCanvasView {
         };
 
         this.tabMenu.add(snapSettings, 'defaultSnap')
-            .name('Default Snap')
+            .name(t("misc.defaultSnap.label"))
             .onChange((value) => {
                 this.defaultSnap = value;
             })
-        .tooltip("When enabled, points will snap to horizontal alignment by default while dragging.\nHold Shift (while dragging) to to the opposite");
+        .tooltip(t("misc.defaultSnap.tooltip"));
 
         this.createYRangeSlider();
     }

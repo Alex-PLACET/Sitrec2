@@ -5,6 +5,7 @@ import {CNodeTrack} from "./CNodeTrack";
 import {fitPhysicsModel, buildLOSDataset, unpackFitPositions} from "../LOSFitting";
 import {ChineseLanternModel} from "../ChineseLanternModel";
 import {guiMenus} from "../Globals";
+import {t} from "../i18n";
 
 // Registry of available physics models
 const physicsModels = {
@@ -89,8 +90,8 @@ export class CNodeLOSFitPhysics extends CNodeTrack {
         // Use strings for all display values to avoid lil-gui NumberController step requirement
         this.guiDisplay._model = fitParams.model;
         this.guiDisplay._cost = fitParams.cost.toFixed(6);
-        this.guiFolder.add(this.guiDisplay, "_model").name("Model").disable();
-        this.guiFolder.add(this.guiDisplay, "_cost").name("Avg Error (rad)").disable();
+        this.guiFolder.add(this.guiDisplay, "_model").name(t("losFitPhysics.model.label")).disable();
+        this.guiFolder.add(this.guiDisplay, "_cost").name(t("losFitPhysics.avgError.label")).disable();
 
         // Wind speed and direction derived from E/N components
         const solved = fitParams.solved;
@@ -100,8 +101,8 @@ export class CNodeLOSFitPhysics extends CNodeTrack {
             const windFromDeg = (Math.atan2(-solved.windE, -solved.windN) * 180 / Math.PI + 360) % 360;
             this.guiDisplay._windSpeed = windSpeedKt.toFixed(1);
             this.guiDisplay._windFrom = windFromDeg.toFixed(1);
-            this.guiFolder.add(this.guiDisplay, "_windSpeed").name("Wind Speed (kt)").disable();
-            this.guiFolder.add(this.guiDisplay, "_windFrom").name("Wind From (°)").disable();
+            this.guiFolder.add(this.guiDisplay, "_windSpeed").name(t("losFitPhysics.windSpeed.label")).disable();
+            this.guiFolder.add(this.guiDisplay, "_windFrom").name(t("losFitPhysics.windFrom.label")).disable();
         }
 
         // All solved parameters as strings

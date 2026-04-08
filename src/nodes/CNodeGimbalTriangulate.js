@@ -8,6 +8,7 @@ import * as LAYER from "../LayerMasks";
 import {getLocalUpVector} from "../SphericalMath";
 import {guiShowHide, setRenderOne, Sit} from "../Globals";
 import {Vector3} from "three";
+import {t} from "../i18n";
 
 export class CNodeGimbalTriangulate extends CNode3DGroup {
     constructor(v) {
@@ -31,7 +32,7 @@ export class CNodeGimbalTriangulate extends CNode3DGroup {
         this.showHider("Zaine Triangulation");
         this.show(false);
 
-        guiShowHide.add(this, "angleOffset", 2, 5, 0.001).name("Angular Traverse").onChange(() => {
+        guiShowHide.add(this, "angleOffset", 2, 5, 0.001).name(t("misc.angularTraverse.label")).onChange(() => {
             this.recalculate();
             setRenderOne(true);
         });

@@ -17,6 +17,7 @@ import {CVideoAudioOnly} from "../CVideoAudioOnly";
 import {isAudioOnlyFormat} from "../AudioFormats";
 import {VideoLoadingManager} from "../CVideoLoadingManager";
 import {resolveURLForFetch} from "../SitrecObjectResolver";
+import {t} from "../i18n";
 
 export class CNodeVideoWebCodecView extends CNodeVideoView {
     constructor(v) {
@@ -120,7 +121,7 @@ export class CNodeVideoWebCodecView extends CNodeVideoView {
         };
 
         // Add a button to the GUI
-        this.button = FileManager.guiFolder.add(obj, 'openURL').name('Download Video');
+        this.button = FileManager.guiFolder.add(obj, 'openURL').name(t("misc.downloadVideo.label"));
     }
 
     removeDownloadButton() {

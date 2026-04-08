@@ -2,6 +2,7 @@ import {CNodeView} from "./CNodeView";
 import {guiShowHide, setRenderOne} from "../Globals";
 import {blockViewEvents, makeDraggable} from "../DragResizeUtils";
 import {ViewMan} from "../CViewManager";
+import {t} from "../i18n";
 
 class CNodeNotes extends CNodeView {
     constructor(v) {
@@ -27,14 +28,14 @@ class CNodeNotes extends CNodeView {
 
         guiShowHide.add(this, 'visible')
             .listen()
-            .name("Notes").onChange(value => {
+            .name(t("misc.notes.label")).onChange(value => {
                 this.visible = undefined;
                 this.setVisible(value);
                 if (value) {
                     this.recalculate();
                 }
             })
-            .tooltip("Show/Hide the notes editor. Notes are saved with the sitch and can contain clickable hyperlinks.")
+            .tooltip(t("misc.notes.tooltip"))
             .moveToFirst();
 
         this.applyEarlyMods();

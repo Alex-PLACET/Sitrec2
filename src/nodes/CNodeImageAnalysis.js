@@ -6,6 +6,7 @@ import {RollingAverage} from "../smoothing";
 import {CNodeArray} from "./CNodeArray";
 import {CNodeGraphSeries} from "./CNodeGraphSeries";
 import {assert} from "../assert";
+import {t} from "../i18n";
 
 
 function getPixelData(image) {
@@ -115,8 +116,8 @@ export class CNodeImageAnalysis extends CNodeImageView {
         gui.add(this,"centerLine").onChange(v => {this.recalculate()}).listen()
 
 
-        gui.add(this,'findBestAngleSuccessive').name("Best Angle, full 180, refined")
-        gui.add(this,'findBestAngle5').name("Best angle within 5° of current")
+        gui.add(this,'findBestAngleSuccessive').name(t("imageAnalysis.bestAngleFull.label"))
+        gui.add(this,'findBestAngle5').name(t("imageAnalysis.bestAngle5.label"))
 
 
         this.pixelData = getPixelData(this.image)

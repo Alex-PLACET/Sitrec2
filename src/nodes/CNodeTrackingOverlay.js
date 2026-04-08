@@ -11,6 +11,7 @@ import {extractFOV} from "./CNodeControllerVarious";
 import {mouseToCanvas} from "../ViewUtils";
 import {CNodeVideoView} from "./CNodeVideoView";
 import {EventManager} from "../CEventManager";
+import {t} from "../i18n";
 
 /*
     the intent of a tracking overlay is to track point on a video
@@ -277,15 +278,15 @@ export class CNodeTrackingOverlay extends CNodeActiveOverlay {
 
         this.showTracking = true;
 
-        this.manualTrackingFolder.add(this, "showTracking").name("Show Tracking").listen()
-            .tooltip("Show or hide the tracking points and curve overlay")
+        this.manualTrackingFolder.add(this, "showTracking").name(t("trackingOverlay.showTracking.label")).listen()
+            .tooltip(t("trackingOverlay.showTracking.tooltip"))
 
-        this.manualTrackingFolder.add(this, "resetDraggable").name("Reset")
-            .tooltip("Reset manual tracking to an empty state, removing all keyframes and draggable items")
+        this.manualTrackingFolder.add(this, "resetDraggable").name(t("trackingOverlay.reset.label"))
+            .tooltip(t("trackingOverlay.reset.tooltip"))
 
 
         this.limitAB = false;
-        this.manualTrackingFolder.add(this, "limitAB").name("Limit AB").listen().onChange(() => {
+        this.manualTrackingFolder.add(this, "limitAB").name(t("trackingOverlay.limitAB.label")).listen().onChange(() => {
 
             if (this.limitAB && this.keyframes.length > 0) {
                 this.applyLimitAB();
@@ -297,10 +298,10 @@ export class CNodeTrackingOverlay extends CNodeActiveOverlay {
             NodeMan.recalculateAllRootFirst();
 n
         })
-            .tooltip("Limit the A and B frames to the range of the video tracking keyframes. This will preven extrapolation beyond the first and last keyframes, which is not alwyays desired.")
+            .tooltip(t("trackingOverlay.limitAB.tooltip"))
 
         this.curveType = "Spline2";
-        this.manualTrackingFolder.add(this, "curveType", ["Spline", "Spline2", "Linear", "Perspective"]).name("Curve Type").listen().onChange(() => {
+        this.manualTrackingFolder.add(this, "curveType", ["Spline", "Spline2", "Linear", "Perspective"]).name(t("trackingOverlay.curveType.label")).listen().onChange(() => {
             if (this.curveType === "Perspective") {
                 const traverseSelect = NodeMan.get("LOSTraverseSelectTrack", false);
                 if (traverseSelect && traverseSelect.inputs["Perspective"]) {
@@ -311,13 +312,13 @@ n
             }
             this.recalculateCascade();
         })
-            .tooltip("Spline uses natural cubic spline. Spline2 uses not-a-knot spline for smoother end behavior. Linear uses straight line segments. Perspective requires exactly 3 keyframes and models linear motion with perspective projection.")
+            .tooltip(t("trackingOverlay.curveType.tooltip"))
 
-        this.manualTrackingFolder.add(this, "minimizeGroundSpeed").name("Minimize Ground Speed")
-            .tooltip("Find the Tgt Start Dist that minimizes the ground distance traveled by the traverse path")
+        this.manualTrackingFolder.add(this, "minimizeGroundSpeed").name(t("trackingOverlay.minimizeGroundSpeed.label"))
+            .tooltip(t("trackingOverlay.minimizeGroundSpeed.tooltip"))
 
-        this.manualTrackingFolder.add(this, "minimizeAirSpeed").name("Minimize Air Speed")
-            .tooltip("Find the Tgt Start Dist that minimizes the air distance traveled (accounting for target wind)")
+        this.manualTrackingFolder.add(this, "minimizeAirSpeed").name(t("trackingOverlay.minimizeAirSpeed.label"))
+            .tooltip(t("trackingOverlay.minimizeAirSpeed.tooltip"))
 
         this.separateVisibility = true; // don't propagate visibility to the overlaid view
 

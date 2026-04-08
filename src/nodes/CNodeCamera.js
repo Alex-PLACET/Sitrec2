@@ -12,6 +12,7 @@ import {
 import {CNode3D} from "./CNode3D";
 import {MV3} from "../threeUtils";
 import {getCelestialDirection, getCelestialDirectionFromRaDec} from "../CelestialMath";
+import {t} from "../i18n";
 
 export class CNodeCamera extends CNode3D {
     constructor(v, camera = null) {
@@ -41,10 +42,10 @@ export class CNodeCamera extends CNode3D {
         this.resetCamera()
 
         if (this.id === "mainCamera") {
-            guiMenus.view.add(this, "snapshotCamera").name("Snapshot Camera")
-                .tooltip("Save the current camera position and heading for use with 'Reset Camera'")
-            guiMenus.view.add(this, "resetCamera").name("Reset Camera")
-                .tooltip("Reset the camera to the default, or to .last snapshot position and heading\nAlso Numpad-.")
+            guiMenus.view.add(this, "snapshotCamera").name(t("misc.snapshotCamera.label"))
+                .tooltip(t("misc.snapshotCamera.tooltip"))
+            guiMenus.view.add(this, "resetCamera").name(t("misc.resetCamera.label"))
+                .tooltip(t("misc.resetCamera.tooltip"))
         }
 
         this.applyEarlyMods();

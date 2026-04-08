@@ -13,6 +13,7 @@ import {Quaternion, Vector2, Vector3} from "three";
 import {assert} from "../assert";
 import {getCursorPositionFromTopView} from "../mouseMoveView";
 import {get_real_horizon_angle_for_frame} from "../JetUtils";
+import {t} from "../i18n";
 
 
 // Position the camera on the source track
@@ -33,10 +34,10 @@ export class CNodeControllerTrackToTrack extends CNodeController {
             let stopAtController = guiMenus.target.controllers.find(c => c.property === 'trackToTrackStopAt');
             if (!stopAtController) {
                 stopAtController = guiMenus.target.add(par, 'trackToTrackStopAt', 0, 1000, 1)
-                    .name("Stop At")
+                    .name(t("controllerVarious.stopAt.label"))
                     .listen()
                     .onChange(() => setRenderOne(true))
-                    .tooltip("Stop the camera target movement at this frame, even if the target track continue. This is useful for simulating the loss of lock on a moving target. Set to 0 to disable.");
+                    .tooltip(t("controllerVarious.stopAt.tooltip"));
             }
 
             if (stopAtController._max !== Sit.frames - 1) {
@@ -83,7 +84,7 @@ export class CNodeControllerHumanHorizon extends CNodeController {
         super(v);
         if (!CNodeControllerHumanHorizon.guiAdded && guiPhysics) {
             guiPhysics.add(par, 'horizonMethod', ["Human Horizon", "Horizon Angle"])
-                .name("Horizon Method")
+                .name(t("controllerVarious.horizonMethod.label"))
                 .onChange(() => setRenderOne(true));
             CNodeControllerHumanHorizon.guiAdded = true;
         }
@@ -183,7 +184,7 @@ export class CNodeControllerGUIFOV extends CNodeController {
 
         gui.add(this, 'fov', 0.35, 120, 0.01).onChange(value => {
             this.fov = value
-        }).listen().name("Look FOV")
+        }).listen().name(t("controllerVarious.lookFOV.label"))
     }
 
     apply(f, objectNode) {
@@ -657,7 +658,7 @@ export class CNodeControllerCelestial extends CNodeController {
         this.lastValidObject = this.celestialObject;
         this.setGUI(v, "camera");
         if (this.gui) {
-            this.textController = this.gui.add(this, "celestialObject").name("Celestial Object").tooltip("Name of the celestial body the camera tracks (e.g. Moon, Venus, Jupiter)").onFinishChange(() => {
+            this.textController = this.gui.add(this, "celestialObject").name(t("controllerVarious.celestialObject.label")).tooltip(t("controllerVarious.celestialObject.tooltip")).onFinishChange(() => {
                 this.validateAndUpdate();
             }).hide();
         }

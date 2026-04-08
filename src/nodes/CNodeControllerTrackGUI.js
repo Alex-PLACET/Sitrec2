@@ -1,6 +1,7 @@
 import {setRenderOne} from "../Globals";
 import {CNode} from "./CNode";
 import * as LAYERS from "../LayerMasks";
+import {t} from "../i18n";
 
 
 // Common GUI Elements for a CMetaTrack
@@ -27,7 +28,7 @@ export class CNodeTrackGUI extends CNode {
 
             // the sphere is the object that is always displayed in the look window
             //this.metaTrack.displayTargetSphere.setLayerBit(LAYERS.LOOK, this.showTrackInLook);
-    }).name("Show in look view")
+    }).name(t("misc.showInLookView.label"))
 
         this.addSimpleSerial("showTrackInLook");
 

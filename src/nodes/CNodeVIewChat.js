@@ -5,6 +5,7 @@ import {sitrecAPI} from "../CSitrecAPI";
 import {getEnvBool} from "../envUtils";
 import {ModelFiles} from "./CNode3DObject";
 import {clientNLU} from "../CClientNLU";
+import {t} from "../i18n";
 
 class CNodeViewChat extends CNodeViewText {
     constructor(v) {
@@ -38,7 +39,7 @@ class CNodeViewChat extends CNodeViewText {
         this.setupChatEventListeners();
 
         // Add to Help menu
-        guiMenus.help.add(this, "show").name("AI Assistant").moveToFirst().onChange(() => {
+        guiMenus.help.add(this, "show").name(t("misc.aiAssistant.label")).moveToFirst().onChange(() => {
             guiMenus.help.close()
         });
 

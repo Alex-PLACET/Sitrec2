@@ -22,6 +22,7 @@ import {customAltitudeFunction, customLocationFunction} from "../runtimeConfig";
 import {showError} from "../showError";
 import {f2m} from "../utils";
 import {parseLatLonPair, parseSingleCoordinate} from "../CoordinateParser";
+import {t} from "../i18n";
 
 export class CNodePositionLLA extends CNodeTrack {
     constructor(v) {
@@ -137,7 +138,7 @@ export class CNodePositionLLA extends CNodeTrack {
 
                 const gui = guiMenus[v.gui];
 
-                gui.add(this, "agl").name("Above Ground Level").tooltip("Altitude is relative to ground level, not sea level").onChange((v) => {
+                gui.add(this, "agl").name(t("positionLLA.aboveGroundLevel.label")).tooltip(t("positionLLA.aboveGroundLevel.tooltip")).onChange((v) => {
                     this.recalculateCascade()
                     markSitchDirty();
                 }).listen();
@@ -147,7 +148,7 @@ export class CNodePositionLLA extends CNodeTrack {
                 this.lookupString = "";
 
                 if (customLocationFunction !== undefined) {
-                    gui.add(this, "lookupString").name("Lookup").tooltip("Enter a place name, lat,lon coordinates, or MGRS to move to").onFinishChange(async () => {
+                    gui.add(this, "lookupString").name(t("positionLLA.lookup.label")).tooltip(t("positionLLA.lookup.tooltip")).onFinishChange(async () => {
                         if (this.lookupString.length > 0) {
                             try {
                                 const coord = parseLatLonPair(this.lookupString);
@@ -200,10 +201,10 @@ export class CNodePositionLLA extends CNodeTrack {
                 }
 
                // geolocate from browse
-                gui.add(this, "geolocate").name("Geolocate from browser").tooltip("Use the browser's geolocation API to set your current position")
+                gui.add(this, "geolocate").name(t("positionLLA.geolocate.label")).tooltip(t("positionLLA.geolocate.tooltip"))
 
                // Add a "Go To" button to the GUI
-                gui.add(this, "goTo").name("Go To the above position").tooltip("Move terrain and camera to the entered latitude/longitude/altitude")
+                gui.add(this, "goTo").name(t("positionLLA.goTo.label")).tooltip(t("positionLLA.goTo.tooltip"))
 
 
 

@@ -9,6 +9,7 @@ import {V3} from "../threeUtils";
 import {ECEFToLLAVD_radii} from "../LLA-ECEF-ENU";
 import {meanSeaLevelOffset} from "../EGM96Geoid";
 import {showError} from "../showError";
+import {t} from "../i18n";
 
 const PRESSURE_LEVELS = [1000, 975, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100, 70, 50, 30];
 
@@ -103,8 +104,8 @@ export class CNodeWind extends CNode {
         // this.input("radius")
 
         if(this.gui) {
-            this.guiFrom = this.gui.add (this, "from", 0,359,1).name(this.name+" Wind From").tooltip("True heading the wind blows FROM (0=North, 90=East)").onChange(x =>this.recalculateCascade()).wrap()
-            this.guiKnots = this.gui.add (this, "knots", 0, this.max, 1).name(this.name+" Wind Knots").tooltip("Wind speed in knots").onChange(x => this.recalculateCascade())
+            this.guiFrom = this.gui.add (this, "from", 0,359,1).name(this.name+" Wind From").tooltip(t("misc.windFrom.tooltip")).onChange(x =>this.recalculateCascade()).wrap()
+            this.guiKnots = this.gui.add (this, "knots", 0, this.max, 1).name(this.name+" Wind Knots").tooltip(t("misc.windKnots.tooltip")).onChange(x => this.recalculateCascade())
         }
 
        // this.optionalInputs(["originTrack"])
@@ -124,7 +125,7 @@ export class CNodeWind extends CNode {
         if (this.gui && this.originTrack) {
             this.fetchWindButtonName = "[BETA] Fetch " + this.name + " Wind";
             this.guiFetchWind = this.gui.add(this, "fetchWind").name(this.fetchWindButtonName)
-                .tooltip("Fetch real wind data from weather services for this location and time");
+                .tooltip(t("misc.fetchWind.tooltip"));
         }
 
         // forcing extra intial recalculate cascades (only of there's an origin track)

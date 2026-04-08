@@ -1,5 +1,6 @@
 import {CNodeViewText} from "./CNodeViewText";
 import {guiMenus} from "../Globals";
+import {t} from "../i18n";
 
 class CNodeViewDebug extends CNodeViewText {
     constructor(v) {
@@ -14,10 +15,10 @@ class CNodeViewDebug extends CNodeViewText {
         super(v);
 
         // Add to Help menu
-        guiMenus.help.add(this, "show").name("Debug Console").onChange(() => {
+        guiMenus.help.add(this, "show").name(t("misc.debugConsole.label")).onChange(() => {
             guiMenus.help.close();
         })
-            .tooltip("Debug Console");
+            .tooltip(t("misc.debugConsole.tooltip"));
 
         // Add initial welcome message
         this.log("Debug Console initialized.");

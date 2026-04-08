@@ -11,6 +11,7 @@ import {EventManager} from "../CEventManager";
 import {elevationAtLL} from "../threeExt";
 import {parsePartialDateTime} from "../ParseUtils";
 import {meanSeaLevelOffset} from "../EGM96Geoid";
+import {t} from "../i18n";
 
 //export const MISBFields = Object.keys(MISB).length;
 
@@ -79,9 +80,9 @@ export class CNodeMISBDataTrack extends CNodeEmptyArray {
     setupTrackStartTimeGUI(guiFolder) {
         if (!this.isRelativeTime) return;
 
-        this.trackStartTimeController = guiFolder.add(this, "trackStartTime").name("Start Time").listen()
+        this.trackStartTimeController = guiFolder.add(this, "trackStartTime").name(t("misbData.startTime.label")).listen()
             .onFinishChange(() => this.handleTrackStartTimeChange())
-            .tooltip("Override start time (e.g., '10:30', 'Jan 15', '2024-01-15T10:30:00Z'). Leave blank for global start time.");
+            .tooltip(t("misbData.startTime.tooltip"));
 
         this.addSimpleSerial("trackStartTime");
     }
@@ -89,15 +90,15 @@ export class CNodeMISBDataTrack extends CNodeEmptyArray {
     // Add GUI controls for the g-force filter
     setupFilterGUI(guiFolder) {
         const folder = guiFolder.addFolder("Filter Bad Data").close();
-        folder.add(this, "filterEnabled").name("Enable Filter").listen().onChange(() => {
+        folder.add(this, "filterEnabled").name(t("misbData.enableFilter.label")).listen().onChange(() => {
             this.runGForceFilter();
             this.recalculateCascade();
         });
-        folder.add(this, "tryAltitudeFirst").name("Try Altitude First").listen().onChange(() => {
+        folder.add(this, "tryAltitudeFirst").name(t("misbData.tryAltitudeFirst.label")).listen().onChange(() => {
             this.runGForceFilter();
             this.recalculateCascade();
         });
-        folder.add(this, "filterMaxG", 0.1, 10, 0.1).name("Max G").listen().onChange(() => {
+        folder.add(this, "filterMaxG", 0.1, 10, 0.1).name(t("misbData.maxG.label")).listen().onChange(() => {
             this.runGForceFilter();
             this.recalculateCascade();
         });

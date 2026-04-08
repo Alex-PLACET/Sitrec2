@@ -7,6 +7,7 @@ import {CatmullRomCurve3} from "three";
 import {V3} from "../threeUtils";
 import {assert} from "../assert";
 import {CNodeTrack} from "./CNodeTrack";
+import {t} from "../i18n";
 import {saveAs} from "file-saver";
 
 export class CNodeSmoothedPositionTrack extends CNodeTrack {
@@ -71,8 +72,8 @@ export class CNodeSmoothedPositionTrack extends CNodeTrack {
 
         const methods = ["none", "moving", "movingPolyEdge", "sliding", "savgol", "spline"];
         this.smoothingMethodController = this.guiFolder.add(this, "method", methods)
-            .name("Smoothing Method")
-            .tooltip("Algorithm used to smooth the camera track data")
+            .name(t("misc.smoothingMethod.label"))
+            .tooltip(t("misc.smoothingMethod.tooltip"))
             .onChange(() => this._onMethodChanged());
         // Set initial visibility, and defer a second pass to ensure the GUI is fully settled
         this._updateParameterVisibility();

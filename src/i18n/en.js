@@ -1285,6 +1285,291 @@ const en = {
             tooltip: "Screen-space rotation around the camera look axis",
         },
     },
+
+    nodes3dObject: {
+        modelOrGeometry: {
+            label: "Model or Geometry",
+            tooltip: "Select whether to use a 3D Model or a generated geometry for this object",
+        },
+        model: {
+            label: "Model",
+            tooltip: "Select a 3D Model to use for this object",
+        },
+        displayBoundingBox: {
+            label: "Display Bounding Box",
+            tooltip: "Display the bounding box of the object with dimensions",
+        },
+        forceAboveSurface: {
+            label: "Force Above Surface",
+            tooltip: "Force the object to be fully above the ground surface",
+        },
+        exportToKML: {
+            label: "Export to KML",
+            tooltip: "Export this 3D object as a KML file for Google Earth",
+        },
+        startAnalysis: {
+            label: "Start Analysis",
+            tooltip: "Cast rays from the camera to find reflection directions",
+        },
+        gridSize: {
+            label: "Grid Size",
+            tooltip: "Number of sample points per axis for the reflection grid",
+        },
+        cleanUp: {
+            label: "Clean Up",
+            tooltip: "Remove all reflection analysis arrows from the scene",
+        },
+    },
+
+    trackingOverlay: {
+        showTracking: {
+            label: "Show Tracking",
+            tooltip: "Show or hide the tracking points and curve overlay",
+        },
+        reset: {
+            label: "Reset",
+            tooltip: "Reset manual tracking to an empty state, removing all keyframes and draggable items",
+        },
+        limitAB: {
+            label: "Limit AB",
+            tooltip: "Limit the A and B frames to the range of the video tracking keyframes. This will prevent extrapolation beyond the first and last keyframes, which is not always desired.",
+        },
+        curveType: {
+            label: "Curve Type",
+            tooltip: "Spline uses natural cubic spline. Spline2 uses not-a-knot spline for smoother end behavior. Linear uses straight line segments. Perspective requires exactly 3 keyframes and models linear motion with perspective projection.",
+        },
+        minimizeGroundSpeed: {
+            label: "Minimize Ground Speed",
+            tooltip: "Find the Tgt Start Dist that minimizes the ground distance traveled by the traverse path",
+        },
+        minimizeAirSpeed: {
+            label: "Minimize Air Speed",
+            tooltip: "Find the Tgt Start Dist that minimizes the air distance traveled (accounting for target wind)",
+        },
+    },
+
+    cameraFrustum: {
+        frustumGroundQuad: {
+            label: "Frustum Ground Quad",
+            tooltip: "Show the camera frustum intersection with the ground",
+        },
+        videoInFrustum: {
+            label: "Video in Frustum",
+            tooltip: "Project the video onto the camera frustum far plane",
+        },
+        videoOnGround: {
+            label: "Video on Ground",
+            tooltip: "Project the video onto the ground",
+        },
+        groundVideoInLookView: {
+            label: "Ground Video in Look View",
+            tooltip: "Show the ground-projected video in the look view",
+        },
+        matchVideoAspect: {
+            label: "Match Video Aspect",
+            tooltip: "Crop the look view to match the video's aspect ratio, and adjust the frustum accordingly",
+        },
+        videoOpacity: {
+            label: "Video Opacity",
+            tooltip: "Opacity of the projected video overlay",
+        },
+    },
+
+    labels3d: {
+        measurements: {
+            label: "Measurements",
+            tooltip: "Show distance and angle measurement labels and arrows",
+        },
+        labelsInMain: {
+            label: "Labels in Main",
+            tooltip: "Show track/object labels in the main 3D view",
+        },
+        labelsInLook: {
+            label: "Labels in Look",
+            tooltip: "Show track/object labels in the look/camera view",
+        },
+        featuresInMain: {
+            label: "Features/Pins in Main",
+            tooltip: "Show feature markers (pins) in the main 3D view",
+        },
+        featuresInLook: {
+            label: "Features in Look",
+            tooltip: "Show feature markers in the look/camera view",
+        },
+    },
+
+    losFitPhysics: {
+        model: {
+            label: "Model",
+        },
+        avgError: {
+            label: "Avg Error (rad)",
+        },
+        windSpeed: {
+            label: "Wind Speed (kt)",
+        },
+        windFrom: {
+            label: "Wind From (\u00B0)",
+        },
+    },
+
+    misbData: {
+        startTime: {
+            label: "Start Time",
+            tooltip: "Override start time (e.g., '10:30', 'Jan 15', '2024-01-15T10:30:00Z'). Leave blank for global start time.",
+        },
+        enableFilter: {
+            label: "Enable Filter",
+        },
+        tryAltitudeFirst: {
+            label: "Try Altitude First",
+        },
+        maxG: {
+            label: "Max G",
+        },
+    },
+
+    positionLLA: {
+        aboveGroundLevel: {
+            label: "Above Ground Level",
+            tooltip: "Altitude is relative to ground level, not sea level",
+        },
+        lookup: {
+            label: "Lookup",
+            tooltip: "Enter a place name, lat,lon coordinates, or MGRS to move to",
+        },
+        geolocate: {
+            label: "Geolocate from browser",
+            tooltip: "Use the browser's geolocation API to set your current position",
+        },
+        goTo: {
+            label: "Go To the above position",
+            tooltip: "Move terrain and camera to the entered latitude/longitude/altitude",
+        },
+    },
+
+    controllerVarious: {
+        stopAt: {
+            label: "Stop At",
+            tooltip: "Stop the camera target movement at this frame, even if the target track continues. This is useful for simulating the loss of lock on a moving target. Set to 0 to disable.",
+        },
+        horizonMethod: {
+            label: "Horizon Method",
+        },
+        lookFOV: {
+            label: "Look FOV",
+        },
+        celestialObject: {
+            label: "Celestial Object",
+            tooltip: "Name of the celestial body the camera tracks (e.g. Moon, Venus, Jupiter)",
+        },
+    },
+
+    spriteGroup: {
+        visible: {
+            label: "Visible",
+            tooltip: "Show or hide the flow orbs",
+        },
+        size: {
+            label: "Size (m)",
+            tooltip: "Diameter in meters.",
+        },
+        viewSizeMultiplier: {
+            label: "View Size Multiplier",
+            tooltip: "Adjusts the size of the flow orbs in the main view, but does not change the size in other views.",
+        },
+    },
+
+    imageAnalysis: {
+        bestAngleFull: {
+            label: "Best Angle, full 180, refined",
+        },
+        bestAngle5: {
+            label: "Best angle within 5\u00B0 of current",
+        },
+    },
+
+    misc: {
+        snapshotCamera: {
+            label: "Snapshot Camera",
+            tooltip: "Save the current camera position and heading for use with 'Reset Camera'",
+        },
+        resetCamera: {
+            label: "Reset Camera",
+            tooltip: "Reset the camera to the default, or to last snapshot position and heading\nAlso Numpad-.",
+        },
+        showMoonShadow: {
+            label: "Show Moon's Shadow",
+            tooltip: "Toggle the display of Moon's shadow cone for eclipse visualization.",
+        },
+        shadowSegments: {
+            label: "Shadow Segments",
+            tooltip: "Number of segments in the shadow cone (more = smoother but slower)",
+        },
+        showEarthShadow: {
+            label: "Show Earth's Shadow",
+            tooltip: "Toggle the display of Earth's shadow cone in the night sky.",
+        },
+        earthShadowAltitude: {
+            label: "Earth's Shadow Altitude",
+            tooltip: "Distance from Earth's center to the plane at which to render Earth's shadow cone (in meters).",
+        },
+        exportTLE: {
+            label: "Export TLE",
+        },
+        backgroundFlowIndicator: {
+            label: "Background Flow Indicator",
+            tooltip: "Display an arrow indicating how much the background will move in the next frame.\nUseful for syncing the sim with video (use View/Vid Overlay)",
+        },
+        defaultSnap: {
+            label: "Default Snap",
+            tooltip: "When enabled, points will snap to horizontal alignment by default while dragging.\nHold Shift (while dragging) to do the opposite",
+        },
+        recalcNodeGraph: {
+            label: "Recalc Node Graph",
+        },
+        downloadVideo: {
+            label: "Download Video",
+        },
+        banking: {
+            label: "Banking",
+            tooltip: "How the object banks/tilts during turns",
+        },
+        angularTraverse: {
+            label: "Angular Traverse",
+        },
+        smoothingMethod: {
+            label: "Smoothing Method",
+            tooltip: "Algorithm used to smooth the camera track data",
+        },
+        showInLookView: {
+            label: "Show in look view",
+        },
+        windFrom: {
+            tooltip: "True heading the wind blows FROM (0=North, 90=East)",
+        },
+        windKnots: {
+            tooltip: "Wind speed in knots",
+        },
+        fetchWind: {
+            tooltip: "Fetch real wind data from weather services for this location and time",
+        },
+        debugConsole: {
+            label: "Debug Console",
+            tooltip: "Debug Console",
+        },
+        aiAssistant: {
+            label: "AI Assistant",
+        },
+        hide: {
+            label: "Hide",
+            tooltip: "Hide this tabbed canvas view\nTo show it again, use the 'Show/Hide -> Views' menu.",
+        },
+        notes: {
+            label: "Notes",
+            tooltip: "Show/Hide the notes editor. Notes are saved with the sitch and can contain clickable hyperlinks.",
+        },
+    },
 };
 
 export default en;
