@@ -1,3 +1,5 @@
+import {t} from "./i18n";
+
 export let mainLoopCount = 0;
 export function incrementMainLoopCount() {
     mainLoopCount++
@@ -149,10 +151,18 @@ export function addGUIMenu(id, title) {
     return guiMenus[id];
 }
 
+export function addTranslatedGUIMenu(id, titleKey) {
+    return addGUIMenu(id, t(titleKey));
+}
+
 // ad a folder to a menu
 export function addGUIFolder(id, title, parent) {
     guiMenus[id] = guiMenus[parent].addFolder(title).close().perm();
     return guiMenus[id];
+}
+
+export function addTranslatedGUIFolder(id, titleKey, parent) {
+    return addGUIFolder(id, t(titleKey), parent);
 }
 
 export function setupGUIjetTweaks(_jetTweaks) {

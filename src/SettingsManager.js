@@ -91,6 +91,13 @@ export function sanitizeSettings(settings) {
         sanitized.showAttribution = Boolean(settings.showAttribution);
     }
 
+    if (settings.language !== undefined) {
+        const language = String(settings.language).toLowerCase();
+        if (/^[a-z]{2}$/.test(language)) {
+            sanitized.language = language;
+        }
+    }
+
     return sanitized;
 }
 
@@ -293,6 +300,7 @@ export async function initializeSettings() {
             chatModel: "", // AI chat model in "provider:model" format (empty = use first available)
             centerSidebar: false, // Enable center sidebar between split views
             showAttribution: true, // Show map/elevation data source attribution overlay
+            language: "en", // UI language
         };
     }
 

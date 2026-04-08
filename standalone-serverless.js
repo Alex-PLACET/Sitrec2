@@ -197,7 +197,7 @@ app.get('/sitrec', (req, res) => {
     }
 });
 
-app.get('/sitrec/*', (req, res, next) => {
+app.get(/^\/sitrec\/.+/, (req, res, next) => {
     const reqPath = req.path;
     if (reqPath.match(/\.(js|css|json|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|map|glb|bin|mp4|webm)$/i)) {
         return next();

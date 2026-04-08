@@ -2,9 +2,20 @@ import {guiMenus, NodeMan, setRenderOne, Sit} from "./Globals";
 import {par} from "./par";
 import {getTesseract, loadTesseract} from "./tesseractLoader";
 import {isLocal} from "./configUtils";
+import {t} from "./i18n";
 
 let textExtractor = null;
 let textExtractionFolder = null;
+
+function tt(key, options = undefined) {
+    return t(`textExtraction.${key}`, options);
+}
+
+function setMenuItemLabel(menuItem, key, options = undefined) {
+    if (menuItem) {
+        menuItem.name(tt(key, options));
+    }
+}
 
 class TextRegion {
     constructor(x1, y1, x2, y2) {
@@ -175,7 +186,7 @@ class TextExtractor {
                 this.newRegionStart = null;
                 this.newRegionEnd = null;
                 this.isDefiningRegion = false;
-                if (addRegionMenuItem) addRegionMenuItem.name("Add Region");
+                setMenuItemLabel(addRegionMenuItem, "menu.addRegion.label");
                 setRenderOne(true);
                 return;
             }
@@ -239,7 +250,7 @@ class TextExtractor {
     startAddRegion() {
         if (!this.enabled) return;
         this.isDefiningRegion = true;
-        if (addRegionMenuItem) addRegionMenuItem.name("Click and drag on video...");
+        setMenuItemLabel(addRegionMenuItem, "menu.addRegion.drawingLabel");
     }
 
     removeSelectedRegion() {
@@ -267,18 +278,18 @@ class TextExtractor {
     startLearning() {
         if (!this.enabled || !this.selectedRegion) return;
         this.isLearning = true;
-        if (learnMenuItem) learnMenuItem.name("Click characters to learn...");
+        setMenuItemLabel(learnMenuItem, "menu.learnTemplates.activeLabel");
         setRenderOne(true);
     }
 
     stopLearning() {
         this.isLearning = false;
-        if (learnMenuItem) learnMenuItem.name("Learn Templates");
+        setMenuItemLabel(learnMenuItem, "menu.learnTemplates.label");
         setRenderOne(true);
     }
 
     promptLearnCharacter(charIndex) {
-        const char = prompt(`Enter character for cell ${charIndex + 1}:`);
+        const char = prompt(tt("prompts.learnCharacter", {index: charIndex + 1}));
         if (char && char.length === 1) {
             this.learnCharacter(charIndex, char);
         }
@@ -397,18 +408,18 @@ class TextExtractor {
             await loadTesseract();
         } catch (e) {
             console.error("Failed to load Tesseract:", e);
-            alert("Failed to load Tesseract.js. Make sure it's installed: npm install tesseract.js");
+            alert(tt("errors.failedToLoadTesseract"));
             return;
         }
 
         this.extracting = true;
-        if (startExtractMenuItem) startExtractMenuItem.name("Stop Extraction");
+        setMenuItemLabel(startExtractMenuItem, "menu.startExtract.stopLabel");
 
         const Tesseract = getTesseract();
         const videoData = this.videoView?.videoData;
         if (!videoData) {
             this.extracting = false;
-            if (startExtractMenuItem) startExtractMenuItem.name("Start Extract");
+            setMenuItemLabel(startExtractMenuItem, "menu.startExtract.label");
             return;
         }
 
@@ -439,7 +450,7 @@ class TextExtractor {
         }
 
         this.extracting = false;
-        if (startExtractMenuItem) startExtractMenuItem.name("Start Extract");
+        setMenuItemLabel(startExtractMenuItem, "menu.startExtract.label");
         setRenderOne(true);
     }
 
@@ -620,7 +631,7 @@ let learnMenuItem = null;
 function toggleEnableExtraction() {
     const videoView = NodeMan.get("video", false);
     if (!videoView) {
-        console.warn("Text extraction requires a video view");
+        console.warn(tt("errors.noVideoView"));
         return;
     }
 
@@ -630,10 +641,10 @@ function toggleEnableExtraction() {
 
     if (textExtractor.enabled) {
         textExtractor.disable();
-        enableExtractMenuItem.name("Enable Text Extraction");
+        setMenuItemLabel(enableExtractMenuItem, "menu.enable.label");
     } else {
         textExtractor.enable();
-        enableExtractMenuItem.name("Disable Text Extraction");
+        setMenuItemLabel(enableExtractMenuItem, "menu.enable.disableLabel");
 
         if (!renderHooked) {
             renderHooked = true;
@@ -655,7 +666,7 @@ export function addTextExtractionMenu() {
     if (!guiMenus.view) return;
     if (!isLocal) return;
 
-    textExtractionFolder = guiMenus.video.addFolder("[BETA] Text Extraction").close().perm();
+    textExtractionFolder = guiMenus.video.addFolder(tt("menu.title")).close().perm();
 
     const menuActions = {
         enableExtraction: toggleEnableExtraction,
@@ -666,28 +677,28 @@ export function addTextExtractionMenu() {
     };
 
     enableExtractMenuItem = textExtractionFolder.add(menuActions, 'enableExtraction')
-        .name("Enable Text Extraction")
-        .tooltip("Toggle text extraction mode on video")
+        .name(tt("menu.enable.label"))
+        .tooltip(tt("menu.enable.tooltip"))
         .perm();
 
     addRegionMenuItem = textExtractionFolder.add(menuActions, 'addRegion')
-        .name("Add Region")
-        .tooltip("Click and drag on video to define a text extraction region")
+        .name(tt("menu.addRegion.label"))
+        .tooltip(tt("menu.addRegion.tooltip"))
         .perm();
 
     textExtractionFolder.add(menuActions, 'removeRegion')
-        .name("Remove Selected Region")
-        .tooltip("Remove the currently selected region")
+        .name(tt("menu.removeRegion.label"))
+        .tooltip(tt("menu.removeRegion.tooltip"))
         .perm();
 
     textExtractionFolder.add(menuActions, 'clearRegions')
-        .name("Clear All Regions")
-        .tooltip("Remove all text extraction regions")
+        .name(tt("menu.clearRegions.label"))
+        .tooltip(tt("menu.clearRegions.tooltip"))
         .perm();
 
     startExtractMenuItem = textExtractionFolder.add(menuActions, 'startExtract')
-        .name("Start Extract")
-        .tooltip("Run OCR on all regions from current frame to end")
+        .name(tt("menu.startExtract.label"))
+        .tooltip(tt("menu.startExtract.tooltip"))
         .perm();
 
     const fixedWidthParams = {
@@ -695,8 +706,8 @@ export function addTextExtractionMenu() {
         set fixedWidthFont(v) { if (textExtractor) textExtractor.fixedWidthFont = v; }
     };
     textExtractionFolder.add(fixedWidthParams, 'fixedWidthFont')
-        .name("Fixed Width Font")
-        .tooltip("Enable character-by-character detection for fixed-width fonts (better for FLIR/sensor overlays)")
+        .name(tt("menu.fixedWidthFont.label"))
+        .tooltip(tt("menu.fixedWidthFont.tooltip"))
         .perm();
 
     const numCharsParams = {
@@ -709,8 +720,8 @@ export function addTextExtractionMenu() {
         }
     };
     textExtractionFolder.add(numCharsParams, 'numChars', 1, 30, 1)
-        .name("Num Characters")
-        .tooltip("Number of characters in the selected region (divides region evenly)")
+        .name(tt("menu.numChars.label"))
+        .tooltip(tt("menu.numChars.tooltip"))
         .perm();
 
     const templateActions = {
@@ -725,13 +736,13 @@ export function addTextExtractionMenu() {
     };
 
     learnMenuItem = textExtractionFolder.add(templateActions, 'learnTemplates')
-        .name("Learn Templates")
-        .tooltip("Click character cells to teach their values (for template matching)")
+        .name(tt("menu.learnTemplates.label"))
+        .tooltip(tt("menu.learnTemplates.tooltip"))
         .perm();
 
     textExtractionFolder.add(templateActions, 'clearTemplates')
-        .name("Clear Templates")
-        .tooltip("Remove all learned character templates")
+        .name(tt("menu.clearTemplates.label"))
+        .tooltip(tt("menu.clearTemplates.tooltip"))
         .perm();
 
     const useTemplatesParams = {
@@ -739,8 +750,8 @@ export function addTextExtractionMenu() {
         set useTemplates(v) { if (textExtractor) textExtractor.useTemplates = v; }
     };
     textExtractionFolder.add(useTemplatesParams, 'useTemplates')
-        .name("Use Templates")
-        .tooltip("Use learned templates for matching (faster & more accurate when trained)")
+        .name(tt("menu.useTemplates.label"))
+        .tooltip(tt("menu.useTemplates.tooltip"))
         .perm();
 }
 
