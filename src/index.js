@@ -1203,6 +1203,7 @@ async function newSitch(situation, customSetup = false ) {
     await new Promise(resolve => setTimeout(resolve, 50));
     
     disposeEverything();
+    CustomManager._settingsMenuAdded = false;
     if (!customSetup) {
         // if it's not custom, then "situation" is a name of a default sitch
         selectInitialSitch(situation);

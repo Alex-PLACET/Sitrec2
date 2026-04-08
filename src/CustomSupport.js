@@ -220,7 +220,7 @@ export class CCustomManager {
     }
 
     setupSettingsMenu() {
-        // Only add once — perm() keeps it across sitch changes
+        // Rebuild each sitch change (non-perm contents get destroyed)
         if (this._settingsMenuAdded) return;
         this._settingsMenuAdded = true;
 
@@ -231,8 +231,7 @@ export class CCustomManager {
 
         const settingsFolder = guiMenus.main.addFolder("Settings")
             .tooltip(tooltipText)
-            .close()
-            .perm();
+            .close();
 
         Globals.settings.language = getCurrentLanguage();
 
