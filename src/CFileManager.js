@@ -98,6 +98,7 @@ import {
     isDesktopFileSystemAvailable,
 } from "./DesktopFileSystem";
 import {promptForText} from "./TextPrompt";
+import {t} from "./i18n";
 
 const trackFileClasses = [
     CTrackFileKML,
@@ -216,7 +217,7 @@ export class CFileManager extends CManager {
 
         if (!isConsole) {
             this.guiFolder = guiMenus.file;
-            this.guiFolder.add(this, "newSitch").name("New Sitch").perm().tooltip("Create a new sitch (will reload this page, resetting everything)");
+            this.guiFolder.add(this, "newSitch").name(t("file.newSitch.label")).perm().tooltip(t("file.newSitch.tooltip"));
 
 
             // the Save and Load buttons should only be available for the custom sitch
@@ -238,9 +239,9 @@ export class CFileManager extends CManager {
 
                     // this.guiFolder.add(this, "rehostFile").name("Rehost File").perm().tooltip("Rehost a file from your local system. DEPRECATED");
                 } else {
-                    this.loginButton = this.guiServer.add(this, "loginServer").name("Saving Disabled (click to log in)").setLabelColor("#FF8080");
+                    this.loginButton = this.guiServer.add(this, "loginServer").name(t("file.savingDisabled")).setLabelColor("#FF8080");
                     // Still add Browse button for non-logged-in users so featured sitches remain discoverable.
-                    this.ensureBrowseButton("Browse featured sitches");
+                    this.ensureBrowseButton(t("file.server.browseFeatured"));
                     this.guiServer.close();
                 }
             }
@@ -249,33 +250,33 @@ export class CFileManager extends CManager {
                 const useDesktopLocalUi = this.isDesktopLocalFsAvailable();
                 // Local save/load is always available for the custom sitch, regardless of login status
                 this.guiLocal = this.guiFolder.addFolder("Local").perm().open();
-                this._localStatus = {value: useDesktopLocalUi ? "No local file selected" : "No folder selected"};
+                this._localStatus = {value: useDesktopLocalUi ? t("file.local.noFileSelected") : t("file.local.noFolderSelected")};
                 this._localStatusController = this.guiLocal.add(this._localStatus, "value")
-                    .name("Status")
+                    .name(t("file.local.status"))
                     .listen()
                     .disable()
                     .tooltip(useDesktopLocalUi
-                        ? "Current local desktop file/save state"
-                        : "Current local folder/save state");
-                this._saveLocalController = this.guiLocal.add(this, "saveLocal").name("Save Local").perm()
+                        ? t("file.local.statusDesktop")
+                        : t("file.local.statusFolder"));
+                this._saveLocalController = this.guiLocal.add(this, "saveLocal").name(t("file.local.saveLocal.label")).perm()
                     .tooltip(useDesktopLocalUi
-                        ? "Save to the current local file, or prompt for a filename if needed"
-                        : "Save into the working folder (or prompts for a location if none is set)");
-                this._saveLocalAsController = this.guiLocal.add(this, "saveLocalAs").name("Save Local As...").perm()
+                        ? t("file.local.saveLocal.tooltipDesktop")
+                        : t("file.local.saveLocal.tooltipFolder"));
+                this._saveLocalAsController = this.guiLocal.add(this, "saveLocalAs").name(t("file.local.saveLocalAs.label")).perm()
                     .tooltip(useDesktopLocalUi
-                        ? "Save a local sitch file to a new path"
-                        : "Save a local sitch file, choosing the location");
-                this._openLocalSitchController = this.guiLocal.add(this, "openLocalSitch").name("Open Local Sitch").perm()
+                        ? t("file.local.saveLocalAs.tooltipDesktop")
+                        : t("file.local.saveLocalAs.tooltipFolder"));
+                this._openLocalSitchController = this.guiLocal.add(this, "openLocalSitch").name(t("file.local.openLocal.label")).perm()
                     .tooltip(useDesktopLocalUi
-                        ? "Open a local sitch file from disk"
-                        : "Open a sitch file from the current working folder");
+                        ? t("file.local.openLocal.tooltipDesktop")
+                        : t("file.local.openLocal.tooltipFolder"));
 
                 if (!useDesktopLocalUi) {
-                    this._openLocalFolderController = this.guiLocal.add(this, "openDirectory").name("Select Local Sitch Folder").perm()
-                        .tooltip("Select a working folder for local save/load operations");
+                    this._openLocalFolderController = this.guiLocal.add(this, "openDirectory").name(t("file.local.selectFolder.label")).perm()
+                        .tooltip(t("file.local.selectFolder.tooltip"));
                     this._reconnectController = this.guiLocal.add(this, "reconnectWorkingFolder")
-                        .name("Reconnect Folder").perm()
-                        .tooltip("Re-grant access to the previously used working folder");
+                        .name(t("file.local.reconnectFolder.label")).perm()
+                        .tooltip(t("file.local.reconnectFolder.tooltip"));
                     // Hide only this controller row (not the shared folder children container).
                     this._saveLocalController.domElement.style.display = "none";
                     this._saveLocalAsController.domElement.style.display = "none";
@@ -288,15 +289,15 @@ export class CFileManager extends CManager {
             }
 
 
-            this.guiFolder.add(this, "importFile").name("Import File").perm().tooltip("Import a file (or files) from your local system. Same as dragging and dropping a file into the browser window");
+            this.guiFolder.add(this, "importFile").name(t("file.importFile.label")).perm().tooltip(t("file.importFile.tooltip"));
 
             //this.guiFolder.add(this, "resetOrigin").name("Reset Origin").perm();
 
             if (isLocal) {
-                guiMenus.debug.add(NodeMan, "recalculateAllRootFirst").name("debug recalculate all").perm();
-                guiMenus.debug.add(this, "dumpNodes").name("debug dump nodes").perm();
-                guiMenus.debug.add(this, "dumpNodesBackwards").name("debug dump nodes backwards").perm();
-                guiMenus.debug.add(this, "dumpRoots").name("debug dump Root notes").perm();
+                guiMenus.debug.add(NodeMan, "recalculateAllRootFirst").name(t("file.debug.recalculateAll")).perm();
+                guiMenus.debug.add(this, "dumpNodes").name(t("file.debug.dumpNodes")).perm();
+                guiMenus.debug.add(this, "dumpNodesBackwards").name(t("file.debug.dumpNodesBackwards")).perm();
+                guiMenus.debug.add(this, "dumpRoots").name(t("file.debug.dumpRoots")).perm();
             }
 
             this.setupResourcesMenu();
@@ -642,7 +643,7 @@ export class CFileManager extends CManager {
         const sitchBrowser = this.ensureSitchBrowser();
         if (!sitchBrowser) return null;
         if (!this.openBrowseController) {
-            this.openBrowseController = this.guiServer.add(this, "openBrowseDialog").name("Open").perm();
+            this.openBrowseController = this.guiServer.add(this, "openBrowseDialog").name(t("file.server.open")).perm();
         }
         this.openBrowseController.tooltip(tooltipText);
         return this.openBrowseController;
@@ -767,20 +768,20 @@ export class CFileManager extends CManager {
         if (Globals.screenshotting)
             return;
 
-        this.guiServer.add(this, "saveSitchFromMenu").name("Save").perm().tooltip("Save the current sitch to the server");
-        this.guiServer.add(this, "saveSitchAs").name("Save As").perm().tooltip("Save the current sitch to the server with a new name");
+        this.guiServer.add(this, "saveSitchFromMenu").name(t("file.server.save.label")).perm().tooltip(t("file.server.save.tooltip"));
+        this.guiServer.add(this, "saveSitchAs").name(t("file.server.saveAs.label")).perm().tooltip(t("file.server.saveAs.tooltip"));
 
         this.guiServer.open();
 
-        this.ensureBrowseButton("Browse all your saved sitches in a searchable, sortable list");
+        this.ensureBrowseButton(t("file.server.browseAll"));
 
         this.versionsList = ["-"];
         this.versionsData = [];
         this.versionName = "-";
-        this.guiVersions = this.guiServer.add(this, "versionName", this.versionsList).name("Versions").perm().onChange((value) => {
+        this.guiVersions = this.guiServer.add(this, "versionName", this.versionsList).name(t("file.server.versions.label")).perm().onChange((value) => {
             this.loadVersion(value);
-        }).moveAfter("Open")
-            .tooltip("Load a specific version of the currently selected sitch");
+        }).moveAfter(t("file.server.open"))
+            .tooltip(t("file.server.versions.tooltip"));
 
         this.refreshUserSaves();
 
@@ -2027,35 +2028,35 @@ export class CFileManager extends CManager {
     updateLocalGUI() {
         if (!this.guiLocal) return;
         if (this.isDesktopLocalFsAvailable()) {
-            this.guiLocal.title("Local");
+            this.guiLocal.title(t("file.local.title"));
 
             if (this._localStatusController && this._localStatus) {
                 this._localStatus.value = this.localSitchEntry
-                    ? `Current file: ${this.localSitchEntry.name}`
-                    : "No local file selected";
+                    ? t("file.local.currentFile", {name: this.localSitchEntry.name})
+                    : t("file.local.noFileSelected");
                 this._localStatusController.updateDisplay();
             }
 
             if (this._openLocalSitchController) {
                 this._openLocalSitchController
-                    .name("Open Local...")
+                    .name(t("file.local.openLocal.labelShort"))
                     .tooltip(this.localSitchEntry
-                        ? `Open a different local sitch file (current: ${this.localSitchEntry.name})`
-                        : "Open a local sitch file from disk");
+                        ? t("file.local.openLocal.tooltipCurrent", {name: this.localSitchEntry.name})
+                        : t("file.local.openLocal.tooltipDesktop"));
             }
 
             if (this._saveLocalController) {
                 this._saveLocalController
-                    .name("Save Local")
+                    .name(t("file.local.saveLocal.label"))
                     .tooltip(this.localSaveTargetArmed && this.localSitchEntry
-                        ? `Save back to ${this.localSitchEntry.name}`
-                        : "Save the current sitch to a local file");
+                        ? t("file.local.saveLocal.tooltipSaveBack", {name: this.localSitchEntry.name})
+                        : t("file.local.saveLocal.tooltipSaveTo"));
             }
 
             if (this._saveLocalAsController) {
                 this._saveLocalAsController
-                    .name("Save Local As...")
-                    .tooltip("Save the current sitch to a new local file path");
+                    .name(t("file.local.saveLocalAs.label"))
+                    .tooltip(t("file.local.saveLocalAs.tooltipNewPath"));
             }
 
             return;
@@ -2065,11 +2066,11 @@ export class CFileManager extends CManager {
 
         // Update folder title to show working folder name
         if (hasWorkingFolder) {
-            this.guiLocal.title("Local: " + this.directoryHandle.name);
+            this.guiLocal.title(t("file.local.titleWithFolder", {name: this.directoryHandle.name}));
         } else if (this._pendingHandle) {
-            this.guiLocal.title("Local: " + this._pendingHandle.name + " (reconnect)");
+            this.guiLocal.title(t("file.local.titleReconnect", {name: this._pendingHandle.name}));
         } else {
-            this.guiLocal.title("Local");
+            this.guiLocal.title(t("file.local.title"));
         }
 
         // Show/hide reconnect button
@@ -2083,30 +2084,30 @@ export class CFileManager extends CManager {
             const folderName = this.directoryHandle?.name || this._pendingHandle?.name || "None";
             let state;
             if (this.directoryHandle) {
-                state = "Ready";
+                state = t("file.local.stateReady");
             } else if (this._pendingHandle) {
-                state = "Needs reconnect";
+                state = t("file.local.stateReconnect");
             } else {
-                state = "No folder";
+                state = t("file.local.stateNoFolder");
             }
 
             const targetName = this.localSaveTargetArmed && this.localSitchEntry
                 ? this.localSitchEntry.name
                 : "none";
-            this._localStatus.value = `${state} | Folder: ${folderName} | Target: ${targetName}`;
+            this._localStatus.value = t("file.local.statusLine", {state, folder: folderName, target: targetName});
             this._localStatusController.updateDisplay();
         }
 
         if (this._openLocalFolderController) {
-            this._openLocalFolderController.name("Select Local Sitch Folder");
+            this._openLocalFolderController.name(t("file.local.selectFolder.label"));
         }
 
         if (this._openLocalSitchController) {
             this._openLocalSitchController.domElement.style.display = hasWorkingFolder ? "" : "none";
             if (hasWorkingFolder) {
-                this._openLocalSitchController.tooltip(`Open a sitch file from ${this.directoryHandle.name}`);
+                this._openLocalSitchController.tooltip(t("file.local.openLocal.tooltipFromFolder", {folder: this.directoryHandle.name}));
             } else {
-                this._openLocalSitchController.tooltip("Open a sitch file from the current working folder");
+                this._openLocalSitchController.tooltip(t("file.local.openLocal.tooltipFolder"));
             }
         }
 
@@ -2114,27 +2115,27 @@ export class CFileManager extends CManager {
             this._saveLocalController.domElement.style.display = hasWorkingFolder ? "" : "none";
             if (hasWorkingFolder) {
                 this._saveLocalController
-                    .name("Save Local")
+                    .name(t("file.local.saveLocal.label"))
                     .tooltip(this.localSaveTargetArmed && this.localSitchEntry
-                        ? `Save back to ${this.localSitchEntry.name} in ${this.directoryHandle.name}`
-                        : `Save into ${this.directoryHandle.name} (prompts for sitch name)`);
+                        ? t("file.local.saveLocal.tooltipSaveBackInFolder", {name: this.localSitchEntry.name, folder: this.directoryHandle.name})
+                        : t("file.local.saveLocal.tooltipSaveInto", {folder: this.directoryHandle.name}));
             } else if (this.localSitchEntry && this.localSaveTargetArmed) {
                 this._saveLocalController
-                    .name("Save Local")
-                    .tooltip(`Save back to ${this.localSitchEntry.name}`);
+                    .name(t("file.local.saveLocal.label"))
+                    .tooltip(t("file.local.saveLocal.tooltipSaveBack", {name: this.localSitchEntry.name}));
             } else {
                 this._saveLocalController
-                    .name("Save Local")
-                    .tooltip("Save a local sitch file (prompts for name/location)");
+                    .name(t("file.local.saveLocal.label"))
+                    .tooltip(t("file.local.saveLocal.tooltipPrompt"));
             }
         }
 
         if (this._saveLocalAsController) {
             this._saveLocalAsController.domElement.style.display = hasWorkingFolder ? "" : "none";
             if (hasWorkingFolder) {
-                this._saveLocalAsController.tooltip("Save with a new filename in the current working folder");
+                this._saveLocalAsController.tooltip(t("file.local.saveLocalAs.tooltipInFolder"));
             } else {
-                this._saveLocalAsController.tooltip("Save a local sitch file, choosing the location");
+                this._saveLocalAsController.tooltip(t("file.local.saveLocalAs.tooltipFolder"));
             }
         }
     }

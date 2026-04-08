@@ -125,6 +125,135 @@ const fr = {
             tooltip: "Outils de débogage et de surveillance\nUtilisation mémoire GPU, mesures de performance et autres informations de débogage",
         },
     },
+    file: {
+        newSitch: {
+            label: "Nouveau sitch",
+            tooltip: "Créer un nouveau sitch (rechargera cette page en réinitialisant tout)",
+        },
+        savingDisabled: "Sauvegarde désactivée (cliquez pour vous connecter)",
+        importFile: {
+            label: "Importer un fichier",
+            tooltip: "Importer un ou plusieurs fichiers depuis votre système. Identique au glisser-déposer dans la fenêtre du navigateur",
+        },
+        server: {
+            open: "Ouvrir",
+            save: {
+                label: "Enregistrer",
+                tooltip: "Enregistrer le sitch actuel sur le serveur",
+            },
+            saveAs: {
+                label: "Enregistrer sous",
+                tooltip: "Enregistrer le sitch actuel sur le serveur sous un nouveau nom",
+            },
+            versions: {
+                label: "Versions",
+                tooltip: "Charger une version spécifique du sitch sélectionné",
+            },
+            browseFeatured: "Parcourir les sitches en vedette",
+            browseAll: "Parcourir tous vos sitches enregistrés dans une liste consultable et triable",
+        },
+        local: {
+            title: "Local",
+            titleWithFolder: "Local : {{name}}",
+            titleReconnect: "Local : {{name}} (reconnecter)",
+            status: "État",
+            noFileSelected: "Aucun fichier local sélectionné",
+            noFolderSelected: "Aucun dossier sélectionné",
+            currentFile: "Fichier actuel : {{name}}",
+            statusDesktop: "État actuel du fichier/sauvegarde local",
+            statusFolder: "État actuel du dossier/sauvegarde local",
+            stateReady: "Prêt",
+            stateReconnect: "Reconnexion nécessaire",
+            stateNoFolder: "Aucun dossier",
+            statusLine: "{{state}} | Dossier : {{folder}} | Cible : {{target}}",
+            saveLocal: {
+                label: "Enregistrer localement",
+                tooltipDesktop: "Enregistrer dans le fichier local actuel, ou demander un nom de fichier si nécessaire",
+                tooltipFolder: "Enregistrer dans le dossier de travail (ou demander un emplacement si aucun n'est défini)",
+                tooltipSaveBack: "Enregistrer dans {{name}}",
+                tooltipSaveBackInFolder: "Enregistrer dans {{name}} dans {{folder}}",
+                tooltipSaveInto: "Enregistrer dans {{folder}} (demande le nom du sitch)",
+                tooltipPrompt: "Enregistrer un fichier sitch local (demande le nom/emplacement)",
+                tooltipSaveTo: "Enregistrer le sitch actuel dans un fichier local",
+            },
+            saveLocalAs: {
+                label: "Enregistrer localement sous...",
+                tooltipDesktop: "Enregistrer un fichier sitch local vers un nouveau chemin",
+                tooltipFolder: "Enregistrer un fichier sitch local en choisissant l'emplacement",
+                tooltipInFolder: "Enregistrer avec un nouveau nom dans le dossier de travail actuel",
+                tooltipNewPath: "Enregistrer le sitch actuel dans un nouveau chemin local",
+            },
+            openLocal: {
+                label: "Ouvrir un sitch local",
+                labelShort: "Ouvrir local...",
+                tooltipDesktop: "Ouvrir un fichier sitch local depuis le disque",
+                tooltipFolder: "Ouvrir un fichier sitch depuis le dossier de travail actuel",
+                tooltipCurrent: "Ouvrir un autre fichier sitch local (actuel : {{name}})",
+                tooltipFromFolder: "Ouvrir un fichier sitch depuis {{folder}}",
+            },
+            selectFolder: {
+                label: "Sélectionner le dossier de sitches locaux",
+                tooltip: "Sélectionner un dossier de travail pour les opérations de sauvegarde/chargement locales",
+            },
+            reconnectFolder: {
+                label: "Reconnecter le dossier",
+                tooltip: "Redonner l'accès au dossier de travail précédemment utilisé",
+            },
+        },
+        debug: {
+            recalculateAll: "debug recalculer tout",
+            dumpNodes: "debug lister les nœuds",
+            dumpNodesBackwards: "debug lister les nœuds à l'envers",
+            dumpRoots: "debug lister les nœuds racines",
+        },
+    },
+    videoExport: {
+        notAvailable: "Export vidéo non disponible",
+        folder: {
+            title: "Rendu et export vidéo",
+            tooltip: "Options de rendu et d'exportation de fichiers vidéo depuis les vues Sitrec ou la fenêtre complète",
+        },
+        renderView: {
+            label: "Vue de rendu vidéo",
+            tooltip: "Sélectionner la vue à exporter en vidéo",
+        },
+        renderSingleVideo: {
+            label: "Rendu vidéo vue unique",
+            tooltip: "Exporter la vue sélectionnée en fichier vidéo avec tous les photogrammes",
+        },
+        videoFormat: {
+            label: "Format vidéo",
+            tooltip: "Sélectionner le format de sortie vidéo",
+        },
+        renderViewport: {
+            label: "Rendu vidéo fenêtre",
+            tooltip: "Exporter la fenêtre entière en fichier vidéo avec tous les photogrammes",
+        },
+        renderFullscreen: {
+            label: "Rendu vidéo plein écran",
+            tooltip: "Exporter la fenêtre entière en mode plein écran en fichier vidéo",
+        },
+        recordWindow: {
+            label: "Enregistrer la fenêtre du navigateur",
+            tooltip: "Enregistrer toute la fenêtre du navigateur (menus et interface inclus) en vidéo à cadence fixe",
+        },
+        retinaExport: {
+            label: "Export HD/Retina",
+            tooltip: "Exporter en résolution Retina/HiDPI (2x sur la plupart des écrans)",
+        },
+        includeAudio: {
+            label: "Inclure l'audio",
+            tooltip: "Inclure la piste audio de la vidéo source si disponible",
+        },
+        waitForLoading: {
+            label: "Attendre le chargement en arrière-plan",
+            tooltip: "Quand activé, le rendu attend les chargements de terrain/bâtiments/arrière-plan avant chaque image",
+        },
+        exportFrame: {
+            label: "Exporter l'image vidéo",
+            tooltip: "Exporter l'image vidéo actuelle telle qu'affichée (avec effets) en fichier PNG",
+        },
+    },
     jet: {
         frames: {
             time: {

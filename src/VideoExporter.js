@@ -1,5 +1,6 @@
 import {MediabunnyExporter} from "./MediabunnyExporter";
 import {waitForExportFrameSettled} from "./ExportFrameSettler";
+import {t} from "./i18n";
 
 const isFirefox = typeof navigator !== 'undefined' && navigator.userAgent.includes('Firefox');
 const defaultAccelerationOrder = isFirefox 
@@ -241,23 +242,23 @@ export class VideoExportManager {
 
         const encodingSupport = await checkVideoEncodingSupport();
         if (!encodingSupport.supported) {
-            parentFolder.add({ label: "Video Export Not Available" }, "label")
-                .name("Video Export Not Available")
+            parentFolder.add({ label: t("videoExport.notAvailable") }, "label")
+                .name(t("videoExport.notAvailable"))
                 .disable()
-                .tooltip(encodingSupport.reason || "Video encoding is not supported in this browser");
+                .tooltip(encodingSupport.reason || t("videoExport.notAvailable"));
             return;
         }
 
         this.videoFormat = getDefaultVideoFormat(encodingSupport);
         const formatOptions = getFilteredVideoFormatOptions(encodingSupport);
 
-        this.renderVideoFolder = parentFolder.addFolder("Video Render & Export").close()
-            .tooltip("Options for rendering and exporting video files from Sitrec views or full viewport");
+        this.renderVideoFolder = parentFolder.addFolder(t("videoExport.folder.title")).close()
+            .tooltip(t("videoExport.folder.tooltip"));
 
         if (exportableViews.length > 0) {
             this.renderVideoFolder.add(this, "videoExportView", exportableViews)
-                .name("Render Video View")
-                .tooltip("Select which view to export as video");
+                .name(t("videoExport.renderView.label"))
+                .tooltip(t("videoExport.renderView.tooltip"));
 
             this.renderVideoFolder.add({
                 exportVideo: () => {
@@ -267,47 +268,47 @@ export class VideoExportManager {
                         view.exportVideo(this.videoFormat, this.exportAudio, this.waitForBackgroundLoading);
                     }
                 }
-            }, "exportVideo").name("Render Single View Video")
-                .tooltip("Export the selected view as a video file with all frames");
+            }, "exportVideo").name(t("videoExport.renderSingleVideo.label"))
+                .tooltip(t("videoExport.renderSingleVideo.tooltip"));
         }
 
         if (Object.keys(formatOptions).length > 1) {
             this.renderVideoFolder.add(this, "videoFormat", formatOptions)
-                .name("Video Format")
-                .tooltip("Select the output video format");
+                .name(t("videoExport.videoFormat.label"))
+                .tooltip(t("videoExport.videoFormat.tooltip"));
         }
 
         this.renderVideoFolder.add({
             exportViewport: () => this.exportViewportVideo()
-        }, "exportViewport").name("Render Viewport Video")
-            .tooltip("Export the entire viewport as a video file with all frames");
+        }, "exportViewport").name(t("videoExport.renderViewport.label"))
+            .tooltip(t("videoExport.renderViewport.tooltip"));
 
         this.renderVideoFolder.add({
             exportFullscreenViewport: () => this.exportFullscreenViewportVideo()
-        }, "exportFullscreenViewport").name("Render Fullscreen Video")
-            .tooltip("Export the entire viewport in fullscreen mode as a video file with all frames");
+        }, "exportFullscreenViewport").name(t("videoExport.renderFullscreen.label"))
+            .tooltip(t("videoExport.renderFullscreen.tooltip"));
 
         this.renderVideoFolder.add({
             exportWindow: () => this.exportWindowVideo()
-        }, "exportWindow").name("Record Browser Window")
-            .tooltip("Record the entire browser window (including menus and UI) as a video with locked framerate");
+        }, "exportWindow").name(t("videoExport.recordWindow.label"))
+            .tooltip(t("videoExport.recordWindow.tooltip"));
 
         this.renderVideoFolder.add(this, "retinaExport")
-            .name("Use HD/Retina Export")
-            .tooltip("Export at retina/HiDPI resolution (2x on most displays)");
+            .name(t("videoExport.retinaExport.label"))
+            .tooltip(t("videoExport.retinaExport.tooltip"));
 
         this.renderVideoFolder.add(this, "exportAudio")
-            .name("Include Audio")
-            .tooltip("Include audio track from source video if available");
+            .name(t("videoExport.includeAudio.label"))
+            .tooltip(t("videoExport.includeAudio.tooltip"));
 
         this.renderVideoFolder.add(this, "waitForBackgroundLoading")
-            .name("Wait for background loading")
-            .tooltip("When enabled, rendering waits for terrain/building/background loads before capturing each frame");
+            .name(t("videoExport.waitForLoading.label"))
+            .tooltip(t("videoExport.waitForLoading.tooltip"));
 
         this.renderVideoFolder.add({
             exportFrame: () => this.exportVideoFrame()
-        }, "exportFrame").name("Export Video Frame")
-            .tooltip("Export the current video frame as displayed (with effects) as a PNG file");
+        }, "exportFrame").name(t("videoExport.exportFrame.label"))
+            .tooltip(t("videoExport.exportFrame.tooltip"));
 
         if (!options.skipPanorama) {
             setupPanoramaExport(this.renderVideoFolder);

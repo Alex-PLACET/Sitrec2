@@ -125,6 +125,135 @@ const es = {
             tooltip: "Herramientas de depuración y monitorización\nUso de memoria GPU, métricas de rendimiento y otra información de depuración",
         },
     },
+    file: {
+        newSitch: {
+            label: "Nuevo sitch",
+            tooltip: "Crear un nuevo sitch (recargará esta página, restableciendo todo)",
+        },
+        savingDisabled: "Guardado desactivado (haga clic para iniciar sesión)",
+        importFile: {
+            label: "Importar archivo",
+            tooltip: "Importar uno o varios archivos desde su sistema. Igual que arrastrar y soltar un archivo en la ventana del navegador",
+        },
+        server: {
+            open: "Abrir",
+            save: {
+                label: "Guardar",
+                tooltip: "Guardar el sitch actual en el servidor",
+            },
+            saveAs: {
+                label: "Guardar como",
+                tooltip: "Guardar el sitch actual en el servidor con un nuevo nombre",
+            },
+            versions: {
+                label: "Versiones",
+                tooltip: "Cargar una versión específica del sitch seleccionado",
+            },
+            browseFeatured: "Explorar sitches destacados",
+            browseAll: "Explorar todos sus sitches guardados en una lista buscable y ordenable",
+        },
+        local: {
+            title: "Local",
+            titleWithFolder: "Local: {{name}}",
+            titleReconnect: "Local: {{name}} (reconectar)",
+            status: "Estado",
+            noFileSelected: "Ningún archivo local seleccionado",
+            noFolderSelected: "Ninguna carpeta seleccionada",
+            currentFile: "Archivo actual: {{name}}",
+            statusDesktop: "Estado actual del archivo/guardado local",
+            statusFolder: "Estado actual de la carpeta/guardado local",
+            stateReady: "Listo",
+            stateReconnect: "Necesita reconexión",
+            stateNoFolder: "Sin carpeta",
+            statusLine: "{{state}} | Carpeta: {{folder}} | Destino: {{target}}",
+            saveLocal: {
+                label: "Guardar local",
+                tooltipDesktop: "Guardar en el archivo local actual, o solicitar un nombre de archivo si es necesario",
+                tooltipFolder: "Guardar en la carpeta de trabajo (o solicitar ubicación si no hay ninguna definida)",
+                tooltipSaveBack: "Guardar en {{name}}",
+                tooltipSaveBackInFolder: "Guardar en {{name}} en {{folder}}",
+                tooltipSaveInto: "Guardar en {{folder}} (solicita el nombre del sitch)",
+                tooltipPrompt: "Guardar un archivo sitch local (solicita nombre/ubicación)",
+                tooltipSaveTo: "Guardar el sitch actual en un archivo local",
+            },
+            saveLocalAs: {
+                label: "Guardar local como...",
+                tooltipDesktop: "Guardar un archivo sitch local en una nueva ruta",
+                tooltipFolder: "Guardar un archivo sitch local eligiendo la ubicación",
+                tooltipInFolder: "Guardar con un nuevo nombre en la carpeta de trabajo actual",
+                tooltipNewPath: "Guardar el sitch actual en una nueva ruta local",
+            },
+            openLocal: {
+                label: "Abrir sitch local",
+                labelShort: "Abrir local...",
+                tooltipDesktop: "Abrir un archivo sitch local desde el disco",
+                tooltipFolder: "Abrir un archivo sitch desde la carpeta de trabajo actual",
+                tooltipCurrent: "Abrir otro archivo sitch local (actual: {{name}})",
+                tooltipFromFolder: "Abrir un archivo sitch desde {{folder}}",
+            },
+            selectFolder: {
+                label: "Seleccionar carpeta de sitches locales",
+                tooltip: "Seleccionar una carpeta de trabajo para operaciones de guardado/carga locales",
+            },
+            reconnectFolder: {
+                label: "Reconectar carpeta",
+                tooltip: "Volver a conceder acceso a la carpeta de trabajo usada anteriormente",
+            },
+        },
+        debug: {
+            recalculateAll: "debug recalcular todo",
+            dumpNodes: "debug listar nodos",
+            dumpNodesBackwards: "debug listar nodos en reversa",
+            dumpRoots: "debug listar nodos raíz",
+        },
+    },
+    videoExport: {
+        notAvailable: "Exportación de vídeo no disponible",
+        folder: {
+            title: "Renderizado y exportación de vídeo",
+            tooltip: "Opciones para renderizar y exportar archivos de vídeo desde las vistas de Sitrec o la ventana completa",
+        },
+        renderView: {
+            label: "Vista de renderizado de vídeo",
+            tooltip: "Seleccionar qué vista exportar como vídeo",
+        },
+        renderSingleVideo: {
+            label: "Renderizar vídeo de vista única",
+            tooltip: "Exportar la vista seleccionada como archivo de vídeo con todos los fotogramas",
+        },
+        videoFormat: {
+            label: "Formato de vídeo",
+            tooltip: "Seleccionar el formato de salida de vídeo",
+        },
+        renderViewport: {
+            label: "Renderizar vídeo de ventana",
+            tooltip: "Exportar toda la ventana como archivo de vídeo con todos los fotogramas",
+        },
+        renderFullscreen: {
+            label: "Renderizar vídeo a pantalla completa",
+            tooltip: "Exportar toda la ventana en modo pantalla completa como archivo de vídeo",
+        },
+        recordWindow: {
+            label: "Grabar ventana del navegador",
+            tooltip: "Grabar toda la ventana del navegador (incluyendo menús e interfaz) como vídeo a velocidad fija",
+        },
+        retinaExport: {
+            label: "Exportación HD/Retina",
+            tooltip: "Exportar a resolución Retina/HiDPI (2x en la mayoría de pantallas)",
+        },
+        includeAudio: {
+            label: "Incluir audio",
+            tooltip: "Incluir la pista de audio del vídeo fuente si está disponible",
+        },
+        waitForLoading: {
+            label: "Esperar carga en segundo plano",
+            tooltip: "Cuando está activado, el renderizado espera a que se carguen terreno/edificios/fondo antes de capturar cada fotograma",
+        },
+        exportFrame: {
+            label: "Exportar fotograma de vídeo",
+            tooltip: "Exportar el fotograma de vídeo actual tal como se muestra (con efectos) como archivo PNG",
+        },
+    },
     jet: {
         frames: {
             time: {

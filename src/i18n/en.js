@@ -125,6 +125,135 @@ const en = {
             tooltip: "Debug tools and monitoring\nGPU memory usage, performance metrics, and other debugging information",
         },
     },
+    file: {
+        newSitch: {
+            label: "New Sitch",
+            tooltip: "Create a new sitch (will reload this page, resetting everything)",
+        },
+        savingDisabled: "Saving Disabled (click to log in)",
+        importFile: {
+            label: "Import File",
+            tooltip: "Import a file (or files) from your local system. Same as dragging and dropping a file into the browser window",
+        },
+        server: {
+            open: "Open",
+            save: {
+                label: "Save",
+                tooltip: "Save the current sitch to the server",
+            },
+            saveAs: {
+                label: "Save As",
+                tooltip: "Save the current sitch to the server with a new name",
+            },
+            versions: {
+                label: "Versions",
+                tooltip: "Load a specific version of the currently selected sitch",
+            },
+            browseFeatured: "Browse featured sitches",
+            browseAll: "Browse all your saved sitches in a searchable, sortable list",
+        },
+        local: {
+            title: "Local",
+            titleWithFolder: "Local: {{name}}",
+            titleReconnect: "Local: {{name}} (reconnect)",
+            status: "Status",
+            noFileSelected: "No local file selected",
+            noFolderSelected: "No folder selected",
+            currentFile: "Current file: {{name}}",
+            statusDesktop: "Current local desktop file/save state",
+            statusFolder: "Current local folder/save state",
+            stateReady: "Ready",
+            stateReconnect: "Needs reconnect",
+            stateNoFolder: "No folder",
+            statusLine: "{{state}} | Folder: {{folder}} | Target: {{target}}",
+            saveLocal: {
+                label: "Save Local",
+                tooltipDesktop: "Save to the current local file, or prompt for a filename if needed",
+                tooltipFolder: "Save into the working folder (or prompts for a location if none is set)",
+                tooltipSaveBack: "Save back to {{name}}",
+                tooltipSaveBackInFolder: "Save back to {{name}} in {{folder}}",
+                tooltipSaveInto: "Save into {{folder}} (prompts for sitch name)",
+                tooltipPrompt: "Save a local sitch file (prompts for name/location)",
+                tooltipSaveTo: "Save the current sitch to a local file",
+            },
+            saveLocalAs: {
+                label: "Save Local As...",
+                tooltipDesktop: "Save a local sitch file to a new path",
+                tooltipFolder: "Save a local sitch file, choosing the location",
+                tooltipInFolder: "Save with a new filename in the current working folder",
+                tooltipNewPath: "Save the current sitch to a new local file path",
+            },
+            openLocal: {
+                label: "Open Local Sitch",
+                labelShort: "Open Local...",
+                tooltipDesktop: "Open a local sitch file from disk",
+                tooltipFolder: "Open a sitch file from the current working folder",
+                tooltipCurrent: "Open a different local sitch file (current: {{name}})",
+                tooltipFromFolder: "Open a sitch file from {{folder}}",
+            },
+            selectFolder: {
+                label: "Select Local Sitch Folder",
+                tooltip: "Select a working folder for local save/load operations",
+            },
+            reconnectFolder: {
+                label: "Reconnect Folder",
+                tooltip: "Re-grant access to the previously used working folder",
+            },
+        },
+        debug: {
+            recalculateAll: "debug recalculate all",
+            dumpNodes: "debug dump nodes",
+            dumpNodesBackwards: "debug dump nodes backwards",
+            dumpRoots: "debug dump Root notes",
+        },
+    },
+    videoExport: {
+        notAvailable: "Video Export Not Available",
+        folder: {
+            title: "Video Render & Export",
+            tooltip: "Options for rendering and exporting video files from Sitrec views or full viewport",
+        },
+        renderView: {
+            label: "Render Video View",
+            tooltip: "Select which view to export as video",
+        },
+        renderSingleVideo: {
+            label: "Render Single View Video",
+            tooltip: "Export the selected view as a video file with all frames",
+        },
+        videoFormat: {
+            label: "Video Format",
+            tooltip: "Select the output video format",
+        },
+        renderViewport: {
+            label: "Render Viewport Video",
+            tooltip: "Export the entire viewport as a video file with all frames",
+        },
+        renderFullscreen: {
+            label: "Render Fullscreen Video",
+            tooltip: "Export the entire viewport in fullscreen mode as a video file with all frames",
+        },
+        recordWindow: {
+            label: "Record Browser Window",
+            tooltip: "Record the entire browser window (including menus and UI) as a video with locked framerate",
+        },
+        retinaExport: {
+            label: "Use HD/Retina Export",
+            tooltip: "Export at retina/HiDPI resolution (2x on most displays)",
+        },
+        includeAudio: {
+            label: "Include Audio",
+            tooltip: "Include audio track from source video if available",
+        },
+        waitForLoading: {
+            label: "Wait for background loading",
+            tooltip: "When enabled, rendering waits for terrain/building/background loads before capturing each frame",
+        },
+        exportFrame: {
+            label: "Export Video Frame",
+            tooltip: "Export the current video frame as displayed (with effects) as a PNG file",
+        },
+    },
     jet: {
         frames: {
             time: {
