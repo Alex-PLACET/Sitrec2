@@ -87,7 +87,7 @@ import {CNodeFloodSim} from "./nodes/CNodeFloodSim";
 import {CNodeOrbitTrack} from "./nodes/CNodeOrbitTrack";
 import {CNodeTrackSwitch} from "./nodes/CNodeTrackSwitch";
 import {getNearbyWeatherBalloons, importSoundingDialog} from "./SondeFetch";
-import {getCurrentLanguage, setLanguage, SUPPORTED_LANGUAGE_OPTIONS} from "./i18n";
+import {getCurrentLanguage, setLanguage, SUPPORTED_LANGUAGE_OPTIONS, t} from "./i18n";
 
 export class CCustomManager {
     constructor() {
@@ -606,42 +606,41 @@ export class CCustomManager {
         this._importSounding = importSoundingDialog;
 
         const balloonFolder = addGUIFolder("weatherBalloons", "Weather Balloons", "physics");
-        balloonFolder.add(par, "balloonCount", 1, 10, 1).name("Count")
-            .tooltip("Number of nearby stations to import");
-        balloonFolder.add(par, "balloonSource", ["uwyo", "igra2"]).name("Source")
-            .tooltip("uwyo = University of Wyoming (needs PHP proxy)\nigra2 = NOAA NCEI archive (direct download)");
-        balloonFolder.add(this, "_getNearbyBalloons").name("Get Nearby Weather Balloons")
-            .tooltip("Import the N closest weather balloon soundings to the current camera position.\n"
-                + "Uses the most recent launch before the sitch start time + 1 hour.");
-        balloonFolder.add(this, "_importSounding").name("Import Sounding...")
-            .tooltip("Manual station picker: choose station, date, source, and import a specific sounding.");
+        balloonFolder.add(par, "balloonCount", 1, 10, 1).name(t("custom.balloons.count.label"))
+            .tooltip(t("custom.balloons.count.tooltip"));
+        balloonFolder.add(par, "balloonSource", ["uwyo", "igra2"]).name(t("custom.balloons.source.label"))
+            .tooltip(t("custom.balloons.source.tooltip"));
+        balloonFolder.add(this, "_getNearbyBalloons").name(t("custom.balloons.getNearby.label"))
+            .tooltip(t("custom.balloons.getNearby.tooltip"));
+        balloonFolder.add(this, "_importSounding").name(t("custom.balloons.importSounding.label"))
+            .tooltip(t("custom.balloons.importSounding.tooltip"));
 
-        toggler('k', guiMenus.help.add(par, 'showKeyboardShortcuts').listen().name("[K]eyboard Shortcuts").onChange(value => {
+        toggler('k', guiMenus.help.add(par, 'showKeyboardShortcuts').listen().name(t("custom.showHide.keyboardShortcuts.label")).onChange(value => {
             if (value) {
                 infoDiv.style.display = 'block';
             } else {
                 infoDiv.style.display = 'none';
             }
-        }).tooltip("Show or hide the keyboard shortcuts overlay")
+        }).tooltip(t("custom.showHide.keyboardShortcuts.tooltip"))
         )
 
         toggler('e', guiMenus.contents.add(this, "toggleExtendToGround")
-            .name("Toggle ALL [E]xtend To Ground")
+            .name(t("custom.showHide.toggleExtendToGround.label"))
             .moveToFirst()
-            .tooltip("Toggle 'Extend to Ground' for all tracks\nWill set all off if any are on\nWill set all on if none are on")
+            .tooltip(t("custom.showHide.toggleExtendToGround.tooltip"))
         )
 
         if (Globals.showAllTracksInLook === undefined)
             Globals.showAllTracksInLook = false;
-        guiMenus.showhide.add(Globals, "showAllTracksInLook").name("Show All Tracks in Look View").tooltip("Display all aircraft tracks in the look/camera view").onChange(() => {
+        guiMenus.showhide.add(Globals, "showAllTracksInLook").name(t("custom.showHide.showAllTracksInLook.label")).tooltip(t("custom.showHide.showAllTracksInLook.tooltip")).onChange(() => {
             this.refreshLookViewTracks();
 
         }).listen();
 
         if (GlobalScene.showCompassElevation === undefined) {
             Globals.showCompassElevation = false;
-            guiMenus.showhide.add(Globals, "showCompassElevation").name("Show Compass Elevation")
-                .tooltip("Show compass elevation (angle above the local ground plane) in addition to bearing (azimuth)")
+            guiMenus.showhide.add(Globals, "showCompassElevation").name(t("custom.showHide.showCompassElevation.label"))
+                .tooltip(t("custom.showHide.showCompassElevation.tooltip"))
                 .onChange(() => {
                     // iterate over all nodes, find any CNodeCompassUI, and force update their text by changing lastHeading to null
                     NodeMan.iterate((id, node) => {
@@ -655,14 +654,14 @@ export class CCustomManager {
         }
 
         guiMenus.contents.add(this, "filterTracks")
-            .name("Filter Tracks")
+            .name(t("custom.showHide.filterTracks.label"))
             .moveToFirst()
-            .tooltip("Show/hide tracks based on altitude, direction, or frustum intersection")
+            .tooltip(t("custom.showHide.filterTracks.tooltip"))
 
         guiMenus.contents.add(this, "removeAllTracks")
-            .name("Remove All Tracks")
+            .name(t("custom.showHide.removeAllTracks.label"))
             .moveToFirst()
-            .tooltip("Remove all tracks from the scene\nThis will not remove the objects, just the tracks\nYou can add them back later by dragging and dropping the files again")
+            .tooltip(t("custom.showHide.removeAllTracks.tooltip"))
 
 
         // guiMenus.physics.add(this, "calculateBestPairs").name("Calculate Best Pairs");
@@ -671,8 +670,8 @@ export class CCustomManager {
         if (Globals.objectScale === undefined)
             Globals.objectScale = 1.0;
         guiMenus.objects.add(Globals, "objectScale", 1, 50, 0.01)
-            .name("Global Scale")
-            .tooltip("Scale factor applied to all 3D objects in the scene - useful for finding things. Set back to 1 for real size")
+            .name(t("custom.objects.globalScale.label"))
+            .tooltip(t("custom.objects.globalScale.tooltip"))
             .listen()
             .onChange((value) => {
                 // iterate over all node, any CNode3DObject, and set the scale to this.objectScale
@@ -702,15 +701,15 @@ export class CCustomManager {
 
         if (isAdmin()) {
             const adminFolder = guiMenus.help.addFolder("Admin");
-            adminFolder.add(this, "openAdminDashboard").name("Admin Dashboard").tooltip("Open the admin dashboard");
-            adminFolder.add(this, "validateAllSitches").name("Validate All Sitches").tooltip("Load all saved sitches with local terrain to check for errors");
-            adminFolder.add(Globals, "testUserID", 0, 99999999, 1).noSlider().name("Test User ID").tooltip("Operate as this user ID (0 = disabled, must be > 1)")
+            adminFolder.add(this, "openAdminDashboard").name(t("custom.admin.dashboard.label")).tooltip(t("custom.admin.dashboard.tooltip"));
+            adminFolder.add(this, "validateAllSitches").name(t("custom.admin.validateAllSitches.label")).tooltip(t("custom.admin.validateAllSitches.tooltip"));
+            adminFolder.add(Globals, "testUserID", 0, 99999999, 1).noSlider().name(t("custom.admin.testUserID.label")).tooltip(t("custom.admin.testUserID.tooltip"))
                 .onFinishChange(() => { FileManager.refreshUserSaves(); });
             if (getEnvBool("SAVE_TO_S3", process.env.SAVE_TO_S3)) {
-                adminFolder.add(this, "addMissingScreenshots").name("Add Missing Screenshots").tooltip("Load each sitch that has no screenshot, render it, and upload a screenshot");
+                adminFolder.add(this, "addMissingScreenshots").name(t("custom.admin.addMissingScreenshots.label")).tooltip(t("custom.admin.addMissingScreenshots.tooltip"));
             }
-            this._featureButton = adminFolder.add(this, "toggleFeatureSitch").name("Feature")
-                .tooltip("Toggle Featured status for the currently loaded sitch");
+            this._featureButton = adminFolder.add(this, "toggleFeatureSitch").name(t("custom.admin.feature.label"))
+                .tooltip(t("custom.admin.feature.tooltip"));
             const browser = FileManager.sitchBrowser;
             // Only fetch featured state when a saved sitch is already loaded.
             // Browser-first startup will load featured data when the browser opens.
@@ -926,9 +925,9 @@ export class CCustomManager {
         // add a key handler to switch between the view presets
 
         this.presetGUI = guiMenus.view.add(this, "currentViewPreset", Object.keys(this.viewPresets))
-            .name("View Preset")
+            .name(t("custom.viewPreset.label"))
             .listen()
-            .tooltip("Switch between different view presets\nSide-by-side, Top and Bottom, etc.")
+            .tooltip(t("custom.viewPreset.tooltip"))
             .onChange((value) => {
                 this.updateViewFromPreset();
             })
@@ -1111,22 +1110,22 @@ export class CCustomManager {
         this.subSitchControllers = [];
 
         this.subSitchFolder = guiMenus.file.addFolder("Sub Sitches").close()
-            .tooltip("Manage multiple camera/view configurations within this sitch");
+            .tooltip(t("custom.subSitches.folder.tooltip"));
 
-        this.subSitchFolder.add(this, "updateSubSitch").name("Update Current Sub")
-            .tooltip("Update the currently selected Sub Sitch with the current view settings");
+        this.subSitchFolder.add(this, "updateSubSitch").name(t("custom.subSitches.updateCurrent.label"))
+            .tooltip(t("custom.subSitches.updateCurrent.tooltip"));
 
-        this.subSitchFolder.add(this, "updateAndAddSubSitch").name("Update Current and Add New Sub")
-            .tooltip("Update current Sub Sitch, then duplicate it into a new Sub Sitch");
+        this.subSitchFolder.add(this, "updateAndAddSubSitch").name(t("custom.subSitches.updateAndAddNew.label"))
+            .tooltip(t("custom.subSitches.updateAndAddNew.tooltip"));
 
-        this.subSitchFolder.add(this, "discardAndAddSubSitch").name("Discard Changes and Add New")
-            .tooltip("Discard changes to current Sub Sitch, and invoke a new Sub Sitch from current state");
+        this.subSitchFolder.add(this, "discardAndAddSubSitch").name(t("custom.subSitches.discardAndAddNew.label"))
+            .tooltip(t("custom.subSitches.discardAndAddNew.tooltip"));
 
-        this.subSitchFolder.add(this, "renameCurrentSubSitch").name("Rename Current Sub")
-            .tooltip("Rename the currently selected Sub Sitch");
+        this.subSitchFolder.add(this, "renameCurrentSubSitch").name(t("custom.subSitches.renameCurrent.label"))
+            .tooltip(t("custom.subSitches.renameCurrent.tooltip"));
 
-        this.subSitchFolder.add(this, "deleteCurrentSubSitch").name("Delete Current Sub")
-            .tooltip("Delete the currently selected Sub Sitch");
+        this.subSitchFolder.add(this, "deleteCurrentSubSitch").name(t("custom.subSitches.deleteCurrent.label"))
+            .tooltip(t("custom.subSitches.deleteCurrent.tooltip"));
 
         this.setupSubSitchDetails();
         this.initializeFirstSubSitch();
@@ -1176,8 +1175,8 @@ export class CCustomManager {
                 .tooltip("Restore " + key.toLowerCase() + " data when loading a sub sitch");
         }
 
-        this.subSitchFolder.add(this, "syncSubSaveDetails").name("Sync Sub Save Details")
-            .tooltip("Remove from current sub any nodes not enabled in Sub Saving Details");
+        this.subSitchFolder.add(this, "syncSubSaveDetails").name(t("custom.subSitches.syncSaveDetails.label"))
+            .tooltip(t("custom.subSitches.syncSaveDetails.tooltip"));
     }
 
     syncSubSaveDetails() {
@@ -2822,20 +2821,20 @@ export class CCustomManager {
         menu.addHTML(locationText, "Location");
 
         // Add menu items
-        menu.add(menuData, "setCameraAbove").name("Set Camera Above");
-        menu.add(menuData, "setCameraOnGround").name("Set Camera on Ground");
-        menu.add(menuData, "setTargetAbove").name("Set Target Above");
-        menu.add(menuData, "setTargetOnGround").name("Set Target on Ground");
+        menu.add(menuData, "setCameraAbove").name(t("custom.contextMenu.setCameraAbove"));
+        menu.add(menuData, "setCameraOnGround").name(t("custom.contextMenu.setCameraOnGround"));
+        menu.add(menuData, "setTargetAbove").name(t("custom.contextMenu.setTargetAbove"));
+        menu.add(menuData, "setTargetOnGround").name(t("custom.contextMenu.setTargetOnGround"));
 
         // Add feature marker option
-        menu.add(menuData, "dropPin").name("Drop Pin / Add Feature");
+        menu.add(menuData, "dropPin").name(t("custom.contextMenu.dropPin"));
 
         // Add synthetic track options
-        menu.add(menuData, "createTrackWithObject").name("Create Track with Object");
-        menu.add(menuData, "createSyntheticTrack").name("Create Track (No Object)");
+        menu.add(menuData, "createTrackWithObject").name(t("custom.contextMenu.createTrackWithObject"));
+        menu.add(menuData, "createSyntheticTrack").name(t("custom.contextMenu.createTrackNoObject"));
 
         // Add building creation option
-        menu.add(menuData, "addBuilding").name("Add Building");
+        menu.add(menuData, "addBuilding").name(t("custom.contextMenu.addBuilding"));
 
         // Add clouds options
         if (cloudsAtPoint) {
@@ -2843,7 +2842,7 @@ export class CCustomManager {
             const cloudsMenuLabel = cloudsAtPoint.editMode ? `Exit Edit: ${cloudsLabel}` : `Edit Clouds: ${cloudsLabel}`;
             menu.add(menuData, "editClouds").name(cloudsMenuLabel);
         }
-        menu.add(menuData, "addClouds").name("Add Clouds");
+        menu.add(menuData, "addClouds").name(t("custom.contextMenu.addClouds"));
 
         // Add ground overlay options
         if (overlayAtPoint) {
@@ -2851,20 +2850,20 @@ export class CCustomManager {
             const menuLabel = overlayAtPoint.editMode ? `Exit Edit: ${overlayLabel}` : `Edit Overlay: ${overlayLabel}`;
             menu.add(menuData, "editOverlay").name(menuLabel);
         }
-        menu.add(menuData, "addOverlay").name("Add Ground Overlay");
+        menu.add(menuData, "addOverlay").name(t("custom.contextMenu.addGroundOverlay"));
 
         if (NodeMan.exists("terrainUI")) {
             const terrainUI = NodeMan.get("terrainUI");
             if (!terrainUI.dynamic) {
-                menu.add(menuData, "centerTerrain").name("Center Terrain square here");
+                menu.add(menuData, "centerTerrain").name(t("custom.contextMenu.centerTerrain"));
             }
 
         }
 
         // Add Google Maps link if extraHelpLinks is enabled
         if (configParams?.extraHelpLinks) {
-            menu.add(menuData, "googleMapsHere").name("Google Maps Here");
-            menu.add(menuData, "googleEarthHere").name("Google Earth Here");
+            menu.add(menuData, "googleMapsHere").name(t("custom.contextMenu.googleMapsHere"));
+            menu.add(menuData, "googleEarthHere").name(t("custom.contextMenu.googleEarthHere"));
         }
     }
 
@@ -2992,8 +2991,8 @@ export class CCustomManager {
             menu.add(menuData, "splitTrack").name(`Split Track (Frame ${par.frame})`);
             menu.add(menuData, "addGroundPoint").name(`Add Ground Point (Frame ${par.frame})`);
         }
-        menu.add(menuData, "removeClosestPoint").name("Remove Closest Point");
-        menu.add(menuData, "exitEditMode").name("Exit Edit Mode");
+        menu.add(menuData, "removeClosestPoint").name(t("custom.contextMenu.removeClosestPoint"));
+        menu.add(menuData, "exitEditMode").name(t("custom.contextMenu.exitEditMode"));
     }
 
     showBuildingEditingMenu(mouseX, mouseY) {
