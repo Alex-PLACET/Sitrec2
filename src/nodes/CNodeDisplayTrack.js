@@ -18,6 +18,7 @@ import {hexColor, V3} from "../threeUtils";
 import {CNodeGUIValue} from "./CNodeGUIValue";
 import {ECEFToLLAVD_radii, haversineDistanceKM, interpolateGreatCircle, LLAToECEF} from "../LLA-ECEF-ENU";
 import {meanSeaLevelOffset} from "../EGM96Geoid";
+import {t} from "../i18n";
 import {CNodeContrail} from "./CNodeContrail";
 
 export class CNodeDisplayTrack extends CNode3DGroup {
@@ -168,7 +169,7 @@ export class CNodeDisplayTrack extends CNode3DGroup {
             });
 
             // toggle for visibility with optional linked data track
-            this.guiFolder.add(this, "visible").tooltip("Show or hide this track").listen().onChange(() => {
+            this.guiFolder.add(this, "visible").tooltip(t("displayTrack.visible.tooltip")).listen().onChange(() => {
                 this.show(this.visible);
                 if (this.in.dataTrackDisplay !== undefined) {
                     this.in.dataTrackDisplay.visible = this.visible
@@ -181,7 +182,7 @@ export class CNodeDisplayTrack extends CNode3DGroup {
             })
 
             // // toggle for visibility of the mesh (vertical semi-transparent polygons
-            this.guiFolder.add(this, "extendToGround").name("Extend To Ground").tooltip("Draw vertical lines from track to ground").listen().onChange(() => {
+            this.guiFolder.add(this, "extendToGround").name(t("displayTrack.extendToGround.label")).tooltip(t("displayTrack.extendToGround.tooltip")).listen().onChange(() => {
                 // just rebuild it, which will remove the mest based on the flag
                 console.log("extendToGround changed to "+this.extendToGround)
                 if (this.in.dataTrackDisplay !== undefined) {
@@ -192,46 +193,46 @@ export class CNodeDisplayTrack extends CNode3DGroup {
                 this.recalculate()
             })
 
-            this.guiFolder.add(this, "trackDisplayStep", 1, 100, 1).name("Display Step").tooltip("Frame step between displayed track points (1 = every frame)").listen().onChange(() => {
+            this.guiFolder.add(this, "trackDisplayStep", 1, 100, 1).name(t("displayTrack.displayStep.label")).tooltip(t("displayTrack.displayStep.tooltip")).listen().onChange(() => {
                 this.recalculate()
                 setRenderOne(true)
             })
 
             // Contrail toggle and duration
-            this.guiFolder.add(this, "contrail").name("Contrail").tooltip("Show a contrail ribbon behind this track, adusted for wind").listen().onChange(() => {
+            this.guiFolder.add(this, "contrail").name(t("displayTrack.contrail.label")).tooltip(t("displayTrack.contrail.tooltip")).listen().onChange(() => {
                 this.updateContrail();
                 setRenderOne(true);
             })
             this.guiContrailDuration = this.guiFolder.add(this, "contrailDuration", 2, 5000, 1)
-                .name("Contrail Secs").tooltip("Duration of the contrail in seconds").listen().onChange(() => {
+                .name(t("displayTrack.contrailSecs.label")).tooltip(t("displayTrack.contrailSecs.tooltip")).listen().onChange(() => {
                     if (this.contrailNode) {
                         this.contrailNode.duration = this.contrailDuration;
                     }
                     setRenderOne(true);
                 })
             this.guiFolder.add(this, "contrailWidth", 10, 200, 1)
-                .name("Contrail Width m").tooltip("Maximum width of the contrail ribbon in meters").listen().onChange(() => {
+                .name(t("displayTrack.contrailWidth.label")).tooltip(t("displayTrack.contrailWidth.tooltip")).listen().onChange(() => {
                     if (this.contrailNode) {
                         this.contrailNode.ribbonWidth = this.contrailWidth;
                     }
                     setRenderOne(true);
                 })
             this.guiFolder.add(this, "contrailInitialWidth", 0, 100, 1)
-                .name("Contrail Initial Width m").tooltip("Width of the contrail at the exhaust point in meters").listen().onChange(() => {
+                .name(t("displayTrack.contrailInitialWidth.label")).tooltip(t("displayTrack.contrailInitialWidth.tooltip")).listen().onChange(() => {
                     if (this.contrailNode) {
                         this.contrailNode.initialWidth = this.contrailInitialWidth;
                     }
                     setRenderOne(true);
                 })
             this.guiFolder.add(this, "contrailRampDistance", 0, 2000, 10)
-                .name("Contrail Ramp m").tooltip("Distance over which the contrail width ramps up in meters").listen().onChange(() => {
+                .name(t("displayTrack.contrailRamp.label")).tooltip(t("displayTrack.contrailRamp.tooltip")).listen().onChange(() => {
                     if (this.contrailNode) {
                         this.contrailNode.rampDistance = this.contrailRampDistance;
                     }
                     setRenderOne(true);
                 })
             this.guiFolder.add(this, "contrailSpread", 0, 20, 0.01)
-                .name("Contrail Spread m/s").tooltip("Rate at which the contrail spreads outward in m/s").listen().onChange(() => {
+                .name(t("displayTrack.contrailSpread.label")).tooltip(t("displayTrack.contrailSpread.tooltip")).listen().onChange(() => {
                     if (this.contrailNode) {
                         this.contrailNode.spread = this.contrailSpread;
                     }
@@ -239,7 +240,7 @@ export class CNodeDisplayTrack extends CNode3DGroup {
                 })
 
             // color picker for the line color, with optional linked data track
-            this.guiLineColor = this.guiFolder.addColor(this, "lineColor").name("Line Color").tooltip("Color of the track line").onChange(() => {
+            this.guiLineColor = this.guiFolder.addColor(this, "lineColor").name(t("displayTrack.lineColor.label")).tooltip(t("displayTrack.lineColor.tooltip")).onChange(() => {
 
                 this.guiFolder.setLabelColor(this.in.color.v0, this.minGUIColor);
 
@@ -253,7 +254,7 @@ export class CNodeDisplayTrack extends CNode3DGroup {
             })
 
             // color picker for the polygon/drop color
-            this.guiPolyColor = this.guiFolder.addColor(this, "polyColor").name("Poly Color").tooltip("Color of the vertical ground extension polygons").onChange(() => {
+            this.guiPolyColor = this.guiFolder.addColor(this, "polyColor").name(t("displayTrack.polyColor.label")).tooltip(t("displayTrack.polyColor.tooltip")).onChange(() => {
                 if (this.in.dropColor !== undefined) {
                     this.in.dropColor.value = this.polyColor
                 }
@@ -308,7 +309,7 @@ export class CNodeDisplayTrack extends CNode3DGroup {
                 }, this.guiFolder)
 
                 track.altitudeLockAGL = true;
-                this.guiFolder.add(track, "altitudeLockAGL").name("Alt Lock AGL").listen()
+                this.guiFolder.add(track, "altitudeLockAGL").name(t("displayTrack.altLockAGL.label")).listen()
                     .onChange(() => {
                         track.recalculateCascade()
                     })
@@ -338,7 +339,7 @@ export class CNodeDisplayTrack extends CNode3DGroup {
                 track.setupFilterGUI?.(this.guiFolder);
             }
 
-            this.guiFolder.add(this, "gotoTrack").name("Go to track").tooltip("Center the main camera on this track's location");
+            this.guiFolder.add(this, "gotoTrack").name(t("displayTrack.gotoTrack.label")).tooltip(t("displayTrack.gotoTrack.tooltip"));
 
         }
 

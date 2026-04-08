@@ -24,6 +24,7 @@ import {
     setMapAttribution,
     setTilesAttribution
 } from "../AttributionOverlay";
+import {t} from "../i18n";
 
 /**
  * Static map of token names to their build-time values.
@@ -361,8 +362,8 @@ export class CNodeTerrainUI extends CNode {
         });
 
         this.gui = guiMenus.terrain;
-        this.mapTypeMenu = this.gui.add(this, "mapType", this.mapTypesKV).listen().name("Map Type")
-            .tooltip("Map type for terrain textures (separate from elevation data)")
+        this.mapTypeMenu = this.gui.add(this, "mapType", this.mapTypesKV).listen().name(t("terrainUI.mapType.label"))
+            .tooltip(t("terrainUI.mapType.tooltip"))
 
 //////////////////////////////////////////////////////////////////////////////////////////
         // same for elevation sources
@@ -457,8 +458,8 @@ export class CNodeTerrainUI extends CNode {
             defaultType: defaultElevationType,
         })
         // add the menu
-        this.elevationTypeMenu = this.gui.add(this, "elevationType", this.elevationTypesKV).listen().name("Elevation Type")
-            .tooltip("Elevation data source for terrain height data")
+        this.elevationTypeMenu = this.gui.add(this, "elevationType", this.elevationTypesKV).listen().name(t("terrainUI.elevationType.label"))
+            .tooltip(t("terrainUI.elevationType.tooltip"))
 
         this.elevationTypeMenu.onChange(v => {
 
@@ -500,7 +501,7 @@ export class CNodeTerrainUI extends CNode {
                 this.startLoading = false;
             }).onFinishChange(v => {
                 this.startLoading = true
-            }).tooltip("Latitude of the center of the terrain")
+            }).tooltip(t("terrainUI.lat.tooltip"))
 
 
             this.lonController = this.gui.add(this, "lon", -180, 180, .001).onChange(v => {
@@ -508,34 +509,34 @@ export class CNodeTerrainUI extends CNode {
                 this.startLoading = false;
             }).onFinishChange(v => {
                 this.startLoading = true
-            }).tooltip("Longitude of the center of the terrain")
+            }).tooltip(t("terrainUI.lon.tooltip"))
 
             this.zoomController = this.gui.add(this, "zoom", 2, 15, 1).onChange(v => {
                 this.flagForRecalculation()
                 this.startLoading = false;
             }).onFinishChange(v => {
                 this.startLoading = true
-            }).tooltip("Zoom level of the terrain. 2 is the whole world, 15 is few city blocks")
+            }).tooltip(t("terrainUI.zoom.tooltip"))
 
             this.nTilesController = this.gui.add(this, "nTiles", 1, 8, 1).onChange(v => {
                 this.flagForRecalculation()
                 this.startLoading = false;
             }).onFinishChange(v => {
                 this.startLoading = true
-            }).tooltip("Number of tiles in the terrain. More tiles means more detail, but slower loading. (NxN)")
+            }).tooltip(t("terrainUI.nTiles.tooltip"))
 
 
             // adds a button to refresh the terrain
-            this.gui.add(this, "doRefresh").name("Refresh")
-                .tooltip("Refresh the terrain with the current settings. Use for network glitches that might have caused a failed load")
+            this.gui.add(this, "doRefresh").name(t("terrainUI.refresh.label"))
+                .tooltip(t("terrainUI.refresh.tooltip"))
 
 
 
             // a toggle to show or hide the debug elevation grid
 
-            this.gui.add(this, "debugElevationGrid").name("Debug Grids").onChange(v => {
+            this.gui.add(this, "debugElevationGrid").name(t("terrainUI.debugGrids.label")).onChange(v => {
                 this.terrainNode.refreshDebugGrids();
-            }).tooltip("Show a grid of ground textures (Green) and elevation data (Blue)")
+            }).tooltip(t("terrainUI.debugGrids.tooltip"))
 
 
             this.zoomToTrackSwitchObject = new CNodeSwitch({
@@ -551,10 +552,10 @@ export class CNodeTerrainUI extends CNode {
             this.flagForRecalculation()
             this.startLoading = true
         }).elastic(10, 100)
-            .tooltip("Scale factor for the elevation data. 1 is normal, 0.5 is half height, 2 is double height")
+            .tooltip(t("terrainUI.elevationScale.tooltip"))
 
-        this.transparencyController = this.gui.add(this, "transparency", 0, 1, 0.01).name("Terrain Opacity")
-            .tooltip("Opacity of the terrain. 0 is fully transparent, 1 is fully opaque")
+        this.transparencyController = this.gui.add(this, "transparency", 0, 1, 0.01).name(t("terrainUI.terrainOpacity.label"))
+            .tooltip(t("terrainUI.terrainOpacity.tooltip"))
             .onChange(v => {
                 if (this.terrainNode && this.terrainNode.maps) {
                     for (const mapID in this.terrainNode.maps) {
@@ -586,13 +587,13 @@ export class CNodeTerrainUI extends CNode {
         if (isLocal) {
 
             this.textureDetailController = this.gui.add(this, "textureDetail", 0.1, 3, 0.1)
-                .tooltip("Detail level for texture subdivision. Higher values = more detail. 1 is normal, 0.5 is less detail, 2 is more detail")
+                .tooltip(t("terrainUI.textureDetail.tooltip"))
 
             this.elevationDetailController = this.gui.add(this, "elevationDetail", 0.1, 3, 0.1)
-                .tooltip("Detail level for elevation subdivision. Higher values = more detail. 1 is normal, 0.5 is less detail, 2 is more detail")
+                .tooltip(t("terrainUI.elevationDetail.tooltip"))
 
-            this.disableDynamicSubdivisionController = this.gui.add(this, "disableDynamicSubdivision").name("Disable Dynamic Subdivision")
-                .tooltip("Disable dynamic subdivision of terrain tiles. Freezes the terrain at the current level of detail. Useful for debugging.")
+            this.disableDynamicSubdivisionController = this.gui.add(this, "disableDynamicSubdivision").name(t("terrainUI.disableDynamicSubdivision.label"))
+                .tooltip(t("terrainUI.disableDynamicSubdivision.tooltip"))
         }
 
 
@@ -607,7 +608,7 @@ export class CNodeTerrainUI extends CNode {
         // Mirror this.dynamic to Globals.dynamicSubdivision
         Globals.dynamicSubdivision = this.dynamic;
         
-        this.dynamicController = this.gui.add(this, "dynamic").name("Dynamic Subdivision").tooltip("Use camera-adaptive tile subdivision for globe-scale viewing").onChange(v => {
+        this.dynamicController = this.gui.add(this, "dynamic").name(t("terrainUI.dynamicSubdivision.label")).tooltip(t("terrainUI.dynamicSubdivision.tooltip")).onChange(v => {
             // 3D building tiles require dynamic subdivision.
             // Prevent disabling while buildings are active.
             if (!v && this.showBuildings) {
@@ -661,38 +662,38 @@ export class CNodeTerrainUI extends CNode {
             if (hasCesium) buildingsSourcesKV["Cesium OSM Buildings"] = "cesium-osm";
             if (hasGoogle) buildingsSourcesKV["Google Photorealistic"] = "google-photorealistic";
 
-            this.gui.add(this, "showBuildings").name("3D Buildings").onChange(v => {
+            this.gui.add(this, "showBuildings").name(t("terrainUI.showBuildings.label")).onChange(v => {
                 this.toggleBuildings(v);
-            }).tooltip("Show 3D building tiles from Cesium Ion or Google");
+            }).tooltip(t("terrainUI.showBuildings.tooltip"));
 
             this.showBuildingEdges = v.showBuildingEdges ?? true;
-            this.gui.add(this, "showBuildingEdges").name("Building Edges").onChange(v => {
+            this.gui.add(this, "showBuildingEdges").name(t("terrainUI.buildingEdges.label")).onChange(v => {
                 if (this.buildingsNode) {
                     this.buildingsNode.setShowEdges(v);
                 }
-            }).tooltip("Show wireframe edges on 3D building tiles");
+            }).tooltip(t("terrainUI.buildingEdges.tooltip"));
 
             if (hasGoogle) {
-                this.gui.add(this, "showOceanSurface").name("Ocean Surface (Beta)").onChange(() => {
+                this.gui.add(this, "showOceanSurface").name(t("terrainUI.oceanSurface.label")).onChange(() => {
                     this.updateTerrainAndOceanVisibility();
-                }).tooltip("Experimental: render sea-level water surface (fixed EGM96 MSL) while Google Photorealistic tiles are active");
+                }).tooltip(t("terrainUI.oceanSurface.tooltip"));
             }
 
             if (Object.keys(buildingsSourcesKV).length > 1) {
-                this.gui.add(this, "buildingsSource", buildingsSourcesKV).name("Buildings Source").onChange(v => {
+                this.gui.add(this, "buildingsSource", buildingsSourcesKV).name(t("terrainUI.buildingsSource.label")).onChange(v => {
                     if (this.buildingsNode) {
                         this.buildingsNode.setSource(v);
                         this.updateTerrainAndOceanVisibility();
                         this.updateAttribution();
                     }
-                }).tooltip("Data source for 3D building tiles");
+                }).tooltip(t("terrainUI.buildingsSource.tooltip"));
             }
         }
 
         // Ellipsoid Earth Model toggle (moved here from global settings)
         this.ellipsoidController = this.gui.add(Sit, "useEllipsoid")
-            .name("Use Ellipsoid Earth Model")
-            .tooltip("Sphere: fast legacy model. Ellipsoid: accurate WGS84 shape (higher latitudes benefit most).")
+            .name(t("terrainUI.useEllipsoid.label"))
+            .tooltip(t("terrainUI.useEllipsoid.tooltip"))
             .listen()
             .onChange((v) => {
                 // 3D building tiles are aligned to the WGS84 ellipsoid.
@@ -1261,8 +1262,8 @@ export class CNodeTerrainUI extends CNode {
         } else {
             this.layer = Object.keys(this.localLayers)[0]
         }
-        this.layersMenu = this.gui.add(this, "layer", this.localLayers).listen().name("Layer")
-            .tooltip("Layer for the current map type's terrain textures")
+        this.layersMenu = this.gui.add(this, "layer", this.localLayers).listen().name(t("terrainUI.layer.label"))
+            .tooltip(t("terrainUI.layer.tooltip"))
             .moveAfter("Map Type")
 
         // if the layer has changed, then unload the map and reload it

@@ -1000,6 +1000,291 @@ const fr = {
             tooltip: "Si coché, le vent affectera toujours les orbes de flux même lorsque la simulation est en pause. Utile pour visualiser les motifs de vent.",
         },
     },
+
+    osdController: {
+        seriesName: {
+            label: "Nom",
+        },
+        seriesType: {
+            label: "Type",
+        },
+        seriesShow: {
+            label: "Afficher",
+        },
+        seriesLock: {
+            label: "Verrouiller",
+        },
+        removeTrack: {
+            label: "Supprimer la piste",
+        },
+        folderTitle: {
+            label: "Suivi OSD",
+            tooltip: "Suivi de texte OSD (affichage à l'écran) pour du texte par image défini par l'utilisateur",
+        },
+        addNewTrack: {
+            label: "Ajouter une série de données OSD",
+            tooltip: "Créer une nouvelle série de données OSD pour une superposition de texte par image",
+        },
+        makeTrack: {
+            label: "Créer une piste",
+            tooltip: "Créer une piste de position à partir des séries de données OSD visibles/déverrouillées (MGRS ou Lat/Lon)",
+        },
+        showAll: {
+            label: "Tout afficher",
+            tooltip: "Basculer la visibilité de toutes les séries de données OSD",
+        },
+        exportAllData: {
+            label: "Exporter toutes les données",
+            tooltip: "Exporter toutes les séries de données OSD en fichiers CSV dans un ZIP",
+        },
+        graphShow: {
+            label: "Afficher",
+            tooltip: "Afficher ou masquer la vue graphique des données OSD",
+        },
+        xAxis: {
+            label: "Axe X",
+            tooltip: "Série de données pour l'axe horizontal",
+        },
+        y1Axis: {
+            label: "Axe Y1",
+            tooltip: "Série de données pour l'axe vertical gauche",
+        },
+        y2Axis: {
+            label: "Axe Y2",
+            tooltip: "Série de données pour l'axe vertical droit",
+        },
+    },
+
+    videoInfo: {
+        folderTitle: {
+            label: "Affichage des infos vidéo",
+            tooltip: "Contrôles d'affichage des infos vidéo pour le compteur d'images, le timecode et l'horodatage",
+        },
+        showVideoInfo: {
+            label: "Afficher les infos vidéo",
+            tooltip: "Commutateur principal - activer ou désactiver tous les affichages d'infos vidéo",
+        },
+        frameCounter: {
+            label: "Compteur d'images",
+            tooltip: "Afficher le numéro de l'image actuelle",
+        },
+        offsetFrame: {
+            label: "Image avec décalage",
+            tooltip: "Afficher le numéro d'image actuel plus une valeur de décalage",
+        },
+        offsetValue: {
+            label: "Valeur de décalage",
+            tooltip: "Valeur de décalage ajoutée au numéro d'image actuel",
+        },
+        timecode: {
+            label: "Timecode",
+            tooltip: "Afficher le timecode au format HH:MM:SS:FF",
+        },
+        timestamp: {
+            label: "Horodatage",
+            tooltip: "Afficher l'horodatage au format HH:MM:SS.SS",
+        },
+        dateLocal: {
+            label: "Date (locale)",
+            tooltip: "Afficher la date actuelle dans le fuseau horaire sélectionné",
+        },
+        timeLocal: {
+            label: "Heure (locale)",
+            tooltip: "Afficher l'heure actuelle dans le fuseau horaire sélectionné",
+        },
+        dateTimeLocal: {
+            label: "Date et heure (locale)",
+            tooltip: "Afficher la date et l'heure complètes dans le fuseau horaire sélectionné",
+        },
+        dateUTC: {
+            label: "Date (UTC)",
+            tooltip: "Afficher la date actuelle en UTC",
+        },
+        timeUTC: {
+            label: "Heure (UTC)",
+            tooltip: "Afficher l'heure actuelle en UTC",
+        },
+        dateTimeUTC: {
+            label: "Date et heure (UTC)",
+            tooltip: "Afficher la date et l'heure complètes en UTC",
+        },
+        fontSize: {
+            label: "Taille de police",
+            tooltip: "Ajuster la taille de police du texte d'information",
+        },
+    },
+
+    terrainUI: {
+        mapType: {
+            label: "Type de carte",
+            tooltip: "Type de carte pour les textures du terrain (séparé des données d'élévation)",
+        },
+        elevationType: {
+            label: "Type d'élévation",
+            tooltip: "Source de données d'élévation pour les hauteurs du terrain",
+        },
+        lat: {
+            tooltip: "Latitude du centre du terrain",
+        },
+        lon: {
+            tooltip: "Longitude du centre du terrain",
+        },
+        zoom: {
+            tooltip: "Niveau de zoom du terrain. 2 correspond au monde entier, 15 à quelques pâtés de maisons",
+        },
+        nTiles: {
+            tooltip: "Nombre de tuiles du terrain. Plus de tuiles signifie plus de détails, mais un chargement plus lent. (NxN)",
+        },
+        refresh: {
+            label: "Rafraîchir",
+            tooltip: "Rafraîchir le terrain avec les paramètres actuels. Utile en cas de problèmes réseau ayant causé un échec de chargement",
+        },
+        debugGrids: {
+            label: "Grilles de débogage",
+            tooltip: "Afficher une grille des textures au sol (vert) et des données d'élévation (bleu)",
+        },
+        elevationScale: {
+            tooltip: "Facteur d'échelle pour les données d'élévation. 1 est normal, 0.5 est la moitié, 2 est le double",
+        },
+        terrainOpacity: {
+            label: "Opacité du terrain",
+            tooltip: "Opacité du terrain. 0 est totalement transparent, 1 est totalement opaque",
+        },
+        textureDetail: {
+            tooltip: "Niveau de détail pour la subdivision des textures. Des valeurs plus élevées = plus de détails. 1 est normal, 0.5 est moins détaillé, 2 est plus détaillé",
+        },
+        elevationDetail: {
+            tooltip: "Niveau de détail pour la subdivision de l'élévation. Des valeurs plus élevées = plus de détails. 1 est normal, 0.5 est moins détaillé, 2 est plus détaillé",
+        },
+        disableDynamicSubdivision: {
+            label: "Désactiver la subdivision dynamique",
+            tooltip: "Désactiver la subdivision dynamique des tuiles de terrain. Fige le terrain au niveau de détail actuel. Utile pour le débogage.",
+        },
+        dynamicSubdivision: {
+            label: "Subdivision dynamique",
+            tooltip: "Utiliser la subdivision de tuiles adaptative à la caméra pour une vue à l'échelle du globe",
+        },
+        showBuildings: {
+            label: "Bâtiments 3D",
+            tooltip: "Afficher les tuiles de bâtiments 3D de Cesium Ion ou Google",
+        },
+        buildingEdges: {
+            label: "Arêtes des bâtiments",
+            tooltip: "Afficher les arêtes en fil de fer sur les tuiles de bâtiments 3D",
+        },
+        oceanSurface: {
+            label: "Surface océanique (Bêta)",
+            tooltip: "Expérimental : afficher la surface d'eau au niveau de la mer (MSL fixe EGM96) lorsque les tuiles photoréalistes Google sont actives",
+        },
+        buildingsSource: {
+            label: "Source des bâtiments",
+            tooltip: "Source de données pour les tuiles de bâtiments 3D",
+        },
+        useEllipsoid: {
+            label: "Utiliser le modèle terrestre ellipsoïdal",
+            tooltip: "Sphère : modèle ancien rapide. Ellipsoïde : forme WGS84 précise (les latitudes élevées en bénéficient le plus).",
+        },
+        layer: {
+            label: "Couche",
+            tooltip: "Couche pour les textures de terrain du type de carte actuel",
+        },
+    },
+
+    displayTrack: {
+        visible: {
+            tooltip: "Afficher ou masquer cette piste",
+        },
+        extendToGround: {
+            label: "Étendre au sol",
+            tooltip: "Tracer des lignes verticales de la piste au sol",
+        },
+        displayStep: {
+            label: "Pas d'affichage",
+            tooltip: "Pas d'images entre les points de piste affichés (1 = chaque image)",
+        },
+        contrail: {
+            label: "Traînée de condensation",
+            tooltip: "Afficher un ruban de traînée de condensation derrière cette piste, ajusté pour le vent",
+        },
+        contrailSecs: {
+            label: "Durée traînée (s)",
+            tooltip: "Durée de la traînée de condensation en secondes",
+        },
+        contrailWidth: {
+            label: "Largeur traînée (m)",
+            tooltip: "Largeur maximale du ruban de traînée en mètres",
+        },
+        contrailInitialWidth: {
+            label: "Largeur initiale traînée (m)",
+            tooltip: "Largeur de la traînée au point d'échappement en mètres",
+        },
+        contrailRamp: {
+            label: "Rampe traînée (m)",
+            tooltip: "Distance sur laquelle la largeur de la traînée augmente en mètres",
+        },
+        contrailSpread: {
+            label: "Dispersion traînée (m/s)",
+            tooltip: "Taux d'expansion de la traînée en m/s",
+        },
+        lineColor: {
+            label: "Couleur de ligne",
+            tooltip: "Couleur de la ligne de piste",
+        },
+        polyColor: {
+            label: "Couleur des polygones",
+            tooltip: "Couleur des polygones verticaux d'extension au sol",
+        },
+        altLockAGL: {
+            label: "Verrouillage alt. AGL",
+        },
+        gotoTrack: {
+            label: "Aller à la piste",
+            tooltip: "Centrer la caméra principale sur la position de cette piste",
+        },
+    },
+
+    ptzUI: {
+        panAz: {
+            label: "Panoramique (Az)",
+            tooltip: "Angle d'azimut / panoramique de la caméra en degrés",
+        },
+        tiltEl: {
+            label: "Inclinaison (Él)",
+            tooltip: "Angle d'élévation / inclinaison de la caméra en degrés",
+        },
+        zoomFov: {
+            label: "Zoom (FOV)",
+            tooltip: "Champ de vision vertical de la caméra en degrés",
+        },
+        roll: {
+            label: "Roulis",
+            tooltip: "Angle de roulis de la caméra en degrés",
+        },
+        xOffset: {
+            label: "Décalage X",
+            tooltip: "Décalage horizontal de la caméra par rapport au centre",
+        },
+        yOffset: {
+            label: "Décalage Y",
+            tooltip: "Décalage vertical de la caméra par rapport au centre",
+        },
+        nearPlane: {
+            label: "Plan proche (m)",
+            tooltip: "Distance du plan de découpe proche de la caméra en mètres",
+        },
+        relative: {
+            label: "Relatif",
+            tooltip: "Utiliser des angles relatifs au lieu d'absolus",
+        },
+        satellite: {
+            label: "Satellite",
+            tooltip: "Mode satellite : déplacement à l'écran depuis le nadir.\nRoulis = cap, Az = gauche/droite, Él = haut/bas (−90 = nadir)",
+        },
+        rotation: {
+            label: "Rotation",
+            tooltip: "Rotation à l'écran autour de l'axe de visée de la caméra",
+        },
+    },
 };
 
 export default fr;

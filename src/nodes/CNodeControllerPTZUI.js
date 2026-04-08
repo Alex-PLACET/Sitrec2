@@ -14,6 +14,7 @@ import {V3} from "../threeUtils";
 import {assert} from "../assert";
 import {Euler, Matrix4, Quaternion, Vector3} from "three";
 import {extractFOV} from "./CNodeControllerVarious";
+import {t} from "../i18n";
 
 const pszUIColor = "#C0C0FF";
 const _xAxis = new Vector3(1, 0, 0);
@@ -140,24 +141,24 @@ export class CNodeControllerPTZUI extends CNodeControllerAzElZoom {
             this.setGUI(v,"camera");
             const guiPTZ = this.gui;
 
-            this.azController = guiPTZ.add(this, "az", -180, 180, 0.01, false).listen().name("Pan (Az)").tooltip("Camera azimuth / pan angle in degrees").onChange(v => this.refresh()).setLabelColor(pszUIColor).wrap()
-            this.elController = guiPTZ.add(this, "el", -89, 89, 0.01, false).listen().name("Tilt (El)").tooltip("Camera elevation / tilt angle in degrees").onChange(v => this.refresh()).setLabelColor(pszUIColor)
+            this.azController = guiPTZ.add(this, "az", -180, 180, 0.01, false).listen().name(t("ptzUI.panAz.label")).tooltip(t("ptzUI.panAz.tooltip")).onChange(v => this.refresh()).setLabelColor(pszUIColor).wrap()
+            this.elController = guiPTZ.add(this, "el", -89, 89, 0.01, false).listen().name(t("ptzUI.tiltEl.label")).tooltip(t("ptzUI.tiltEl.tooltip")).onChange(v => this.refresh()).setLabelColor(pszUIColor)
             if (this.fov !== undefined) {
-                guiPTZ.add(this, "fov", 0.0001, 170, 0.01, false).listen().name("Zoom (fov)").tooltip("Camera vertical field of view in degrees").onChange(v => {
+                guiPTZ.add(this, "fov", 0.0001, 170, 0.01, false).listen().name(t("ptzUI.zoomFov.label")).tooltip(t("ptzUI.zoomFov.tooltip")).onChange(v => {
                     this.refresh()
                 }).setLabelColor(pszUIColor) // .elastic(0.0001, 170)
             }
             if (this.roll !== undefined ) {
-                this.rollController = guiPTZ.add(this, "roll", -180, 180, 0.005).listen().name("Roll").tooltip("Camera roll angle in degrees").onChange(v => this.refresh()).setLabelColor(pszUIColor)
+                this.rollController = guiPTZ.add(this, "roll", -180, 180, 0.005).listen().name(t("ptzUI.roll.label")).tooltip(t("ptzUI.roll.tooltip")).onChange(v => this.refresh()).setLabelColor(pszUIColor)
             }
-            guiPTZ.add(this, "xOffset", -10, 10, 0.001).listen().name("xOffset").tooltip("Horizontal offset of the camera from center").onChange(v => this.refresh()).setLabelColor(pszUIColor)
-            guiPTZ.add(this, "yOffset", -10, 10, 0.001).listen().name("yOffset").tooltip("Vertical offset of the camera from center").onChange(v => this.refresh()).setLabelColor(pszUIColor)
-            guiPTZ.add(this, "nearPlane", 0.001, 1, 0.001).listen().name("Near Plane (m)").tooltip("Camera near clipping plane distance in meters").onChange(v => this.refresh()).setLabelColor(pszUIColor)
-            guiPTZ.add(this, "relative").listen().name("Relative").tooltip("Use relative angles instead of absolute").onChange(v => this.refresh())
-            guiPTZ.add(this, "satellite").listen().name("Satellite").tooltip("Satellite mode: screen-space panning from nadir.\nRoll = heading, Az = left/right, El = up/down (−90 = nadir)").onChange(v => {
+            guiPTZ.add(this, "xOffset", -10, 10, 0.001).listen().name(t("ptzUI.xOffset.label")).tooltip(t("ptzUI.xOffset.tooltip")).onChange(v => this.refresh()).setLabelColor(pszUIColor)
+            guiPTZ.add(this, "yOffset", -10, 10, 0.001).listen().name(t("ptzUI.yOffset.label")).tooltip(t("ptzUI.yOffset.tooltip")).onChange(v => this.refresh()).setLabelColor(pszUIColor)
+            guiPTZ.add(this, "nearPlane", 0.001, 1, 0.001).listen().name(t("ptzUI.nearPlane.label")).tooltip(t("ptzUI.nearPlane.tooltip")).onChange(v => this.refresh()).setLabelColor(pszUIColor)
+            guiPTZ.add(this, "relative").listen().name(t("ptzUI.relative.label")).tooltip(t("ptzUI.relative.tooltip")).onChange(v => this.refresh())
+            guiPTZ.add(this, "satellite").listen().name(t("ptzUI.satellite.label")).tooltip(t("ptzUI.satellite.tooltip")).onChange(v => {
                 this.syncModeTransition();
             }).setLabelColor(pszUIColor)
-            this.rotationController = guiPTZ.add(this, "rotation", -180, 180, 0.1).listen().name("Rotation").tooltip("Screen-space rotation around the camera look axis").onChange(v => this.refresh()).setLabelColor(pszUIColor)
+            this.rotationController = guiPTZ.add(this, "rotation", -180, 180, 0.1).listen().name(t("ptzUI.rotation.label")).tooltip(t("ptzUI.rotation.tooltip")).onChange(v => this.refresh()).setLabelColor(pszUIColor)
 
             if (this.satellite) {
                 this.updateSatelliteSliderRanges();

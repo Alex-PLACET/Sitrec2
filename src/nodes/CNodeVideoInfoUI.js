@@ -1,6 +1,7 @@
 import {CNodeViewUI} from "./CNodeViewUI";
 import {CustomManager, GlobalDateTimeNode, Globals, NodeMan, setRenderOne, Sit} from "../Globals";
 import {par} from "../par";
+import {t} from "../i18n";
 
 const DEFAULT_X = 50;
 const DEFAULT_Y = 8;
@@ -879,70 +880,70 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
     }
 
     setupMenu(parentFolder) {
-        const folder = parentFolder.addFolder("Video Info Display").close()
-            .tooltip("Video info display controls for frame counter, timecode, and timestamp");
+        const folder = parentFolder.addFolder(t("videoInfo.folderTitle.label")).close()
+            .tooltip(t("videoInfo.folderTitle.tooltip"));
 
-        folder.add(this, "showInfo").name("Show Video Info")
-            .tooltip("Master toggle - enable or disable all video info displays")
+        folder.add(this, "showInfo").name(t("videoInfo.showVideoInfo.label"))
+            .tooltip(t("videoInfo.showVideoInfo.tooltip"))
             .listen()
             .onChange(() => this.updateVisibility());
 
-        folder.add(this, "showFrameCounter").name("Frame Counter")
-            .tooltip("Show the current frame number")
+        folder.add(this, "showFrameCounter").name(t("videoInfo.frameCounter.label"))
+            .tooltip(t("videoInfo.frameCounter.tooltip"))
             .listen()
             .onChange(v => { if (v) this.positionItemToAvoidOverlaps('frameCounter'); this.updateVisibility(); });
 
-        folder.add(this, "showOffsetFrame").name("Offset Frame")
-            .tooltip("Show the current frame number plus an offset value")
+        folder.add(this, "showOffsetFrame").name(t("videoInfo.offsetFrame.label"))
+            .tooltip(t("videoInfo.offsetFrame.tooltip"))
             .listen()
             .onChange(v => { if (v) this.positionItemToAvoidOverlaps('offsetFrame'); this.updateVisibility(); });
 
-        folder.add(this, "offsetFrameValue", -10000, 10000, 1).name("Offset Value")
-            .tooltip("Offset value added to the current frame number")
+        folder.add(this, "offsetFrameValue", -10000, 10000, 1).name(t("videoInfo.offsetValue.label"))
+            .tooltip(t("videoInfo.offsetValue.tooltip"))
             .listen();
 
-        folder.add(this, "showTimecode").name("Timecode")
-            .tooltip("Show timecode in HH:MM:SS:FF format")
+        folder.add(this, "showTimecode").name(t("videoInfo.timecode.label"))
+            .tooltip(t("videoInfo.timecode.tooltip"))
             .listen()
             .onChange(v => { if (v) this.positionItemToAvoidOverlaps('timecode'); this.updateVisibility(); });
 
-        folder.add(this, "showTimestamp").name("Timestamp")
-            .tooltip("Show timestamp in HH:MM:SS.SS format")
+        folder.add(this, "showTimestamp").name(t("videoInfo.timestamp.label"))
+            .tooltip(t("videoInfo.timestamp.tooltip"))
             .listen()
             .onChange(v => { if (v) this.positionItemToAvoidOverlaps('timestamp'); this.updateVisibility(); });
 
-        folder.add(this, "showDateLocal").name("Date (Local)")
-            .tooltip("Show current date in selected timezone")
+        folder.add(this, "showDateLocal").name(t("videoInfo.dateLocal.label"))
+            .tooltip(t("videoInfo.dateLocal.tooltip"))
             .listen()
             .onChange(v => { if (v) this.positionItemToAvoidOverlaps('dateLocal'); this.updateVisibility(); });
 
-        folder.add(this, "showTimeLocal").name("Time (Local)")
-            .tooltip("Show current time in selected timezone")
+        folder.add(this, "showTimeLocal").name(t("videoInfo.timeLocal.label"))
+            .tooltip(t("videoInfo.timeLocal.tooltip"))
             .listen()
             .onChange(v => { if (v) this.positionItemToAvoidOverlaps('timeLocal'); this.updateVisibility(); });
 
-        folder.add(this, "showDateTimeLocal").name("DateTime (Local)")
-            .tooltip("Show full date and time in selected timezone")
+        folder.add(this, "showDateTimeLocal").name(t("videoInfo.dateTimeLocal.label"))
+            .tooltip(t("videoInfo.dateTimeLocal.tooltip"))
             .listen()
             .onChange(v => { if (v) this.positionItemToAvoidOverlaps('dateTimeLocal'); this.updateVisibility(); });
 
-        folder.add(this, "showDateUTC").name("Date (UTC)")
-            .tooltip("Show current date in UTC")
+        folder.add(this, "showDateUTC").name(t("videoInfo.dateUTC.label"))
+            .tooltip(t("videoInfo.dateUTC.tooltip"))
             .listen()
             .onChange(v => { if (v) this.positionItemToAvoidOverlaps('dateUTC'); this.updateVisibility(); });
 
-        folder.add(this, "showTimeUTC").name("Time (UTC)")
-            .tooltip("Show current time in UTC")
+        folder.add(this, "showTimeUTC").name(t("videoInfo.timeUTC.label"))
+            .tooltip(t("videoInfo.timeUTC.tooltip"))
             .listen()
             .onChange(v => { if (v) this.positionItemToAvoidOverlaps('timeUTC'); this.updateVisibility(); });
 
-        folder.add(this, "showDateTimeUTC").name("DateTime (UTC)")
-            .tooltip("Show full date and time in UTC")
+        folder.add(this, "showDateTimeUTC").name(t("videoInfo.dateTimeUTC.label"))
+            .tooltip(t("videoInfo.dateTimeUTC.tooltip"))
             .listen()
             .onChange(v => { if (v) this.positionItemToAvoidOverlaps('dateTimeUTC'); this.updateVisibility(); });
 
-        folder.add(this, "fontSize", 10, 80, 1).name("Font Size")
-            .tooltip("Adjust the font size of the info text")
+        folder.add(this, "fontSize", 10, 80, 1).name(t("videoInfo.fontSize.label"))
+            .tooltip(t("videoInfo.fontSize.tooltip"))
             .listen();
 
         return folder;

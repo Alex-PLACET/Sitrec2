@@ -1000,6 +1000,291 @@ const en = {
             tooltip: "If checked, wind will still affect the flow orbs even when the simulation is paused. Useful for visualizing wind patterns.",
         },
     },
+
+    osdController: {
+        seriesName: {
+            label: "Name",
+        },
+        seriesType: {
+            label: "Type",
+        },
+        seriesShow: {
+            label: "Show",
+        },
+        seriesLock: {
+            label: "Lock",
+        },
+        removeTrack: {
+            label: "Remove Track",
+        },
+        folderTitle: {
+            label: "OSD Tracker",
+            tooltip: "On-Screen Display text tracker for user-defined per-frame text",
+        },
+        addNewTrack: {
+            label: "Add New OSD Data Series",
+            tooltip: "Create a new OSD data series for per-frame text overlay",
+        },
+        makeTrack: {
+            label: "Make Track",
+            tooltip: "Create a position track from visible/unlocked OSD data series (MGRS or Lat/Lon)",
+        },
+        showAll: {
+            label: "Show All",
+            tooltip: "Toggle visibility of all OSD data series",
+        },
+        exportAllData: {
+            label: "Export All Data",
+            tooltip: "Export all OSD data series as CSVs in a ZIP file",
+        },
+        graphShow: {
+            label: "Show",
+            tooltip: "Show or hide the OSD data graph view",
+        },
+        xAxis: {
+            label: "X Axis",
+            tooltip: "Data series for the horizontal axis",
+        },
+        y1Axis: {
+            label: "Y1 Axis",
+            tooltip: "Data series for the left vertical axis",
+        },
+        y2Axis: {
+            label: "Y2 Axis",
+            tooltip: "Data series for the right vertical axis",
+        },
+    },
+
+    videoInfo: {
+        folderTitle: {
+            label: "Video Info Display",
+            tooltip: "Video info display controls for frame counter, timecode, and timestamp",
+        },
+        showVideoInfo: {
+            label: "Show Video Info",
+            tooltip: "Master toggle - enable or disable all video info displays",
+        },
+        frameCounter: {
+            label: "Frame Counter",
+            tooltip: "Show the current frame number",
+        },
+        offsetFrame: {
+            label: "Offset Frame",
+            tooltip: "Show the current frame number plus an offset value",
+        },
+        offsetValue: {
+            label: "Offset Value",
+            tooltip: "Offset value added to the current frame number",
+        },
+        timecode: {
+            label: "Timecode",
+            tooltip: "Show timecode in HH:MM:SS:FF format",
+        },
+        timestamp: {
+            label: "Timestamp",
+            tooltip: "Show timestamp in HH:MM:SS.SS format",
+        },
+        dateLocal: {
+            label: "Date (Local)",
+            tooltip: "Show current date in selected timezone",
+        },
+        timeLocal: {
+            label: "Time (Local)",
+            tooltip: "Show current time in selected timezone",
+        },
+        dateTimeLocal: {
+            label: "DateTime (Local)",
+            tooltip: "Show full date and time in selected timezone",
+        },
+        dateUTC: {
+            label: "Date (UTC)",
+            tooltip: "Show current date in UTC",
+        },
+        timeUTC: {
+            label: "Time (UTC)",
+            tooltip: "Show current time in UTC",
+        },
+        dateTimeUTC: {
+            label: "DateTime (UTC)",
+            tooltip: "Show full date and time in UTC",
+        },
+        fontSize: {
+            label: "Font Size",
+            tooltip: "Adjust the font size of the info text",
+        },
+    },
+
+    terrainUI: {
+        mapType: {
+            label: "Map Type",
+            tooltip: "Map type for terrain textures (separate from elevation data)",
+        },
+        elevationType: {
+            label: "Elevation Type",
+            tooltip: "Elevation data source for terrain height data",
+        },
+        lat: {
+            tooltip: "Latitude of the center of the terrain",
+        },
+        lon: {
+            tooltip: "Longitude of the center of the terrain",
+        },
+        zoom: {
+            tooltip: "Zoom level of the terrain. 2 is the whole world, 15 is few city blocks",
+        },
+        nTiles: {
+            tooltip: "Number of tiles in the terrain. More tiles means more detail, but slower loading. (NxN)",
+        },
+        refresh: {
+            label: "Refresh",
+            tooltip: "Refresh the terrain with the current settings. Use for network glitches that might have caused a failed load",
+        },
+        debugGrids: {
+            label: "Debug Grids",
+            tooltip: "Show a grid of ground textures (Green) and elevation data (Blue)",
+        },
+        elevationScale: {
+            tooltip: "Scale factor for the elevation data. 1 is normal, 0.5 is half height, 2 is double height",
+        },
+        terrainOpacity: {
+            label: "Terrain Opacity",
+            tooltip: "Opacity of the terrain. 0 is fully transparent, 1 is fully opaque",
+        },
+        textureDetail: {
+            tooltip: "Detail level for texture subdivision. Higher values = more detail. 1 is normal, 0.5 is less detail, 2 is more detail",
+        },
+        elevationDetail: {
+            tooltip: "Detail level for elevation subdivision. Higher values = more detail. 1 is normal, 0.5 is less detail, 2 is more detail",
+        },
+        disableDynamicSubdivision: {
+            label: "Disable Dynamic Subdivision",
+            tooltip: "Disable dynamic subdivision of terrain tiles. Freezes the terrain at the current level of detail. Useful for debugging.",
+        },
+        dynamicSubdivision: {
+            label: "Dynamic Subdivision",
+            tooltip: "Use camera-adaptive tile subdivision for globe-scale viewing",
+        },
+        showBuildings: {
+            label: "3D Buildings",
+            tooltip: "Show 3D building tiles from Cesium Ion or Google",
+        },
+        buildingEdges: {
+            label: "Building Edges",
+            tooltip: "Show wireframe edges on 3D building tiles",
+        },
+        oceanSurface: {
+            label: "Ocean Surface (Beta)",
+            tooltip: "Experimental: render sea-level water surface (fixed EGM96 MSL) while Google Photorealistic tiles are active",
+        },
+        buildingsSource: {
+            label: "Buildings Source",
+            tooltip: "Data source for 3D building tiles",
+        },
+        useEllipsoid: {
+            label: "Use Ellipsoid Earth Model",
+            tooltip: "Sphere: fast legacy model. Ellipsoid: accurate WGS84 shape (higher latitudes benefit most).",
+        },
+        layer: {
+            label: "Layer",
+            tooltip: "Layer for the current map type's terrain textures",
+        },
+    },
+
+    displayTrack: {
+        visible: {
+            tooltip: "Show or hide this track",
+        },
+        extendToGround: {
+            label: "Extend To Ground",
+            tooltip: "Draw vertical lines from track to ground",
+        },
+        displayStep: {
+            label: "Display Step",
+            tooltip: "Frame step between displayed track points (1 = every frame)",
+        },
+        contrail: {
+            label: "Contrail",
+            tooltip: "Show a contrail ribbon behind this track, adjusted for wind",
+        },
+        contrailSecs: {
+            label: "Contrail Secs",
+            tooltip: "Duration of the contrail in seconds",
+        },
+        contrailWidth: {
+            label: "Contrail Width m",
+            tooltip: "Maximum width of the contrail ribbon in meters",
+        },
+        contrailInitialWidth: {
+            label: "Contrail Initial Width m",
+            tooltip: "Width of the contrail at the exhaust point in meters",
+        },
+        contrailRamp: {
+            label: "Contrail Ramp m",
+            tooltip: "Distance over which the contrail width ramps up in meters",
+        },
+        contrailSpread: {
+            label: "Contrail Spread m/s",
+            tooltip: "Rate at which the contrail spreads outward in m/s",
+        },
+        lineColor: {
+            label: "Line Color",
+            tooltip: "Color of the track line",
+        },
+        polyColor: {
+            label: "Poly Color",
+            tooltip: "Color of the vertical ground extension polygons",
+        },
+        altLockAGL: {
+            label: "Alt Lock AGL",
+        },
+        gotoTrack: {
+            label: "Go to track",
+            tooltip: "Center the main camera on this track's location",
+        },
+    },
+
+    ptzUI: {
+        panAz: {
+            label: "Pan (Az)",
+            tooltip: "Camera azimuth / pan angle in degrees",
+        },
+        tiltEl: {
+            label: "Tilt (El)",
+            tooltip: "Camera elevation / tilt angle in degrees",
+        },
+        zoomFov: {
+            label: "Zoom (fov)",
+            tooltip: "Camera vertical field of view in degrees",
+        },
+        roll: {
+            label: "Roll",
+            tooltip: "Camera roll angle in degrees",
+        },
+        xOffset: {
+            label: "xOffset",
+            tooltip: "Horizontal offset of the camera from center",
+        },
+        yOffset: {
+            label: "yOffset",
+            tooltip: "Vertical offset of the camera from center",
+        },
+        nearPlane: {
+            label: "Near Plane (m)",
+            tooltip: "Camera near clipping plane distance in meters",
+        },
+        relative: {
+            label: "Relative",
+            tooltip: "Use relative angles instead of absolute",
+        },
+        satellite: {
+            label: "Satellite",
+            tooltip: "Satellite mode: screen-space panning from nadir.\nRoll = heading, Az = left/right, El = up/down (-90 = nadir)",
+        },
+        rotation: {
+            label: "Rotation",
+            tooltip: "Screen-space rotation around the camera look axis",
+        },
+    },
 };
 
 export default en;

@@ -10,6 +10,7 @@ import {Color} from "three";
 import * as LAYER from "../LayerMasks";
 import JSZip from "jszip";
 import {saveAs} from "file-saver";
+import {t} from "../i18n";
 
 const DEFAULT_X = 50;
 const DEFAULT_Y = 20;
@@ -166,26 +167,26 @@ class COSDDataSeries {
     setupGUI(parentFolder) {
         this.guiFolder = parentFolder.addFolder(this.name).close();
         
-        this.guiFolder.add(this, "name").name("Name").listen()
+        this.guiFolder.add(this, "name").name(t("osdController.seriesName.label")).listen()
             .onChange(() => {
                 this.guiFolder.title(this.name);
                 this.controller.rebuildGraphDropdowns();
             });
-        
-        this.guiFolder.add(this, "type", OSD_DATA_SERIES_TYPES).name("Type").listen();
-        
-        this.guiFolder.add(this, "show").name("Show").listen()
+
+        this.guiFolder.add(this, "type", OSD_DATA_SERIES_TYPES).name(t("osdController.seriesType.label")).listen();
+
+        this.guiFolder.add(this, "show").name(t("osdController.seriesShow.label")).listen()
             .onChange(() => setRenderOne());
-        
-        this.guiFolder.add(this, "lock").name("Lock").listen()
+
+        this.guiFolder.add(this, "lock").name(t("osdController.seriesLock.label")).listen()
             .onChange(() => {
                 if (this.lock && this.controller.getEditingTrack() === this) {
                     this.controller.stopEditing();
                 }
                 setRenderOne();
             });
-        
-        this.guiFolder.add(this, "remove").name("Remove Track");
+
+        this.guiFolder.add(this, "remove").name(t("osdController.removeTrack.label"));
     }
 
     remove() {
@@ -220,26 +221,26 @@ export class CNodeOSDDataSeriesController extends CNode {
     }
 
     setupMenu() {
-        this.guiFolder = guiMenus.video.addFolder("OSD Tracker").close()
-            .tooltip("On-Screen Display text tracker for user-defined per-frame text");
-        
-        this.guiFolder.add(this, "addNewTrack").name("Add New OSD Data Series")
-            .tooltip("Create a new OSD data series for per-frame text overlay");
-        
-        this.guiFolder.add(this, "makeTrack").name("Make Track")
-            .tooltip("Create a position track from visible/unlocked OSD data series (MGRS or Lat/Lon)");
-        
-        this.guiFolder.add(this, "showAll").name("Show All").listen()
+        this.guiFolder = guiMenus.video.addFolder(t("osdController.folderTitle.label")).close()
+            .tooltip(t("osdController.folderTitle.tooltip"));
+
+        this.guiFolder.add(this, "addNewTrack").name(t("osdController.addNewTrack.label"))
+            .tooltip(t("osdController.addNewTrack.tooltip"));
+
+        this.guiFolder.add(this, "makeTrack").name(t("osdController.makeTrack.label"))
+            .tooltip(t("osdController.makeTrack.tooltip"));
+
+        this.guiFolder.add(this, "showAll").name(t("osdController.showAll.label")).listen()
             .onChange(() => {
                 for (const track of this.tracks) {
                     track.show = this.showAll;
                 }
                 setRenderOne();
             })
-            .tooltip("Toggle visibility of all OSD data series");
+            .tooltip(t("osdController.showAll.tooltip"));
 
-        this.guiFolder.add(this, "exportAllData").name("Export All Data")
-            .tooltip("Export all OSD data series as CSVs in a ZIP file");
+        this.guiFolder.add(this, "exportAllData").name(t("osdController.exportAllData.label"))
+            .tooltip(t("osdController.exportAllData.tooltip"));
 
         EventManager.addEventListener("keydown", (data) => {
             if (data.key === '\\') {
@@ -256,8 +257,8 @@ export class CNodeOSDDataSeriesController extends CNode {
         this.graphView = null;
         this.graphSettings = { show: false, xAxis: "None", y1Axis: "None", y2Axis: "None" };
         this.graphFolder = this.guiFolder.addFolder("Graph").close();
-        this.graphFolder.add(this.graphSettings, "show").name("Show").listen()
-            .tooltip("Show or hide the OSD data graph view")
+        this.graphFolder.add(this.graphSettings, "show").name(t("osdController.graphShow.label")).listen()
+            .tooltip(t("osdController.graphShow.tooltip"))
             .onChange(() => {
                 if (this.graphSettings.show && this.graphView) {
                     this.graphView.show(true);
@@ -302,9 +303,9 @@ export class CNodeOSDDataSeriesController extends CNode {
             this.updateGraph();
         };
 
-        this.xAxisCtrl = this.graphFolder.add(this.graphSettings, "xAxis", xOptions).name("X Axis").tooltip("Data series for the horizontal axis").onChange(onChange);
-        this.y1AxisCtrl = this.graphFolder.add(this.graphSettings, "y1Axis", yOptions).name("Y1 Axis").tooltip("Data series for the left vertical axis").onChange(onChange);
-        this.y2AxisCtrl = this.graphFolder.add(this.graphSettings, "y2Axis", yOptions).name("Y2 Axis").tooltip("Data series for the right vertical axis").onChange(onChange);
+        this.xAxisCtrl = this.graphFolder.add(this.graphSettings, "xAxis", xOptions).name(t("osdController.xAxis.label")).tooltip(t("osdController.xAxis.tooltip")).onChange(onChange);
+        this.y1AxisCtrl = this.graphFolder.add(this.graphSettings, "y1Axis", yOptions).name(t("osdController.y1Axis.label")).tooltip(t("osdController.y1Axis.tooltip")).onChange(onChange);
+        this.y2AxisCtrl = this.graphFolder.add(this.graphSettings, "y2Axis", yOptions).name(t("osdController.y2Axis.label")).tooltip(t("osdController.y2Axis.tooltip")).onChange(onChange);
     }
 
     getTrackNumericData(trackIndex, frameMin = 0, frameMax = Sit.frames - 1) {
