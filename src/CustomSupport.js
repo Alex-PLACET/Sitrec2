@@ -84,6 +84,8 @@ import {collectActiveTrackSourceFileIDs, shouldSerializeLoadedFileEntry} from ".
 import {encodeShareParam, resolveURLForFetch, toShareableCustomValue} from "./SitrecObjectResolver";
 import {getEnvBool} from "./envUtils";
 import {CNodeFloodSim} from "./nodes/CNodeFloodSim";
+import {CNodeOrbitTrack} from "./nodes/CNodeOrbitTrack";
+import {CNodeTrackSwitch} from "./nodes/CNodeTrackSwitch";
 import {getNearbyWeatherBalloons, importSoundingDialog} from "./SondeFetch";
 
 export class CCustomManager {
@@ -760,8 +762,8 @@ export class CCustomManager {
                 // if there's a camera track switch, then we need to update the camera track
                 if (NodeMan.exists("cameraTrackSwitch")) {
                     const cameraTrackSwitch = NodeMan.get("cameraTrackSwitch");
-                    // if the camera track switch is not set to "fixedCamera" or "flightSimCamera", then set it to "fixedCamera"
-                    if (cameraTrackSwitch.choice !== "fixedCamera" && cameraTrackSwitch.choice !== "flightSimCamera") {
+                    // if the camera track switch is not set to "fixedCamera", "flightSimCamera", or "orbitCamera", then set it to "fixedCamera"
+                    if (cameraTrackSwitch.choice !== "fixedCamera" && cameraTrackSwitch.choice !== "flightSimCamera" && cameraTrackSwitch.choice !== "orbitCamera") {
                         console.log("Setting camera track switch to fixedCamera");
                         cameraTrackSwitch.selectOption("fixedCamera");
                     }
@@ -1007,6 +1009,43 @@ export class CCustomManager {
         this.setupVideoInfoMenu();
 
         this.setupOSDDataSeriesController();
+
+        // Orbit camera - orbits around a selected target track at a given radius and period
+        if (!NodeMan.exists("orbitCameraPosition")) {
+            new CNodeTrackSwitch({
+                id: "orbitTargetSwitch",
+                inputs: {
+                    "fixedCamera": NodeMan.get("fixedCameraPosition"),
+                },
+                desc: "Orbit Target",
+                gui: "camera",
+            });
+
+            new CNodeGUIValue({
+                id: "orbitRadius",
+                value: 5000, start: 100, end: 100000, step: 100,
+                desc: "Orbit Radius (m)", gui: "camera",
+            });
+
+            new CNodeGUIValue({
+                id: "orbitPeriod",
+                value: 120, start: 60, end: 300, step: 1,
+                desc: "Orbit Period (s)", gui: "camera",
+            });
+
+            new CNodeOrbitTrack({
+                id: "orbitCameraPosition",
+                target: "orbitTargetSwitch",
+                radius: "orbitRadius",
+                period: "orbitPeriod",
+                altitude: "fixedCameraPosition",
+            });
+
+            const cameraTrackSwitch = NodeMan.get("cameraTrackSwitch", false);
+            if (cameraTrackSwitch) {
+                cameraTrackSwitch.addOption("orbitCamera", NodeMan.get("orbitCameraPosition"));
+            }
+        }
 
         if (!NodeMan.exists("FloodSim")) {
             new CNodeFloodSim({

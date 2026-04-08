@@ -75,7 +75,7 @@ export class CNodeSplineEditor extends CNodeTrack {
         }
 
         EventManager.addEventListener("elevationChanged", () => {
-            if (this.altitudeLock !== undefined && this.altitudeLock >= 0) {
+            if (this.altitudeLock !== undefined && this.altitudeLock >= 0 && this.altitudeLockAGL) {
                 this.syncControlPointsToAltitudeLock();
                 this.recalculateCascade();
             }

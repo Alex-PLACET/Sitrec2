@@ -186,6 +186,11 @@ export class CNodeSatelliteTrack extends CNodeTrack {
              if (targetTrackSwitch) {
                  targetTrackSwitch.removeOption(this.trackName);
              }
+
+             const orbitTargetSwitch = NodeMan.get("orbitTargetSwitch", false);
+             if (orbitTargetSwitch) {
+                 orbitTargetSwitch.removeOption(this.trackName);
+             }
          } else {
              console.log(`+++ CNodeSatelliteTrack: updateUI: SHOWING track and UI for valid satellite ${this.satelliteText}`);
 
@@ -202,6 +207,11 @@ export class CNodeSatelliteTrack extends CNodeTrack {
              const targetTrackSwitch = NodeMan.get("targetTrackSwitch", false);
              if (targetTrackSwitch) {
                  targetTrackSwitch.replaceOption(this.trackName, this);
+             }
+
+             const orbitTargetSwitch = NodeMan.get("orbitTargetSwitch", false);
+             if (orbitTargetSwitch) {
+                 orbitTargetSwitch.replaceOption(this.trackName, this);
              }
          }
      }
