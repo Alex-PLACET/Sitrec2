@@ -1570,6 +1570,96 @@ const es = {
             tooltip: "Mostrar/Ocultar el editor de notas. Las notas se guardan con el sitch y pueden contener hipervínculos clicables.",
         },
     },
+
+    showHiders: {
+        linesOfSight: {
+            label: "Líneas de visión",
+            tooltip: "Mostrar líneas de visión de la cámara al objetivo (alternar: O)",
+        },
+        physicalPointer: {
+            label: "Puntero físico",
+        },
+        jet: {
+            label: "[J]et",
+        },
+        horizonGrid: {
+            label: "Cuadrícula de [H]orizonte",
+        },
+        wingPlaneGrid: {
+            label: "Cuadrícula del plano alar ([W])",
+        },
+        sphericalBoresightGrid: {
+            label: "Cuadrícula e[S]férica de mira",
+        },
+        azimuthElevationGrid: {
+            label: "Cuadrícula de [A]cimut/Elevación",
+        },
+        frustumOfCamera: {
+            label: "F[R]ustum de la cámara",
+        },
+        trackLine: {
+            label: "Línea de [T]rayectoria",
+        },
+        globe: {
+            label: "[G]lobo",
+        },
+        showErrorCircle: {
+            label: "Círculo de error",
+        },
+        glareSprite: {
+            label: "Spr[I]te de resplandor",
+        },
+        cameraViewFrustum: {
+            label: "Frustum de la cámara",
+            tooltip: "Mostrar el frustum de visión de la cámara en la escena 3D",
+        },
+        zaineTriangulation: {
+            label: "Triangulación Zaine",
+        },
+    },
+
+    lighting: {
+        ambientIntensity: {
+            label: "Intensidad ambiental",
+            tooltip: "Intensidad de la luz ambiental. 0 = sin luz ambiental, 1 = luz ambiental normal, 2 = doble luz ambiental",
+        },
+        irAmbientIntensity: {
+            label: "Intensidad ambiental IR",
+            tooltip: "Intensidad de la luz ambiental IR (usada para vistas IR)",
+        },
+        sunIntensity: {
+            label: "Intensidad del sol",
+            tooltip: "Intensidad de la luz solar. 0 = sin sol, 1 = sol pleno normal, 2 = doble sol",
+        },
+        sunScattering: {
+            label: "Dispersión solar",
+            tooltip: "Cantidad de dispersión de la luz solar",
+        },
+        sunBoost: {
+            label: "Amplificación solar (HDR)",
+            tooltip: "Multiplicador para la intensidad de la DirectionalLight del sol (HDR). Aumenta el brillo de los reflejos especulares para reflexiones solares realistas a través de la niebla.",
+        },
+        sceneExposure: {
+            label: "Exposición de la escena (HDR)",
+            tooltip: "Compensación de exposición para el mapeo de tonos HDR. Reducir para compensar una mayor amplificación solar.",
+        },
+        ambientOnly: {
+            label: "Solo ambiental",
+            tooltip: "Si es verdadero, solo se usa luz ambiental, sin luz solar",
+        },
+        atmosphere: {
+            label: "Atmósfera",
+            tooltip: "Si es verdadero, se renderiza la atmósfera.\nDesactivar para ver las estrellas durante el día",
+        },
+        noMainLighting: {
+            label: "Sin iluminación en la vista principal",
+            tooltip: "Si es verdadero, no se usa iluminación en la vista principal.\nÚtil para depuración, pero no recomendado para uso normal",
+        },
+        noCityLights: {
+            label: "Sin luces de ciudades en el globo",
+            tooltip: "Si es verdadero, no renderizar las luces de las ciudades en el globo.",
+        },
+    },
 };
 
 export default es;

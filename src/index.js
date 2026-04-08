@@ -2044,7 +2044,7 @@ async function setupFunctions() {
         // otherwise, if terrain is set, then use 0.9999 (to avoid z-fighting)
         // otherwise use 1.0, so we get a perfect match with collisions.
         par.globe = addAlignedGlobe(Sit.globeScale ?? (Sit.terrain !== undefined ? 0.9999 : 1.0))
-        showHider(par.globe,"[G]lobe", true, "g")
+        showHider(par.globe,"[G]lobe", true, "g").name(t("showHiders.globe.label"))
     }
 
 // Finally move the camera and reset the start time, if defined in the URL parameters

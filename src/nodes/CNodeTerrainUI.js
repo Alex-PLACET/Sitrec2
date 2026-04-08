@@ -834,7 +834,7 @@ export class CNodeTerrainUI extends CNode {
             // Need to load the globe
             console.log("Loading globe (useGlobe=true, dynamicSubdivision=false)");
             par.globe = addAlignedGlobe(Sit.globeScale ?? (Sit.terrain !== undefined ? 0.9999 : 1.0));
-            showHider(par.globe, "[G]lobe", true, "g");
+            showHider(par.globe, "[G]lobe", true, "g").name(t("showHiders.globe.label"));
         } else if (!shouldShowGlobe && par.globe) {
             // Need to hide/remove the globe
             console.log("Hiding globe (useGlobe=" + Sit.useGlobe + ", dynamicSubdivision=" + Globals.dynamicSubdivision + ")");

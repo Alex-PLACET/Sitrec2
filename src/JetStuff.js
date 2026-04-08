@@ -22,6 +22,7 @@ import {LLAToECEF} from "./LLA-ECEF-ENU";
 import {Line2} from "three/addons/lines/Line2.js";
 import {LineGeometry} from "three/addons/lines/LineGeometry.js";
 import {showHider} from "./KeyBoardHandler";
+import {t} from "./i18n";
 import {VG} from "./nodes/CNodeView";
 import {chartDiv, setupGimbalChart, theChart, UpdateChart, UpdateChartLine, updateChartSize} from "./JetChart";
 import {CNodeDisplayATFLIR} from "./nodes/CNodeDisplayATFLIR";
@@ -233,7 +234,7 @@ export function update_ERROR_circle(scence, circleCenter) {
     ERROR_circle.layers.enable(LAYER.podsEye)
     ERROR_circle.visible = oldErrorCircleVisible
     LocalFrame.add(ERROR_circle)
-    showHider(ERROR_circle, 'showErrorCircle', oldErrorCircleVisible, 'o')
+    showHider(ERROR_circle, 'showErrorCircle', oldErrorCircleVisible, 'o').name(t("showHiders.showErrorCircle.label"))
 }
 
 let debugText = ""; // stick text in here, and it's show instead of keyboard shortcuts
@@ -1145,7 +1146,7 @@ export function initViews() {
 
     if (Sit.name.startsWith("gimbal") && Sit.showGlare) {
         LocalFrame.add(glareSprite);
-        showHider(glareSprite, "Glare Spr[I]te", false, 'i')
+        showHider(glareSprite, "Glare Spr[I]te", false, 'i').name(t("showHiders.glareSprite.label"))
     }
 
     // mobile adjustments, no keyboard, no chart, UI closed

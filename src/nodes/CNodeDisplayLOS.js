@@ -6,6 +6,7 @@ import {par} from "../par";
 import {metersFromMiles} from "../utils";
 import {CNode3DGroup} from "./CNode3DGroup";
 import {getLocalUpVector} from "../SphericalMath";
+import {t} from "../i18n";
 
 import {LineGeometry} from "three/addons/lines/LineGeometry.js";
 import {Line2} from "three/addons/lines/Line2.js";
@@ -52,7 +53,7 @@ export class CNodeDisplayLOS extends CNode3DGroup {
 
         this.recalculate()
 
-        this.showHider("Lines of Sight", "o", "Show lines of sight from camera to target (toggle: O)");
+        this.showHider(t("showHiders.linesOfSight.label"), "o", t("showHiders.linesOfSight.tooltip"));
     }
 
     // we update the positions of the spheres every frame

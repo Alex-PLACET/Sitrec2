@@ -29,7 +29,7 @@ export class CNodeGimbalTriangulate extends CNode3DGroup {
         this.lines = [];
 
         this.recalculate();
-        this.showHider("Zaine Triangulation");
+        this.showHider(t("showHiders.zaineTriangulation.label"));
         this.show(false);
 
         guiShowHide.add(this, "angleOffset", 2, 5, 0.001).name(t("misc.angularTraverse.label")).onChange(() => {

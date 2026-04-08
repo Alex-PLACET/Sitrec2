@@ -1570,6 +1570,96 @@ const en = {
             tooltip: "Show/Hide the notes editor. Notes are saved with the sitch and can contain clickable hyperlinks.",
         },
     },
+
+    showHiders: {
+        linesOfSight: {
+            label: "Lines of Sight",
+            tooltip: "Show lines of sight from camera to target (toggle: O)",
+        },
+        physicalPointer: {
+            label: "Physical Pointer",
+        },
+        jet: {
+            label: "[J]et",
+        },
+        horizonGrid: {
+            label: "[H]orizon Grid",
+        },
+        wingPlaneGrid: {
+            label: "[W]ing Plane Grid",
+        },
+        sphericalBoresightGrid: {
+            label: "[S]pherical Boresight Grid",
+        },
+        azimuthElevationGrid: {
+            label: "[A]zimuth/Elevation Grid",
+        },
+        frustumOfCamera: {
+            label: "F[R]ustum of camera",
+        },
+        trackLine: {
+            label: "[T]rack line",
+        },
+        globe: {
+            label: "[G]lobe",
+        },
+        showErrorCircle: {
+            label: "showErrorCircle",
+        },
+        glareSprite: {
+            label: "Glare Spr[I]te",
+        },
+        cameraViewFrustum: {
+            label: "Camera View Frustum",
+            tooltip: "Show the camera's viewing frustum in the 3D scene",
+        },
+        zaineTriangulation: {
+            label: "Zaine Triangulation",
+        },
+    },
+
+    lighting: {
+        ambientIntensity: {
+            label: "Ambient Intensity",
+            tooltip: "Ambient light intensity. 0 is no ambient light, 1 is normal ambient light, 2 is double ambient light",
+        },
+        irAmbientIntensity: {
+            label: "IR Ambient Intensity",
+            tooltip: "IR Ambient light intensity (used for IR viewports)",
+        },
+        sunIntensity: {
+            label: "Sun Intensity",
+            tooltip: "Sunlight intensity. 0 is no sunlight, 1 is normal full sunlight, 2 is double sunlight",
+        },
+        sunScattering: {
+            label: "Sun Scattering",
+            tooltip: "Sunlight scattering amount",
+        },
+        sunBoost: {
+            label: "Sun Boost (HDR)",
+            tooltip: "Multiplier for sun DirectionalLight intensity (HDR). Increases specular highlight brightness for realistic sun reflections through fog.",
+        },
+        sceneExposure: {
+            label: "Scene Exposure (HDR)",
+            tooltip: "Exposure compensation for HDR tone mapping. Lower to compensate for higher sun boost.",
+        },
+        ambientOnly: {
+            label: "Ambient Only",
+            tooltip: "If true, then only ambient light is used, no sunlight",
+        },
+        atmosphere: {
+            label: "Atmosphere",
+            tooltip: "If true, then the atmosphere is rendered.\nSet to false to see the stars in daytime",
+        },
+        noMainLighting: {
+            label: "No Lighting in Main View",
+            tooltip: "If true, then no lighting is used in the main view.\nThis is useful for debugging, but not recommended for normal use",
+        },
+        noCityLights: {
+            label: "No City Lights on Globe",
+            tooltip: "If true, then don't render the city lights on the globe.",
+        },
+    },
 };
 
 export default en;

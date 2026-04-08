@@ -1570,6 +1570,96 @@ const fr = {
             tooltip: "Afficher/Masquer l'éditeur de notes. Les notes sont sauvegardées avec le sitch et peuvent contenir des hyperliens cliquables.",
         },
     },
+
+    showHiders: {
+        linesOfSight: {
+            label: "Lignes de visée",
+            tooltip: "Afficher les lignes de visée de la caméra vers la cible (basculer : O)",
+        },
+        physicalPointer: {
+            label: "Pointeur physique",
+        },
+        jet: {
+            label: "[J]et",
+        },
+        horizonGrid: {
+            label: "Grille d'[H]orizon",
+        },
+        wingPlaneGrid: {
+            label: "Grille du plan d'aile ([W])",
+        },
+        sphericalBoresightGrid: {
+            label: "Grille [S]phérique de visée",
+        },
+        azimuthElevationGrid: {
+            label: "Grille [A]zimut/Élévation",
+        },
+        frustumOfCamera: {
+            label: "F[R]ustum de la caméra",
+        },
+        trackLine: {
+            label: "Ligne de [T]rajectoire",
+        },
+        globe: {
+            label: "[G]lobe",
+        },
+        showErrorCircle: {
+            label: "Cercle d'erreur",
+        },
+        glareSprite: {
+            label: "Spr[I]te d'éblouissement",
+        },
+        cameraViewFrustum: {
+            label: "Frustum de la caméra",
+            tooltip: "Afficher le frustum de la caméra dans la scène 3D",
+        },
+        zaineTriangulation: {
+            label: "Triangulation Zaine",
+        },
+    },
+
+    lighting: {
+        ambientIntensity: {
+            label: "Intensité ambiante",
+            tooltip: "Intensité de la lumière ambiante. 0 = pas de lumière ambiante, 1 = lumière ambiante normale, 2 = double lumière ambiante",
+        },
+        irAmbientIntensity: {
+            label: "Intensité ambiante IR",
+            tooltip: "Intensité de la lumière ambiante IR (utilisée pour les vues IR)",
+        },
+        sunIntensity: {
+            label: "Intensité du soleil",
+            tooltip: "Intensité de la lumière du soleil. 0 = pas de soleil, 1 = plein soleil normal, 2 = double soleil",
+        },
+        sunScattering: {
+            label: "Diffusion du soleil",
+            tooltip: "Quantité de diffusion de la lumière du soleil",
+        },
+        sunBoost: {
+            label: "Amplification soleil (HDR)",
+            tooltip: "Multiplicateur pour l'intensité de la DirectionalLight du soleil (HDR). Augmente la luminosité des reflets spéculaires pour des réflexions solaires réalistes à travers le brouillard.",
+        },
+        sceneExposure: {
+            label: "Exposition de la scène (HDR)",
+            tooltip: "Compensation d'exposition pour le mappage de tons HDR. Diminuer pour compenser une amplification soleil plus élevée.",
+        },
+        ambientOnly: {
+            label: "Ambiant uniquement",
+            tooltip: "Si vrai, seule la lumière ambiante est utilisée, pas de lumière du soleil",
+        },
+        atmosphere: {
+            label: "Atmosphère",
+            tooltip: "Si vrai, l'atmosphère est rendue.\nDésactiver pour voir les étoiles en journée",
+        },
+        noMainLighting: {
+            label: "Pas d'éclairage dans la vue principale",
+            tooltip: "Si vrai, aucun éclairage n'est utilisé dans la vue principale.\nUtile pour le débogage, mais non recommandé pour une utilisation normale",
+        },
+        noCityLights: {
+            label: "Pas de lumières des villes sur le globe",
+            tooltip: "Si vrai, ne pas afficher les lumières des villes sur le globe.",
+        },
+    },
 };
 
 export default fr;

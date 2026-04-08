@@ -4,6 +4,7 @@ import {GlobalScene} from "../LocalFrame";
 import {CNode} from "./CNode";
 import * as LAYER from "../LayerMasks";
 import {updateNightTexture} from "../Globe";
+import {t} from "../i18n";
 
 // by default this will live in one node "lighting"
 export class CNodeLighting extends CNode {
@@ -23,26 +24,26 @@ export class CNodeLighting extends CNode {
 
         this.gui = guiMenus.lighting;
 
-        this.addGUIValue("ambientIntensity", 0, 2, 0.01, "Ambient Intensity")
-            .tooltip("Ambient light intensity. 0 is no ambient light, 1 is normal ambient light, 2 is double ambient light");
-        this.addGUIValue("IRAmbientIntensity", 0, 2, 0.01, "IR Ambient Intensity")
-            .tooltip("IR Ambient light intensity (used for IR viewports)");
-        this.addGUIValue("sunIntensity", 0, 2, 0.01, "Sun Intensity")
-            .tooltip("Sunlight intensity. 0 is no sunlight, 1 is normal full sunlight, 2 is double sunlight");
-        this.addGUIValue("sunScattering", 0, 2, 0.01, "Sun Scattering")
-            .tooltip("Sunlight scattering amount");
-        this.addGUIValue("sunBoost", 1, 100, 1, "Sun Boost (HDR)")
-            .tooltip("Multiplier for sun DirectionalLight intensity (HDR). Increases specular highlight brightness for realistic sun reflections through fog.");
-        this.addGUIValue("sceneExposure", 0.01, 2.0, 0.01, "Scene Exposure (HDR)")
-            .tooltip("Exposure compensation for HDR tone mapping. Lower to compensate for higher sun boost.");
-        this.addGUIBoolean("ambientOnly", "Ambient Only")
-            .tooltip("If true, then only ambient light is used, no sunlight");
-        this.addGUIBoolean("atmosphere", "Atmosphere")
-            .tooltip("If true, then the atmosphere is rendered.\nSet to false to see the stars in daytime");
-        this.addGUIBoolean("noMainLighting", "No Lighting in Main View")
-            .tooltip("If true, then no lighting is used in the main view.\nThis is useful for debugging, but not recommended for normal use");
-        this.addGUIBoolean("noCityLights", "No City Lights on Globe")
-            .tooltip("If true, then don't render the city lights on the globe.")
+        this.addGUIValue("ambientIntensity", 0, 2, 0.01, t("lighting.ambientIntensity.label"))
+            .tooltip(t("lighting.ambientIntensity.tooltip"));
+        this.addGUIValue("IRAmbientIntensity", 0, 2, 0.01, t("lighting.irAmbientIntensity.label"))
+            .tooltip(t("lighting.irAmbientIntensity.tooltip"));
+        this.addGUIValue("sunIntensity", 0, 2, 0.01, t("lighting.sunIntensity.label"))
+            .tooltip(t("lighting.sunIntensity.tooltip"));
+        this.addGUIValue("sunScattering", 0, 2, 0.01, t("lighting.sunScattering.label"))
+            .tooltip(t("lighting.sunScattering.tooltip"));
+        this.addGUIValue("sunBoost", 1, 100, 1, t("lighting.sunBoost.label"))
+            .tooltip(t("lighting.sunBoost.tooltip"));
+        this.addGUIValue("sceneExposure", 0.01, 2.0, 0.01, t("lighting.sceneExposure.label"))
+            .tooltip(t("lighting.sceneExposure.tooltip"));
+        this.addGUIBoolean("ambientOnly", t("lighting.ambientOnly.label"))
+            .tooltip(t("lighting.ambientOnly.tooltip"));
+        this.addGUIBoolean("atmosphere", t("lighting.atmosphere.label"))
+            .tooltip(t("lighting.atmosphere.tooltip"));
+        this.addGUIBoolean("noMainLighting", t("lighting.noMainLighting.label"))
+            .tooltip(t("lighting.noMainLighting.tooltip"));
+        this.addGUIBoolean("noCityLights", t("lighting.noCityLights.label"))
+            .tooltip(t("lighting.noCityLights.tooltip"))
             .onChange((value) => { updateNightTexture(value) });
 
 
