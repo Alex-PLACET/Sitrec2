@@ -328,7 +328,10 @@ class ObjectTracker {
     }
 
     findClickedKeyframe(vX, vY) {
-        const clickRadius = 5;
+        // 5 screen pixels converted to video pixels via the canvas-to-video scale
+        const view = this.videoView;
+        view.getSourceAndDestCoords();
+        const clickRadius = 5 * view.sWidth / view.dWidth;
         for (const frame of this.manualKeyframes) {
             const pos = this.trackedPositions.get(frame);
             if (pos) {
