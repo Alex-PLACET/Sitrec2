@@ -50,6 +50,9 @@ class ObjectTracker {
         // Tracking method: 'template' (OpenCV template matching) or 'opticalflow' (jsfeat Lucas-Kanade)
         this.trackingMethod = 'template';
 
+        // Maximum number of keyframes to display (0 = none, 100 = all)
+        this.showMaxKeyframes = 20;
+
         // Optical flow state (for absolute tracking from initial frame)
         this.initialGrayImage = null;
         this.initialPyramid = null;
@@ -926,7 +929,13 @@ class ObjectTracker {
         }
 
         const keyframeRadius = canvasRadius * 0.3;
-        for (const f of this.manualKeyframes) {
+        // Show only the N keyframes nearest to the current frame
+        let keyframesToDraw = Array.from(this.manualKeyframes);
+        if (this.showMaxKeyframes < keyframesToDraw.length) {
+            keyframesToDraw.sort((a, b) => Math.abs(a - frame) - Math.abs(b - frame));
+            keyframesToDraw = keyframesToDraw.slice(0, this.showMaxKeyframes);
+        }
+        for (const f of keyframesToDraw) {
             const pos = this.trackedPositions.get(f);
             if (pos) {
                 const offset = getStabOffset(f);
@@ -1752,6 +1761,20 @@ export function addObjectTrackingMenu() {
             }
         })
         .perm();
+
+    const showMaxKeyframesParams = {
+        get showMaxKeyframes() { return objectTracker?.showMaxKeyframes ?? 20; },
+        set showMaxKeyframes(v) {
+            if (objectTracker) {
+                objectTracker.showMaxKeyframes = v;
+                setRenderOne(true);
+            }
+        }
+    };
+
+    trackingFolder.add(showMaxKeyframesParams, 'showMaxKeyframes', 0, 100, 1)
+        .name("Show N Keyframes")
+        .perm();
 }
 
 export function getObjectTracker() {
@@ -1774,6 +1797,7 @@ export function serializeAutoTracking() {
         centerOnDark: objectTracker.centerOnDark,
         brightnessThreshold: objectTracker.brightnessThreshold,
         trackingMethod: objectTracker.trackingMethod,
+        showMaxKeyframes: objectTracker.showMaxKeyframes,
         // Convert Map to array of [frame, {x,y}] pairs
         trackedPositions: Array.from(objectTracker.trackedPositions.entries()),
         // Stabilization state
@@ -1817,6 +1841,7 @@ export async function deserializeAutoTracking(data) {
     objectTracker.centerOnDark = data.centerOnDark ?? false;
     objectTracker.brightnessThreshold = data.brightnessThreshold ?? 128;
     objectTracker.trackingMethod = data.trackingMethod ?? 'template';
+    objectTracker.showMaxKeyframes = data.showMaxKeyframes ?? 20;
 
     // Restore tracked positions
     if (data.trackedPositions) {

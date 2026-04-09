@@ -26,10 +26,34 @@ export function interpolatePosition(positionsMap, frame) {
             y: prevPos.y + (nextPos.y - prevPos.y) * t
         };
     }
+    // Extrapolate past the last keyframe using the last two keyframes
     if (prevFrame !== null) {
+        if (frames.length >= 2) {
+            const f1 = frames[frames.length - 2];
+            const f2 = frames[frames.length - 1];
+            const p1 = positionsMap.get(f1);
+            const p2 = positionsMap.get(f2);
+            const t = (frame - f1) / (f2 - f1);
+            return {
+                x: p1.x + (p2.x - p1.x) * t,
+                y: p1.y + (p2.y - p1.y) * t
+            };
+        }
         return positionsMap.get(prevFrame);
     }
+    // Extrapolate before the first keyframe using the first two keyframes
     if (nextFrame !== null) {
+        if (frames.length >= 2) {
+            const f1 = frames[0];
+            const f2 = frames[1];
+            const p1 = positionsMap.get(f1);
+            const p2 = positionsMap.get(f2);
+            const t = (frame - f1) / (f2 - f1);
+            return {
+                x: p1.x + (p2.x - p1.x) * t,
+                y: p1.y + (p2.y - p1.y) * t
+            };
+        }
         return positionsMap.get(nextFrame);
     }
     return null;
