@@ -30,7 +30,11 @@ function drainAsserts() {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
+// Tools pages (under /tools/) are standalone apps — always considered "ready"
+const isToolsPage = /\/sitrec\/tools\//.test(window.location.pathname);
+
 function isSitrecReady() {
+    if (isToolsPage) return true;
     const el = document.getElementById("sitrec-objects-ready");
     return el && el.dataset.ready === "complete";
 }
@@ -562,12 +566,21 @@ function isSitrecReal(log = false) {
 
 function notifySitrecDetected() {
     const buildDir = window.__sitrecBuildDir || null;
-    window.postMessage({ source: "sitrec-bridge-page", type: "sitrec-detected", nonce: bridgeNonce, buildDir }, "*");
-    console.log("[SitrecBridge] Page bridge loaded — Sitrec detected" + (buildDir ? ` (build: ${buildDir})` : ""));
+    const pageType = isToolsPage ? "tool" : "sitrec";
+    window.postMessage({ source: "sitrec-bridge-page", type: "sitrec-detected", nonce: bridgeNonce, buildDir, pageType }, "*");
+    console.log("[SitrecBridge] Page bridge loaded — " + pageType + " detected" + (buildDir ? ` (build: ${buildDir})` : ""));
 }
 
 function startSitrecDetection() {
     console.log("[SitrecBridge:page] startSitrecDetection() — checking immediately...");
+
+    // Tools pages are standalone apps — register immediately without Sitrec globals
+    if (isToolsPage) {
+        console.log("[SitrecBridge:page] Tools page detected:", window.location.pathname);
+        notifySitrecDetected();
+        return;
+    }
+
     if (isSitrecReal(true)) {
         notifySitrecDetected();
     } else {

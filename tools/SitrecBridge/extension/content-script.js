@@ -97,7 +97,8 @@ window.addEventListener("message", (event) => {
             return;
         }
         if (!sitrecDetected) {
-            console.log("[SitrecBridge:content] Sitrec detected, opening keepalive port");
+            const pageType = event.data.pageType || "sitrec";
+            console.log("[SitrecBridge:content] " + pageType + " detected, opening keepalive port");
             sitrecDetected = true;
             sitrecBuildDir = event.data.buildDir || null;
             openKeepalivePort();
