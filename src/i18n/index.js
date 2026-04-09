@@ -7,6 +7,11 @@ const FALLBACK_LANGUAGE = "en";
 const LANGUAGE_STORAGE_KEY = "sitrec-language";
 const SUPPORTED_LANGUAGES = [FALLBACK_LANGUAGE, "es", "fr"];
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
+const TRANSLATION_RESOURCES = Object.freeze({
+    en,
+    es,
+    fr,
+});
 
 export const SUPPORTED_LANGUAGE_OPTIONS = Object.freeze({
     English: "en",
@@ -80,17 +85,12 @@ export function initI18n(preferredLanguage = null) {
             escapeValue: false,
         },
         lng: resolveLanguage(preferredLanguage),
-        resources: {
-            en: {
-                translation: en,
-            },
-            es: {
-                translation: es,
-            },
-            fr: {
-                translation: fr,
-            },
-        },
+        resources: Object.fromEntries(
+            Object.entries(TRANSLATION_RESOURCES).map(([language, translation]) => [
+                language,
+                {translation},
+            ])
+        ),
         returnEmptyString: false,
         supportedLngs: SUPPORTED_LANGUAGES,
     });
@@ -137,4 +137,21 @@ export function setLanguage(language) {
     }
 
     return normalizedLanguage;
+}
+
+function getTranslationResourceValue(resource, key) {
+    return key.split(".").reduce((value, part) => value?.[part], resource);
+}
+
+export function getTranslationVariants(key) {
+    const variants = new Set();
+
+    for (const translation of Object.values(TRANSLATION_RESOURCES)) {
+        const value = getTranslationResourceValue(translation, key);
+        if (typeof value === "string" && value.trim() !== "") {
+            variants.add(value);
+        }
+    }
+
+    return [...variants];
 }

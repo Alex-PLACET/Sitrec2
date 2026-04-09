@@ -1813,7 +1813,28 @@ export class CGuiMenuBar {
     }
 
     getSerialID(slot) {
-        return this.slots[slot].$title.innerHTML
+        const gui = this.slots[slot];
+        return gui?._menuId ?? gui.$title.innerHTML
+    }
+
+    getSerialAliases(gui) {
+        const aliases = [
+            gui?._menuId,
+            gui?.$title?.innerHTML,
+            ...(Array.isArray(gui?._serializationAliases) ? gui._serializationAliases : []),
+        ].filter(value => typeof value === "string" && value.length > 0);
+
+        return [...new Set(aliases)];
+    }
+
+    getSerializedGUIData(guiData, gui) {
+        for (const key of this.getSerialAliases(gui)) {
+            if (guiData[key] !== undefined) {
+                return guiData[key];
+            }
+        }
+
+        return undefined;
     }
 
     modSerialize() {
@@ -1853,10 +1874,9 @@ export class CGuiMenuBar {
         const centerSidebarMenusToAdd = [];
 
         for (let i = 0; i < this.slots.length; i++) {
-            const key = this.getSerialID(i);
-            if (v[key] !== undefined) {
-                const gui = this.slots[i];
-                const data = guiData[key];
+            const gui = this.slots[i];
+            const data = this.getSerializedGUIData(guiData, gui);
+            if (data !== undefined) {
                 // When loading a sitch, all docked menus should be closed
                 // Ignore the serialized closed state and always close menus
                 // This ensures the internal _closed state matches the DOM (closed class and aria-expanded attribute)

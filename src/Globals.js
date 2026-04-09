@@ -1,4 +1,4 @@
-import {t} from "./i18n";
+import {getTranslationVariants, t} from "./i18n";
 
 export let mainLoopCount = 0;
 export function incrementMainLoopCount() {
@@ -152,7 +152,9 @@ export function addGUIMenu(id, title) {
 }
 
 export function addTranslatedGUIMenu(id, titleKey) {
-    return addGUIMenu(id, t(titleKey));
+    const gui = addGUIMenu(id, t(titleKey));
+    gui._serializationAliases = getTranslationVariants(titleKey);
+    return gui;
 }
 
 // ad a folder to a menu

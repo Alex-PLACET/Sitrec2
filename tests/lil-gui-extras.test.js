@@ -199,6 +199,44 @@ describe('CGuiMenuBar Z-Index Management', () => {
         newMenuBar.destroy();
     });
 
+    test('should serialize translated menu state under stable menu IDs', () => {
+        const fileMenu = menuBar.addFolder('Archivo');
+        fileMenu._menuId = 'file';
+        fileMenu._serializationAliases = ['File', 'Archivo', 'Fichier'];
+
+        menuBar.bringToFront(fileMenu);
+
+        const serialized = menuBar.modSerialize();
+
+        expect(serialized.file).toBeDefined();
+        expect(serialized.file.zIndex).toBe('5001');
+        expect(serialized.Archivo).toBeUndefined();
+    });
+
+    test('should restore menu state from legacy translated titles', () => {
+        const legacySerialized = {
+            Archivo: {
+                closed: false,
+                left: '42px',
+                top: '12px',
+                zIndex: '5004',
+                mode: 'DETACHED',
+                lockOpenClose: false
+            }
+        };
+
+        const fileMenu = menuBar.addFolder('File');
+        fileMenu._menuId = 'file';
+        fileMenu._serializationAliases = ['File', 'Archivo', 'Fichier'];
+
+        menuBar.modDeserialize(legacySerialized);
+
+        expect(fileMenu.domElement.parentElement.style.left).toBe('42px');
+        expect(fileMenu.domElement.parentElement.style.top).toBe('12px');
+        expect(fileMenu.$children.style.zIndex).toBe('5004');
+        expect(fileMenu.mode).toBe('DETACHED');
+    });
+
     test('should set mode to DETACHED and bring to front when drag is completed', () => {
         // Add a folder
         const gui = menuBar.addFolder('Test Menu');
