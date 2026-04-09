@@ -8,8 +8,8 @@
  * - Return stable object references (preferred) or compatibility URLs to callers.
  */
 import {assert} from "./assert";
-import {SITREC_SERVER} from "./configUtils";
-import {withTestUser} from "./Globals";
+import {isAdmin, SITREC_SERVER} from "./configUtils";
+import {Globals, withTestUser} from "./Globals";
 import {showError} from "./showError";
 import {initUploadProgress, updateUploadProgress} from "./utils";
 import {getEnvBool, getEnvNumber} from "./envUtils";
@@ -64,12 +64,13 @@ export class CRehoster {
      * @param {string|null|undefined} contentHash
      * @returns {Promise<object>}
      */
-    async initiateMultipartUpload(filename, version, totalParts, contentHash) {
+    async initiateMultipartUpload(filename, version, totalParts, contentHash, fileSize) {
         const serverURL = SITREC_SERVER + 'rehost.php?action=initiateMultipart&unique=' + Date.now();
-        
+
         const requestData = {
             filename: filename,
-            parts: totalParts
+            parts: totalParts,
+            fileSize: fileSize
         };
         if (version !== undefined) {
             requestData.version = version;
@@ -168,7 +169,7 @@ export class CRehoster {
                     const totalParts = Math.ceil(data.byteLength / CHUNK_SIZE);
                     console.log(`[Multipart Upload] File will be split into ${totalParts} parts of ~${CHUNK_SIZE / 1024 / 1024}MB each, ${PARALLEL_UPLOADS} concurrent uploads`);
 
-                    const initResult = await this.initiateMultipartUpload(filename, version, totalParts, contentHash);
+                    const initResult = await this.initiateMultipartUpload(filename, version, totalParts, contentHash, data.byteLength);
                     
                     if (initResult.exists) {
                         const existingRef = (initResult.objectRef || initResult.objectUrl).replace(/ /g, "%20");
@@ -294,6 +295,7 @@ export class CRehoster {
                 const contentHash = skipHash ? null : await computeContentHash(data);
                 let requestData = {
                     filename: filename,
+                    fileSize: data.byteLength,
                 };
                 if (contentHash) {
                     requestData.contentHash = contentHash;
@@ -444,9 +446,21 @@ export class CRehoster {
 
     rehostFile(filename, data, version, options) {
 
-        let limit = getEnvNumber("MAX_FILE_SIZE_MB", process.env.MAX_FILE_SIZE_MB, 99);
+        // Use server-provided limit if available (accounts for admin status server-side),
+        // otherwise fall back to env vars with client-side admin check.
+        let limit;
+        if (Globals.userData?.maxFileSizeMB) {
+            limit = Globals.userData.maxFileSizeMB;
+        } else {
+            limit = getEnvNumber("MAX_FILE_SIZE_MB", process.env.MAX_FILE_SIZE_MB, 99);
+            if (isAdmin()) {
+                const adminLimit = getEnvNumber("ADMIN_MAX_FILE_SIZE_MB", process.env.ADMIN_MAX_FILE_SIZE_MB, 0);
+                if (adminLimit > 0) {
+                    limit = adminLimit;
+                }
+            }
+        }
 
-        // if data is bigger than 99MB then do not rehost it
         if (data.byteLength > limit * 1024 * 1024) {
             console.warn("File is too big to rehost: ", filename, " size: ", data.byteLength, " bytes");
             alert("File is too big to rehost: " + filename + " size: " + data.byteLength + " bytes. Please use a smaller file. Limit = " + limit + " MB");

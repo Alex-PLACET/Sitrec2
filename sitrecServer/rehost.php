@@ -65,6 +65,21 @@ function getUploadAclForKey($key) {
     return $acl ?: null;
 }
 
+/**
+ * Return the effective file-upload size limit (in MB) for the current user.
+ * Admins get ADMIN_MAX_FILE_SIZE_MB when it is configured; everyone else gets MAX_FILE_SIZE_MB.
+ */
+function getMaxFileSizeMB($userInfo = null) {
+    $defaultLimit = getEnvIntSeconds('MAX_FILE_SIZE_MB', 100); // reuses int parser (works for MB too)
+    if (isAdmin($userInfo)) {
+        $adminLimit = getEnvIntSeconds('ADMIN_MAX_FILE_SIZE_MB', 0);
+        if ($adminLimit > 0) {
+            return $adminLimit;
+        }
+    }
+    return $defaultLimit;
+}
+
 function getGoogle3DRootDailyLimitForGroups($userGroups) {
     $dailyLimits = [
         3 => 1000000, // Admin: effectively unlimited
@@ -133,6 +148,7 @@ if (isset($_GET['getuser'])) {
         'userID' => $user_id,
         'userGroups' => $userGroups,
         'canUse3DBuildings' => false,
+        'maxFileSizeMB' => getMaxFileSizeMB($userInfo),
     ];
 
     $googleRootLimit = getGoogle3DRootDailyLimitForGroups($userGroups);
@@ -188,22 +204,32 @@ if (isset($_GET['action']) && $_GET['action'] === 'getPresignedUrl') {
     $fileName = basename($requestData['filename']);
     $version = isset($requestData['version']) ? basename($requestData['version']) : null;
     $contentHash = isset($requestData['contentHash']) ? $requestData['contentHash'] : null;
-    
+
     $fileName = preg_replace('/[^\w\s\.\-\(\),]/', '_', $fileName);
-    
+
     if (!isSafeName($fileName) || !isSafeExtension($fileName) ||
         ($version && (!isSafeName($version) || !isSafeExtension($version)))) {
         http_response_code(400);
         echo json_encode(['error' => 'Invalid filename, version, or file type']);
         exit();
     }
-    
+
     if ($contentHash && !preg_match('/^[a-f0-9]+$/', $contentHash)) {
         http_response_code(400);
         echo json_encode(['error' => 'Invalid content hash']);
         exit();
     }
-    
+
+    // Enforce file size limit when the client reports file size
+    if (isset($requestData['fileSize'])) {
+        $maxBytes = getMaxFileSizeMB() * 1024 * 1024;
+        if ((int)$requestData['fileSize'] > $maxBytes) {
+            http_response_code(413);
+            echo json_encode(['error' => 'File exceeds maximum upload size of ' . getMaxFileSizeMB() . ' MB']);
+            exit();
+        }
+    }
+
     if (!$useAWS) {
         http_response_code(400);
         echo json_encode(['error' => 'S3 not enabled']);
@@ -306,15 +332,25 @@ if (isset($_GET['action']) && $_GET['action'] === 'initiateMultipart') {
         echo json_encode(['error' => 'Invalid content hash']);
         exit();
     }
-    
+
+    // Enforce file size limit when the client reports file size
+    if (isset($requestData['fileSize'])) {
+        $maxBytes = getMaxFileSizeMB() * 1024 * 1024;
+        if ((int)$requestData['fileSize'] > $maxBytes) {
+            http_response_code(413);
+            echo json_encode(['error' => 'File exceeds maximum upload size of ' . getMaxFileSizeMB() . ' MB']);
+            exit();
+        }
+    }
+
     if (!$useAWS) {
         http_response_code(400);
         echo json_encode(['error' => 'S3 not enabled']);
         exit();
     }
-    
+
     $s3 = startS3();
-    
+
     $extension = pathinfo($fileName, PATHINFO_EXTENSION);
     $baseName = pathinfo($fileName, PATHINFO_FILENAME);
     
@@ -564,6 +600,13 @@ if (isset($_POST['delete']) && $_POST['delete'] == 'true') {
 // Check if file and filename are provided
 if (!isset($_FILES['fileContent']) || !isset($_POST['filename'])) {
     die("File or filename not provided");
+}
+
+// Enforce file size limit on filesystem uploads
+$maxBytes = getMaxFileSizeMB() * 1024 * 1024;
+if ($_FILES['fileContent']['size'] > $maxBytes) {
+    http_response_code(413);
+    die("File exceeds maximum upload size of " . getMaxFileSizeMB() . " MB");
 }
 
 // Securely retrieve the file and filename
