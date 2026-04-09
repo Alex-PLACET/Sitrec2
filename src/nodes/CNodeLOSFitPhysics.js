@@ -84,7 +84,7 @@ export class CNodeLOSFitPhysics extends CNodeTrack {
             this.guiFolder = null;
         }
 
-        this.guiFolder = guiMenus.traverse.addFolder("Physics Fit Results").close();
+        this.guiFolder = guiMenus.traverse.addFolder(t("losFitPhysics.folder")).close();
         this.guiDisplay = {};
 
         // Use strings for all display values to avoid lil-gui NumberController step requirement

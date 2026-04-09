@@ -1420,6 +1420,7 @@ const en = {
     },
 
     losFitPhysics: {
+        folder: "Physics Fit Results",
         model: {
             label: "Model",
         },
@@ -1715,6 +1716,21 @@ const en = {
         cameraSmoothWindow: "Camera Smooth Window",
         targetSmoothWindow: "Target Smooth Window",
         cameraFOV: "Camera FOV",
+        "Tgt Start Dist": "Tgt Start Distance",
+        "Target Speed": "Target Speed",
+        "Tgt Relative Heading": "Tgt Relative Heading",
+        "KF Process": "KF Process",
+        "KF Noise": "KF Noise",
+        "MC Num Trials": "MC Num Trials",
+        "MC LOS Uncertainty (deg)": "MC LOS Uncertainty (deg)",
+        "MC Polynomial Order": "MC Polynomial Order",
+        "Physics Max Iterations": "Physics Max Iterations",
+        "Physics Wind Speed (kt)": "Physics Wind Speed (kt)",
+        "Physics Wind From (°)": "Physics Wind From (°)",
+        "Physics Initial Range (m)": "Physics Initial Range (m)",
+        "Tgt Start Altitude": "Tgt Start Altitude",
+        "Tgt Vert Spd": "Tgt Vert Speed",
+        "Cloud Altitude": "Cloud Altitude",
     },
 };
 

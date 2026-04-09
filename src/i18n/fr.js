@@ -1420,6 +1420,7 @@ const fr = {
     },
 
     losFitPhysics: {
+        folder: "Résultats d'ajustement physique",
         model: {
             label: "Modèle",
         },
@@ -1713,6 +1714,21 @@ const fr = {
         cameraSmoothWindow: "Fenêtre de lissage caméra",
         targetSmoothWindow: "Fenêtre de lissage cible",
         cameraFOV: "FOV caméra",
+        "Tgt Start Dist": "Distance initiale cible",
+        "Target Speed": "Vitesse cible",
+        "Tgt Relative Heading": "Cap relatif cible",
+        "KF Process": "KF processus",
+        "KF Noise": "KF bruit",
+        "MC Num Trials": "MC nombre d'essais",
+        "MC LOS Uncertainty (deg)": "MC incertitude LOS (deg)",
+        "MC Polynomial Order": "MC ordre polynomial",
+        "Physics Max Iterations": "Physique itérations max",
+        "Physics Wind Speed (kt)": "Physique vitesse du vent (kt)",
+        "Physics Wind From (°)": "Physique vent depuis (°)",
+        "Physics Initial Range (m)": "Physique distance initiale (m)",
+        "Tgt Start Altitude": "Altitude initiale cible",
+        "Tgt Vert Spd": "Vitesse vert. cible",
+        "Cloud Altitude": "Altitude des nuages",
     },
 };
 

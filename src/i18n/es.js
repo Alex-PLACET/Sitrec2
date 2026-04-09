@@ -1420,6 +1420,7 @@ const es = {
     },
 
     losFitPhysics: {
+        folder: "Resultados de ajuste físico",
         model: {
             label: "Modelo",
         },
@@ -1713,6 +1714,21 @@ const es = {
         cameraSmoothWindow: "Ventana de suavizado de cámara",
         targetSmoothWindow: "Ventana de suavizado de objetivo",
         cameraFOV: "FOV de cámara",
+        "Tgt Start Dist": "Distancia inicial objetivo",
+        "Target Speed": "Velocidad objetivo",
+        "Tgt Relative Heading": "Rumbo relativo objetivo",
+        "KF Process": "KF proceso",
+        "KF Noise": "KF ruido",
+        "MC Num Trials": "MC número de intentos",
+        "MC LOS Uncertainty (deg)": "MC incertidumbre LOS (deg)",
+        "MC Polynomial Order": "MC orden polinomial",
+        "Physics Max Iterations": "Física iteraciones máx.",
+        "Physics Wind Speed (kt)": "Física velocidad del viento (kt)",
+        "Physics Wind From (°)": "Física viento desde (°)",
+        "Physics Initial Range (m)": "Física distancia inicial (m)",
+        "Tgt Start Altitude": "Altitud inicial objetivo",
+        "Tgt Vert Spd": "Vel. vert. objetivo",
+        "Cloud Altitude": "Altitud de las nubes",
     },
 };
 
