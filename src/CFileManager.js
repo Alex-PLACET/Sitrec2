@@ -212,6 +212,10 @@ export class CFileManager extends CManager {
         // Throttle repeated local-import error dialogs during a single failed load burst.
         this._localImportErrorLastKey = null;
         this._localImportErrorLastMs = 0;
+        // Session cache for local rehost path resolution.
+        // Maps normalizedPreferredPath -> {path, reusedExisting} so we skip re-reading
+        // large files (e.g. 500MB video) on every save after the first.
+        this._localRehostPathCache = new Map();
 
         this.rehoster = new CRehoster();
 
@@ -346,6 +350,7 @@ export class CFileManager extends CManager {
 
     clearLocalSitchContext() {
         this._localSitchContextActive = false;
+        this._localRehostPathCache.clear();
     }
 
     markLocalSitchContextActive() {
@@ -2862,6 +2867,12 @@ export class CFileManager extends CManager {
 
             loadingPromise = localReadPromise
                 .then(arrayBuffer => {
+                    // Pre-populate the rehost path cache so the first save
+                    // doesn't need to re-read this file to verify it's unchanged.
+                    if (normalizedWorkingFolderPath) {
+                        this._localRehostPathCache.set(normalizedWorkingFolderPath,
+                            {path: normalizedWorkingFolderPath, reusedExisting: true});
+                    }
                     LoadingManager.completeLoading(loadingId);
                     return this.parseResult(filename, arrayBuffer, null);
                 })
@@ -4664,6 +4675,13 @@ export class CFileManager extends CManager {
         const normalizedPreferred = this.normalizeWorkingFolderRelativePath(preferredRelativePath);
         assert(normalizedPreferred, `Invalid preferred local rehost path: ${preferredRelativePath}`);
 
+        // Fast path: if we already resolved this path earlier in the session
+        // (via a previous save or load), skip the expensive file read + compare.
+        const cached = this._localRehostPathCache.get(normalizedPreferred);
+        if (cached) {
+            return cached;
+        }
+
         const parts = normalizedPreferred.split("/");
         const preferredName = parts.pop();
         const prefix = parts.length > 0 ? parts.join("/") + "/" : "";
@@ -4683,14 +4701,18 @@ export class CFileManager extends CManager {
 
                 // Reuse existing file if identical bytes (no recopy needed).
                 if (areArrayBuffersEqual(existingBuffer, sourceBuffer)) {
-                    return {path: candidatePath, reusedExisting: true};
+                    const result = {path: candidatePath, reusedExisting: true};
+                    this._localRehostPathCache.set(normalizedPreferred, result);
+                    return result;
                 }
 
                 candidateName = `${base}-${counter}${ext}`;
                 counter++;
             } catch (error) {
                 if (error?.name === "NotFoundError") {
-                    return {path: candidatePath, reusedExisting: false};
+                    const result = {path: candidatePath, reusedExisting: false};
+                    this._localRehostPathCache.set(normalizedPreferred, result);
+                    return result;
                 }
                 throw error;
             }
