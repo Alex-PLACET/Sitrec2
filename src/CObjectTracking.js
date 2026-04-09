@@ -328,7 +328,7 @@ class ObjectTracker {
     }
 
     findClickedKeyframe(vX, vY) {
-        const clickRadius = this.trackRadius * 0.5;
+        const clickRadius = 5;
         for (const frame of this.manualKeyframes) {
             const pos = this.trackedPositions.get(frame);
             if (pos) {
