@@ -249,48 +249,7 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
                 // Now start extraction with both video and audio callbacks
                 demuxer.start(
                     (chunk) => {
-                        chunk.frameNumber = this.demuxFrame++
-                        this.chunks.push(chunk)
-
-                        const rawBuf = new ArrayBuffer(chunk.byteLength);
-                        chunk.copyTo(rawBuf);
-                        this.rawChunkData.push(rawBuf);
-
-                        if (chunk.type === "key") {
-                            this.groups.push({
-                                    frame: this.chunks.length - 1,
-                                    length: 1,
-                                    pending: 0,
-                                    loaded: false,
-                                    timestamp: chunk.timestamp,
-                                }
-                            )
-                        } else {
-                            const lastGroup = this.groups[this.groups.length - 1]
-                            if (lastGroup) {
-                                lastGroup.length++;
-                            } else {
-                                // Some MP4 files have the first sample not marked as a key frame
-                                // (e.g. certain screen recorders). Without this guard, groups is
-                                // empty so lastGroup is undefined and lastGroup.length++ crashes
-                                // with "Cannot read properties of undefined (reading 'length')".
-                                this.groups.push({
-                                    frame: this.chunks.length - 1,
-                                    length: 1,
-                                    pending: 0,
-                                    loaded: false,
-                                    timestamp: chunk.timestamp,
-                                });
-                            }
-                        }
-
-                        this.frames++;
-                        Sit.videoFrames = this.frames * this.videoSpeed;
-
-                        if (this._loadingId && demuxer.source.totalFrames > 0) {
-                            const progress = (this.frames / demuxer.source.totalFrames) * 100;
-                            VideoLoadingManager.updateProgress(this._loadingId, progress);
-                        }
+                        this._addChunkToGroups(chunk, demuxer);
                     },
                     (track_id, samples) => {
                         // Audio samples callback
@@ -305,44 +264,7 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
                 console.warn(`[CVideoMp4Data] Audio initialization failed:`, e);
                 console.log(`[CVideoMp4Data] Proceeding with video-only extraction...`);
                 demuxer.start((chunk) => {
-                    chunk.frameNumber = this.demuxFrame++
-                    this.chunks.push(chunk)
-
-                    const rawBuf = new ArrayBuffer(chunk.byteLength);
-                    chunk.copyTo(rawBuf);
-                    this.rawChunkData.push(rawBuf);
-
-                    if (chunk.type === "key") {
-                        this.groups.push({
-                                frame: this.chunks.length - 1,
-                                length: 1,
-                                pending: 0,
-                                loaded: false,
-                                timestamp: chunk.timestamp,
-                            }
-                        )
-                    } else {
-                        const lastGroup = this.groups[this.groups.length - 1]
-                        if (lastGroup) {
-                            lastGroup.length++;
-                        } else {
-                            // Same guard as above - see comment in the .then() callback
-                            this.groups.push({
-                                frame: this.chunks.length - 1,
-                                length: 1,
-                                pending: 0,
-                                loaded: false,
-                                timestamp: chunk.timestamp,
-                            });
-                        }
-                    }
-                    this.frames++;
-                    Sit.videoFrames = this.frames * this.videoSpeed;
-
-                    if (this._loadingId && demuxer.source.totalFrames > 0) {
-                        const progress = (this.frames / demuxer.source.totalFrames) * 100;
-                        VideoLoadingManager.updateProgress(this._loadingId, progress);
-                    }
+                    this._addChunkToGroups(chunk, demuxer);
                 }, null, completeExtraction);
             }).catch(err => {
                 // Error will be ignored if callbacks are cleared
@@ -368,6 +290,57 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
     }
 
 
+
+    /**
+     * Shared chunk-to-group logic used by both the normal and audio-fallback extraction paths.
+     * Handles leading delta frames in clips without an stss table (e.g. VLC exports
+     * that start mid-stream before the first keyframe).
+     */
+    _addChunkToGroups(chunk, demuxer) {
+        chunk.frameNumber = this.demuxFrame++;
+        this.chunks.push(chunk);
+
+        const rawBuf = new ArrayBuffer(chunk.byteLength);
+        chunk.copyTo(rawBuf);
+        this.rawChunkData.push(rawBuf);
+
+        if (chunk.type === "key") {
+            this.groups.push({
+                frame: this.chunks.length - 1,
+                length: 1,
+                pending: 0,
+                loaded: false,
+                timestamp: chunk.timestamp,
+            });
+        } else {
+            const lastGroup = this.groups[this.groups.length - 1];
+            if (lastGroup) {
+                lastGroup.length++;
+            } else if (demuxer.source._hasStssTable !== false) {
+                // Some MP4 files have the first sample not marked as a key frame
+                // (e.g. certain screen recorders). Create a synthetic group so we
+                // don't crash. But when stss is MISSING (VLC exports), leading delta
+                // frames genuinely can't be decoded (no reference frames exist),
+                // so skip them — they'll display as black.
+                this.groups.push({
+                    frame: this.chunks.length - 1,
+                    length: 1,
+                    pending: 0,
+                    loaded: false,
+                    timestamp: chunk.timestamp,
+                });
+            }
+            // else: leading delta frame with no stss — undecodable, not added to any group
+        }
+
+        this.frames++;
+        Sit.videoFrames = this.frames * this.videoSpeed;
+
+        if (this._loadingId && demuxer.source.totalFrames > 0) {
+            const progress = (this.frames / demuxer.source.totalFrames) * 100;
+            VideoLoadingManager.updateProgress(this._loadingId, progress);
+        }
+    }
 
     /**
      * Override config info to show MP4-specific properties

@@ -72,6 +72,25 @@ export class MP4Source {
     this.info = info;
     //console.log("MP4Source onReady info = ", info)
     var videoTrack = info.tracks.find(track => track.type === 'video');
+
+    // Check if the video track has a sync sample (stss) table.
+    // VLC-exported MP4s often omit stss, causing MP4Box to mark ALL frames
+    // as keyframes. We detect this and fall back to H.264 bitstream inspection.
+    this._hasStssTable = true;
+    this._nalLengthSize = 4; // default AVCC NAL length prefix size
+    if (videoTrack) {
+      const trak = this.file.getTrackById(videoTrack.id);
+      const stss = trak?.mdia?.minf?.stbl?.stss;
+      if (!stss) {
+        console.warn("⚠️ MP4 file has no sync sample (stss) table — keyframes will be detected from H.264 bitstream");
+        this._hasStssTable = false;
+        // Get NAL length prefix size from avcC box
+        const entry = trak?.mdia?.minf?.stbl?.stsd?.entries?.[0];
+        if (entry?.avcC) {
+          this._nalLengthSize = (entry.avcC.lengthSizeMinusOne || 3) + 1;
+        }
+      }
+    }
     
     // Get duration from video or audio track
     var durationTrack = videoTrack || info.tracks.find(track => track.type === 'audio');
@@ -243,11 +262,51 @@ export class MP4Source {
     }
   }
 
+  /**
+   * Detect whether an AVCC-formatted sample is a true IDR keyframe
+   * by inspecting the H.264 NAL unit types in the sample data.
+   * NAL type 5 = IDR slice (keyframe), NAL type 1 = non-IDR slice (delta).
+   */
+  _detectKeyframeFromBitstream(data) {
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    let offset = 0;
+    const nalLengthSize = this._nalLengthSize;
+
+    while (offset + nalLengthSize < data.byteLength) {
+      let nalLength = 0;
+      if (nalLengthSize === 4) {
+        nalLength = view.getUint32(offset);
+      } else if (nalLengthSize === 2) {
+        nalLength = view.getUint16(offset);
+      } else {
+        nalLength = view.getUint8(offset);
+      }
+      offset += nalLengthSize;
+
+      if (nalLength === 0 || offset + nalLength > data.byteLength) break;
+
+      const nalType = data[offset] & 0x1F;
+      if (nalType === 5) return "key";   // IDR slice — true keyframe
+      if (nalType === 1) return "delta"; // Non-IDR slice — P/B frame
+      // Skip SEI (6), SPS (7), PPS (8) and other non-slice NAL units
+      offset += nalLength;
+    }
+
+    // If we couldn't determine, assume key (safe default — decoder will reject if wrong)
+    return "key";
+  }
+
   onSamples(track_id, ref, samples) {
     if (track_id === this.videoTrackId) {
       this._receivedVideoSamples += samples.length;
       for (const sample of samples) {
-        const type = sample.is_sync ? "key" : "delta";
+        let type = sample.is_sync ? "key" : "delta";
+
+        // When stss table is missing, MP4Box marks ALL frames as keyframes.
+        // Detect actual keyframes from the H.264 bitstream instead.
+        if (!this._hasStssTable && sample.is_sync && sample.data) {
+          type = this._detectKeyframeFromBitstream(sample.data);
+        }
 
         const chunk = new EncodedVideoChunk({
           type: type,
