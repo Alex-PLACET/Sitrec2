@@ -75,19 +75,25 @@ export class MP4Source {
 
     // Check if the video track has a sync sample (stss) table.
     // VLC-exported MP4s often omit stss, causing MP4Box to mark ALL frames
-    // as keyframes. We detect this and fall back to H.264 bitstream inspection.
+    // as keyframes. For H.264 we fall back to bitstream inspection of NAL
+    // unit types; HEVC uses a different NAL header layout so we leave the
+    // MP4Box default (all-sync) in place for HEVC files without stss.
     this._hasStssTable = true;
     this._nalLengthSize = 4; // default AVCC NAL length prefix size
     if (videoTrack) {
       const trak = this.file.getTrackById(videoTrack.id);
       const stss = trak?.mdia?.minf?.stbl?.stss;
       if (!stss) {
-        console.warn("⚠️ MP4 file has no sync sample (stss) table — keyframes will be detected from H.264 bitstream");
-        this._hasStssTable = false;
-        // Get NAL length prefix size from avcC box
         const entry = trak?.mdia?.minf?.stbl?.stsd?.entries?.[0];
         if (entry?.avcC) {
+          // H.264: enable bitstream-based keyframe detection
+          console.warn("⚠️ MP4 file has no sync sample (stss) table — keyframes will be detected from H.264 bitstream");
+          this._hasStssTable = false;
           this._nalLengthSize = (entry.avcC.lengthSizeMinusOne || 3) + 1;
+        } else {
+          // HEVC or other codec: log a warning but don't enable the H.264
+          // detector — the all-sync fallback from MP4Box is safer here.
+          console.warn("⚠️ MP4 file has no sync sample (stss) table and codec is not H.264 — keyframe detection unavailable");
         }
       }
     }

@@ -321,7 +321,8 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
                 // (e.g. certain screen recorders). Create a synthetic group so we
                 // don't crash. But when stss is MISSING (VLC exports), leading delta
                 // frames genuinely can't be decoded (no reference frames exist),
-                // so skip them — they'll display as black.
+                // so skip them — they'll show the nearest cached/keyframe via
+                // the fallback logic in CVideoWebCodecBase.getImage().
                 this.groups.push({
                     frame: this.chunks.length - 1,
                     length: 1,
