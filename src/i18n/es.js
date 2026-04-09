@@ -1682,6 +1682,20 @@ const es = {
             tooltip: "Si es verdadero, no renderizar las luces de las ciudades en el globo.",
         },
     },
+    helpFunctions: {
+        adsbReplay: {
+            label: "Replay ADSB para esta hora y ubicación",
+            tooltip: "Generar un enlace a ADSB Exchange Replay",
+        },
+        googleMapsLink: {
+            label: "Google Maps para esta ubicación",
+            tooltip: "Crear un enlace de Google Maps a la ubicación actual",
+        },
+        inTheSkyLink: {
+            label: "In-The-Sky para esta hora y ubicación",
+            tooltip: "Crear un enlace de In The Sky a la ubicación actual",
+        },
+    },
     nodeLabels: {
         focus: "Desenfoque",
         canvasResolution: "Resolución",

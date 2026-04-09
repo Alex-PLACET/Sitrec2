@@ -1682,6 +1682,20 @@ const en = {
             tooltip: "If true, then don't render the city lights on the globe.",
         },
     },
+    helpFunctions: {
+        adsbReplay: {
+            label: "ADSB Replay for this time and location",
+            tooltip: "Generate a link to ADSB Exchange Replay",
+        },
+        googleMapsLink: {
+            label: "Google Maps for this location",
+            tooltip: "Create a Google Maps link to the current location",
+        },
+        inTheSkyLink: {
+            label: "In-The-Sky for this time and location",
+            tooltip: "Create an In The Sky link to the current location",
+        },
+    },
     nodeLabels: {
         // Keys must match the node ID (property key in sitch data),
         // NOT the desc text. When no explicit id is set, desc becomes the id.

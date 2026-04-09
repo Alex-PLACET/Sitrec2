@@ -691,7 +691,10 @@ export class CCustomManager {
                     funcVars[0]();
                 }
 
-                guiMenus["help"].add(this, funcName).name(funcVars[1]).listen().tooltip(funcVars[2]);
+                guiMenus["help"].add(this, funcName)
+                    .name(t("helpFunctions." + funcName + ".label", {defaultValue: funcVars[1]}))
+                    .listen()
+                    .tooltip(t("helpFunctions." + funcName + ".tooltip", {defaultValue: funcVars[2]}));
             }
         }
 
