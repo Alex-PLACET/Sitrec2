@@ -1458,6 +1458,7 @@ async function renderStabilizedVideo(expanded = false) {
     const savedFrame = par.frame;
     const savedPaused = par.paused;
     const savedStabilizationEnabled = videoData.stabilizationEnabled;
+    videoData.stabilizationEnabled = false;  // Disable during export to prevent stabilizedImageCache growth
     par.paused = true;
 
     const progress = new ExportProgressWidget(`Exporting stabilized video (${modeLabel})...`, totalFrames);
