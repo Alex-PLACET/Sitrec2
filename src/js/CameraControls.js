@@ -1178,7 +1178,13 @@ class CameraMapControls {
 
 		}
 
-		this.fixUp() // fixup on any mouse move
+		// PTZ (and satellite mode) writes a clean camera orientation every frame,
+		// including roll. fixUp's lookAt(pointInFront) would clobber that roll on
+		// every mousemove, causing the view to alternate between rolled (RAF) and
+		// un-rolled (mousemove) frames during a pan. Only fix up for non-PTZ cameras.
+		if (getPTZController(this.view.cameraNode) === undefined) {
+			this.fixUp() // fixup on any mouse move
+		}
 
 		this.mouseStart.copy(this.mouseEnd);
 
