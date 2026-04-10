@@ -183,6 +183,21 @@ function sendToServer(msg) {
 // -- Find Sitrec Tab --------------------------------------------------------
 
 async function findSitrecTab() {
+    // Prefer tabs where page-bridge has confirmed Sitrec is running (buildDir
+    // metadata has been received). This protects against stale registrations
+    // from pre-tightened isSitrecUrl behaviour and from any tentative entries
+    // made by listing/discovery paths.
+    for (const [tabId, info] of knownSitrecTabs) {
+        if (!info.buildDir) continue;
+        try {
+            await chrome.tabs.get(tabId);
+            sitrecTabId = tabId;
+            return tabId;
+        } catch {
+            knownSitrecTabs.delete(tabId);
+        }
+    }
+
     // If we have a remembered tab, check it's still valid
     if (sitrecTabId != null) {
         try {
@@ -333,9 +348,17 @@ function isSitrecUrl(url) {
     try {
         const parsed = new URL(url);
         const host = parsed.hostname;
+        const path = parsed.pathname || "/";
+        // On the public metabunk host, only /sitrec* paths are actually Sitrec.
+        // Forum pages (/threads/, /whats-new/, etc.) must not be registered as
+        // Sitrec tabs — the extension's default-tab fallback would otherwise
+        // route eval/screenshot/list calls to a forum tab where Sit/NodeMan
+        // don't exist, causing hangs.
+        if (host === "www.metabunk.org") {
+            return path.startsWith("/sitrec");
+        }
         return (
             host === "local.metabunk.org" ||
-            host === "www.metabunk.org" ||
             host === "localhost" ||
             host === "127.0.0.1"
         );
