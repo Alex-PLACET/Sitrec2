@@ -32,6 +32,9 @@ let forceNextConnect = false;   // Set by popup "Reconnect" to override server r
 let rejectedByServer = false;   // True after max retries — suppresses auto-reconnect until popup Reconnect
 let rejectionRetries = 0;       // Count of consecutive rejections before giving up
 let sourceVersion = null;       // Version from source manifest.json (sent by MCP server)
+let serverInfo = null;          // { serverPid, sessionCount } from MCP server
+let healthCheckPending = false; // Waiting for pong response
+let healthCheckTimer = null;    // Timer for health-check timeout
 let currentCommand = null;      // Currently executing MCP command {action, detail, startTime}
 let commandHistory = [];        // Recent commands [{action, detail, startTime, endTime, ok}]
 const MAX_HISTORY = 8;
@@ -113,6 +116,25 @@ async function connect() {
                 sourceVersion = msg.sourceVersion || null;
                 rejectedByServer = false;
                 rejectionRetries = 0;
+                if (msg.serverPid || msg.sessionCount) {
+                    serverInfo = { serverPid: msg.serverPid, sessionCount: msg.sessionCount };
+                }
+                updatePopupState();
+                return;
+            }
+
+            // Health-check pong — server is alive
+            if (msg.type === "pong") {
+                healthCheckPending = false;
+                if (healthCheckTimer) { clearTimeout(healthCheckTimer); healthCheckTimer = null; }
+                serverInfo = { serverPid: msg.serverPid, sessionCount: msg.sessionCount };
+                updatePopupState();
+                return;
+            }
+
+            // Server status broadcast (peer count changed, etc.)
+            if (msg.type === "server-status") {
+                serverInfo = { serverPid: msg.serverPid, sessionCount: msg.sessionCount };
                 updatePopupState();
                 return;
             }
@@ -125,6 +147,9 @@ async function connect() {
 
     ws.onclose = () => {
         ws = null;
+        serverInfo = null;
+        healthCheckPending = false;
+        if (healthCheckTimer) { clearTimeout(healthCheckTimer); healthCheckTimer = null; }
         console.log("[SitrecBridge] Disconnected from MCP server");
         updatePopupState();
         // If rejected, don't reconnect — the flag was already set in onmessage
@@ -572,7 +597,22 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     }
     // Ensure WebSocket is connected
     if (!ws || ws.readyState !== WebSocket.OPEN) {
+        serverInfo = null;
         connect();
+    } else if (!healthCheckPending) {
+        // Health-check: verify the MCP server is responsive
+        healthCheckPending = true;
+        try { ws.send(JSON.stringify({ type: "ping" })); } catch {}
+        healthCheckTimer = setTimeout(() => {
+            if (healthCheckPending) {
+                console.log("[SitrecBridge] Health check failed — server unresponsive, reconnecting");
+                healthCheckPending = false;
+                serverInfo = null;
+                if (ws) { ws.close(); ws = null; }
+                updatePopupState();
+                scheduleReconnect();
+            }
+        }, 10000);
     }
 });
 
@@ -596,6 +636,7 @@ function updatePopupState() {
         sourceVersion,
         currentCommand,
         commandHistory,
+        serverInfo,
     }).catch(() => {});
 }
 
@@ -616,6 +657,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 sourceVersion,
                 currentCommand,
                 commandHistory,
+                serverInfo,
             });
         });
         return true; // async response
@@ -634,6 +676,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             ws = null;
         }
         rejectedByServer = false;   // Clear suppression
+        serverInfo = null;          // Clear stale server info
         forceNextConnect = true;    // Tell server to replace existing extension
         connect();
         sendResponse({ ok: true });

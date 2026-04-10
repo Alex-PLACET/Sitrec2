@@ -136,6 +136,9 @@ const peerRequestMap = new Map();   // primaryId → { peerSocket, peerId } (pri
 let requestCounter = 0;
 let keepaliveTimer = null;
 let extensionConnectedResolve = null; // resolve callback for waitForExtension()
+const peerSockets = new Set();          // Connected peer sockets (primary only)
+let consecutiveSecondaryTimeouts = 0;   // Consecutive timeout errors in secondary mode
+const MAX_CONSECUTIVE_TIMEOUTS = 2;     // Auto-promote to primary after this many
 
 // ── Auto-Promotion ─────────────────────────────────────────────────────────
 // When a secondary detects the primary has lost its extension connection,
@@ -302,7 +305,7 @@ function finishExtensionSetup(ws) {
     // Send the source manifest version so the extension can detect if it needs reloading
     try {
         const sourceManifest = JSON.parse(readFileSync(join(__dirname, "extension", "manifest.json"), "utf-8"));
-        ws.send(JSON.stringify({ type: "version-info", sourceVersion: sourceManifest.version }));
+        ws.send(JSON.stringify({ type: "version-info", sourceVersion: sourceManifest.version, serverPid: process.pid, sessionCount: peerSockets.size + 1 }));
     } catch (e) {
         log("Primary: Could not read source manifest for version check:", e.message);
     }
@@ -348,9 +351,32 @@ function finishExtensionSetup(ws) {
     });
 }
 
+function broadcastServerStatus() {
+    if (extensionSocket && extensionSocket.readyState === WebSocket.OPEN) {
+        extensionSocket.send(JSON.stringify({
+            type: "server-status",
+            serverPid: process.pid,
+            sessionCount: peerSockets.size + 1,
+        }));
+    }
+}
+
 function handleExtensionMessage(raw) {
     try {
         const msg = JSON.parse(raw.toString());
+
+        // Health-check ping from extension — respond with server status
+        if (msg.type === "ping") {
+            if (extensionSocket && extensionSocket.readyState === WebSocket.OPEN) {
+                extensionSocket.send(JSON.stringify({
+                    type: "pong",
+                    serverPid: process.pid,
+                    sessionCount: peerSockets.size + 1,
+                }));
+            }
+            return;
+        }
+
         if (msg.id != null && pendingRequests.has(msg.id)) {
             const { resolve, timer } = pendingRequests.get(msg.id);
             clearTimeout(timer);
@@ -383,6 +409,8 @@ function handleExtensionMessage(raw) {
 
 function setupPeerConnection(ws, peerVersion) {
     log(`Primary: Peer MCP server connected (protocol v${peerVersion || '?'})`);
+    peerSockets.add(ws);
+    broadcastServerStatus();
 
     // Send our protocol version so the peer can detect mismatches
     ws.send(JSON.stringify({ type: "protocol-version", version: PROTOCOL_VERSION }));
@@ -401,6 +429,8 @@ function setupPeerConnection(ws, peerVersion) {
 
     ws.on("close", () => {
         log("Primary: Peer MCP server disconnected");
+        peerSockets.delete(ws);
+        broadcastServerStatus();
         // Clean up any pending peer requests
         for (const [primaryId, mapping] of peerRequestMap) {
             if (mapping.peerSocket === ws) {
@@ -504,6 +534,7 @@ function startAsSecondary(port) {
                     const { resolve, timer } = pendingRequests.get(msg.id);
                     clearTimeout(timer);
                     pendingRequests.delete(msg.id);
+                    consecutiveSecondaryTimeouts = 0;
                     resolve(msg);
                 }
             } catch (e) {
@@ -594,6 +625,13 @@ function sendToExtension(action, params = {}, timeoutMs = REQUEST_TIMEOUT_MS) {
             const id = ++requestCounter;
             const timer = setTimeout(() => {
                 pendingRequests.delete(id);
+                consecutiveSecondaryTimeouts++;
+                log(`Secondary: Request '${action}' timed out (${consecutiveSecondaryTimeouts}/${MAX_CONSECUTIVE_TIMEOUTS} consecutive)`);
+                if (consecutiveSecondaryTimeouts >= MAX_CONSECUTIVE_TIMEOUTS) {
+                    log("Secondary: Too many timeouts — force-promoting to primary");
+                    consecutiveSecondaryTimeouts = 0;
+                    forcePromoteToPrimary().catch(err => log("Force promotion failed:", err.message));
+                }
                 reject(new Error(`Timed out waiting for '${action}' response (${timeoutMs}ms)`));
             }, timeoutMs);
 

@@ -8,6 +8,7 @@ const tabDot = document.getElementById("tab-dot");
 const tabStatus = document.getElementById("tab-status");
 const tabListEl = document.getElementById("tab-list");
 const info = document.getElementById("info");
+const serverInfoEl = document.getElementById("server-info");
 const versionEl = document.getElementById("version");
 const updateBanner = document.getElementById("update-banner");
 const currentCmdEl = document.getElementById("current-cmd");
@@ -74,6 +75,19 @@ function update(state) {
     } else {
         wsDot.className = "dot red";
         wsStatus.textContent = "Disconnected";
+    }
+
+    // Server info (session count, PID)
+    if (state.wsConnected && state.serverInfo) {
+        const si = state.serverInfo;
+        const parts = [];
+        if (si.sessionCount > 1) parts.push(`${si.sessionCount} sessions`);
+        else if (si.sessionCount === 1) parts.push("1 session");
+        if (si.serverPid) parts.push(`PID ${si.serverPid}`);
+        serverInfoEl.textContent = parts.join(" \u00b7 ");
+        serverInfoEl.style.display = parts.length ? "block" : "none";
+    } else {
+        serverInfoEl.style.display = "none";
     }
 
     // Show all known Sitrec tabs
