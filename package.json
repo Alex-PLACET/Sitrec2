@@ -99,7 +99,7 @@
     "json-stringify-pretty-compact": "^4.0.0",
     "jsurl": "^0.1.5",
     "jszip": "^3.10.1",
-    "mathjs": "^15.1.0",
+    "mathjs": "^15.2.0",
     "mediabunny": "^1.34.5",
     "ndarray": "^1.0.19",
     "proj4-fully-loaded": "^0.2.0",
