@@ -132,6 +132,7 @@ export class CNodeSatelliteTrack extends CNodeTrack {
          // that the cameraTrackSwitch and targetTrackSwitch are set up for deserialization
 
          this.recalculate();
+         this.updateUI();
 
      }
 
