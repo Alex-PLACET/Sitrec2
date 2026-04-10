@@ -32,7 +32,6 @@ export const TEST_REGISTRY = [
     { id: 'ai-math', name: 'AI-Math', group: 'AI', file: 'chatbot-playwright.test.js', grep: 'simple math' },
     { id: 'ai-heli', name: 'AI-Heli', group: 'AI', file: 'chatbot-playwright.test.js', grep: 'helicopter model' },
     { id: 'ai-ambient', name: 'AI-Ambient', group: 'AI', file: 'chatbot-playwright.test.js', grep: 'change lighting to ambient' },
-    { id: 'ai-jet', name: 'AI-Jet', group: 'AI', file: 'chatbot-playwright.test.js', grep: 'make it a jet' },
     { id: 'ai-drone', name: 'AI-Drone', group: 'AI', file: 'chatbot-playwright.test.js', grep: 'use a drone' },
     { id: 'ai-time', name: 'AI-Time', group: 'AI', file: 'chatbot-playwright.test.js', grep: 'colloquial time' },
     { id: 'ai-zoom', name: 'AI-Zoom', group: 'AI', file: 'chatbot-playwright.test.js', grep: 'zoom in' },

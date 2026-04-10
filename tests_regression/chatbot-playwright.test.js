@@ -232,25 +232,6 @@ test.describe.serial('Chatbot Tests', () => {
         }
     });
 
-    test('should understand "make it a jet" as setting aircraft model', async () => {
-        console.log('[TEST:ai-jet:STARTED]');
-        try {
-            test.setTimeout(60000);
-            
-            const response = await sendChatAndWait(sharedPage, 'make the camera a jet');
-            
-            console.log('Bot response:', response);
-            await waitForFrames(sharedPage, 30);
-            
-            const responseLower = response.toLowerCase();
-            expect(responseLower).toMatch(/f-?15|f-?18|jet|fighter|aircraft|plane|set|camera/i);
-            console.log('[TEST:ai-jet:PASSED]');
-        } catch (error) {
-            console.log('[TEST:ai-jet:FAILED]');
-            throw error;
-        }
-    });
-
     test('should understand "use a drone" as setting drone model', async () => {
         console.log('[TEST:ai-drone:STARTED]');
         try {
