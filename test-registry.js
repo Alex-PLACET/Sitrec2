@@ -16,6 +16,7 @@ export const TEST_REGISTRY = [
     { id: 'ui-csv', name: 'UI-CSV', group: 'UI', file: 'ui-playwright.test.js', grep: 'LA Features CSV', snapshot: 'import-la-features-csv-snapshot' },
     { id: 'ui-stanag', name: 'UI-STANAG', group: 'UI', file: 'ui-playwright.test.js', grep: 'STANAG 4676', snapshot: 'import-stanag-xml-snapshot' },
     { id: 'ui-ambient', name: 'UI-Ambient', group: 'UI', file: 'ui-playwright.test.js', grep: 'same result with Ambient Only' },
+    { id: 'ui-menu-sweep', name: 'UI-MenuSweep', group: 'UI', file: 'ui-menu-sweep.test.js', grep: 'menu control smoke sweep', url: '?action=new&frame=10' },
     
     { id: 'video-load', name: 'VideoLoad', group: 'Video', file: 'video-loading.test.js', grep: 'multiple video types', url: '?custom=https://sitrec.s3.us-west-2.amazonaws.com/99999999/with%201/20260119_081547.js' },
     { id: 'webm', name: 'WebM', group: 'Video', file: 'webm-video-export.test.js', grep: 'valid WebM video' },

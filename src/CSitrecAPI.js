@@ -1404,6 +1404,70 @@ class CSitrecAPI {
         this._menuDocCache = null;
     }
 
+    _matchController(current, name, allowPartial = true) {
+        const nameLower = name.toLowerCase();
+
+        // Try exact match first
+        let controller = current.controllers.find(c => c._name === name);
+        if (controller) return controller;
+
+        // Try case-insensitive match on display name
+        controller = current.controllers.find(c => c._name.toLowerCase() === nameLower);
+        if (controller) return controller;
+
+        // Try match on property name
+        controller = current.controllers.find(c => c.property === name);
+        if (controller) return controller;
+
+        // Try case-insensitive match on property
+        controller = current.controllers.find(c => c.property && c.property.toLowerCase() === nameLower);
+        if (controller) return controller;
+
+        if (!allowPartial) return null;
+
+        // Try partial match (name contains search term)
+        controller = current.controllers.find(c =>
+            c._name.toLowerCase().includes(nameLower) ||
+            (c.property && c.property.toLowerCase().includes(nameLower))
+        );
+        return controller ?? null;
+    }
+
+    _matchFolder(current, name, remainingPath, allowPartial = true) {
+        const folders = current.children.filter(c => c instanceof GUI);
+        const nameLower = name.toLowerCase();
+        const remainingLower = remainingPath.toLowerCase();
+
+        let folder = folders.find(c => c._title === name);
+        if (folder) return { folder, consumedParts: 1 };
+
+        folder = folders.find(c => c._title.toLowerCase() === nameLower);
+        if (folder) return { folder, consumedParts: 1 };
+
+        const slashFolder = folders
+            .filter(c => c._title.includes('/'))
+            .sort((a, b) => b._title.length - a._title.length)
+            .find(c =>
+                remainingPath === c._title
+                || remainingPath.startsWith(`${c._title}/`)
+                || remainingLower === c._title.toLowerCase()
+                || remainingLower.startsWith(`${c._title.toLowerCase()}/`)
+            );
+        if (slashFolder) {
+            return {
+                folder: slashFolder,
+                consumedParts: slashFolder._title.split('/').length,
+            };
+        }
+
+        if (!allowPartial) return null;
+
+        folder = folders.find(c => c._title.toLowerCase().includes(nameLower));
+        if (folder) return { folder, consumedParts: 1 };
+
+        return null;
+    }
+
     _findController(gui, path) {
         const parts = path.split('/');
         let current = gui;
@@ -1412,50 +1476,32 @@ class CSitrecAPI {
             const name = parts[i];
             const nameLower = name.toLowerCase();
             const isLast = i === parts.length - 1;
+            const remainingPath = parts.slice(i).join('/');
+
+            // Controller labels can themselves contain '/' (for example
+            // "Features/Pins in Main"), so try the full remaining path before
+            // interpreting the next '/' as a folder separator.
+            const controllerWithSlash = this._matchController(current, remainingPath, !isLast);
+            if (controllerWithSlash) {
+                return { success: true, controller: controllerWithSlash };
+            }
 
             if (isLast) {
-                // Try exact match first
-                let controller = current.controllers.find(c => c._name === name);
+                const controller = this._matchController(current, name, true);
                 if (controller) return { success: true, controller };
-                
-                // Try case-insensitive match on display name
-                controller = current.controllers.find(c => c._name.toLowerCase() === nameLower);
-                if (controller) return { success: true, controller };
-                
-                // Try match on property name
-                controller = current.controllers.find(c => c.property === name);
-                if (controller) return { success: true, controller };
-                
-                // Try case-insensitive match on property
-                controller = current.controllers.find(c => c.property && c.property.toLowerCase() === nameLower);
-                if (controller) return { success: true, controller };
-                
-                // Try partial match (name contains search term)
-                controller = current.controllers.find(c => 
-                    c._name.toLowerCase().includes(nameLower) || 
-                    (c.property && c.property.toLowerCase().includes(nameLower))
-                );
-                if (controller) return { success: true, controller };
-                
+
                 // List available controls in error
                 const available = current.controllers.map(c => c._name).join(', ');
                 return { success: false, error: `Control '${name}' not found. Available: ${available}` };
             } else {
-                // Try exact match first
-                let folder = current.children.find(c => c instanceof GUI && c._title === name);
-                if (!folder) {
-                    // Try case-insensitive
-                    folder = current.children.find(c => c instanceof GUI && c._title.toLowerCase() === nameLower);
-                }
-                if (!folder) {
-                    // Try partial match (folder name contains search term)
-                    folder = current.children.find(c => c instanceof GUI && c._title.toLowerCase().includes(nameLower));
-                }
-                if (!folder) {
+                const folderMatch = this._matchFolder(current, name, remainingPath, true);
+                if (!folderMatch) {
                     const available = current.children.filter(c => c instanceof GUI).map(c => c._title).join(', ');
                     return { success: false, error: `Folder '${name}' not found. Available: ${available}` };
                 }
-                current = folder;
+
+                current = folderMatch.folder;
+                i += folderMatch.consumedParts - 1;
             }
         }
         return { success: false, error: 'Empty path' };
@@ -1490,7 +1536,7 @@ class CSitrecAPI {
             this.invalidateMenuDocCache();
             return { success: true, oldValue: controller.initialValue, newValue: finalValue };
         } catch (e) {
-            return { success: false, error: e.message };
+            return { success: false, error: e?.message ?? String(e) };
         }
     }
 
@@ -1521,7 +1567,7 @@ class CSitrecAPI {
             controller._callOnChange();
             return { success: true, executed: path };
         } catch (e) {
-            return { success: false, error: e.message };
+            return { success: false, error: e?.message ?? String(e) };
         }
     }
 

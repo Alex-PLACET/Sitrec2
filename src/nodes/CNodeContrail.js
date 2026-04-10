@@ -88,8 +88,9 @@ export class CNodeContrail extends CNode3DGroup {
         const track = this.in.track;
 
         if (frame >= 0 && frame < track.frames) {
-            const pos = track.p(frame);
-            if (pos && !isNaN(pos.x)) return pos.clone();
+            const sample = track.v(frame);
+            const pos = sample?.position ?? sample;
+            if (pos?.clone && !isNaN(pos.x)) return pos.clone();
             return null;
         }
 

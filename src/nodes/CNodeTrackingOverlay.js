@@ -296,7 +296,6 @@ export class CNodeTrackingOverlay extends CNodeActiveOverlay {
             }
 
             NodeMan.recalculateAllRootFirst();
-n
         })
             .tooltip(t("trackingOverlay.limitAB.tooltip"))
 
