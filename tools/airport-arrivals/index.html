@@ -1,0 +1,1689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Airport Arrivals Monitor</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+:root {
+    --bg: #1a1a2e;
+    --surface: #16213e;
+    --surface2: #0f3460;
+    --accent: #e94560;
+    --accent2: #00d4aa;
+    --text: #eee;
+    --text-dim: #8892b0;
+    --border: #233554;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+}
+header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    flex-wrap: wrap;
+}
+header h1 {
+    font-size: 1.2em;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    flex: 1;
+}
+.control-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.control-group label {
+    font-size: 0.8em;
+    color: var(--text-dim);
+    white-space: nowrap;
+}
+select, input[type="text"], input[type="number"], input[type="password"] {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 0.85em;
+}
+select { cursor: pointer; }
+input[type="number"] { width: 60px; }
+input[type="password"] { width: 200px; }
+button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 6px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85em;
+    font-weight: 600;
+    transition: opacity 0.2s;
+}
+button:hover { opacity: 0.85; }
+button.running { background: var(--accent2); }
+button.secondary {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+}
+button.secondary:hover { border-color: var(--text-dim); color: var(--text); }
+
+.status-bar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 24px;
+    display: flex;
+    gap: 24px;
+    font-size: 0.85em;
+    flex-wrap: wrap;
+}
+.stat {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.stat-value {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+.stat-label { color: var(--text-dim); }
+.dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #555;
+    transition: background 0.3s;
+}
+.dot.connected { background: var(--accent2); }
+.dot.error { background: var(--accent); }
+.dot.polling { background: #f0c040; }
+
+.main {
+    padding: 8px 16px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 8px;
+    margin: 0 auto;
+    height: calc(100vh - 90px);
+}
+.map-card {
+    grid-row: 1 / 3;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+.map-card h3 { flex-shrink: 0; font-size: 0.9em; color: var(--text-dim); margin-bottom: 4px; }
+.map-wrap { flex: 1; min-height: 0; position: relative; }
+.map-wrap canvas { width: 100%; height: 100%; }
+.chart-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+.chart-card h3 {
+    font-size: 0.9em;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+}
+.chart-wrap {
+    position: relative;
+    flex: 1;
+    min-height: 150px;
+}
+
+.below-fold {
+    padding: 8px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.table-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    min-width: 0;
+    overflow-x: auto;
+}
+.table-card h3 {
+    font-size: 0.9em;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+}
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82em;
+    font-variant-numeric: tabular-nums;
+}
+th {
+    text-align: left;
+    color: var(--text-dim);
+    font-weight: 600;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    white-space: nowrap;
+    user-select: none;
+}
+th:hover { color: var(--text); }
+th.sorted::after { content: ' \25BC'; font-size: 0.7em; }
+th.sorted.asc::after { content: ' \25B2'; font-size: 0.7em; }
+td {
+    padding: 5px 10px;
+    border-bottom: 1px solid rgba(35,53,84,0.5);
+    white-space: nowrap;
+}
+tr:hover td { background: rgba(15,52,96,0.3); }
+.descending { color: #f0c040; }
+.on-approach { color: var(--accent2); }
+.landed { color: var(--accent); opacity: 0.6; }
+
+.setup-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+}
+.setup-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px;
+    max-width: 480px;
+    width: 90%;
+}
+.setup-box h2 { margin-bottom: 8px; }
+.setup-box p { color: var(--text-dim); font-size: 0.9em; margin-bottom: 16px; line-height: 1.5; }
+.setup-box input {
+    width: 100%;
+    margin-bottom: 16px;
+    padding: 10px;
+}
+.setup-box .btn-row {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+.hidden { display: none !important; }
+
+.arrivals-log {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    max-height: 180px;
+    overflow-y: auto;
+}
+.arrivals-log h3 {
+    font-size: 0.9em;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+}
+.log-entry {
+    font-size: 0.8em;
+    padding: 3px 0;
+    color: var(--text-dim);
+    font-variant-numeric: tabular-nums;
+}
+.log-entry .time { color: var(--accent2); margin-right: 8px; }
+.log-entry .flight { color: var(--text); font-weight: 600; margin-right: 8px; }
+.log-entry .sep { color: #f0c040; }
+
+@media (max-width: 900px) {
+    .main { grid-template-columns: 1fr; }
+    .map-card { grid-row: auto; }
+    header { padding: 10px 12px; }
+    .main { padding: 10px 12px; }
+}
+</style>
+</head>
+<body>
+
+<div id="setupOverlay" class="setup-overlay hidden">
+    <div class="setup-box">
+        <h2>API Settings</h2>
+        <p>By default this app uses the server-side proxy (no key needed).
+           If you're running this locally without the PHP backend, enter your own RapidAPI key below.</p>
+        <label style="font-size:0.85em;color:var(--text-dim);">RapidAPI Key (optional &mdash; leave blank to use server proxy)</label>
+        <input type="password" id="setupApiKey" placeholder="Leave blank for server proxy...">
+        <p style="font-size:0.8em;">If provided, your key is stored in localStorage only.</p>
+        <div class="btn-row">
+            <button class="secondary" id="skipSetupBtn">Use Demo Mode</button>
+            <button id="saveSetupBtn">Save</button>
+        </div>
+    </div>
+</div>
+
+<header>
+    <h1>Airport Arrivals</h1>
+    <div class="controls">
+        <div class="control-group">
+            <label>Airport</label>
+            <select id="airportSelect"></select>
+        </div>
+        <div class="control-group">
+            <label>Radius (NM)</label>
+            <input type="number" id="radius" value="100" min="10" max="250" step="10">
+        </div>
+        <div class="control-group">
+            <label>Poll (sec)</label>
+            <input type="number" id="pollInterval" value="30" min="10" max="120" step="10">
+        </div>
+        <button id="toggleBtn">Start</button>
+        <button class="secondary" id="showSetupBtn">API Key</button>
+        <button class="secondary" id="resetBtn">Reset</button>
+    </div>
+</header>
+
+<div class="status-bar">
+    <div class="stat"><div class="dot" id="statusDot"></div><span id="statusText" class="stat-label">Idle</span></div>
+    <div class="stat"><span class="stat-label">Total aircraft:</span><span class="stat-value" id="totalAc">0</span></div>
+    <div class="stat"><span class="stat-label">On approach:</span><span class="stat-value" id="approachCount">0</span></div>
+    <div class="stat"><span class="stat-label">Arrivals logged:</span><span class="stat-value" id="arrivalCount">0</span></div>
+    <div class="stat"><span class="stat-label">Rate:</span><span class="stat-value" id="arrivalRate">--</span><span class="stat-label">/hr</span></div>
+    <div class="stat"><span class="stat-label">Last poll:</span><span class="stat-value" id="lastPoll">--</span></div>
+</div>
+
+<div class="main">
+    <div class="map-card">
+        <h3 id="mapTitle">Approach Map</h3>
+        <div class="map-wrap"><canvas id="approachMap"></canvas></div>
+    </div>
+    <div class="chart-card">
+        <h3>Arrival Rate (per hour, 15-min rolling window)</h3>
+        <div class="chart-wrap"><canvas id="rateChart"></canvas></div>
+    </div>
+    <div class="chart-card">
+        <h3>Approach Separation (NM between consecutive aircraft)</h3>
+        <div class="chart-wrap"><canvas id="sepChart"></canvas></div>
+    </div>
+</div>
+
+<div class="below-fold">
+    <div class="arrivals-log" id="arrivalsLog">
+        <h3>Arrival Log</h3>
+        <div id="logEntries"></div>
+    </div>
+
+    <div class="table-card">
+        <h3>Aircraft on Approach</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th data-col="flight">Flight</th>
+                    <th data-col="origin">From</th>
+                    <th data-col="type">Type</th>
+                    <th data-col="eta">ETA</th>
+                    <th data-col="status">Status</th>
+                    <th data-col="alt">Alt (ft)</th>
+                    <th data-col="gs">GS (kt)</th>
+                    <th data-col="vrate">V/S (fpm)</th>
+                    <th data-col="dist">Dist (NM)</th>
+                </tr>
+            </thead>
+            <tbody id="acTableBody"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+// ── Airport database ──
+const AIRPORTS = [
+    { code: 'LAX', name: 'Los Angeles Intl', lat: 33.9425, lon: -118.4081 },
+    { code: 'JFK', name: 'John F Kennedy Intl', lat: 40.6413, lon: -73.7781 },
+    { code: 'ORD', name: "Chicago O'Hare Intl", lat: 41.9742, lon: -87.9073 },
+    { code: 'ATL', name: 'Hartsfield-Jackson Atlanta', lat: 33.6407, lon: -84.4277 },
+    { code: 'DFW', name: 'Dallas/Fort Worth Intl', lat: 32.8998, lon: -97.0403 },
+    { code: 'DEN', name: 'Denver Intl', lat: 39.8561, lon: -104.6737 },
+    { code: 'SFO', name: 'San Francisco Intl', lat: 37.6213, lon: -122.3790 },
+    { code: 'SEA', name: 'Seattle-Tacoma Intl', lat: 47.4502, lon: -122.3088 },
+    { code: 'MIA', name: 'Miami Intl', lat: 25.7959, lon: -80.2870 },
+    { code: 'BOS', name: 'Boston Logan Intl', lat: 42.3656, lon: -71.0096 },
+    { code: 'EWR', name: 'Newark Liberty Intl', lat: 40.6895, lon: -74.1745 },
+    { code: 'MSP', name: 'Minneapolis-Saint Paul', lat: 44.8848, lon: -93.2223 },
+    { code: 'DTW', name: 'Detroit Metropolitan', lat: 42.2162, lon: -83.3554 },
+    { code: 'PHX', name: 'Phoenix Sky Harbor', lat: 33.4373, lon: -112.0078 },
+    { code: 'LAS', name: 'Harry Reid Intl (Las Vegas)', lat: 36.0840, lon: -115.1537 },
+    { code: 'CLT', name: 'Charlotte Douglas Intl', lat: 35.2140, lon: -80.9431 },
+    { code: 'IAH', name: 'George Bush Intercontinental', lat: 29.9902, lon: -95.3368 },
+    { code: 'SAN', name: 'San Diego Intl', lat: 32.7338, lon: -117.1933 },
+    { code: 'TPA', name: 'Tampa Intl', lat: 27.9755, lon: -82.5332 },
+    { code: 'PDX', name: 'Portland Intl', lat: 45.5898, lon: -122.5951 },
+    { code: 'LHR', name: 'London Heathrow', lat: 51.4700, lon: -0.4543 },
+    { code: 'CDG', name: 'Paris Charles de Gaulle', lat: 49.0097, lon: 2.5479 },
+    { code: 'FRA', name: 'Frankfurt Main', lat: 50.0379, lon: 8.5622 },
+    { code: 'AMS', name: 'Amsterdam Schiphol', lat: 52.3105, lon: 4.7683 },
+    { code: 'NRT', name: 'Tokyo Narita', lat: 35.7720, lon: 140.3929 },
+    { code: 'SYD', name: 'Sydney Kingsford Smith', lat: -33.9461, lon: 151.1772 },
+];
+
+// ── All mutable state ──
+let apiKey = localStorage.getItem('adsbx_api_key') || '';
+let demoMode = false;
+let polling = false;
+let pollTimer = null;
+let pollStartTime = 0;
+let trackedAircraft = new Map();
+let demoFleet = [];
+let demoNextId = 0;
+let arrivalLog = [];
+let rateHistory = [];
+let sepHistory = [];
+let sortCol = 'dist';
+let sortAsc = true;
+let currentApproachList = [];
+let flySfoData = null;       // cached FlySFO response
+let flySfoTimer = null;
+let flySfoArrivals = new Map(); // callsign -> flight info from FlySFO
+let flySfoLanded = new Set();   // callsign keys already counted as landed
+let mapAllAircraft = [];
+let mapApproachAc = [];
+let mapAirport = null;
+let mapRangeNM = 30;
+let mapPollTime = 0;   // timestamp of last poll that updated map data
+let mapAnimId = null;
+// Pan/zoom: offsets are in NM from airport center
+let mapOffsetLat = 0;  // NM north of airport
+let mapOffsetLon = 0;  // NM east of airport
+let mapZoomFactor = 1; // >1 = zoomed in, <1 = zoomed out
+let mapDragging = false;
+let mapDragStartX = 0;
+let mapDragStartY = 0;
+let mapDragStartOffLat = 0;
+let mapDragStartOffLon = 0;
+
+// ── All DOM references (cached once, guaranteed to exist) ──
+const dom = {
+    airportSelect:  document.getElementById('airportSelect'),
+    radius:         document.getElementById('radius'),
+    pollInterval:   document.getElementById('pollInterval'),
+    toggleBtn:      document.getElementById('toggleBtn'),
+    showSetupBtn:   document.getElementById('showSetupBtn'),
+    resetBtn:       document.getElementById('resetBtn'),
+    saveSetupBtn:   document.getElementById('saveSetupBtn'),
+    skipSetupBtn:   document.getElementById('skipSetupBtn'),
+    setupOverlay:   document.getElementById('setupOverlay'),
+    setupApiKey:    document.getElementById('setupApiKey'),
+    statusDot:      document.getElementById('statusDot'),
+    statusText:     document.getElementById('statusText'),
+    totalAc:        document.getElementById('totalAc'),
+    approachCount:  document.getElementById('approachCount'),
+    arrivalCount:   document.getElementById('arrivalCount'),
+    arrivalRate:    document.getElementById('arrivalRate'),
+    lastPoll:       document.getElementById('lastPoll'),
+    acTableBody:    document.getElementById('acTableBody'),
+    approachMap:    document.getElementById('approachMap'),
+    logEntries:     document.getElementById('logEntries'),
+};
+
+// ── Utility functions (no dependencies) ──
+function haversine(lat1, lon1, lat2, lon2) {
+    const R = 3440.065; // Earth radius in nautical miles
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function offsetPosition(lat, lon, bearingDeg, distNM) {
+    const R = 3440.065;
+    const brng = bearingDeg * Math.PI / 180;
+    const lat1 = lat * Math.PI / 180;
+    const lon1 = lon * Math.PI / 180;
+    const d = distNM / R;
+    const lat2 = Math.asin(Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(brng));
+    const lon2 = lon1 + Math.atan2(Math.sin(brng) * Math.sin(d) * Math.cos(lat1),
+                                     Math.cos(d) - Math.sin(lat1) * Math.sin(lat2));
+    return { lat: lat2 * 180 / Math.PI, lon: lon2 * 180 / Math.PI };
+}
+
+function esc(s) {
+    const el = document.createElement('span');
+    el.textContent = s;
+    return el.innerHTML;
+}
+
+function setStatus(state, text) {
+    dom.statusDot.className = 'dot ' + (state === 'polling' ? 'polling' : state);
+    dom.statusText.textContent = text;
+}
+
+function getSelectedAirport() {
+    return AIRPORTS.find(a => a.code === dom.airportSelect.value) || AIRPORTS[0];
+}
+
+// ── Origin airport coordinates for inbound position estimation ──
+// Covers major US + international airports that are common SFO origins
+const ORIGIN_COORDS = {
+    // US Domestic
+    ATL:[33.64,-84.43],BOS:[42.37,-71.01],CLT:[35.21,-80.94],DEN:[39.86,-104.67],
+    DFW:[32.90,-97.04],DTW:[42.22,-83.36],EWR:[40.69,-74.17],FLL:[26.07,-80.15],
+    HNL:[21.32,-157.92],IAD:[38.94,-77.46],IAH:[29.99,-95.34],JFK:[40.64,-73.78],
+    LAS:[36.08,-115.15],LAX:[33.94,-118.41],LGA:[40.77,-73.87],MCO:[28.43,-81.31],
+    MDW:[41.79,-87.75],MIA:[25.80,-80.29],MSP:[44.88,-93.22],ORD:[41.97,-87.91],
+    PHL:[39.87,-75.24],PHX:[33.44,-112.01],PDX:[45.59,-122.60],RDU:[35.88,-78.79],
+    SAN:[32.73,-117.19],SEA:[47.45,-122.31],SLC:[40.79,-111.98],SNA:[33.68,-117.87],
+    TPA:[27.98,-82.53],AUS:[30.19,-97.67],BNA:[36.12,-86.68],BWI:[39.18,-76.67],
+    CLE:[41.41,-81.85],CMH:[39.99,-82.89],CVG:[39.05,-84.66],DAL:[32.85,-96.85],
+    HOU:[29.65,-95.28],IND:[39.72,-86.29],JAX:[30.49,-81.69],MCI:[39.30,-94.71],
+    MKE:[42.95,-87.90],MSY:[29.99,-90.26],OAK:[37.72,-122.22],ONT:[34.06,-117.60],
+    PBI:[26.68,-80.10],PIT:[40.49,-80.23],RSW:[26.54,-81.76],SAT:[29.53,-98.47],
+    SJC:[37.36,-121.93],SMF:[38.70,-121.59],STL:[38.75,-90.37],BOI:[43.56,-116.22],
+    BUR:[34.20,-118.36],RNO:[39.50,-119.77],PSP:[33.83,-116.51],ABQ:[35.04,-106.61],
+    ELP:[31.81,-106.38],TUS:[32.12,-110.94],ANC:[61.17,-150.00],OGG:[20.90,-156.43],
+    KOA:[19.74,-156.05],LIH:[21.98,-159.34],
+    // International
+    LHR:[51.47,-0.46],CDG:[49.01,2.55],FRA:[50.04,8.56],AMS:[52.31,4.77],
+    NRT:[35.77,140.39],HND:[35.55,139.78],ICN:[37.46,126.44],PEK:[40.08,116.58],
+    PVG:[31.14,121.81],HKG:[22.31,113.91],SIN:[1.36,103.99],SYD:[-33.95,151.18],
+    MEL:[-37.67,144.84],TPE:[25.08,121.23],BKK:[13.69,100.75],DEL:[28.57,77.10],
+    BOM:[19.09,72.87],DXB:[25.25,55.36],DOH:[25.26,51.57],IST:[41.26,28.74],
+    FCO:[41.80,12.25],MAD:[40.47,-3.57],BCN:[41.30,2.08],ZRH:[47.46,8.55],
+    MUC:[48.35,11.79],CPH:[55.62,12.66],ARN:[59.65,17.94],OSL:[60.19,11.10],
+    MEX:[19.44,-99.07],GDL:[20.52,-103.31],CUN:[21.04,-86.87],YVR:[49.20,-123.18],
+    YYZ:[43.68,-79.63],YUL:[45.47,-73.74],GRU:[-23.43,-46.47],SCL:[-33.39,-70.79],
+    LIM:[-12.02,-77.11],BOG:[4.70,-74.15],PTY:[9.07,-79.38],SJO:[9.99,-84.21],
+    TLV:[32.01,34.89],ADD:[8.98,38.80],JNB:[-26.14,28.25],AKL:[-37.01,174.79],
+};
+
+function bearingFrom(lat1, lon1, lat2, lon2) {
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const la1 = lat1 * Math.PI / 180, la2 = lat2 * Math.PI / 180;
+    const y = Math.sin(dLon) * Math.cos(la2);
+    const x = Math.cos(la1) * Math.sin(la2) - Math.sin(la1) * Math.cos(la2) * Math.cos(dLon);
+    return ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
+}
+
+// Estimate inbound aircraft positions from FlySFO data
+// Returns array of { lat, lon, dist, callsign, origin, eta, flight }
+function getEstimatedInbounds(airport) {
+    if (flySfoArrivals.size === 0) return [];
+    const now = Date.now();
+    const results = [];
+
+    for (const [cs, flight] of flySfoArrivals) {
+        // Skip landed/arrived/cancelled
+        if (flight.remark === 'Arrived' || flight.remark === 'Landed' || flight.remark === 'Cancelled') continue;
+
+        const eta = flight.estimated_aod_time || flight.scheduled_aod_time;
+        if (!eta) continue;
+        const etaMs = new Date(eta).getTime();
+        const minutesOut = (etaMs - now) / 60000;
+        if (minutesOut < -5 || minutesOut > 180) continue; // skip past-due or too far
+
+        // Estimate distance from ETA: average ~300 kt for approach/descent phase
+        const estimatedDistNM = Math.max(0, minutesOut * 5); // ~300kt = 5 NM/min
+        if (estimatedDistNM > 200) continue;
+
+        // Get bearing from origin airport
+        const originCode = flight.airport?.iata_code;
+        const coords = ORIGIN_COORDS[originCode];
+        if (!coords) continue;
+
+        // Bearing from airport to origin = direction flight is coming from
+        const bearing = bearingFrom(airport.lat, airport.lon, coords[0], coords[1]);
+        const pos = offsetPosition(airport.lat, airport.lon, bearing, estimatedDistNM);
+
+        results.push({
+            lat: pos.lat, lon: pos.lon, dist: estimatedDistNM,
+            callsign: cs, origin: originCode,
+            eta: formatEta(eta), minutesOut: Math.round(minutesOut),
+            type: flight.aircraft_transport_type?.icao_code || '',
+        });
+    }
+
+    return results;
+}
+
+function updateStats() {
+    dom.totalAc.textContent = '0';
+    dom.approachCount.textContent = '0';
+    dom.arrivalCount.textContent = arrivalLog.length;
+    dom.arrivalRate.textContent = '--';
+    dom.lastPoll.textContent = '--';
+}
+
+// ── Chart setup ──
+const timeTick = v => {
+    const d = new Date(v);
+    return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+};
+
+function makeChartOptions(yOverrides) {
+    return {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 300 },
+        layout: { padding: { right: 55 } },
+        scales: {
+            x: {
+                type: 'linear',
+                ticks: { color: '#8892b0', callback: timeTick, maxTicksLimit: 8 },
+                grid: { color: 'rgba(35,53,84,0.5)' },
+            },
+            y: {
+                ticks: { color: '#8892b0' },
+                grid: { color: 'rgba(35,53,84,0.5)' },
+                beginAtZero: true,
+                ...yOverrides,
+            }
+        },
+        plugins: {
+            legend: { labels: { color: '#ccc', boxWidth: 12, padding: 10, font: { size: 11 } } },
+        }
+    };
+}
+
+// Plugin to draw the latest value label at the right end of each dataset
+// Each dataset can set `endLabelSuffix` to customize the unit string.
+const endLabelPlugin = {
+    id: 'endLabel',
+    afterDatasetsDraw(chart) {
+        const { ctx } = chart;
+        chart.data.datasets.forEach((ds, i) => {
+            const meta = chart.getDatasetMeta(i);
+            if (meta.hidden || meta.data.length === 0) return;
+            const last = meta.data[meta.data.length - 1];
+            const raw = ds.data[ds.data.length - 1];
+            if (!raw || raw.y == null) return;
+            const suffix = ds.endLabelSuffix || '';
+            ctx.save();
+            ctx.font = 'bold 11px system-ui, sans-serif';
+            ctx.fillStyle = ds.borderColor;
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(raw.y.toFixed(1) + suffix, last.x + 6, last.y);
+            ctx.restore();
+        });
+    }
+};
+
+const rateChart = new Chart(document.getElementById('rateChart'), {
+    type: 'line',
+    data: {
+        datasets: [{
+            label: 'Arrivals/hr',
+            data: [],
+            borderColor: '#e94560',
+            backgroundColor: 'rgba(233,69,96,0.1)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 2,
+            endLabelSuffix: '/hr',
+        }]
+    },
+    options: makeChartOptions(),
+    plugins: [endLabelPlugin],
+});
+
+const sepChart = new Chart(document.getElementById('sepChart'), {
+    type: 'line',
+    data: {
+        datasets: [
+            { label: 'Min', data: [], borderColor: '#e94560', borderWidth: 1.5, pointRadius: 1, tension: 0.3, endLabelSuffix: ' NM' },
+            { label: 'Avg', data: [], borderColor: '#00d4aa', borderWidth: 2, pointRadius: 1, tension: 0.3, endLabelSuffix: ' NM' },
+        ]
+    },
+    options: makeChartOptions({ title: { display: true, text: 'NM', color: '#8892b0', font: { size: 11 } } }),
+    plugins: [endLabelPlugin],
+});
+
+// ── Airport selector ──
+AIRPORTS.forEach(a => {
+    const opt = document.createElement('option');
+    opt.value = a.code;
+    opt.textContent = `${a.code} - ${a.name}`;
+    dom.airportSelect.appendChild(opt);
+});
+const lastAirport = localStorage.getItem('adsbx_airport') || 'SFO';
+if (AIRPORTS.find(a => a.code === lastAirport)) dom.airportSelect.value = lastAirport;
+
+// ── Demo data ──
+function createDemoAircraft(airport, radius) {
+    const id = demoNextId++;
+    const dist = radius * (0.6 + Math.random() * 0.4);
+    const bearing = Math.random() * 360;
+    const pos = offsetPosition(airport.lat, airport.lon, bearing, dist);
+    const airlines = ['UAL', 'AAL', 'DAL', 'SWA', 'JBU', 'ASA', 'SKW', 'RPA'];
+    const types = ['B738', 'A320', 'B77W', 'A321', 'E75L', 'CRJ9', 'A20N', 'B739'];
+    return {
+        hex: 'a' + id.toString(16).padStart(5, '0'),
+        flight: airlines[id % airlines.length] + (100 + id) + '  ',
+        reg: 'N' + (10000 + id),
+        type: types[id % types.length],
+        squawk: (1200 + (id * 111) % 5000).toString().slice(0, 4),
+        bearing, dist, alt: dist * 350,
+        lat: pos.lat, lon: pos.lon,
+    };
+}
+
+function generateDemoData(airport, radius) {
+    const now = Date.now();
+
+    if (demoFleet.length === 0) {
+        const count = 10 + Math.floor(Math.random() * 6);
+        for (let i = 0; i < count; i++) demoFleet.push(createDemoAircraft(airport, radius));
+    }
+
+    for (const ac of demoFleet) {
+        ac.dist -= (0.3 + Math.random() * 0.5);
+        ac.alt = Math.max(100, ac.dist * 350 + (Math.random() - 0.5) * 300);
+        const pos = offsetPosition(airport.lat, airport.lon, ac.bearing, ac.dist);
+        ac.lat = pos.lat;
+        ac.lon = pos.lon;
+    }
+
+    demoFleet = demoFleet.filter(ac => ac.dist > 0.5);
+
+    while (demoFleet.length < 8 + Math.floor(Math.random() * 5)) {
+        demoFleet.push(createDemoAircraft(airport, radius));
+    }
+
+    const ac = demoFleet.map(d => ({
+        hex: d.hex, flight: d.flight, r: d.reg, t: d.type,
+        lat: d.lat, lon: d.lon,
+        alt_baro: Math.round(d.alt),
+        gs: 140 + Math.random() * 80,
+        baro_rate: -(400 + Math.random() * 800),
+        track: (d.bearing + 180) % 360,
+        squawk: d.squawk, dst: d.dist,
+    }));
+
+    return { ac, total: ac.length, now: now / 1000 };
+}
+
+// ── Arrival log ──
+function addLogEntry(time, flight) {
+    const d = new Date(time);
+    const ts = d.toLocaleTimeString();
+
+    let sepText = '';
+    if (arrivalLog.length >= 2) {
+        const prev = arrivalLog[arrivalLog.length - 2];
+        const gap = Math.round((time - prev.time) / 1000);
+        const mins = Math.floor(gap / 60);
+        const secs = gap % 60;
+        sepText = ` (${mins}m ${secs}s since previous)`;
+    }
+
+    const entry = document.createElement('div');
+    entry.className = 'log-entry';
+    entry.innerHTML = `<span class="time">${ts}</span><span class="flight">${esc(flight)}</span><span class="sep">${sepText}</span>`;
+    dom.logEntries.prepend(entry);
+
+    while (dom.logEntries.children.length > 100) dom.logEntries.lastChild.remove();
+}
+
+// ── Table ──
+function formatEta(isoStr) {
+    if (!isoStr) return '';
+    const d = new Date(isoStr);
+    if (isNaN(d)) return '';
+    return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+}
+
+function updateTable(approachAc, airport) {
+    // Build set of callsigns already in the ADSBx approach list
+    const adsbxCallsigns = new Set(approachAc.map(ac => (ac.flight || '').trim()));
+
+    // Rows from ADSBx approach data (live position data available)
+    let rows = approachAc.map(ac => ({
+        flight: (ac.flight || '').trim() || ac.hex,
+        origin: ac._origin || '',
+        originCity: ac._originCity || '',
+        type: ac.t || ac._sfoType || '',
+        eta: ac._sfoEta || '',
+        status: ac._sfoRemark || 'Radar',
+        alt: ac.alt_baro === 'ground' ? 0 : (ac.alt_baro ?? ac.alt_geom ?? ''),
+        gs: ac.gs != null ? Math.round(ac.gs) : '',
+        vrate: ac.baro_rate ?? ac.geom_rate ?? '',
+        dist: Math.round((ac.dst ?? haversine(airport.lat, airport.lon, ac.lat, ac.lon)) * 10) / 10,
+        hasRadar: true,
+        etaSort: ac._sfoEtaMs || Infinity,
+    }));
+
+    // Add FlySFO inbound flights not yet visible on ADSBx
+    if (flySfoArrivals.size > 0) {
+        for (const [cs, flight] of flySfoArrivals) {
+            if (adsbxCallsigns.has(cs)) continue;
+            // Only show en-route flights (not yet arrived/landed/cancelled)
+            if (flight.remark === 'Arrived' || flight.remark === 'Landed' || flight.remark === 'Cancelled') continue;
+            const eta = flight.estimated_aod_time || flight.scheduled_aod_time || '';
+            const etaMs = eta ? new Date(eta).getTime() : Infinity;
+            // Only show flights with ETA within next 2 hours
+            if (etaMs > Date.now() + 2 * 3600000) continue;
+            rows.push({
+                flight: cs,
+                origin: flight.airport?.iata_code || '',
+                originCity: flight.airport?.airport_city || '',
+                type: flight.aircraft_transport_type?.icao_code || '',
+                eta: formatEta(eta),
+                status: flight.remark || '',
+                alt: '', gs: '', vrate: '', dist: '',
+                hasRadar: false,
+                etaSort: etaMs,
+            });
+        }
+    }
+
+    // Sort: default by ETA for mixed view, or by user-selected column
+    rows.sort((a, b) => {
+        let va = a[sortCol], vb = b[sortCol];
+        // If sorting by a radar column and one row has no radar, push it down
+        if (va === '' && vb !== '') return 1;
+        if (vb === '' && va !== '') return -1;
+        if (va === '' && vb === '') {
+            // Both no radar: sort by ETA
+            return a.etaSort - b.etaSort;
+        }
+        if (typeof va === 'string') va = va.toLowerCase();
+        if (typeof vb === 'string') vb = vb.toLowerCase();
+        if (va < vb) return sortAsc ? -1 : 1;
+        if (va > vb) return sortAsc ? 1 : -1;
+        return 0;
+    });
+
+    dom.acTableBody.innerHTML = rows.map(r => `<tr style="${r.hasRadar ? '' : 'opacity:0.75'}">
+        <td><strong>${esc(r.flight)}</strong></td>
+        <td title="${esc(r.originCity)}">${esc(r.origin)}</td>
+        <td>${esc(r.type)}</td>
+        <td>${esc(r.eta)}</td>
+        <td>${esc(r.status)}</td>
+        <td>${typeof r.alt === 'number' ? r.alt.toLocaleString() : r.alt}</td>
+        <td>${r.gs}</td>
+        <td class="${typeof r.vrate === 'number' && r.vrate < -200 ? 'descending' : ''}">${r.vrate}</td>
+        <td><strong>${r.dist}</strong></td>
+    </tr>`).join('');
+}
+
+// ── Charts ──
+function updateCharts() {
+    rateChart.data.datasets[0].data = rateHistory.map(r => ({ x: r.time, y: r.rate }));
+    rateChart.update('none');
+
+    sepChart.data.datasets[0].data = sepHistory.map(s => ({ x: s.time, y: s.min }));
+    sepChart.data.datasets[1].data = sepHistory.map(s => ({ x: s.time, y: s.avg }));
+    sepChart.update('none');
+}
+
+// ── Approach Map ──
+// Extrapolate aircraft position based on ground speed and track
+function extrapolatePosition(ac, dtSeconds) {
+    if (ac.lat == null || ac.lon == null) return { lat: ac.lat, lon: ac.lon };
+    const gs = ac.gs; // knots
+    const track = ac.track; // degrees true
+    if (gs == null || track == null || gs < 5) return { lat: ac.lat, lon: ac.lon };
+
+    const distNM = (gs / 3600) * dtSeconds; // NM traveled
+    const trackRad = track * Math.PI / 180;
+    const dLatNM = distNM * Math.cos(trackRad);
+    const dLonNM = distNM * Math.sin(trackRad);
+    const cosLat = Math.cos(ac.lat * Math.PI / 180);
+
+    return {
+        lat: ac.lat + dLatNM / 60,
+        lon: ac.lon + dLonNM / (60 * cosLat),
+    };
+}
+
+// ── Map Tile System ──
+const TILE_SIZE = 256;
+const tileCache = new Map(); // "z/x/y" -> Image (loaded) or null (loading)
+const TILE_URL = 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png';
+
+function getTileUrl(z, x, y) {
+    return TILE_URL.replace('{z}', z).replace('{x}', x).replace('{y}', y);
+}
+
+function loadTile(z, x, y) {
+    const key = `${z}/${x}/${y}`;
+    if (tileCache.has(key)) return tileCache.get(key);
+    tileCache.set(key, null); // mark as loading
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => tileCache.set(key, img);
+    img.onerror = () => tileCache.delete(key); // allow retry
+    img.src = getTileUrl(z, x, y);
+    return null;
+}
+
+// Web Mercator: lat/lon to fractional tile coordinates
+function lonToTileX(lon, zoom) {
+    return ((lon + 180) / 360) * (1 << zoom);
+}
+function latToTileY(lat, zoom) {
+    const latRad = lat * Math.PI / 180;
+    return (1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * (1 << zoom);
+}
+
+// Choose zoom level so that rangeNM maps to mapRadius pixels
+function zoomForRange(lat, rangeNM, mapRadiusPx) {
+    // meters per pixel needed
+    const mPerPx = (rangeNM * 1852) / mapRadiusPx;
+    // at zoom z, resolution = 156543.03 * cos(lat) / 2^z
+    const z = Math.log2(156543.03 * Math.cos(lat * Math.PI / 180) / mPerPx);
+    return Math.max(1, Math.min(18, Math.round(z)));
+}
+
+function updateMapData(allAircraft, approachAc, airport, rangeNM) {
+    mapAllAircraft = allAircraft;
+    mapApproachAc = approachAc;
+    mapAirport = airport;
+    mapRangeNM = rangeNM;
+    mapPollTime = performance.now() / 1000;
+
+    if (!mapAnimId) {
+        mapAnimId = requestAnimationFrame(mapAnimLoop);
+    }
+}
+
+function mapAnimLoop() {
+    if (!mapAirport) { mapAnimId = null; return; }
+    renderMap();
+    mapAnimId = requestAnimationFrame(mapAnimLoop);
+}
+
+function renderMap() {
+    const airport = mapAirport;
+    const rangeNM = mapRangeNM;
+    const dtSeconds = (performance.now() / 1000) - mapPollTime;
+
+    const canvas = dom.approachMap;
+    const rect = canvas.parentElement.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const size = Math.floor(Math.min(rect.width, rect.height));
+    if (size < 10) return;
+    canvas.width = size * dpr;
+    canvas.height = size * dpr;
+    canvas.style.width = size + 'px';
+    canvas.style.height = size + 'px';
+
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+
+    const cx = size / 2;
+    const cy = size / 2;
+    const mapRadius = (size / 2) - 30;
+
+    // Apply zoom: effective range shrinks as you zoom in
+    const effectiveRange = rangeNM / mapZoomFactor;
+
+    // Map center in lat/lon (airport + pan offset)
+    const cosLat = Math.cos(airport.lat * Math.PI / 180);
+    const centerLat = airport.lat + mapOffsetLat / 60;
+    const centerLon = airport.lon + mapOffsetLon / (60 * cosLat);
+
+    // ── Draw map tiles ──
+    const zoom = zoomForRange(centerLat, effectiveRange, mapRadius);
+
+    // center of map in fractional tile coords
+    const centerTX = lonToTileX(centerLon, zoom);
+    const centerTY = latToTileY(centerLat, zoom);
+
+    // pixels per tile at this zoom/size
+    // We need: rangeNM in NM = mapRadius in pixels
+    // At this zoom, 1 tile = TILE_SIZE pixels in Web Mercator
+    // Ground width of 1 tile at this lat = (156543.03 * cos(lat) / 2^zoom) * TILE_SIZE meters
+    const metersPerTile = (156543.03 * Math.cos(centerLat * Math.PI / 180) / (1 << zoom)) * TILE_SIZE;
+    const nmPerTile = metersPerTile / 1852;
+    const pxPerTile = mapRadius / effectiveRange * nmPerTile;
+
+    // how many tiles we need in each direction from center
+    const tilesNeeded = Math.ceil(size / pxPerTile) + 1;
+
+    // fractional offset of center within its tile
+    const fracX = centerTX % 1;
+    const fracY = centerTY % 1;
+    const baseTileX = Math.floor(centerTX);
+    const baseTileY = Math.floor(centerTY);
+
+    // dark background as fallback for missing tiles
+    ctx.fillStyle = '#0a0f1e';
+    ctx.fillRect(0, 0, size, size);
+
+    for (let dy = -tilesNeeded; dy <= tilesNeeded; dy++) {
+        for (let dx = -tilesNeeded; dx <= tilesNeeded; dx++) {
+            const tx = baseTileX + dx;
+            const ty = baseTileY + dy;
+            if (ty < 0 || ty >= (1 << zoom)) continue;
+            const wrappedTx = ((tx % (1 << zoom)) + (1 << zoom)) % (1 << zoom);
+
+            const img = loadTile(zoom, wrappedTx, ty);
+            if (!img) continue;
+
+            const px = cx + (dx - fracX) * pxPerTile;
+            const py = cy + (dy - fracY) * pxPerTile;
+            ctx.drawImage(img, px, py, pxPerTile, pxPerTile);
+        }
+    }
+
+    // nm-to-pixel conversion based on effective (zoomed) range
+    const nmToPx = mapRadius / effectiveRange;
+
+    // ── toPixel: convert lat/lon to canvas pixel, relative to map center ──
+    function toPixel(lat, lon) {
+        const dLat = (lat - centerLat) * 60;
+        const dLon = (lon - centerLon) * 60 * Math.cos(centerLat * Math.PI / 180);
+        return { x: cx + dLon * nmToPx, y: cy - dLat * nmToPx };
+    }
+
+    // ── Range rings (centered on airport, not map center) ──
+    const apPx = toPixel(airport.lat, airport.lon);
+    ctx.strokeStyle = 'rgba(100,160,255,0.35)';
+    ctx.lineWidth = 1;
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(150,180,220,0.7)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    for (let r = 10; r <= rangeNM; r += 10) {
+        const px = r * nmToPx;
+        ctx.beginPath();
+        ctx.arc(apPx.x, apPx.y, px, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillText(r + ' NM', apPx.x, apPx.y - px - 2);
+    }
+
+    // ── Airport marker ──
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(apPx.x, apPx.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.font = 'bold 11px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(airport.code, apPx.x, apPx.y + 7);
+
+    // ── All aircraft (dim dots) ──
+    const approachHexes = new Set(mapApproachAc.map(ac => ac.hex));
+    for (const ac of mapAllAircraft) {
+        if (ac.lat == null || ac.lon == null) continue;
+        if (approachHexes.has(ac.hex)) continue;
+        const pos = extrapolatePosition(ac, dtSeconds);
+        const p = toPixel(pos.lat, pos.lon);
+        if (p.x < 0 || p.x > size || p.y < 0 || p.y > size) continue;
+        ctx.fillStyle = 'rgba(120,150,200,0.5)';
+        ctx.fillRect(p.x - 1.5, p.y - 1.5, 3, 3);
+    }
+
+    // ── Approach aircraft (bright, with labels) ──
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    for (const ac of mapApproachAc) {
+        const pos = extrapolatePosition(ac, dtSeconds);
+        const p = toPixel(pos.lat, pos.lon);
+        if (p.x < 0 || p.x > size || p.y < 0 || p.y > size) continue;
+
+        // heading line
+        if (ac.track != null) {
+            const trackRad = ac.track * Math.PI / 180;
+            ctx.strokeStyle = 'rgba(0,212,170,0.6)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y);
+            ctx.lineTo(p.x + Math.sin(trackRad) * 14, p.y - Math.cos(trackRad) * 14);
+            ctx.stroke();
+        }
+
+        // dot
+        ctx.fillStyle = '#00d4aa';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // label with shadow for readability over map
+        const cs = (ac.flight || '').trim() || ac.hex;
+        const sfoInfo = getFlySfoInfo(cs) || fuzzyMatchFlySfo(ac, airport);
+        const origin = sfoInfo?.airport?.iata_code;
+        const label = origin ? `${cs} (${origin})` : cs;
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillText(label, p.x + 7, p.y - 5);
+        ctx.fillStyle = 'rgba(220,240,255,0.9)';
+        ctx.fillText(label, p.x + 6, p.y - 6);
+
+        // V/S below the dot in yellow
+        const vrate = ac.baro_rate ?? ac.geom_rate;
+        if (vrate != null) {
+            const vsText = Math.round(vrate) + '';
+            ctx.fillStyle = 'rgba(0,0,0,0.6)';
+            ctx.fillText(vsText, p.x + 7, p.y + 7);
+            ctx.fillStyle = '#f0c040';
+            ctx.fillText(vsText, p.x + 6, p.y + 6);
+        }
+    }
+
+    // ── Attribution ──
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.font = '9px system-ui, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('\u00A9 OpenStreetMap \u00B7 CARTO', size - 4, size - 2);
+}
+
+// ── Data processing ──
+function processData(data, airport) {
+    const now = Date.now();
+    const aircraft = data.ac || [];
+
+    dom.totalAc.textContent = aircraft.length;
+    const hasFlySfo = flySfoArrivals.size > 0;
+
+    // Approach filter: when FlySFO is available, only include confirmed SFO arrivals.
+    // Otherwise fall back to the ADSBx heuristic (descending, low, close).
+    const approachAc = aircraft.filter(ac => {
+        if (ac.lat == null || ac.lon == null) return false;
+        if (ac.alt_baro === 'ground') return false;
+
+        if (hasFlySfo) {
+            // FlySFO match: confirmed SFO arrival at any altitude
+            const cs = (ac.flight || '').trim();
+            const sfoInfo = getFlySfoInfo(cs) || fuzzyMatchFlySfo(ac, airport);
+            if (sfoInfo) {
+                if (sfoInfo.remark === 'Arrived' || sfoInfo.remark === 'Cancelled') return false;
+                return true;
+            }
+            // No FlySFO match (e.g., regional with different callsign):
+            // fall through to heuristic below
+        }
+
+        // Heuristic: descending, low, close — catches regionals and non-FlySFO flights
+        const alt = ac.alt_baro ?? ac.alt_geom ?? null;
+        if (alt == null || alt < 200 || alt > 10000) return false;
+        const vrate = ac.baro_rate ?? ac.geom_rate ?? 0;
+        if (vrate >= -200) return false;
+        const dist = ac.dst ?? haversine(airport.lat, airport.lon, ac.lat, ac.lon);
+        return dist <= 25;
+    });
+
+    approachAc.sort((a, b) => {
+        const da = a.dst ?? haversine(airport.lat, airport.lon, a.lat, a.lon);
+        const db = b.dst ?? haversine(airport.lat, airport.lon, b.lat, b.lon);
+        return da - db;
+    });
+
+    currentApproachList = approachAc;
+    dom.approachCount.textContent = approachAc.length;
+
+    const currentHexes = new Set(approachAc.map(ac => ac.hex));
+
+    // Detect landings: aircraft disappeared from ADSBx approach list
+    const pollAge = now - pollStartTime;
+    for (const [hex, info] of trackedAircraft) {
+        if (info.onApproach && !currentHexes.has(hex)) {
+            const timeSinceLastSeen = now - info.lastSeen;
+            const wasApproaching = info.prevDist != null && info.dist < info.prevDist;
+            let shouldLog = false;
+
+            if (hasFlySfo) {
+                // FlySFO mode: only log if this was a confirmed SFO arrival
+                // FlySFO confirms identity, ADSBx detects the moment of landing
+                const sfoInfo = getFlySfoInfo(info.flight);
+                if (sfoInfo && pollAge > 30000 && timeSinceLastSeen < 90000 && info.dist < 3) {
+                    shouldLog = true;
+                    // Mark as landed in FlySFO tracker to avoid double-counting
+                    // when processFlySFO later sees it as "Arrived"
+                    flySfoLanded.add(info.flight);
+                    const csFromSfo = (sfoInfo.callsign || '').trim();
+                    if (csFromSfo) flySfoLanded.add(csFromSfo);
+                }
+            } else {
+                // Heuristic fallback for non-SFO airports
+                if (pollAge > 30000 && timeSinceLastSeen < 90000 && info.dist < 3 && wasApproaching) {
+                    shouldLog = true;
+                }
+            }
+
+            if (shouldLog) {
+                const origin = hasFlySfo ? (getFlySfoInfo(info.flight)?.airport?.iata_code || '') : '';
+                const label = origin ? `${info.flight} from ${origin}` : (info.flight || hex);
+                arrivalLog.push({ time: now, flight: label, hex });
+                addLogEntry(now, label);
+            }
+            trackedAircraft.delete(hex);
+        }
+    }
+
+    // Detect landings: aircraft still in ADSBx data but on ground (alt <= 0 or 'ground')
+    if (pollAge > 30000) {
+        const allAcByCallsign = new Map();
+        for (const ac of aircraft) {
+            const cs = (ac.flight || '').trim();
+            if (cs) allAcByCallsign.set(cs, ac);
+        }
+        for (const [hex, info] of trackedAircraft) {
+            if (!info.onApproach) continue;
+            const ac = allAcByCallsign.get(info.flight);
+            if (!ac) continue;
+            const alt = ac.alt_baro;
+            if (alt === 'ground' || (typeof alt === 'number' && alt <= 0)) {
+                let shouldLog = false;
+                if (hasFlySfo) {
+                    const sfoInfo = getFlySfoInfo(info.flight);
+                    if (sfoInfo) {
+                        shouldLog = true;
+                        flySfoLanded.add(info.flight);
+                        const csFromSfo = (sfoInfo.callsign || '').trim();
+                        if (csFromSfo) flySfoLanded.add(csFromSfo);
+                    }
+                } else {
+                    shouldLog = true;
+                }
+                if (shouldLog) {
+                    const origin = hasFlySfo ? (getFlySfoInfo(info.flight)?.airport?.iata_code || '') : '';
+                    const label = origin ? `${info.flight} from ${origin}` : (info.flight || hex);
+                    arrivalLog.push({ time: now, flight: label, hex });
+                    addLogEntry(now, label);
+                }
+                trackedAircraft.delete(hex);
+            }
+        }
+    }
+
+    // Enrich approach aircraft with FlySFO data
+    for (const ac of approachAc) {
+        const cs = (ac.flight || '').trim();
+        const sfoInfo = getFlySfoInfo(cs) || fuzzyMatchFlySfo(ac, airport);
+        if (sfoInfo) {
+            ac._origin = sfoInfo.airport ? sfoInfo.airport.iata_code : '';
+            ac._originCity = sfoInfo.airport ? sfoInfo.airport.airport_city : '';
+            ac._sfoRemark = sfoInfo.remark;
+            ac._sfoType = sfoInfo.aircraft_transport_type?.icao_code || '';
+            const eta = sfoInfo.estimated_aod_time || sfoInfo.scheduled_aod_time || '';
+            ac._sfoEta = formatEta(eta);
+            ac._sfoEtaMs = eta ? new Date(eta).getTime() : Infinity;
+        }
+    }
+
+    // Update tracked aircraft — store previous distance for trend detection
+    for (const ac of approachAc) {
+        const dist = ac.dst ?? haversine(airport.lat, airport.lon, ac.lat, ac.lon);
+        const prev = trackedAircraft.get(ac.hex);
+        trackedAircraft.set(ac.hex, {
+            flight: (ac.flight || '').trim(),
+            lastSeen: now,
+            onApproach: true,
+            alt: ac.alt_baro ?? ac.alt_geom ?? 0,
+            prevDist: prev ? prev.dist : null,
+            dist,
+        });
+    }
+
+    // Track non-approach aircraft to avoid false positives when they leave filter
+    for (const ac of aircraft) {
+        if (!currentHexes.has(ac.hex) && trackedAircraft.has(ac.hex)) {
+            const info = trackedAircraft.get(ac.hex);
+            info.onApproach = false;
+            info.lastSeen = now;
+        }
+    }
+
+    for (const [hex, info] of trackedAircraft) {
+        if (now - info.lastSeen > 120000) trackedAircraft.delete(hex);
+    }
+
+    // Rate calculation: count arrivals over the observation window.
+    // Window = time since polling started, capped at 15 minutes.
+    // Requires at least 5 minutes of observation to avoid early spikes.
+    const windowMs = 15 * 60 * 1000;
+    const observationStart = Math.max(pollStartTime, now - windowMs);
+    const observationDuration = now - observationStart;
+    const recentArrivals = arrivalLog.filter(a => a.time >= observationStart);
+    let rate = 0;
+    if (observationDuration >= 300000 && recentArrivals.length >= 1) {
+        rate = (recentArrivals.length / observationDuration) * 3600000;
+    }
+    rateHistory.push({ time: now, rate: Math.round(rate * 10) / 10 });
+    while (rateHistory.length > 0 && now - rateHistory[0].time > 3600000) rateHistory.shift();
+
+    dom.arrivalRate.textContent = rate > 0 ? rate.toFixed(1) : '--';
+    dom.arrivalCount.textContent = arrivalLog.length;
+
+    const separations = [];
+    for (let i = 0; i < approachAc.length - 1; i++) {
+        const dist = haversine(approachAc[i].lat, approachAc[i].lon, approachAc[i+1].lat, approachAc[i+1].lon);
+        separations.push(dist);
+    }
+
+    if (separations.length > 0) {
+        const minSep = Math.min(...separations);
+        const avgSep = separations.reduce((s, v) => s + v, 0) / separations.length;
+        sepHistory.push({
+            time: now,
+            min: Math.round(minSep * 10) / 10,
+            avg: Math.round(avgSep * 10) / 10,
+        });
+        while (sepHistory.length > 0 && now - sepHistory[0].time > 3600000) sepHistory.shift();
+    }
+
+    updateCharts();
+    updateTable(approachAc, airport);
+    updateMapData(aircraft, approachAc, airport, parseInt(dom.radius.value) || 100);
+}
+
+// ── API ──
+async function fetchADSBx(airport, radius) {
+    // If user provided their own key, call RapidAPI directly
+    if (apiKey) {
+        const url = `https://adsbexchange-com1.p.rapidapi.com/v2/lat/${airport.lat}/lon/${airport.lon}/dist/${radius}/`;
+        const resp = await fetch(url, {
+            headers: {
+                'X-RapidAPI-Key': apiKey,
+                'X-RapidAPI-Host': 'adsbexchange-com1.p.rapidapi.com',
+            }
+        });
+        if (!resp.ok) {
+            if (resp.status === 403) throw new Error('Invalid API key or subscription');
+            if (resp.status === 429) throw new Error('Rate limit exceeded');
+            throw new Error(`API error: ${resp.status}`);
+        }
+        return resp.json();
+    }
+
+    // Otherwise use the server-side proxy
+    // Resolve proxy path relative to the tools directory (works on both local and production)
+    const basePath = window.location.pathname.replace(/\/tools\/.*$/, '');
+    const proxyUrl = `${basePath}/sitrecServer/proxyADSBx.php?lat=${airport.lat}&lon=${airport.lon}&dist=${radius}`;
+    const resp = await fetch(proxyUrl);
+    if (!resp.ok) {
+        const body = await resp.json().catch(() => ({}));
+        throw new Error((body.error || `Proxy error: ${resp.status}`) + ' — click API Key to use your own RapidAPI key');
+    }
+    return resp.json();
+}
+
+// ── FlySFO Integration ──
+// Fetches SFO's official flight status for definitive arrival detection.
+// Only active when SFO is the selected airport.
+
+const FLYSFO_POLL_MS = 5 * 60 * 1000; // 5 minutes
+
+async function fetchFlySFO() {
+    const basePath = window.location.pathname.replace(/\/tools\/.*$/, '');
+    const resp = await fetch(`${basePath}/sitrecServer/proxyFlySFO.php`);
+    if (!resp.ok) return null;
+    return resp.json();
+}
+
+let flySfoInitialized = false;
+
+function processFlySFO(data) {
+    if (!data || !data.data) return;
+    fuzzyMatchCache.clear();
+    const now = Date.now();
+    const isFirstFetch = !flySfoInitialized;
+
+    // Build lookup of arrivals by callsign
+    flySfoArrivals.clear();
+    const newArrivals = [];
+
+    for (const flight of data.data) {
+        if (flight.flight_kind !== 'Arrival') continue;
+        const callsign = (flight.callsign || '').trim();
+        if (!callsign) continue;
+        flySfoArrivals.set(callsign, flight);
+
+        if ((flight.remark === 'Arrived' || flight.remark === 'Landed') && !flySfoLanded.has(callsign)) {
+            flySfoLanded.add(callsign);
+            // First fetch: mark as seen but don't log (establishes baseline)
+            if (!isFirstFetch) {
+                const actualTime = flight.actual_aod_time || flight.actual_in_off_block_time;
+                const arrTime = actualTime ? new Date(actualTime).getTime() : now;
+                const origin = flight.airport ? flight.airport.iata_code : '';
+                const label = `${callsign}${origin ? ' from ' + origin : ''}`;
+                newArrivals.push({ time: arrTime, flight: label, hex: callsign });
+            }
+        }
+    }
+
+    // Sort new arrivals chronologically before logging
+    newArrivals.sort((a, b) => a.time - b.time);
+    for (const arr of newArrivals) {
+        arrivalLog.push(arr);
+        addLogEntry(arr.time, arr.flight);
+    }
+
+    flySfoInitialized = true;
+}
+
+async function pollFlySFO() {
+    if (!polling) return;
+    try {
+        const data = await fetchFlySFO();
+        if (data) {
+            flySfoData = data;
+            processFlySFO(data);
+        }
+    } catch (err) {
+        console.warn('FlySFO poll error:', err);
+    }
+    if (polling) flySfoTimer = setTimeout(pollFlySFO, FLYSFO_POLL_MS);
+}
+
+// Look up FlySFO info for an ADSBx aircraft by callsign
+// Regional carriers that operate flights under major airline marketing callsigns.
+// Key = operating carrier (ADS-B), values = marketing carriers (FlySFO).
+// e.g., ADSBx broadcasts SKW4639 → FlySFO lists it as UAL4639 or DAL4639.
+const REGIONAL_TO_MARKETING = {
+    SKW: ['UAL', 'DAL', 'AAL', 'ASA'],   // SkyWest → United Express, Delta Connection, American Eagle, Alaska
+    RPA: ['UAL', 'DAL', 'AAL'],           // Republic → United, Delta, American
+    EDV: ['DAL'],                          // Endeavor → Delta Connection
+    ENY: ['AAL'],                          // Envoy → American Eagle
+    PSA: ['AAL'],                          // PSA Airlines → American Eagle
+    ASH: ['UAL'],                          // Mesa → United Express
+    QXE: ['ASA'],                          // Horizon → Alaska
+    JIA: ['AAL'],                          // PSA/Piedmont → American Eagle
+    CPZ: ['DAL'],                          // Compass → Delta (defunct but callsigns may linger)
+    GJS: ['UAL', 'DAL'],                   // GoJet → United Express, Delta Connection
+};
+
+function getFlySfoInfo(callsign) {
+    if (!callsign || flySfoArrivals.size === 0) return null;
+    const cs = callsign.trim();
+
+    // Direct match
+    const direct = flySfoArrivals.get(cs);
+    if (direct) return direct;
+
+    // Try swapping operating carrier prefix → marketing carrier prefix
+    // e.g., SKW4639 → try UAL4639, DAL4639, AAL4639, ASA4639
+    const match = cs.match(/^([A-Z]{2,3})(\d+)$/);
+    if (match) {
+        const [, prefix, flightNum] = match;
+        const marketingPrefixes = REGIONAL_TO_MARKETING[prefix];
+        if (marketingPrefixes) {
+            for (const mp of marketingPrefixes) {
+                const alt = flySfoArrivals.get(mp + flightNum);
+                if (alt) return alt;
+            }
+        }
+    }
+
+    return null;
+}
+
+// Fuzzy match: for ADSBx aircraft with no FlySFO callsign match,
+// try matching by aircraft type + estimated arrival time.
+// Caches matches so repeated lookups are fast.
+const fuzzyMatchCache = new Map(); // adsbx callsign -> flySfo callsign or null
+
+function fuzzyMatchFlySfo(ac, airport) {
+    const cs = (ac.flight || '').trim();
+    if (!cs || flySfoArrivals.size === 0) return null;
+    if (fuzzyMatchCache.has(cs)) {
+        const cached = fuzzyMatchCache.get(cs);
+        return cached ? flySfoArrivals.get(cached) : null;
+    }
+
+    const acType = (ac.t || '').trim();
+    if (!acType) { fuzzyMatchCache.set(cs, null); return null; }
+
+    // Estimate ETA: distance / ground speed
+    const dist = ac.dst ?? haversine(airport.lat, airport.lon, ac.lat, ac.lon);
+    const gs = ac.gs || 250;
+    const etaMinutes = (dist / gs) * 60;
+    const estimatedArrival = Date.now() + etaMinutes * 60000;
+
+    // Find unmatched FlySFO arrivals with same aircraft type and similar ETA
+    const matchedSfoCalls = new Set();
+    // Build set of already-matched FlySFO callsigns
+    for (const [, cached] of fuzzyMatchCache) {
+        if (cached) matchedSfoCalls.add(cached);
+    }
+
+    let bestMatch = null;
+    let bestTimeDiff = Infinity;
+
+    for (const [sfoCs, flight] of flySfoArrivals) {
+        if (flight.remark === 'Arrived' || flight.remark === 'Cancelled' || flight.remark === 'Landed') continue;
+        if (matchedSfoCalls.has(sfoCs)) continue;
+        // Check if this FlySFO entry already has a direct callsign match
+        if (getFlySfoInfo(sfoCs)) {
+            // It matches itself — skip unless no ADSBx aircraft has that callsign
+        }
+
+        const sfoType = (flight.aircraft_transport_type?.icao_code || '').trim();
+        if (sfoType !== acType) continue;
+
+        const eta = flight.estimated_aod_time || flight.scheduled_aod_time;
+        if (!eta) continue;
+        const sfoEtaMs = new Date(eta).getTime();
+        const timeDiff = Math.abs(estimatedArrival - sfoEtaMs);
+
+        // Within 20-minute window
+        if (timeDiff < 20 * 60000 && timeDiff < bestTimeDiff) {
+            bestTimeDiff = timeDiff;
+            bestMatch = sfoCs;
+        }
+    }
+
+    fuzzyMatchCache.set(cs, bestMatch);
+    return bestMatch ? flySfoArrivals.get(bestMatch) : null;
+}
+
+// Clear fuzzy cache when FlySFO data refreshes — done inside processFlySFO
+
+// ── Polling ──
+async function poll() {
+    if (!polling) return;
+    setStatus('polling', 'Polling...');
+
+    try {
+        const airport = getSelectedAirport();
+        const radius = parseInt(dom.radius.value) || 30;
+        const data = demoMode ? generateDemoData(airport, radius) : await fetchADSBx(airport, radius);
+        processData(data, airport);
+        setStatus('connected', `OK - ${new Date().toLocaleTimeString()}`);
+        dom.lastPoll.textContent = new Date().toLocaleTimeString();
+    } catch (err) {
+        console.error('Poll error:', err);
+        setStatus('error', err.message);
+    }
+
+    // Fast poll (10s) for the first 60s to populate quickly, then use user setting
+    const elapsed = (Date.now() - pollStartTime) / 1000;
+    const interval = elapsed < 60 ? 10000 : (parseInt(dom.pollInterval.value) || 30) * 1000;
+    pollTimer = setTimeout(poll, interval);
+}
+
+function resetData() {
+    trackedAircraft.clear();
+    arrivalLog = [];
+    rateHistory = [];
+    sepHistory = [];
+    currentApproachList = [];
+    demoFleet = [];
+    demoNextId = 0;
+    flySfoData = null;
+    flySfoArrivals.clear();
+    flySfoLanded.clear();
+    flySfoInitialized = false;
+    rateChart.data.datasets[0].data = [];
+    sepChart.data.datasets.forEach(ds => ds.data = []);
+    rateChart.update();
+    sepChart.update();
+    updateStats();
+    dom.acTableBody.innerHTML = '';
+    dom.logEntries.innerHTML = '';
+}
+
+// ── Inactivity timeout (30 min) ──
+const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
+let inactivityTimer = null;
+
+function stopPolling() {
+    if (!polling) return;
+    polling = false;
+    dom.toggleBtn.textContent = 'Start';
+    dom.toggleBtn.classList.remove('running');
+    clearTimeout(pollTimer);
+    clearTimeout(flySfoTimer);
+    if (mapAnimId) { cancelAnimationFrame(mapAnimId); mapAnimId = null; }
+}
+
+function onInactivityTimeout() {
+    stopPolling();
+    setStatus('idle', 'Stopped — inactive for 30 min');
+}
+
+function resetInactivityTimer() {
+    clearTimeout(inactivityTimer);
+    if (polling) {
+        inactivityTimer = setTimeout(onInactivityTimeout, INACTIVITY_TIMEOUT_MS);
+    }
+}
+
+['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'wheel'].forEach(evt => {
+    document.addEventListener(evt, resetInactivityTimer, { passive: true });
+});
+
+// ── Wire up all event listeners (no inline onclick anywhere) ──
+dom.toggleBtn.addEventListener('click', async () => {
+    polling = !polling;
+    if (polling) {
+        dom.toggleBtn.textContent = 'Stop';
+        dom.toggleBtn.classList.add('running');
+        pollStartTime = Date.now();
+        resetInactivityTimer();
+        // Fetch FlySFO first so approach filter has data before first ADSBx poll
+        if (getSelectedAirport().code === 'SFO') {
+            setStatus('polling', 'Loading FlySFO data...');
+            await pollFlySFO();
+        }
+        poll();
+    } else {
+        stopPolling();
+        clearTimeout(inactivityTimer);
+        setStatus('idle', 'Stopped');
+    }
+});
+
+dom.showSetupBtn.addEventListener('click', () => {
+    dom.setupApiKey.value = apiKey;
+    dom.setupOverlay.classList.remove('hidden');
+});
+
+dom.resetBtn.addEventListener('click', resetData);
+
+dom.saveSetupBtn.addEventListener('click', () => {
+    apiKey = dom.setupApiKey.value.trim();
+    localStorage.setItem('adsbx_api_key', apiKey);
+    demoMode = false;
+    dom.setupOverlay.classList.add('hidden');
+});
+
+dom.skipSetupBtn.addEventListener('click', () => {
+    demoMode = true;
+    dom.setupOverlay.classList.add('hidden');
+});
+
+dom.airportSelect.addEventListener('change', () => {
+    localStorage.setItem('adsbx_airport', dom.airportSelect.value);
+    if (polling) resetData();
+});
+
+document.querySelectorAll('th[data-col]').forEach(th => {
+    th.addEventListener('click', () => {
+        const col = th.dataset.col;
+        if (sortCol === col) sortAsc = !sortAsc;
+        else { sortCol = col; sortAsc = true; }
+        document.querySelectorAll('th').forEach(t => t.classList.remove('sorted', 'asc'));
+        th.classList.add('sorted');
+        if (sortAsc) th.classList.add('asc');
+        updateTable(currentApproachList, getSelectedAirport());
+    });
+});
+
+// ── Map pan/zoom interaction ──
+const mapCanvas = dom.approachMap;
+
+mapCanvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const zoomDelta = e.deltaY > 0 ? 0.85 : 1.18;
+    mapZoomFactor = Math.max(0.2, Math.min(10, mapZoomFactor * zoomDelta));
+}, { passive: false });
+
+mapCanvas.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    mapDragging = true;
+    mapDragStartX = e.clientX;
+    mapDragStartY = e.clientY;
+    mapDragStartOffLat = mapOffsetLat;
+    mapDragStartOffLon = mapOffsetLon;
+    mapCanvas.style.cursor = 'grabbing';
+});
+
+window.addEventListener('mousemove', (e) => {
+    if (!mapDragging) return;
+    const rect = mapCanvas.getBoundingClientRect();
+    const size = Math.min(rect.width, rect.height);
+    const mapRadius = (size / 2) - 30;
+    const effectiveRange = mapRangeNM / mapZoomFactor;
+    const nmPerPx = effectiveRange / mapRadius;
+
+    const dx = e.clientX - mapDragStartX;
+    const dy = e.clientY - mapDragStartY;
+    mapOffsetLon = mapDragStartOffLon - dx * nmPerPx;
+    mapOffsetLat = mapDragStartOffLat + dy * nmPerPx;
+});
+
+window.addEventListener('mouseup', () => {
+    if (mapDragging) {
+        mapDragging = false;
+        mapCanvas.style.cursor = 'grab';
+    }
+});
+
+mapCanvas.addEventListener('dblclick', () => {
+    // double-click to reset view
+    mapOffsetLat = 0;
+    mapOffsetLon = 0;
+    mapZoomFactor = 1;
+});
+
+mapCanvas.style.cursor = 'grab';
+
+// ── Initial state ──
+// Setup overlay starts hidden — server proxy works without a key.
+// Users click "API Key" button to optionally configure their own key.
+
+}); // end DOMContentLoaded
+</script>
+</body>
+</html>
