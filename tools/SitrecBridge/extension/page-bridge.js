@@ -21,6 +21,8 @@ window._mcpAsserts = [];
 // postMessage after this module loads.  All subsequent messages must include
 // the nonce to prevent spoofing by other scripts on the page.
 let bridgeNonce = null;
+let detectIntervalId = null;
+let detectTimeoutId = null;
 
 function drainAsserts() {
     const asserts = window._mcpAsserts;
@@ -478,8 +480,11 @@ window.addEventListener("message", async (event) => {
     if (event.source !== window) return;
     if (!event.data) return;
 
-    // Handle nonce initialization from content script (one-time handshake)
-    if (event.data.source === "sitrec-bridge-init" && event.data.nonce && !bridgeNonce) {
+    // Handle nonce initialization from the content script. A fresh content
+    // script context can reconnect after an extension reload, so we accept a
+    // new nonce and restart detection instead of treating the bridge as
+    // single-use for the lifetime of the page.
+    if (event.data.source === "sitrec-bridge-init" && event.data.nonce) {
         bridgeNonce = event.data.nonce;
         console.log("[SitrecBridge:page] Nonce handshake complete, starting detection");
         startSitrecDetection();
@@ -574,6 +579,15 @@ function notifySitrecDetected() {
 function startSitrecDetection() {
     console.log("[SitrecBridge:page] startSitrecDetection() — checking immediately...");
 
+    if (detectIntervalId) {
+        clearInterval(detectIntervalId);
+        detectIntervalId = null;
+    }
+    if (detectTimeoutId) {
+        clearTimeout(detectTimeoutId);
+        detectTimeoutId = null;
+    }
+
     // Tools pages are standalone apps — register immediately without Sitrec globals
     if (isToolsPage) {
         console.log("[SitrecBridge:page] Tools page detected:", window.location.pathname);
@@ -586,7 +600,7 @@ function startSitrecDetection() {
     } else {
         console.log("[SitrecBridge:page] Sitrec not ready yet, polling every 500ms (30s timeout)...");
         let pollCount = 0;
-        const detectInterval = setInterval(() => {
+        detectIntervalId = setInterval(() => {
             pollCount++;
             // Log every 5th poll (every 2.5s) to avoid spam
             const shouldLog = (pollCount % 5 === 0);
@@ -594,14 +608,23 @@ function startSitrecDetection() {
                 console.log("[SitrecBridge:page] Detection poll #" + pollCount + " (" + (pollCount * 0.5) + "s)...");
             }
             if (isSitrecReal(shouldLog)) {
-                clearInterval(detectInterval);
+                clearInterval(detectIntervalId);
+                detectIntervalId = null;
+                if (detectTimeoutId) {
+                    clearTimeout(detectTimeoutId);
+                    detectTimeoutId = null;
+                }
                 console.log("[SitrecBridge:page] Sitrec detected after " + (pollCount * 0.5) + "s");
                 notifySitrecDetected();
             }
         }, 500);
         // Stop polling after 30 seconds — not a Sitrec page
-        setTimeout(() => {
-            clearInterval(detectInterval);
+        detectTimeoutId = setTimeout(() => {
+            if (detectIntervalId) {
+                clearInterval(detectIntervalId);
+                detectIntervalId = null;
+            }
+            detectTimeoutId = null;
             if (!isSitrecReal(false)) {
                 console.warn("[SitrecBridge:page] Detection TIMED OUT after 30s — giving up. "
                     + "Sit=" + !!window.Sit

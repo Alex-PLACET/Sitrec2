@@ -9,37 +9,50 @@
  * so page-bridge.js is injected into the page's main world to do the actual work.
  */
 
-// Guard against double-injection (e.g., extension reload while page is open).
-// Must come before any `let` declarations to avoid "already declared" errors.
-if (document.getElementById("sitrec-bridge-injected")) {
-    console.log("[SitrecBridge:content] Already injected, skipping");
+// Guard against duplicate execution in the same isolated-world context.
+// After an extension reload, Chrome creates a fresh content-script context, so
+// this flag resets naturally and allows the bridge to re-handshake.
+const CONTENT_BOOT_KEY = "__sitrecBridgeContentBooted";
+if (globalThis[CONTENT_BOOT_KEY]) {
+    console.log("[SitrecBridge:content] Already running in this tab context, skipping");
 } else {
+globalThis[CONTENT_BOOT_KEY] = true;
 
 // Nonce for authenticating the postMessage channel between content script and page bridge.
 // Generated per injection; lives only in the content script's isolated world, so page
 // scripts cannot read it directly.  The nonce is sent to page-bridge once via postMessage
 // after the module loads; both sides then require it on every subsequent message.
 let bridgeNonce = null;
+const PAGE_BRIDGE_MARKER_ID = "sitrec-bridge-injected";
 
 // Inject the page-bridge script into the main world
 (function injectPageBridge() {
+    bridgeNonce = crypto.randomUUID();
+    const sendNonce = () => {
+        console.log("[SitrecBridge:content] Sending nonce to page bridge");
+        window.postMessage({ source: "sitrec-bridge-init", nonce: bridgeNonce }, "*");
+    };
+
+    const marker = document.getElementById(PAGE_BRIDGE_MARKER_ID);
     console.log("[SitrecBridge:content] Injecting page-bridge on", window.location.href);
 
-    // Mark as injected so the top-of-file guard catches future re-injections
-    const marker = document.createElement("div");
-    marker.id = "sitrec-bridge-injected";
-    marker.style.display = "none";
-    document.documentElement.appendChild(marker);
-
-    bridgeNonce = crypto.randomUUID();
+    // Mark that a page-bridge script has been inserted into the page.
+    if (!marker) {
+        const newMarker = document.createElement("div");
+        newMarker.id = PAGE_BRIDGE_MARKER_ID;
+        newMarker.style.display = "none";
+        document.documentElement.appendChild(newMarker);
+    }
 
     const script = document.createElement("script");
-    script.src = chrome.runtime.getURL("page-bridge.js");
+    // Cache-bust so a fresh page-bridge instance is evaluated after extension
+    // reloads, even if an older copy is still present in the page.
+    script.src = chrome.runtime.getURL("page-bridge.js") + "?nonce=" + encodeURIComponent(bridgeNonce);
     script.type = "module";
     // After the module evaluates and sets up its listener, send the nonce
     script.addEventListener("load", () => {
-        console.log("[SitrecBridge:content] page-bridge.js loaded, sending nonce");
-        window.postMessage({ source: "sitrec-bridge-init", nonce: bridgeNonce }, "*");
+        console.log("[SitrecBridge:content] page-bridge.js loaded");
+        sendNonce();
     });
     script.addEventListener("error", (e) => {
         console.error("[SitrecBridge:content] Failed to load page-bridge.js:", e);

@@ -416,6 +416,30 @@ async function handleServerMessage(msg) {
         return;
     }
 
+    // Reload a Sitrec tab directly from the background worker. This is useful
+    // for recovering from stale content-script/page-bridge state after an
+    // extension reload.
+    if (action === "sitrec_reload_tab") {
+        const pageTabTarget = params?.tab;
+        if (params?.tab !== undefined) delete params.tab;
+        const pageTabId = await findSitrecTabByTarget(pageTabTarget, _cwd);
+        trackCommandStart(action, params, _cwd, pageTabId);
+        if (!pageTabId) {
+            sendToServer({ id, error: "No Sitrec tab found to reload." });
+            trackCommandEnd(false);
+            return;
+        }
+        try {
+            await chrome.tabs.reload(pageTabId);
+            sendToServer({ id, result: { ok: true, reloading: true, tabId: pageTabId } });
+            trackCommandEnd(true);
+        } catch (e) {
+            sendToServer({ id, error: `Tab reload failed: ${e.message}` });
+            trackCommandEnd(false);
+        }
+        return;
+    }
+
     // Full-page screenshot via chrome.tabs.captureVisibleTab — captures DOM + canvas
     if (action === "sitrec_screenshot" && params?.view === "page") {
         const pageTabTarget = params?.tab;
