@@ -1,7 +1,7 @@
 // CNodeDisplaySkyOverlay takes a CNodeCanvas derived node, CNodeDisplayNightSky and a camera
 // and displays star names on an overlay
 import {CNodeViewUI} from "./CNodeViewUI";
-import {GlobalDateTimeNode, guiShowHide, setRenderOne, Sit} from "../Globals";
+import {GlobalDateTimeNode, guiShowHide, NodeMan, setRenderOne, Sit} from "../Globals";
 import {getCelestialDirectionFromRaDec, raDec2Celestial} from "../CelestialMath";
 import {wgs84} from "../LLA-ECEF-ENU";
 import {intersectSphere2, V3} from "../threeUtils";
@@ -57,6 +57,26 @@ export class CNodeDisplaySkyOverlay extends CNodeViewUI {
     renderCanvas(frame) {
         super.renderCanvas(frame);
 
+        // Pre-compute video pan NDC shift so labels track the 3D sprites that
+        // CNodeView3D shifts via the projection-matrix elements[8]/[9] patch.
+        // Shift is SUBTRACTED from zoomedX and ADDED to zoomedY.
+        this._panShiftX = 0;
+        this._panShiftY = 0;
+        if (this.syncVideoZoom && (this.panX !== 0 || this.panY !== 0)) {
+            const panSyncView = NodeMan.get("video", false);
+            if (panSyncView && panSyncView.videoWidth && panSyncView.videoHeight) {
+                const baseFovHalfTan = Math.tan(this.camera.fov * Math.PI / 360);
+                const renderedFov = this.camera.renderedFOV || this.camera.fov;
+                const currFovHalfTan = Math.tan(renderedFov * Math.PI / 360);
+                const viewAspect = this.widthPx / this.heightPx;
+                const videoAspect = panSyncView.videoWidth / panSyncView.videoHeight;
+                const hScale = videoAspect * baseFovHalfTan / (viewAspect * currFovHalfTan);
+                const vScale = baseFovHalfTan / currFovHalfTan;
+                this._panShiftX = 2 * this.panX * hScale * this.zoom;
+                this._panShiftY = 2 * this.panY * vScale * this.zoom;
+            }
+        }
+
         this.renderLabels3D(frame);
 
         const showSatelliteNames = this.showSatelliteNames;
@@ -77,6 +97,10 @@ export class CNodeDisplaySkyOverlay extends CNodeViewUI {
             if (this.camera.renderedFOV) {
                 starCamera.fov = this.camera.renderedFOV;
             }
+            // Reset inherited camera.zoom so pos.project() returns unscaled NDC.
+            // The final this.zoom multiply captures the full visual zoom (FOV +
+            // pixel-shader magnification). See CNodeView.js:418 for the split.
+            starCamera.zoom = 1;
             starCamera.position.set(0, 0, 0);
             starCamera.aspect = this.widthPx / this.heightPx;
             this.applyCameraOffset(starCamera);
@@ -133,9 +157,9 @@ export class CNodeDisplaySkyOverlay extends CNodeViewUI {
             pos.project(camera)
 
             if (pos.z > -1 && pos.z < 1 && pos.x >= -1 && pos.x <= 1 && pos.y >= -1 && pos.y <= 1) {
-                const zoomedX = pos.x * this.zoom;
-                const zoomedY = pos.y * this.zoom;
-                
+                const zoomedX = pos.x * this.zoom - this._panShiftX;
+                const zoomedY = pos.y * this.zoom + this._panShiftY;
+
                 const x = (zoomedX + 1) * this.widthPx / 2 + 5
                 const y = (-zoomedY + 1) * this.heightPx / 2 - 5
                 this.ctx.fillText(this.nightSky.starField.commonNames[HR], x, y)
@@ -151,9 +175,9 @@ export class CNodeDisplaySkyOverlay extends CNodeViewUI {
             this.ctx.fillStyle = planet.color;
 
             if (pos.z > -1 && pos.z < 1 && pos.x >= -1 && pos.x <= 1 && pos.y >= -1 && pos.y <= 1) {
-                const zoomedX = pos.x * this.zoom;
-                const zoomedY = pos.y * this.zoom;
-                
+                const zoomedX = pos.x * this.zoom - this._panShiftX;
+                const zoomedY = pos.y * this.zoom + this._panShiftY;
+
                 const x = (zoomedX + 1) * this.widthPx / 2 + 5
                 const y = (-zoomedY + 1) * this.heightPx / 2 - 5
                 this.ctx.fillText(name, x, y)
@@ -172,6 +196,7 @@ export class CNodeDisplaySkyOverlay extends CNodeViewUI {
         if (this.camera.renderedFOV) {
             camera.fov = this.camera.renderedFOV;
         }
+        camera.zoom = 1;
         camera.aspect = this.widthPx / this.heightPx;
         this.applyCameraOffset(camera);
         camera.updateMatrix();
@@ -218,7 +243,7 @@ export class CNodeDisplaySkyOverlay extends CNodeViewUI {
             
             if (!isInsideFrustum) {
                 if (satScreenPos.x < -1) {
-                    const zoomedX = satScreenPos.x * this.zoom;
+                    const zoomedX = satScreenPos.x * this.zoom - this._panShiftX;
                     const pixelX = (zoomedX + 1) * this.widthPx / 2;
                     const offscreenPixels = -pixelX;
                     if (offscreenPixels > 30 * 16) {
@@ -252,9 +277,9 @@ export class CNodeDisplaySkyOverlay extends CNodeViewUI {
             const sat = satData[candidates[i].index];
             const screenPos = candidates[i].screenPos;
 
-            const zoomedX = screenPos.x * this.zoom;
-            const zoomedY = screenPos.y * this.zoom;
-            
+            const zoomedX = screenPos.x * this.zoom - this._panShiftX;
+            const zoomedY = screenPos.y * this.zoom + this._panShiftY;
+
             const x = (zoomedX + 1) * this.widthPx / 2 + 5
             const y = (-zoomedY + 1) * this.heightPx / 2 - 5
 
@@ -273,6 +298,7 @@ export class CNodeDisplaySkyOverlay extends CNodeViewUI {
         if (this.camera.renderedFOV) {
             camera.fov = this.camera.renderedFOV;
         }
+        camera.zoom = 1;
         camera.aspect = this.widthPx / this.heightPx;
         this.applyCameraOffset(camera);
         camera.updateMatrix();
@@ -299,8 +325,8 @@ export class CNodeDisplaySkyOverlay extends CNodeViewUI {
             const screenPos = pos.clone().project(camera);
             if (screenPos.z < -1 || screenPos.z > 1) continue;
 
-            const zoomedX = screenPos.x * this.zoom;
-            const zoomedY = screenPos.y * this.zoom;
+            const zoomedX = screenPos.x * this.zoom - this._panShiftX;
+            const zoomedY = screenPos.y * this.zoom + this._panShiftY;
             if (zoomedX < -1.5 || zoomedX > 1.5 || zoomedY < -1.5 || zoomedY > 1.5) continue;
 
             const altitude = calculateAltitude(label.textPosition);
