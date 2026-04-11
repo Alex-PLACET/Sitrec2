@@ -122,7 +122,13 @@ jobs:
           DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}
+          # The labels: and annotations: inputs are independent in metadata-action —
+          # labels: only affects the labels output, annotations: only affects the
+          # annotations output. GHCR reads description from annotations, so it must
+          # be overridden via the annotations: input too.
           labels: |
+            org.opencontainers.image.description=Sitrec (${{ matrix.platform }})
+          annotations: |
             org.opencontainers.image.description=Sitrec (${{ matrix.platform }})
 
       - name: Build and push (single-arch)
@@ -294,6 +300,8 @@ jobs:
             type=semver,pattern={{version}}
             ${{ steps.check-latest.outputs.is_latest == 'true' && 'type=raw,value=latest' || '' }}
           labels: |
+            org.opencontainers.image.description=Sitrec (multi-arch)
+          annotations: |
             org.opencontainers.image.description=Sitrec (multi-arch)
 
       - name: Create and push multi-arch manifest
