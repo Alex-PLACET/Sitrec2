@@ -91,8 +91,10 @@ case "${1:-help}" in
 
         # Fetch tags, filter to version numbers, sort newest first
         AUTH_HDR="Authorization: Bearer $TOKEN"
+        # ?n=1000 bypasses GHCR's default 100-tag page; build-* tags otherwise
+        # crowd the page and truncate the newest version tags from the list.
         TAGS=$(curl -sf -H "$AUTH_HDR" \
-            "https://ghcr.io/v2/mickwest/sitrec2/tags/list" \
+            "https://ghcr.io/v2/mickwest/sitrec2/tags/list?n=1000" \
             | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
