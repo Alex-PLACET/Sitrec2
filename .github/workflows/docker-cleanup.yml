@@ -1,20 +1,107 @@
 name: Cleanup container images
 
-# Delete old untagged GHCR versions (orphaned digests from multi-arch builds).
-# Runs weekly and can be triggered manually.
+# Weekly sweep of old GHCR container versions. Three cleanup passes run in order:
+#
+#   1. Delete leftover build-<arch>-<sha> tags. These are per-commit single-platform
+#      images created during release builds; docker.yml's manifest job deletes them
+#      after assembling the multi-arch index, but some linger from workflow_dispatch
+#      runs and any builds that failed before reaching that cleanup step.
+#
+#   2. Delete old semver versions beyond the newest 30. The 'latest' tag is
+#      implicitly preserved because it always points at the newest semver, which
+#      stays in the kept set.
+#
+#   3. Delete orphaned untagged manifests (platform children and SLSA provenance
+#      attestations from deleted indexes), keeping the 10 newest for safety.
+#
+# Manual trigger accepts dry_run=true to preview steps 1 and 2 without deleting.
 
 on:
   schedule:
     - cron: '0 3 * * 0'  # Sunday 3am UTC
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Preview deletions without actually deleting'
+        type: boolean
+        default: false
 
 jobs:
   cleanup:
     runs-on: ubuntu-latest
     permissions:
       packages: write
+    env:
+      PKG: sitrec2
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
     steps:
-      - uses: actions/delete-package-versions@v5
+      - name: Prune leftover build-<arch>-<sha> tags
+        run: |
+          # Any version tagged build-amd64-* or build-arm64-* is per-commit CI
+          # debris — nothing else references it, so delete the whole version.
+          ALL=$(gh api "/user/packages/container/${PKG}/versions" --paginate | jq -s 'add')
+          mapfile -t VIDS < <(
+            echo "$ALL" | jq -r '
+              .[]
+              | . as $v
+              | (.metadata.container.tags // []) as $tags
+              | select($tags | map(test("^build-(amd64|arm64)-")) | any)
+              | "\($v.id) \($tags | join(","))"
+            '
+          )
+          echo "Found ${#VIDS[@]} build-* version(s)"
+          for line in "${VIDS[@]}"; do
+            vid="${line%% *}"
+            tags="${line#* }"
+            echo "  version ${vid}  tags=${tags}"
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "    (dry run — skipped)"
+            else
+              gh api --method DELETE "/user/packages/container/${PKG}/versions/${vid}"
+            fi
+          done
+
+      - name: Prune old semver versions (keep newest 30)
+        run: |
+          KEEP=30
+          # Build a list of {id, parts} for every version that has a semver tag,
+          # sort by version parts descending, then slice off the top KEEP and
+          # emit the rest as deletion candidates. 'latest' sits on the newest
+          # semver version, which is always in the kept set.
+          ALL=$(gh api "/user/packages/container/${PKG}/versions" --paginate | jq -s 'add')
+          mapfile -t OLD < <(
+            echo "$ALL" | jq -r --argjson keep "$KEEP" '
+              [
+                .[]
+                | . as $v
+                | (.metadata.container.tags // []) as $tags
+                | ($tags | map(select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$")))) as $semvers
+                | select(($semvers | length) > 0)
+                | {id: $v.id, tag: $semvers[0], parts: ($semvers[0] | split(".") | map(tonumber))}
+              ]
+              | sort_by(.parts)
+              | reverse
+              | .[$keep:]
+              | .[]
+              | "\(.id) \(.tag)"
+            '
+          )
+          echo "Found ${#OLD[@]} old semver version(s) to delete (keeping newest ${KEEP})"
+          for line in "${OLD[@]}"; do
+            vid="${line%% *}"
+            tag="${line#* }"
+            echo "  version ${vid}  tag=${tag}"
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "    (dry run — skipped)"
+            else
+              gh api --method DELETE "/user/packages/container/${PKG}/versions/${vid}"
+            fi
+          done
+
+      - name: Prune untagged manifests (keep newest 10)
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        uses: actions/delete-package-versions@v5
         with:
           package-name: 'sitrec2'
           package-type: 'container'
