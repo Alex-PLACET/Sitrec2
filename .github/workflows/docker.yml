@@ -115,8 +115,21 @@ jobs:
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v6
+        env:
+          # GHCR's package-version UI reads org.opencontainers.image.description
+          # from manifest *annotations*, not image config labels. Emit annotations
+          # at the manifest level so each per-platform sha256 row gets a description.
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}
+          # The labels: and annotations: inputs are independent in metadata-action —
+          # labels: only affects the labels output, annotations: only affects the
+          # annotations output. GHCR reads description from annotations, so it must
+          # be overridden via the annotations: input too.
+          labels: |
+            org.opencontainers.image.description=Sitrec (${{ matrix.platform }})
+          annotations: |
+            org.opencontainers.image.description=Sitrec (${{ matrix.platform }})
 
       - name: Build and push (single-arch)
         uses: docker/build-push-action@v7
@@ -127,6 +140,7 @@ jobs:
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}:build-${{ matrix.suffix }}-${{ github.sha }}
           labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
           cache-from: type=gha,scope=${{ matrix.suffix }}
           cache-to: type=gha,scope=${{ matrix.suffix }},mode=max
 
@@ -275,22 +289,43 @@ jobs:
       - name: Extract metadata (tags)
         id: meta
         uses: docker/metadata-action@v6
+        env:
+          # Index-level annotations show up on the tagged row in GHCR's UI
+          # (e.g. the "2.44.7" / "latest" entry). Consumed by imagetools create
+          # below — metadata-action emits them in "index:key=value" format.
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: index
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}
           tags: |
             type=semver,pattern={{version}}
             ${{ steps.check-latest.outputs.is_latest == 'true' && 'type=raw,value=latest' || '' }}
+          labels: |
+            org.opencontainers.image.description=Sitrec (multi-arch)
+          annotations: |
+            org.opencontainers.image.description=Sitrec (multi-arch)
 
       - name: Create and push multi-arch manifest
+        env:
+          ANNOTATIONS: ${{ steps.meta.outputs.annotations }}
         run: |
           SOURCE_AMD64="${REGISTRY}/${IMAGE_NAME_LC}:build-amd64-${GITHUB_SHA}"
           SOURCE_ARM64="${REGISTRY}/${IMAGE_NAME_LC}:build-arm64-${GITHUB_SHA}"
+
+          # Turn each "index:key=value" line from metadata-action into a
+          # --annotation flag. Passed via env var (not inline expansion)
+          # so values with special characters don't break the shell.
+          ANNOTATION_ARGS=()
+          while IFS= read -r ann; do
+            [ -z "$ann" ] && continue
+            ANNOTATION_ARGS+=(--annotation "$ann")
+          done <<< "$ANNOTATIONS"
 
           # Create a manifest for each target tag (e.g. 2.41.1, latest)
           echo '${{ steps.meta.outputs.tags }}' | while IFS= read -r tag; do
             [ -z "$tag" ] && continue
             echo "Creating manifest for: $tag"
             docker buildx imagetools create \
+              "${ANNOTATION_ARGS[@]}" \
               --tag "${tag}" \
               "${SOURCE_AMD64}" \
               "${SOURCE_ARM64}"
