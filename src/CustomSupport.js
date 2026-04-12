@@ -31,6 +31,7 @@ import {
     Globals,
     guiMenus,
     infoDiv,
+    NodeFactory,
     NodeMan,
     setNewSitchObject,
     setRenderOne,
@@ -88,6 +89,7 @@ import {CNodeOrbitTrack} from "./nodes/CNodeOrbitTrack";
 import {CNodeTrackSwitch} from "./nodes/CNodeTrackSwitch";
 import {getNearbyWeatherBalloons, importSoundingDialog} from "./SondeFetch";
 import {getCurrentLanguage, setLanguage, SUPPORTED_LANGUAGE_OPTIONS, t} from "./i18n";
+import {altFeetToLevel, levelToAltFeet} from "./nodes/CNodeDisplayWindField";
 
 export class CCustomManager {
     constructor() {
@@ -613,6 +615,113 @@ export class CCustomManager {
             .tooltip(t("custom.balloons.getNearby.tooltip"));
         balloonFolder.add(this, "_importSounding").name(t("custom.balloons.importSounding.label"))
             .tooltip(t("custom.balloons.importSounding.tooltip"));
+
+        // ── Wind Visualization subfolder under Physics ──────────────
+        this._windNode = null;
+        this._windActivated = false;
+
+        par.windSource = "GFS (NOAA)";
+        par.windAltFt = 33;       // default = surface (~10m)
+        par.windAltLabel = "Surface (~33 ft)";
+        par.windStatus = "Not activated";
+
+        const windFolder = addGUIFolder("wind", "Wind", "physics");
+
+        // Source selector — available before activation
+        this._windSourceOptions = ["GFS (NOAA)"];
+        windFolder.add(par, "windSource", this._windSourceOptions).name("Source");
+
+        // Altitude selector — available before activation
+        const altLabels = [
+            "Surface (~33 ft)",
+            "1,000 hPa (~360 ft)",
+            "925 hPa (~2,500 ft)",
+            "850 hPa (~4,800 ft)",
+            "700 hPa (~9,900 ft)",
+            "500 hPa (~18,300 ft)",
+            "300 hPa (~30,000 ft)",
+            "250 hPa (~33,800 ft)",
+            "200 hPa (~38,600 ft)",
+        ];
+        const altToLevel = {
+            "Surface (~33 ft)": "surface",
+            "1,000 hPa (~360 ft)": "1000",
+            "925 hPa (~2,500 ft)": "925",
+            "850 hPa (~4,800 ft)": "850",
+            "700 hPa (~9,900 ft)": "700",
+            "500 hPa (~18,300 ft)": "500",
+            "300 hPa (~30,000 ft)": "300",
+            "250 hPa (~33,800 ft)": "250",
+            "200 hPa (~38,600 ft)": "200",
+        };
+        windFolder.add(par, "windAltLabel", altLabels).name("Altitude").onChange(async () => {
+            // If already activated, fetch new altitude data
+            if (this._windNode) {
+                const level = altToLevel[par.windAltLabel] ?? "surface";
+                await this._windNode.fetchWindData(level);
+                par.windStatus = this._windNode.statusText;
+            }
+        });
+
+        // Status display
+        this._windStatusCtrl = windFolder.add(par, "windStatus").name("Status").listen().disable();
+
+        // Activate button
+        this._activateWindField = async () => {
+            if (this._windActivated) return;
+            this._windActivated = true;
+            par.windStatus = "Activating...";
+
+            // Create the node (lazy)
+            if (!this._windNode) {
+                this._windNode = NodeFactory.create("DisplayWindField", {id: "windField"});
+            }
+
+            // Fetch wind data for the selected altitude
+            const level = altToLevel[par.windAltLabel] ?? "surface";
+            await this._windNode.fetchWindData(level);
+
+            // Show the post-activation controls and sync status
+            this._activateBtn.hide();
+            this._showPostActivationControls(windFolder);
+            par.windStatus = this._windNode.statusText;
+        };
+        this._activateBtn = windFolder.add(this, "_activateWindField").name("Activate Wind Field");
+
+        // Deferred controls added after activation
+        this._showPostActivationControls = (folder) => {
+            const n = this._windNode;
+            if (!n) return;
+
+            folder.add(n, "visible").name("Show Wind").onChange(() => {
+                n.group.visible = n.visible;
+                setRenderOne(true);
+            }).listen();
+
+            folder.add(n, "lineOpacity", 0, 1, 0.01).name("Opacity").onChange(() => {
+                n.material.uniforms.uOpacity.value = n.lineOpacity;
+                setRenderOne(true);
+            });
+
+            folder.add(n, "seedSpacing", 1, 10, 0.5).name("Spacing (\u00b0)").onChange(() => {
+                n.rebuildStreamlines();
+                setRenderOne(true);
+            });
+
+            folder.add(n, "maxWindSpeed", 5, 80, 1).name("Max Speed (m/s)").onChange(() => {
+                n.material.uniforms.uMaxSpeed.value = n.maxWindSpeed;
+                setRenderOne(true);
+            });
+
+            // Re-fetch button
+            const refetch = async () => {
+                const level = altToLevel[par.windAltLabel] ?? "surface";
+                await n.fetchWindData(level);
+                par.windStatus = n.statusText;
+            };
+            folder.add({refetch}, "refetch").name("Refresh Wind Data");
+        };
+        // ── end Wind ────────────────────────────────────────────────
 
         toggler('k', guiMenus.help.add(par, 'showKeyboardShortcuts').listen().name(t("custom.showHide.keyboardShortcuts.label")).onChange(value => {
             if (value) {
