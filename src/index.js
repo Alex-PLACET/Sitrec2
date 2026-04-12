@@ -188,21 +188,43 @@ console.log ("SITREC START " + process.env.BUILD_VERSION_STRING);
 
 // Check for stale cached index.html by comparing built-in version with server version
 if (typeof window !== 'undefined') {
+    // Parse "Sitrec X.Y.Z: YY-MM-DD HH:MM PT" into comparable components
+    function parseVersionString(s) {
+        const m = s.match(/Sitrec\s+(\d+)\.(\d+)\.(\d+):\s+(\d+)-(\d+)-(\d+)\s+(\d+):(\d+)/);
+        if (!m) return null;
+        return [parseInt(m[1]), parseInt(m[2]), parseInt(m[3]),
+                parseInt(m[4]), parseInt(m[5]), parseInt(m[6]),
+                parseInt(m[7]), parseInt(m[8])];
+    }
+
+    // Returns true only if server version is strictly newer than running version
+    function isNewerVersion(serverStr, runningStr) {
+        const server = parseVersionString(serverStr);
+        const running = parseVersionString(runningStr);
+        if (!server || !running) return false;
+        for (let i = 0; i < server.length; i++) {
+            if (server[i] !== running[i]) return server[i] > running[i];
+        }
+        return false;
+    }
+
     fetch('build-version.txt', { cache: 'no-store' })
         .then(r => r.ok ? r.text() : null)
         .then(serverVersion => {
-            if (serverVersion && serverVersion.trim() !== process.env.BUILD_VERSION_STRING) {
-                console.warn("Stale build detected! Running: " + process.env.BUILD_VERSION_STRING
-                    + " Server has: " + serverVersion.trim());
-                // When MCP bridge is connected, skip the dialog (just log the warning)
-                if (window._mcpDebug) return;
-                if (confirm("A newer version of Sitrec is available.\n\n"
-                    + "Running: " + process.env.BUILD_VERSION_STRING + "\n"
-                    + "Available: " + serverVersion.trim() + "\n\n"
-                    + "This may indicate a server caching issue — please report it to the admin.\n\n"
-                    + "Reload to update?")) {
-                    window.location.reload();
-                }
+            if (!serverVersion) return;
+            const server = serverVersion.trim();
+            const running = process.env.BUILD_VERSION_STRING;
+            if (server === running) return;
+            console.warn("Version mismatch — Running: " + running + " | Server: " + server);
+            if (!isNewerVersion(server, running)) return;
+            // When MCP bridge is connected, skip the dialog (just log the warning)
+            if (window._mcpDebug) return;
+            if (confirm("A newer version of Sitrec is available.\n\n"
+                + "Running: " + running + "\n"
+                + "Available: " + server + "\n\n"
+                + "This may indicate a server caching issue — please report it to the admin.\n\n"
+                + "Reload to update?")) {
+                window.location.reload();
             }
         })
         .catch(() => {}); // silently ignore if file not available

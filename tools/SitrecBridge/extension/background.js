@@ -17,7 +17,7 @@
  *   to the server, which replaces the existing connection).
  */
 
-const WS_URL = "ws://localhost:9780";
+const WS_URL = "ws://127.0.0.1:9780";
 const RECONNECT_INTERVAL_MS = 3000;
 const MAX_RECONNECT_INTERVAL_MS = 30000;
 const KEEPALIVE_ALARM_NAME = "sitrec-bridge-keepalive";

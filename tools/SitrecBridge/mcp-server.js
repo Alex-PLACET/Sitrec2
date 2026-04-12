@@ -35,7 +35,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const WS_PORT = parseInt(process.env.SITREC_BRIDGE_PORT || "9780", 10);
-const WS_HOST = "127.0.0.1"; // Localhost only — avoids macOS firewall EPERM on 0.0.0.0
+const WS_HOST = process.env.SITREC_BRIDGE_HOST || "127.0.0.1"; // Localhost only — avoids macOS firewall EPERM on 0.0.0.0; override with 0.0.0.0 in Docker
 const SITREC_CWD = process.cwd(); // Used to auto-match this MCP session to the correct Sitrec tab
 
 // Protocol version — bump when the wire format changes (e.g., adding _cwd).
@@ -489,12 +489,14 @@ function relayPeerRequest(peerSocket, msg) {
 
 // ── Secondary Mode ──────────────────────────────────────────────────────────
 
-function startAsSecondary(port) {
+function startAsSecondary(port, peerHost) {
     mode = "secondary";
-    log(`Secondary: Connecting to primary on ws://localhost:${port}`);
+    const connectHost = peerHost || "127.0.0.1";
+    const isForcedPeer = !!peerHost; // forced peers don't try to promote
+    log(`Secondary: Connecting to primary on ws://${connectHost}:${port}${isForcedPeer ? " (forced peer)" : ""}`);
 
     function connect() {
-        primarySocket = new WebSocket(`ws://localhost:${port}`);
+        primarySocket = new WebSocket(`ws://${connectHost}:${port}`);
 
         let primaryVersionConfirmed = false;
 
@@ -543,7 +545,6 @@ function startAsSecondary(port) {
         });
 
         primarySocket.on("close", () => {
-            log("Secondary: Disconnected from primary — attempting promotion...");
             primarySocket = null;
             // Reject all pending
             for (const [id, { reject, timer }] of pendingRequests) {
@@ -551,17 +552,30 @@ function startAsSecondary(port) {
                 reject(new Error("Primary server disconnected"));
             }
             pendingRequests.clear();
-            // Try to become primary; if another peer already did, reconnect as secondary
-            // Random jitter (300-800ms) to avoid multiple secondaries racing
-            setTimeout(tryPromote, 300 + Math.random() * 500);
+            if (isForcedPeer) {
+                // Forced peers reconnect instead of promoting (promotion inside a
+                // Docker container is useless — no extension would connect to it)
+                log("Secondary: Disconnected from primary — reconnecting in 3s...");
+                setTimeout(connect, 3000);
+            } else {
+                log("Secondary: Disconnected from primary — attempting promotion...");
+                // Try to become primary; if another peer already did, reconnect as secondary
+                // Random jitter (300-800ms) to avoid multiple secondaries racing
+                setTimeout(tryPromote, 300 + Math.random() * 500);
+            }
         });
 
         primarySocket.on("error", (err) => {
-            // Connection refused means no primary — try to promote
+            // Connection refused means no primary — try to promote (or reconnect for forced peers)
             if (err.code === "ECONNREFUSED") {
-                log("Secondary: Primary not reachable — attempting promotion...");
                 primarySocket = null;
-                setTimeout(tryPromote, 300 + Math.random() * 500);
+                if (isForcedPeer) {
+                    log("Secondary: Primary not reachable — retrying in 3s...");
+                    setTimeout(connect, 3000);
+                } else {
+                    log("Secondary: Primary not reachable — attempting promotion...");
+                    setTimeout(tryPromote, 300 + Math.random() * 500);
+                }
                 return;
             }
             log("Secondary: Connection error:", err.message);
@@ -661,10 +675,10 @@ function findListeningPids(port) {
  * Probe a WebSocket server with a health check. Returns true if it responds
  * with a valid protocol-version within the timeout.
  */
-function probeServer(port, timeoutMs = 3000) {
+function probeServer(port, timeoutMs = 3000, host = "127.0.0.1") {
     return new Promise((resolve) => {
         const timer = setTimeout(() => { ws.close(); resolve(false); }, timeoutMs);
-        const ws = new WebSocket(`ws://localhost:${port}`);
+        const ws = new WebSocket(`ws://${host}:${port}`);
         ws.on("open", () => {
             ws.send(JSON.stringify({ type: "peer", version: PROTOCOL_VERSION }));
         });
@@ -684,6 +698,23 @@ function probeServer(port, timeoutMs = 3000) {
 }
 
 async function start() {
+    // Peer mode (e.g., Docker sandbox connecting to host's primary via host.docker.internal).
+    // If the peer is reachable, join as secondary. Otherwise fall back to standalone primary
+    // so the extension can connect directly (requires Docker port forwarding for -p 9780:9780).
+    const peerHost = process.env.SITREC_BRIDGE_PEER;
+    if (peerHost) {
+        log(`Peer mode: probing ${peerHost}:${WS_PORT}...`);
+        const peerReachable = await probeServer(WS_PORT, 3000, peerHost);
+        if (peerReachable) {
+            log(`Peer mode: host primary reachable — joining as secondary`);
+            startAsSecondary(WS_PORT, peerHost);
+        } else {
+            log(`Peer mode: host primary not reachable — starting as standalone primary on 0.0.0.0:${WS_PORT}`);
+            startAsPrimary(WS_PORT);
+        }
+        return;
+    }
+
     // Try to bind the port. If it fails with EADDRINUSE, check if the existing
     // server is healthy before joining as secondary.
     const testServer = new WebSocketServer({ host: WS_HOST, port: WS_PORT });
