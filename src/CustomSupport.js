@@ -703,7 +703,7 @@ export class CCustomManager {
                 setRenderOne(true);
             });
 
-            folder.add(n, "seedSpacing", 1, 10, 0.5).name("Spacing (\u00b0)").onChange(() => {
+            folder.add(n, "seedSpacing", 1.5, 10, 0.5).name("Spacing (\u00b0)").onChange(() => {
                 n.rebuildStreamlines();
                 setRenderOne(true);
             });
@@ -4756,6 +4756,14 @@ export class CCustomManager {
      * @returns {Promise} - Promise that resolves when all mods are applied and pending actions are complete
      */
     async deserializeMods(mods) {
+        // If wind field mod exists, auto-create the node before standard deserialization
+        if (mods.windField && !NodeMan.exists("windField")) {
+            this._windActivated = true;
+            this._windNode = NodeFactory.create("DisplayWindField", {id: "windField"});
+            if (this._activateBtn) this._activateBtn.hide();
+            if (guiMenus.wind) this._showPostActivationControls(guiMenus.wind);
+        }
+
         const deprecatedIds = {
             // Typo fix retained for backward compatibility with existing saved sitches.
             "angelsSwitch": "anglesSwitch",

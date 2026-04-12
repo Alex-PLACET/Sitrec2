@@ -5,7 +5,8 @@
 import {CNode3DGroup} from "./CNode3DGroup";
 import {LLAToECEF} from "../LLA-ECEF-ENU";
 import {sharedUniforms} from "../js/map33/material/SharedUniforms";
-import {GlobalDateTimeNode, Sit} from "../Globals";
+import {FileManager, GlobalDateTimeNode, Sit} from "../Globals";
+import pako from "pako";
 import * as LAYER from "../LayerMasks";
 import {
     BufferAttribute, BufferGeometry, LineSegments,
@@ -104,7 +105,7 @@ export class CNodeDisplayWindField extends CNode3DGroup {
         // GUI is created externally (from CustomSupport.js)
         // — the node just exposes the properties and methods
 
-        this.simpleSerials.push("visible", "seedSpacing", "lineOpacity",
+        this.simpleSerials.push("seedSpacing", "lineOpacity",
             "flowSpeed", "numDashes", "maxWindSpeed", "renderAltitude");
 
         // Add to Show/Hide menu
@@ -218,16 +219,15 @@ export class CNodeDisplayWindField extends CNode3DGroup {
         let lineIndex = 0;
 
         // 4-level LOD: coarse seeds always visible, finer seeds fade in near camera
-        //   LOD 0: spacing × 2   (always visible)
-        //   LOD 1: spacing × 1   (visible within ~15,000 km)
-        //   LOD 2: spacing × 0.5 (visible within ~8,000 km)
-        //   LOD 3: spacing × 0.25 (visible within ~4,000 km)
-        const baseSpacing = this.seedSpacing;
-        const spacings = [baseSpacing * 2, baseSpacing, baseSpacing * 0.5, baseSpacing * 0.25];
+        // Clamp finest spacing to 0.375° to keep vertex count under ~25M
+        const baseSpacing = Math.max(this.seedSpacing, 0.75);
+        const spacings = [baseSpacing * 2, baseSpacing, baseSpacing * 0.5];
+        const finest = baseSpacing * 0.25;
+        if (finest >= 0.375) spacings.push(finest);
 
         // Track which grid cells already have a seed from a coarser level
         const seeded = new Set();
-        const finest = spacings[spacings.length - 1];
+        const finestSpacing = spacings[spacings.length - 1];
 
         for (let lod = 0; lod < spacings.length; lod++) {
             const sp = spacings[lod];
@@ -236,8 +236,8 @@ export class CNodeDisplayWindField extends CNode3DGroup {
                 const lonOff = (row % 2) ? sp * 0.5 : 0;
                 for (let lon0 = 0; lon0 < 360; lon0 += sp) {
                     // Quantise to the finest grid cell to de-duplicate across LOD levels
-                    const qLat = Math.round(lat0 / finest);
-                    const qLon = Math.round(lon0 / finest);
+                    const qLat = Math.round(lat0 / finestSpacing);
+                    const qLon = Math.round(lon0 / finestSpacing);
                     const key = qLat * 100000 + qLon;
                     if (seeded.has(key)) continue;
                     seeded.add(key);
@@ -300,10 +300,7 @@ export class CNodeDisplayWindField extends CNode3DGroup {
             if (json.error) throw new Error(json.error);
             if (!json.u || !json.v) throw new Error("Missing u/v arrays");
 
-            this.setGridParams(json.nx, json.ny, json.lon0, json.lat0, json.dlon, json.dlat);
-            this.windU = new Float32Array(json.u);
-            this.windV = new Float32Array(json.v);
-            this.dataSource = json.source ?? "GFS";
+            this._applyWindJSON(json);
             this.windLevel = level;
 
             // Auto-scale render altitude based on data level
@@ -313,6 +310,12 @@ export class CNodeDisplayWindField extends CNode3DGroup {
             this.rebuildStreamlines();
             setRenderOne(true);
 
+            // Compute the server-side cache URL from the response metadata
+            const refDate = (json.refTime ?? "").replace(/[-T:Z]/g, "").slice(0, 8);
+            const refHour = (json.refTime ?? "").slice(11, 13);
+            this._lastCacheUrl = `data/wind/wind_${refDate || dateStr}_${refHour || hour}z_${json.level ?? "10m"}.json`;
+            this._storeWindFile();  // store in FileManager for serialization
+
             this.statusText = `GFS ${json.refTime?.slice(0, 10) ?? dateStr} ${levelLabel}`;
             console.log(`Wind loaded: ${json.nx}x${json.ny} from ${json.source}`);
         } catch (err) {
@@ -320,6 +323,99 @@ export class CNodeDisplayWindField extends CNode3DGroup {
             this.statusText = `Error: ${err.message}`;
         } finally {
             this.fetching = false;
+        }
+    }
+
+    // ── apply wind JSON and store for serialization ────────────────
+    _applyWindJSON(json) {
+        this.setGridParams(json.nx, json.ny, json.lon0, json.lat0, json.dlon, json.dlat);
+        this.windU = new Float32Array(json.u);
+        this.windV = new Float32Array(json.v);
+        this.dataSource = json.source ?? "GFS";
+        this._lastWindJSON = json;   // keep for serialization
+    }
+
+    // Store wind data as a compressed file in FileManager for sitch serialization
+    _storeWindFile() {
+        if (!this._lastWindJSON) return;
+        const jsonStr = JSON.stringify(this._lastWindJSON);
+        const compressed = pako.deflate(jsonStr);
+        const src = (this._lastWindJSON.source ?? "GFS").replace(/[^a-zA-Z0-9]/g, "");
+        const fileId = `windGridData_${src}`;
+        this._windFileId = fileId;
+
+        // Remove existing entry first to avoid "adding twice" assert
+        if (FileManager.list[fileId]) {
+            delete FileManager.list[fileId];
+        }
+        FileManager.add(fileId, this._lastWindJSON, compressed.buffer);
+        const entry = FileManager.list[fileId];
+        entry.dynamicLink = true;
+        entry.dataType = "windGrid";
+        entry.filename = `wind-${src}-grid-data.json.deflate`;
+        entry.compressed = true;
+        if (this._lastCacheUrl) {
+            entry.staticURL = this._lastCacheUrl;
+            entry.localStaticURL = this._lastCacheUrl;
+        }
+    }
+
+    // Decompress and parse wind data from a FileManager entry
+    static _parseWindEntry(entry) {
+        // Already parsed JSON object
+        if (entry.data && entry.data.u && entry.data.v) return entry.data;
+        // Compressed ArrayBuffer
+        if (entry.original) {
+            try {
+                const decompressed = pako.inflate(new Uint8Array(entry.original), {to: "string"});
+                return JSON.parse(decompressed);
+            } catch (e) {
+                // Not compressed — try as plain JSON text
+                const text = new TextDecoder().decode(entry.original);
+                return JSON.parse(text);
+            }
+        }
+        return null;
+    }
+
+    modSerialize() {
+        this._storeWindFile();
+
+        return {
+            ...super.modSerialize(),
+            windLevel: this.windLevel,
+            windCacheUrl: this._lastCacheUrl ?? null,
+            windFileId: this._windFileId ?? null,
+            hasWindData: !!this._lastWindJSON,
+        };
+    }
+
+    async modDeserialize(v) {
+        super.modDeserialize(v);
+
+        if (v.windCacheUrl) this._lastCacheUrl = v.windCacheUrl;
+
+        const fileId = v.windFileId ?? "windGridData";
+        if (v.hasWindData && FileManager.list[fileId]) {
+            const json = CNodeDisplayWindField._parseWindEntry(FileManager.list[fileId]);
+            if (json && json.u && json.v) {
+                this._applyWindJSON(json);
+                this.windLevel = v.windLevel ?? "surface";
+
+                const altFt = levelToAltFeet(this.windLevel);
+                this.renderAltitude = Math.max(500, altFt * 0.3048 * 0.3);
+
+                // Re-store in FileManager with correct URLs for re-saving
+                this._storeWindFile();
+
+                this.rebuildStreamlines();
+                setRenderOne(true);
+
+                const levelLabel = this.windLevel === "surface" ? "10m / Surface"
+                    : `${this.windLevel} hPa (~${levelToAltFeet(this.windLevel).toLocaleString()} ft)`;
+                this.statusText = `GFS ${json.refTime ?? "?"} ${levelLabel}`;
+                console.log("Wind data restored from saved file");
+            }
         }
     }
 
