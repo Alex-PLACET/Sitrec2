@@ -213,13 +213,21 @@ for t in tags:
         done <<< "$TAGS"
 
         echo ""
-        printf "Enter number to switch (or press Enter to cancel): "
-        read -r choice
+        printf "Enter number to switch (or press Enter/Esc to cancel): "
 
-        if [ -z "$choice" ]; then
+        # Read first character silently so we can detect Escape (\x1b)
+        read -rsn1 first_char
+
+        if [[ "$first_char" == $'\x1b' ]] || [[ -z "$first_char" ]]; then
+            echo ""
             echo "[sitrec] Cancelled."
             exit 0
         fi
+
+        # Echo the typed character, then read the rest of the line normally
+        echo -n "$first_char"
+        read -r rest
+        choice="${first_char}${rest}"
 
         # Get the selected tag
         SELECTED=$(echo "$TAGS" | sed -n "${choice}p")
