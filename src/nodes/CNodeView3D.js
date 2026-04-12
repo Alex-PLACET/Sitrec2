@@ -1770,6 +1770,16 @@ export class CNodeView3D extends CNodeViewCanvas {
             // but uses the same camera
             this.preRenderCameraUpdate()
 
+            // preRenderCameraUpdate() resets camera.aspect to the full viewport
+            // aspect ratio. If matchVideoAspect is active, restore the corrected
+            // FOV and aspect so the celestial sphere renders with the same
+            // projection as the main scene.
+            if (this._matchVideoAspectFOV !== undefined) {
+                this.camera.fov = this._matchVideoAspectFOV;
+                this.camera.aspect = this._matchVideoAspectAspect;
+                this.camera.updateProjectionMatrix();
+            }
+
             // // scale the sprites one for each viewport
             const nightSkyNode = NodeMan.get("NightSkyNode")
             if (nightSkyNode?.syncPlanetSpritesToObserver) {
