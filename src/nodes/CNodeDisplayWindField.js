@@ -93,12 +93,12 @@ export class CNodeDisplayWindField extends CNode3DGroup {
             vertexShader: VERT,
             fragmentShader: FRAG,
             transparent: true,
-            depthTest: true,
+            depthTest: false,
             depthWrite: false,
         });
 
-        // visible on main view
-        this.group.layers.mask = LAYER.MASK_MAINRENDER;
+        // visible in main view only (not look view)
+        this.group.layers.mask = LAYER.MASK_MAIN;
         this.propagateLayerMask();
 
         // GUI is created externally (from CustomSupport.js)
@@ -153,7 +153,57 @@ export class CNodeDisplayWindField extends CNode3DGroup {
         this.gridDLon = dlon; this.gridDLat = dlat;
     }
 
-    // ── streamline geometry ──────────────────────────────────────────
+    // ── trace one streamline, appending vertices to the output arrays ──
+    _traceStreamline(seedLat, seedLon, lodLevel, lineIndex, alt, center, out) {
+        const steps = this.steps;
+        const dt    = this.dtSeconds;
+        const minSpd = this.minSpeedCutoff;
+
+        let cLat = seedLat, cLon = seedLon;
+        const pts = [];
+        const spds = [];
+
+        for (let s = 0; s <= steps; s++) {
+            const w = this.sampleWind(cLat, cLon);
+            const speed = Math.sqrt(w.u * w.u + w.v * w.v);
+            if (speed < minSpd && s === 0) return lineIndex;
+
+            const ecef = LLAToECEF(cLat, cLon, alt);
+            pts.push(ecef.x - center.x, ecef.y - center.y, ecef.z - center.z);
+            spds.push(speed);
+
+            if (s < steps && speed >= minSpd) {
+                const cosLat = Math.cos(cLat * DEG);
+                if (Math.abs(cosLat) < 0.01) break;
+                cLat += (w.v * dt / R_EARTH) / DEG;
+                cLon += (w.u * dt / (R_EARTH * cosLat)) / DEG;
+                cLat = Math.max(-89, Math.min(89, cLat));
+                cLon = ((cLon % 360) + 360) % 360;
+            }
+        }
+
+        if (pts.length < 6) return lineIndex;
+
+        const nPts = pts.length / 3;
+        const lineId = (lineIndex * 0.6180339887) % 1.0;
+
+        for (let s = 0; s < nPts - 1; s++) {
+            const t0 = s / (nPts - 1);
+            const t1 = (s + 1) / (nPts - 1);
+            const speed = (spds[s] + spds[s + 1]) * 0.5;
+            const base = s * 3;
+
+            out.pos.push(pts[base], pts[base + 1], pts[base + 2]);
+            out.pos.push(pts[base + 3], pts[base + 4], pts[base + 5]);
+            out.prog.push(t0, t1);
+            out.id.push(lineId, lineId);
+            out.spd.push(speed, speed);
+            out.lod.push(lodLevel, lodLevel);
+        }
+        return lineIndex + 1;
+    }
+
+    // ── streamline geometry with multi-LOD ───────────────────────────
     rebuildStreamlines() {
         if (this.linesMesh) {
             this.group.remove(this.linesMesh);
@@ -162,87 +212,68 @@ export class CNodeDisplayWindField extends CNode3DGroup {
         }
         if (!this.windU) return;
 
-        const spacing = this.seedSpacing;
-        const steps   = this.steps;
-        const dt      = this.dtSeconds;
-        const alt     = this.renderAltitude;
-        const minSpd  = this.minSpeedCutoff;
-
-        const posArr  = [];
-        const progArr = [];
-        const idArr   = [];
-        const spdArr  = [];
-
-        let lineIndex = 0;
+        const alt    = this.renderAltitude;
         const center = LLAToECEF(0, 0, alt);
+        const out    = {pos: [], prog: [], id: [], spd: [], lod: []};
+        let lineIndex = 0;
 
-        for (let lat0 = -85; lat0 <= 85; lat0 += spacing) {
-            const row = Math.round((lat0 + 85) / spacing);
-            const lonOffset = (row % 2) ? spacing * 0.5 : 0;
-            for (let lon0 = 0; lon0 < 360; lon0 += spacing) {
-                const jHash = Math.sin(lat0 * 127.1 + lon0 * 311.7) * 43758.5453;
-                const jitter = (jHash - Math.floor(jHash)) * spacing * 0.4;
-                let cLat = lat0 + jitter * 0.3;
-                let cLon = lon0 + lonOffset + jitter;
+        // 4-level LOD: coarse seeds always visible, finer seeds fade in near camera
+        //   LOD 0: spacing × 2   (always visible)
+        //   LOD 1: spacing × 1   (visible within ~15,000 km)
+        //   LOD 2: spacing × 0.5 (visible within ~8,000 km)
+        //   LOD 3: spacing × 0.25 (visible within ~4,000 km)
+        const baseSpacing = this.seedSpacing;
+        const spacings = [baseSpacing * 2, baseSpacing, baseSpacing * 0.5, baseSpacing * 0.25];
 
-                const pts = [];
-                const spds = [];
+        // Track which grid cells already have a seed from a coarser level
+        const seeded = new Set();
+        const finest = spacings[spacings.length - 1];
 
-                for (let s = 0; s <= steps; s++) {
-                    const w = this.sampleWind(cLat, cLon);
-                    const speed = Math.sqrt(w.u * w.u + w.v * w.v);
-                    if (speed < minSpd && s === 0) break;
+        for (let lod = 0; lod < spacings.length; lod++) {
+            const sp = spacings[lod];
+            for (let lat0 = -85; lat0 <= 85; lat0 += sp) {
+                const row = Math.round((lat0 + 85) / sp);
+                const lonOff = (row % 2) ? sp * 0.5 : 0;
+                for (let lon0 = 0; lon0 < 360; lon0 += sp) {
+                    // Quantise to the finest grid cell to de-duplicate across LOD levels
+                    const qLat = Math.round(lat0 / finest);
+                    const qLon = Math.round(lon0 / finest);
+                    const key = qLat * 100000 + qLon;
+                    if (seeded.has(key)) continue;
+                    seeded.add(key);
 
-                    const ecef = LLAToECEF(cLat, cLon, alt);
-                    pts.push(ecef.x - center.x, ecef.y - center.y, ecef.z - center.z);
-                    spds.push(speed);
+                    // Jitter
+                    const jHash = Math.sin(lat0 * 127.1 + lon0 * 311.7) * 43758.5453;
+                    const jitter = (jHash - Math.floor(jHash)) * sp * 0.4;
+                    const sLat = lat0 + jitter * 0.3;
+                    const sLon = lon0 + lonOff + jitter;
 
-                    if (s < steps && speed >= minSpd) {
-                        const cosLat = Math.cos(cLat * DEG);
-                        if (Math.abs(cosLat) < 0.01) break;
-                        cLat += (w.v * dt / R_EARTH) / DEG;
-                        cLon += (w.u * dt / (R_EARTH * cosLat)) / DEG;
-                        cLat = Math.max(-89, Math.min(89, cLat));
-                        cLon = ((cLon % 360) + 360) % 360;
-                    }
+                    lineIndex = this._traceStreamline(sLat, sLon, lod, lineIndex, alt, center, out);
                 }
-
-                if (pts.length < 6) continue;
-
-                const nPts = pts.length / 3;
-                const lineId = (lineIndex * 0.6180339887) % 1.0;
-
-                for (let s = 0; s < nPts - 1; s++) {
-                    const t0 = s / (nPts - 1);
-                    const t1 = (s + 1) / (nPts - 1);
-                    const speed = (spds[s] + spds[s + 1]) * 0.5;
-                    const base = s * 3;
-
-                    posArr.push(pts[base], pts[base + 1], pts[base + 2]);
-                    posArr.push(pts[base + 3], pts[base + 4], pts[base + 5]);
-                    progArr.push(t0, t1);
-                    idArr.push(lineId, lineId);
-                    spdArr.push(speed, speed);
-                }
-                lineIndex++;
             }
         }
 
-        if (posArr.length === 0) return;
+        if (out.pos.length === 0) return;
 
         const geom = new BufferGeometry();
-        geom.setAttribute("position",     new BufferAttribute(new Float32Array(posArr),  3));
-        geom.setAttribute("lineProgress", new BufferAttribute(new Float32Array(progArr), 1));
-        geom.setAttribute("lineId",       new BufferAttribute(new Float32Array(idArr),   1));
-        geom.setAttribute("windSpeed",    new BufferAttribute(new Float32Array(spdArr),  1));
+        geom.setAttribute("position",     new BufferAttribute(new Float32Array(out.pos),  3));
+        geom.setAttribute("lineProgress", new BufferAttribute(new Float32Array(out.prog), 1));
+        geom.setAttribute("lineId",       new BufferAttribute(new Float32Array(out.id),   1));
+        geom.setAttribute("windSpeed",    new BufferAttribute(new Float32Array(out.spd),  1));
+        geom.setAttribute("lodLevel",     new BufferAttribute(new Float32Array(out.lod),  1));
         geom.computeBoundingSphere();
 
         this.linesMesh = new LineSegments(geom, this.material);
         this.linesMesh.position.set(center.x, center.y, center.z);
         this.linesMesh.layers.mask = this.group.layers.mask;
+        this.linesMesh.raycast = () => {};   // skip raycasting on millions of segments
+        this.linesMesh.frustumCulled = false; // globe-spanning geometry, always draw
         this.group.add(this.linesMesh);
 
-        console.log(`Wind field: ${lineIndex} streamlines, ${posArr.length / 3} vertices`);
+        const lodCounts = [0, 0, 0];
+        out.lod.forEach(l => lodCounts[l]++);
+        console.log(`Wind field: ${lineIndex} streamlines, ${out.pos.length / 3} verts ` +
+            `(LOD0: ${lodCounts[0] / 2}, LOD1: ${lodCounts[1] / 2}, LOD2: ${lodCounts[2] / 2})`);
     }
 
     // ── real data fetch ──────────────────────────────────────────────
@@ -317,20 +348,33 @@ const VERT = /* glsl */ `
     attribute float lineProgress;
     attribute float lineId;
     attribute float windSpeed;
+    attribute float lodLevel;
 
     varying float vProgress;
     varying float vId;
     varying float vSpeed;
     varying float vDepth;
+    varying float vLod;
+    varying float vCamDist;
+    varying float vBackFace;
 
     void main() {
         vProgress = lineProgress;
         vId       = lineId;
         vSpeed    = windSpeed;
+        vLod      = lodLevel;
 
         vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+        vCamDist  = length(mvPos.xyz);
         gl_Position = projectionMatrix * mvPos;
         vDepth = gl_Position.w;
+
+        // back-face detection: dot(surface normal, view direction)
+        // positive = facing away from camera (far side of globe)
+        vec3 worldPos = (modelMatrix * vec4(position, 1.0)).xyz;
+        vec3 surfaceNormal = normalize(worldPos);
+        vec3 viewDir = normalize(worldPos - cameraPosition);
+        vBackFace = dot(surfaceNormal, viewDir);
     }
 `;
 
@@ -347,6 +391,9 @@ const FRAG = /* glsl */ `
     varying float vId;
     varying float vSpeed;
     varying float vDepth;
+    varying float vLod;
+    varying float vCamDist;
+    varying float vBackFace;
 
     vec3 hsv(float h, float s, float v) {
         vec3 c = clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
@@ -354,6 +401,20 @@ const FRAG = /* glsl */ `
     }
 
     void main() {
+        // discard back-facing fragments (far side of globe)
+        if (vBackFace > 0.0) discard;
+
+        // ── per-vertex LOD fade based on camera distance ──
+        // LOD 0 (coarsest): always visible
+        // LOD 1:            fade in within 15,000 km
+        // LOD 2:            fade in within 8,000 km
+        // LOD 3 (finest):   fade in within 4,000 km
+        float lodFade = 1.0;
+        if (vLod > 0.5) lodFade *= smoothstep(15000000.0, 10000000.0, vCamDist);
+        if (vLod > 1.5) lodFade *= smoothstep(8000000.0,  5000000.0, vCamDist);
+        if (vLod > 2.5) lodFade *= smoothstep(4000000.0,  2500000.0, vCamDist);
+        if (lodFade < 0.01) discard;
+
         // animated dash — long bright segments with short dim gaps
         float phase = fract(vProgress * uNumDashes - uTime * uFlowSpeed + vId);
         float dash  = smoothstep(0.0, 0.08, phase) * smoothstep(0.75, 0.65, phase);
@@ -367,7 +428,7 @@ const FRAG = /* glsl */ `
         float hue = (1.0 - t) * 0.65;
         vec3 color = hsv(hue, 0.8, 0.8 + 0.2 * t);
 
-        float alpha = dash * endFade * uOpacity;
+        float alpha = dash * endFade * uOpacity * lodFade;
         if (alpha < 0.01) discard;
 
         gl_FragColor = vec4(color, alpha);
