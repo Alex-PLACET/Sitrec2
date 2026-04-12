@@ -7,7 +7,7 @@ name: Cleanup container images
 #      after assembling the multi-arch index, but some linger from workflow_dispatch
 #      runs and any builds that failed before reaching that cleanup step.
 #
-#   2. Delete old semver versions beyond the newest 30. The 'latest' tag is
+#   2. Delete old semver versions beyond the newest 20. The 'latest' tag is
 #      implicitly preserved because it always points at the newest semver, which
 #      stays in the kept set.
 #
@@ -62,9 +62,9 @@ jobs:
             fi
           done
 
-      - name: Prune old semver versions (keep newest 30)
+      - name: Prune old semver versions (keep newest 20)
         run: |
-          KEEP=30
+          KEEP=20
           # Build a list of {id, parts} for every version that has a semver tag,
           # sort by version parts descending, then slice off the top KEEP and
           # emit the rest as deletion candidates. 'latest' sits on the newest
