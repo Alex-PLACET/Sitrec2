@@ -84,8 +84,8 @@ WORKDIR /var/www/html
 # So it's highly recommended you use S3 with docker
 # or mount a volume to /var/www/html/sitrec-upload
 
-RUN mkdir ./sitrec-cache && chmod 777 ./sitrec-cache \
-    && mkdir ./sitrec-upload && chmod 777 ./sitrec-upload \
+RUN mkdir -p ./sitrec-cache && chmod 777 ./sitrec-cache \
+    && mkdir -p ./sitrec-upload && chmod 777 ./sitrec-upload \
     && mkdir -p ./data/wind && chmod 777 ./data/wind
 
 # Install the entrypoint script that converts Docker env vars

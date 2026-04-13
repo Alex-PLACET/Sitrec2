@@ -15,8 +15,8 @@ COPY dist/ /var/www/html/
 
 WORKDIR /var/www/html
 
-RUN mkdir ./sitrec-cache && chmod 777 ./sitrec-cache \
-    && mkdir ./sitrec-upload && chmod 777 ./sitrec-upload \
+RUN mkdir -p ./sitrec-cache && chmod 777 ./sitrec-cache \
+    && mkdir -p ./sitrec-upload && chmod 777 ./sitrec-upload \
     && mkdir -p ./data/wind && chmod 777 ./data/wind
 
 # Suppress Apache ServerName warning
