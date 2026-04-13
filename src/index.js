@@ -2499,21 +2499,34 @@ function renderMain(elapsed) {
                 });
             }
         } else  {
-            // NodeMan.iterate((key, node) => {
-            //     if (node.update !== undefined) {
-            //         node.update(par.frame)
-            //     }
-            // })
-
-            for (const entry of Object.values(NodeMan.list)) {
-                const node = entry.data;
-                if (node.isController && !node.allowUpdate) {
-                    assert(node.update === CNode.prototype.update,
-                        `Controller ${node.id} has overridden update() - move logic to apply()`);
-                    continue;
+            if (typeof window !== 'undefined' && window._profileNodes) {
+                // Collect per-node timing data
+                if (!window._nodeTimings) window._nodeTimings = {};
+                for (const entry of Object.values(NodeMan.list)) {
+                    const node = entry.data;
+                    if (node.isController && !node.allowUpdate) continue;
+                    if (node.update !== undefined) {
+                        const t0 = performance.now();
+                        node.update(par.frame)
+                        const dt = performance.now() - t0;
+                        const id = node.id;
+                        if (!window._nodeTimings[id]) window._nodeTimings[id] = {total: 0, count: 0, max: 0};
+                        window._nodeTimings[id].total += dt;
+                        window._nodeTimings[id].count++;
+                        if (dt > window._nodeTimings[id].max) window._nodeTimings[id].max = dt;
+                    }
                 }
-                if (node.update !== undefined) {
-                    node.update(par.frame)
+            } else {
+                for (const entry of Object.values(NodeMan.list)) {
+                    const node = entry.data;
+                    if (node.isController && !node.allowUpdate) {
+                        assert(node.update === CNode.prototype.update,
+                            `Controller ${node.id} has overridden update() - move logic to apply()`);
+                        continue;
+                    }
+                    if (node.update !== undefined) {
+                        node.update(par.frame)
+                    }
                 }
             }
 
@@ -2584,28 +2597,45 @@ function renderMain(elapsed) {
 
                     if (view.updateIsIR) view.updateIsIR();
 
-                    for (const entry of Object.values(NodeMan.list)) {
-                        const node = entry.data;
-                        if (node.preRender !== undefined) {
+                    if (typeof window !== 'undefined' && window._profileNodes) {
+                        if (!window._preRenderTimings) window._preRenderTimings = {};
+                        for (const node of NodeMan.getPreRenderNodes()) {
+                            const t0 = performance.now();
+                            node.preRender(view)
+                            const dt = performance.now() - t0;
+                            const id = node.id + ".preRender[" + key + "]";
+                            if (!window._preRenderTimings[id]) window._preRenderTimings[id] = {total: 0, count: 0, max: 0};
+                            window._preRenderTimings[id].total += dt;
+                            window._preRenderTimings[id].count++;
+                            if (dt > window._preRenderTimings[id].max) window._preRenderTimings[id].max = dt;
+                        }
+                    } else {
+                        for (const node of NodeMan.getPreRenderNodes()) {
                             node.preRender(view)
                         }
                     }
 
-                    // // patch in arrow head scaling
-                    // scaleArrows(view);
-
                 }
                 updateLockTrack(view, par.frame)
-                
+
                 if (globalProfiler) globalProfiler.push('#9467bd', 'RenderCanvas');
-                view.renderCanvas(par.frame)
+                if (typeof window !== 'undefined' && window._profileNodes) {
+                    if (!window._renderTimings) window._renderTimings = {};
+                    const t0 = performance.now();
+                    view.renderCanvas(par.frame)
+                    const dt = performance.now() - t0;
+                    const id = key + ".renderCanvas";
+                    if (!window._renderTimings[id]) window._renderTimings[id] = {total: 0, count: 0, max: 0};
+                    window._renderTimings[id].total += dt;
+                    window._renderTimings[id].count++;
+                    if (dt > window._renderTimings[id].max) window._renderTimings[id].max = dt;
+                } else {
+                    view.renderCanvas(par.frame)
+                }
                 if (globalProfiler) globalProfiler.pop();
 
-                for (const entry of Object.values(NodeMan.list)) {
-                    const node = entry.data;
-                    if (node.postRender !== undefined) {
-                        node.postRender(view)
-                    }
+                for (const node of NodeMan.getPostRenderNodes()) {
+                    node.postRender(view)
                 }
                 
                 if (globalProfiler) globalProfiler.pop();

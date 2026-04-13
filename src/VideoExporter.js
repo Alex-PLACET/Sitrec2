@@ -479,19 +479,13 @@ export class VideoExportManager {
                         if (view.camera && view instanceof CNodeView3D) {
                             view.camera.updateMatrix();
                             view.camera.updateMatrixWorld();
-                            for (const entry of Object.values(NodeMan.list)) {
-                                const node = entry.data;
-                                if (node.preRender !== undefined) {
-                                    node.preRender(view);
-                                }
+                            for (const node of NodeMan.getPreRenderNodes()) {
+                                node.preRender(view);
                             }
                         }
                         view.renderCanvas(frame);
-                        for (const entry of Object.values(NodeMan.list)) {
-                            const node = entry.data;
-                            if (node.postRender !== undefined) {
-                                node.postRender(view);
-                            }
+                        for (const node of NodeMan.getPostRenderNodes()) {
+                            node.postRender(view);
                         }
                         if (view.renderer) {
                             view.renderer.getContext().finish();
@@ -519,19 +513,13 @@ export class VideoExportManager {
                         if (view.camera && view instanceof CNodeView3D) {
                             view.camera.updateMatrix();
                             view.camera.updateMatrixWorld();
-                            for (const entry of Object.values(NodeMan.list)) {
-                                const node = entry.data;
-                                if (node.preRender !== undefined) {
-                                    node.preRender(view);
-                                }
+                            for (const node of NodeMan.getPreRenderNodes()) {
+                                node.preRender(view);
                             }
                         }
                         view.renderCanvas(frame);
-                        for (const entry of Object.values(NodeMan.list)) {
-                            const node = entry.data;
-                            if (node.postRender !== undefined) {
-                                node.postRender(view);
-                            }
+                        for (const node of NodeMan.getPostRenderNodes()) {
+                            node.postRender(view);
                         }
                         if (view.canvas) {
                             const parentView = view.overlayView;

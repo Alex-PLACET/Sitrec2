@@ -388,13 +388,10 @@ export class CNodeView3D extends CNodeViewCanvas {
                     
                     this.camera.updateMatrix();
                     this.camera.updateMatrixWorld();
-                    for (const entry of Object.values(NodeMan.list)) {
-                        const node = entry.data;
-                        if (node.preRender !== undefined) {
-                            node.preRender(this);
-                        }
+                    for (const node of NodeMan.getPreRenderNodes()) {
+                        node.preRender(this);
                     }
-                    
+
                     this.renderCanvas(frame);
 
                     compositeCtx.drawImage(this.canvas, 0, 0);
@@ -668,11 +665,8 @@ export class CNodeView3D extends CNodeViewCanvas {
         this.xrCamera.updateMatrixWorld(true);
 
         // Call preRender on all nodes (important for terrain LOD and visibility)
-        for (const entry of Object.values(NodeMan.list)) {
-            const node = entry.data;
-            if (node.preRender !== undefined) {
-                node.preRender(this); // Pass this view to preRender
-            }
+        for (const node of NodeMan.getPreRenderNodes()) {
+            node.preRender(this);
         }
         
         // Update terrain for XR (needed for tile visibility/LOD) ?????
