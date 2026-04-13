@@ -2,21 +2,42 @@ import i18next from "i18next";
 import en from "./en";
 import es from "./es";
 import fr from "./fr";
+import de from "./de";
+import pt from "./pt";
+import it from "./it";
+import ru from "./ru";
+import ja from "./ja";
+import nl from "./nl";
+import zh from "./zh";
 
 const FALLBACK_LANGUAGE = "en";
 const LANGUAGE_STORAGE_KEY = "sitrec-language";
-const SUPPORTED_LANGUAGES = [FALLBACK_LANGUAGE, "es", "fr"];
+const SUPPORTED_LANGUAGES = [FALLBACK_LANGUAGE, "es", "fr", "de", "pt", "it", "ru", "ja", "nl", "zh"];
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 const TRANSLATION_RESOURCES = Object.freeze({
     en,
     es,
     fr,
+    de,
+    pt,
+    it,
+    ru,
+    ja,
+    nl,
+    zh,
 });
 
 export const SUPPORTED_LANGUAGE_OPTIONS = Object.freeze({
     English: "en",
     Español: "es",
     Français: "fr",
+    Deutsch: "de",
+    Português: "pt",
+    Italiano: "it",
+    Русский: "ru",
+    日本語: "ja",
+    Nederlands: "nl",
+    中文: "zh",
 });
 
 let initialized = false;
