@@ -1047,6 +1047,15 @@ export class CNodeView3D extends CNodeViewCanvas {
         this.renderer.setPixelRatio(this.in.canvasWidth ? 1 : window.devicePixelRatio);
         this.renderer.setSize(this.widthDiv, this.heightDiv, false);
         this.renderer.outputColorSpace = SRGBColorSpace;
+
+        // Log WebGL context loss so regression tests can detect it.
+        // Use warn (not error) to avoid triggering the test's console-error assertion.
+        this.canvas.addEventListener('webglcontextlost', (e) => {
+            console.warn(`[WebGL] Context LOST on view "${this.id}"`);
+        });
+        this.canvas.addEventListener('webglcontextrestored', () => {
+            console.warn(`[WebGL] Context restored on view "${this.id}"`);
+        });
         
         // Initialize GPU Memory Monitor on the first renderer created (only in local/dev mode)
         if (isLocal) {

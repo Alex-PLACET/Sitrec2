@@ -1,5 +1,6 @@
 import {test} from '@playwright/test';
 import {takeScreenshotOrCompare} from './snapshot-utils.js';
+import {PNG} from 'pngjs';
 
 // Array of test cases: each object contains a name and its corresponding URL.
 // URLs are relative to baseURL configured in playwright.config.js
@@ -60,6 +61,72 @@ async function waitForFrames(page, count = 1, maxWaitMs = 5000) {
     // evaluate itself hit the Playwright test timeout.
     const targetMs = Math.max(1, count) * 16;
     await page.waitForTimeout(Math.min(maxWaitMs, targetMs));
+}
+
+// Wait for a render frame to actually complete (not just set a flag).
+// Uses double-rAF: first rAF fires the render, second confirms it completed.
+async function waitForRenderFrame(page, timeoutMs = 5000) {
+    await page.evaluate((timeout) => {
+        return new Promise((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error('waitForRenderFrame timed out')), timeout);
+            if (window.setRenderOne) window.setRenderOne(true);
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    clearTimeout(timer);
+                    resolve();
+                });
+            });
+        });
+    }, timeoutMs);
+}
+
+// Check that all WebGL contexts are still alive.
+// Returns { healthy, lostCount, details }.
+async function checkWebGLHealth(page) {
+    return page.evaluate(() => {
+        const results = [];
+        if (window.Globals?.renderData) {
+            window.Globals.renderData.forEach((rd, i) => {
+                if (rd.renderer) {
+                    try {
+                        const gl = rd.renderer.getContext();
+                        results.push({ index: i, lost: gl ? gl.isContextLost() : true });
+                    } catch (e) {
+                        results.push({ index: i, lost: true, error: e.message });
+                    }
+                }
+            });
+        }
+        const lostCount = results.filter(r => r.lost).length;
+        return { healthy: lostCount === 0, lostCount, details: JSON.stringify(results) };
+    });
+}
+
+// Check if a screenshot buffer is essentially blank (one dominant color).
+// Samples pixels and returns true if > 95% share the same color.
+function isScreenshotBlank(pngBuffer) {
+    try {
+        const png = PNG.sync.read(pngBuffer);
+        const { data, width, height } = png;
+        const pixelCount = width * height;
+        const step = Math.max(1, Math.floor(pixelCount / 5000)); // sample ~5000 pixels
+        const colorCounts = {};
+        let samples = 0;
+        for (let i = 0; i < pixelCount; i += step) {
+            const off = i * 4;
+            // quantize to reduce noise: round to nearest 8
+            const r = data[off] & 0xF8;
+            const g = data[off + 1] & 0xF8;
+            const b = data[off + 2] & 0xF8;
+            const key = (r << 16) | (g << 8) | b;
+            colorCounts[key] = (colorCounts[key] || 0) + 1;
+            samples++;
+        }
+        const maxCount = Math.max(...Object.values(colorCounts));
+        return maxCount / samples > 0.95;
+    } catch {
+        return false; // can't parse → assume not blank
+    }
 }
 
 async function getSceneSettleState(page) {
@@ -348,12 +415,42 @@ test.describe('Visual Regression Testing', () => {
                     const finalState = await getSceneSettleState(page);
                     console.log(`[SETTLE] Final terrain: map=${finalState.mapType || "?"}, elev=${finalState.elevationType || "?"}`);
 
-                    await page.evaluate(() => {
-                        // Ensure any queued render pass executes before screenshot.
-                        if (window.setRenderOne) {
-                            window.setRenderOne(true);
+                    // Verify WebGL contexts are still alive before taking the screenshot.
+                    // Under parallel load, SwiftShader can lose contexts.
+                    const webglState = await checkWebGLHealth(page);
+                    if (!webglState.healthy) {
+                        console.error(`[WORKER-${testInfo.workerIndex}] WebGL context LOST (${webglState.lostCount} renderer(s)): ${webglState.details}`);
+                        // Try to recover: wait and re-check
+                        await waitForFrames(page, 10);
+                        const retry = await checkWebGLHealth(page);
+                        if (!retry.healthy) {
+                            throw new Error(`WebGL context lost and unrecoverable for ${name}: ${retry.details}`);
                         }
+                        console.log(`[WORKER-${testInfo.workerIndex}] WebGL context recovered after wait`);
+                    }
+
+                    // Wait for a render frame to actually complete, not just set a flag.
+                    await waitForRenderFrame(page);
+
+                    // Take the screenshot (as a buffer first for blank detection).
+                    const screenshotBuffer = await page.screenshot({
+                        fullPage: true,
+                        timeout: 30000,
                     });
+
+                    if (isScreenshotBlank(screenshotBuffer)) {
+                        console.error(`[WORKER-${testInfo.workerIndex}] BLANK screenshot detected for ${name}`);
+                        // Retry: wait for more frames and try again
+                        await waitForRenderFrame(page);
+                        await waitForFrames(page, 10);
+                        await waitForRenderFrame(page);
+                        const retryBuffer = await page.screenshot({ fullPage: true, timeout: 30000 });
+                        if (isScreenshotBlank(retryBuffer)) {
+                            const retryWebGL = await checkWebGLHealth(page);
+                            throw new Error(`Screenshot is blank for ${name} after retry. WebGL: ${retryWebGL.details}`);
+                        }
+                        console.log(`[WORKER-${testInfo.workerIndex}] Retry screenshot for ${name} is non-blank`);
+                    }
 
                     await takeScreenshotOrCompare(page, `${name}-snapshot`, testInfo);
 
