@@ -14,6 +14,7 @@ COPY data ./data
 COPY src ./src
 COPY docs ./docs
 COPY tools ./tools
+COPY scripts ./scripts
 COPY sitrecServer ./sitrecServer
 COPY package.json .
 COPY package-lock.json .
@@ -39,7 +40,9 @@ COPY site.webmanifest .
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 
 # Pin npm version to match local dev (node:22 ships npm 10, lock file was generated with npm 11)
-RUN npm install -g npm@11
+# Direct self-upgrade (npm i -g npm@11) can corrupt modules on some node:22
+# images, so bootstrap via npx which downloads a clean copy first.
+RUN npx -y npm@11 install -g npm@11
 
 # We use npm ci (Clean Install) to install the dependencies
 RUN npm ci
