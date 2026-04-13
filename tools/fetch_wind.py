@@ -18,11 +18,25 @@ Output JSON format (earth.nullschool.net compatible):
 import argparse
 import json
 import os
+import ssl
 import struct
 import sys
 import urllib.request
 import urllib.error
 from datetime import datetime, timedelta
+
+# Build an SSL context that works under restricted environments (e.g. PHP/nginx
+# on macOS) where the system certificate store isn't available.  Try certifi
+# first; fall back to an unverified context so local-dev fetches don't break.
+try:
+    import certifi
+    _ssl_ctx = ssl.create_default_context(cafile=certifi.where())
+except ImportError:
+    _ssl_ctx = ssl.create_default_context()
+    # If the default context can't find system certs either, allow unverified
+    # (acceptable for fetching public NOAA weather data in local dev).
+    _ssl_ctx.check_hostname = False
+    _ssl_ctx.verify_mode = ssl.CERT_NONE
 
 PRESSURE_LEVELS = [1000, 975, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100, 70, 50, 30, 20, 10]
 
@@ -66,7 +80,7 @@ def download_grib(url, output_path):
     print(f"Downloading: {url}")
     req = urllib.request.Request(url, headers={"User-Agent": "Sitrec-Wind/1.0"})
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=60, context=_ssl_ctx) as resp:
             data = resp.read()
             with open(output_path, "wb") as f:
                 f.write(data)
@@ -94,7 +108,7 @@ def download_from_aws_idx(date, hour, level, resolution="1p00"):
     print(f"Fetching index: {idx_url}")
     try:
         req = urllib.request.Request(idx_url, headers={"User-Agent": "Sitrec-Wind/1.0"})
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=30, context=_ssl_ctx) as resp:
             idx_text = resp.read().decode("utf-8")
     except Exception as e:
         print(f"Failed to fetch index: {e}")
@@ -135,7 +149,7 @@ def download_from_aws_idx(date, hour, level, resolution="1p00"):
             "Range": range_str,
         })
         try:
-            with urllib.request.urlopen(req, timeout=60) as resp:
+            with urllib.request.urlopen(req, timeout=60, context=_ssl_ctx) as resp:
                 chunk = resp.read()
                 grib_data += chunk
                 print(f"    Got {len(chunk)} bytes")

@@ -32,6 +32,7 @@ if ($hour < 0 || $hour > 23) {
 }
 
 $cycleHour = intdiv($hour, 6) * 6;
+$cycleHourStr = sprintf('%02d', $cycleHour);   // zero-pad to match Python's f"{hour:02d}"
 $levelStr = ($level === 'surface') ? '10m' : "{$level}hPa";
 
 // Cache directory
@@ -42,7 +43,7 @@ if (!is_dir($cacheDir)) {
 
 // ── serve from cache ─────────────────────────────────────────────
 // Exact cycle match: serve unconditionally (correct data, cache forever)
-$exactCache = $cacheDir . "wind_{$date}_{$cycleHour}z_{$levelStr}.json";
+$exactCache = $cacheDir . "wind_{$date}_{$cycleHourStr}z_{$levelStr}.json";
 if (file_exists($exactCache)) {
     readfile($exactCache);
     exit;
@@ -51,7 +52,7 @@ if (file_exists($exactCache)) {
 // Earlier-cycle fallback: only serve if written less than 4 hours ago
 // (GFS takes ~3.5–4h to process, so after 4h the correct cycle should be available)
 for ($h = $cycleHour - 6; $h >= 0; $h -= 6) {
-    $candidate = $cacheDir . "wind_{$date}_{$h}z_{$levelStr}.json";
+    $candidate = $cacheDir . sprintf("wind_%s_%02dz_%s.json", $date, $h, $levelStr);
     if (file_exists($candidate) && (time() - filemtime($candidate)) < 4 * 3600) {
         readfile($candidate);
         exit;
@@ -59,15 +60,25 @@ for ($h = $cycleHour - 6; $h >= 0; $h -= 6) {
 }
 
 // ── fetch via Python script (it handles cycle fallback internally) ──
-$script = '/workspace/tools/fetch_wind.py';
+$script = __DIR__ . '/../tools/fetch_wind.py';
 if (!file_exists($script)) {
     http_response_code(500);
     echo json_encode(['error' => 'fetch_wind.py not found']);
     exit;
 }
 
+// Extend PATH to cover Docker (/home/node/.local/bin) and local macOS
+// (pyenv shims, Homebrew on Apple Silicon + Intel).
+$extraPaths = implode(':', array_filter([
+    getenv('HOME') ? getenv('HOME') . '/.pyenv/shims' : null,
+    '/opt/homebrew/bin',
+    '/usr/local/bin',
+    '/home/node/.local/bin',
+]));
+
 $cmd = sprintf(
-    'export PATH=$PATH:/home/node/.local/bin && python3 %s --date %s --hour %d --level %s --output %s 2>&1',
+    'export PATH=%s:$PATH && python3 %s --date %s --hour %d --level %s --output %s 2>&1',
+    escapeshellarg($extraPaths),
     escapeshellarg($script),
     escapeshellarg($date),
     $cycleHour,
@@ -79,7 +90,7 @@ $output = shell_exec($cmd);
 
 // Check for any cycle that was written
 for ($h = $cycleHour; $h >= 0; $h -= 6) {
-    $candidate = $cacheDir . "wind_{$date}_{$h}z_{$levelStr}.json";
+    $candidate = $cacheDir . sprintf("wind_%s_%02dz_%s.json", $date, $h, $levelStr);
     if (file_exists($candidate)) {
         readfile($candidate);
         exit;
