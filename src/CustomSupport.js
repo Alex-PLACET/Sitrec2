@@ -89,7 +89,7 @@ import {CNodeOrbitTrack} from "./nodes/CNodeOrbitTrack";
 import {CNodeTrackSwitch} from "./nodes/CNodeTrackSwitch";
 import {getNearbyWeatherBalloons, importSoundingDialog} from "./SondeFetch";
 import {getCurrentLanguage, setLanguage, SUPPORTED_LANGUAGE_OPTIONS, t} from "./i18n";
-import {altFeetToLevel, levelToAltFeet} from "./nodes/CNodeDisplayWindField";
+import {bracketingLevels} from "./nodes/CNodeDisplayWindField";
 
 export class CCustomManager {
     constructor() {
@@ -622,7 +622,6 @@ export class CCustomManager {
 
         par.windSource = "GFS (NOAA)";
         par.windAltFt = 33;       // default = surface (~10m)
-        par.windAltLabel = "Surface (~33 ft)";
         par.windStatus = "Not activated";
 
         const windFolder = addGUIFolder("wind", "Wind", "physics");
@@ -631,37 +630,13 @@ export class CCustomManager {
         this._windSourceOptions = ["GFS (NOAA)"];
         windFolder.add(par, "windSource", this._windSourceOptions).name("Source");
 
-        // Altitude selector — available before activation
-        const altLabels = [
-            "Surface (~33 ft)",
-            "1,000 hPa (~360 ft)",
-            "925 hPa (~2,500 ft)",
-            "850 hPa (~4,800 ft)",
-            "700 hPa (~9,900 ft)",
-            "500 hPa (~18,300 ft)",
-            "300 hPa (~30,000 ft)",
-            "250 hPa (~33,800 ft)",
-            "200 hPa (~38,600 ft)",
-        ];
-        const altToLevel = {
-            "Surface (~33 ft)": "surface",
-            "1,000 hPa (~360 ft)": "1000",
-            "925 hPa (~2,500 ft)": "925",
-            "850 hPa (~4,800 ft)": "850",
-            "700 hPa (~9,900 ft)": "700",
-            "500 hPa (~18,300 ft)": "500",
-            "300 hPa (~30,000 ft)": "300",
-            "250 hPa (~33,800 ft)": "250",
-            "200 hPa (~38,600 ft)": "200",
-        };
-        windFolder.add(par, "windAltLabel", altLabels).name("Altitude").onChange(async () => {
-            // If already activated, fetch new altitude data
+        // Altitude slider in feet — interpolates between GFS pressure levels
+        windFolder.add(par, "windAltFt", 0, 45000, 100).name("Altitude (ft)").onChange(async () => {
             if (this._windNode) {
-                const level = altToLevel[par.windAltLabel] ?? "surface";
-                await this._windNode.fetchWindData(level);
+                await this._windNode.fetchWindForAltitude(par.windAltFt);
                 par.windStatus = this._windNode.statusText;
             }
-        });
+        }).elastic(1000, 60000, true);
 
         // Status display
         this._windStatusCtrl = windFolder.add(par, "windStatus").name("Status").listen().disable();
@@ -678,8 +653,7 @@ export class CCustomManager {
             }
 
             // Fetch wind data for the selected altitude
-            const level = altToLevel[par.windAltLabel] ?? "surface";
-            await this._windNode.fetchWindData(level);
+            await this._windNode.fetchWindForAltitude(par.windAltFt);
 
             // Show the post-activation controls and sync status
             this._activateBtn.hide();
@@ -715,8 +689,8 @@ export class CCustomManager {
 
             // Re-fetch button
             const refetch = async () => {
-                const level = altToLevel[par.windAltLabel] ?? "surface";
-                await n.fetchWindData(level);
+                n._levelCache = {};  // clear cache to force re-fetch
+                await n.fetchWindForAltitude(par.windAltFt);
                 par.windStatus = n.statusText;
             };
             folder.add({refetch}, "refetch").name("Refresh Wind Data");

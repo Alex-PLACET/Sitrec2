@@ -18,33 +18,37 @@ const R_EARTH = 6371000; // meters
 const DEG = Math.PI / 180;
 
 // Pressure-level ↔ altitude mapping (approximate standard atmosphere)
+// Sorted low-to-high altitude. "surface" is a special 10m-above-ground product.
 export const WIND_LEVEL_TABLE = [
-    {hPa: 1000, ft: 360,   label: "1,000 hPa (~360 ft)"},
-    {hPa: 925,  ft: 2500,  label: "925 hPa (~2,500 ft)"},
-    {hPa: 850,  ft: 4800,  label: "850 hPa (~4,800 ft)"},
-    {hPa: 700,  ft: 9900,  label: "700 hPa (~9,900 ft)"},
-    {hPa: 500,  ft: 18300, label: "500 hPa (~18,300 ft)"},
-    {hPa: 300,  ft: 30000, label: "300 hPa (~30,000 ft)"},
-    {hPa: 250,  ft: 33800, label: "250 hPa (~33,800 ft)"},
-    {hPa: 200,  ft: 38600, label: "200 hPa (~38,600 ft)"},
+    {level: "surface", ft: 33},
+    {level: "1000",    ft: 360},
+    {level: "925",     ft: 2500},
+    {level: "850",     ft: 4800},
+    {level: "700",     ft: 9900},
+    {level: "500",     ft: 18300},
+    {level: "300",     ft: 30000},
+    {level: "250",     ft: 33800},
+    {level: "200",     ft: 38600},
 ];
 
-export function altFeetToLevel(ft) {
-    if (ft < 500) return "surface";
-    for (let i = 0; i < WIND_LEVEL_TABLE.length - 1; i++) {
-        if (ft <= WIND_LEVEL_TABLE[i + 1].ft) {
-            const d0 = Math.abs(ft - WIND_LEVEL_TABLE[i].ft);
-            const d1 = Math.abs(ft - WIND_LEVEL_TABLE[i + 1].ft);
-            return String(d0 < d1 ? WIND_LEVEL_TABLE[i].hPa : WIND_LEVEL_TABLE[i + 1].hPa);
+// Return the two bracketing levels and interpolation factor for a given altitude in feet
+export function bracketingLevels(ft) {
+    const T = WIND_LEVEL_TABLE;
+    if (ft <= T[0].ft) return {lo: T[0], hi: T[0], t: 0};
+    if (ft >= T[T.length - 1].ft) return {lo: T[T.length - 1], hi: T[T.length - 1], t: 0};
+    for (let i = 0; i < T.length - 1; i++) {
+        if (ft >= T[i].ft && ft <= T[i + 1].ft) {
+            const range = T[i + 1].ft - T[i].ft;
+            const t = range > 0 ? (ft - T[i].ft) / range : 0;
+            return {lo: T[i], hi: T[i + 1], t};
         }
     }
-    return String(WIND_LEVEL_TABLE[WIND_LEVEL_TABLE.length - 1].hPa);
+    return {lo: T[0], hi: T[0], t: 0};
 }
 
 export function levelToAltFeet(level) {
-    if (level === "surface") return 33;  // ~10m
-    const hPa = parseInt(level);
-    const entry = WIND_LEVEL_TABLE.find(e => e.hPa === hPa);
+    if (level === "surface") return 33;
+    const entry = WIND_LEVEL_TABLE.find(e => e.level === level);
     return entry ? entry.ft : 0;
 }
 
@@ -73,13 +77,16 @@ export class CNodeDisplayWindField extends CNode3DGroup {
         this.maxWindSpeed   = v.maxWindSpeed   ?? 30;
         this.minSpeedCutoff = v.minSpeedCutoff ?? 0.5;
 
-        this.windLevel      = "surface";
+        this.windAltFt      = v.windAltFt ?? 33;  // feet — drives which levels to fetch
+        this.windLevel      = "surface";          // descriptive label for status
         this.statusText     = "Not loaded";
 
         this.frameCount = 0;
         this.linesMesh = null;
         this.dataSource = "none";
         this.fetching = false;
+        this._lastDateCycle = null;  // "YYYYMMDD_HH" of the last-fetched GFS cycle
+        this._levelCache = {};       // level string → {u, v, json} for interpolation
 
         // ---------- shader material ----------
         this.material = new ShaderMaterial({
@@ -276,54 +283,96 @@ export class CNodeDisplayWindField extends CNode3DGroup {
             `(LOD0: ${lodCounts[0] / 2}, LOD1: ${lodCounts[1] / 2}, LOD2: ${lodCounts[2] / 2})`);
     }
 
-    // ── real data fetch ──────────────────────────────────────────────
-    async fetchWindData(level) {
+    // ── fetch a single level (with caching) ─────────────────────────
+    async _fetchLevel(level, dateStr, hour) {
+        const cacheKey = `${dateStr}_${hour}_${level}`;
+        if (this._levelCache[cacheKey]) return this._levelCache[cacheKey];
+
+        const url = `sitrecServer/windProxy.php?date=${dateStr}&hour=${hour}&level=${level}`;
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status} for level ${level}`);
+        const json = await resp.json();
+        if (json.error) throw new Error(json.error);
+        if (!json.u || !json.v) throw new Error(`Missing u/v for level ${level}`);
+
+        this._levelCache[cacheKey] = json;
+        return json;
+    }
+
+    // ── fetch and interpolate wind at the current altitude ───────────
+    async fetchWindForAltitude(altFt) {
         if (this.fetching) return;
         this.fetching = true;
 
-        level = level ?? "surface";
+        altFt = altFt ?? this.windAltFt;
+        this.windAltFt = altFt;
+
         const dateNode = GlobalDateTimeNode;
         const dateNow = dateNode?.dateNow ?? new Date();
         const dateStr = dateNow.toISOString().slice(0, 10).replace(/-/g, "");
         const hour = Math.floor(dateNow.getUTCHours() / 6) * 6;
 
-        const levelLabel = level === "surface" ? "10m / Surface" : `${level} hPa (~${levelToAltFeet(level).toLocaleString()} ft)`;
-        this.statusText = `Fetching ${levelLabel}...`;
-        console.log(`Fetching wind: ${dateStr} ${hour}Z level=${level}`);
+        const {lo, hi, t} = bracketingLevels(altFt);
+        const needTwo = lo.level !== hi.level;
+
+        this.statusText = needTwo
+            ? `Fetching ${lo.level} + ${hi.level}...`
+            : `Fetching ${lo.level === "surface" ? "Surface" : lo.level + " hPa"}...`;
+        console.log(`Wind alt ${altFt} ft → ${lo.level}(${(1 - t).toFixed(2)}) + ${hi.level}(${t.toFixed(2)})`);
 
         try {
-            const url = `sitrecServer/windProxy.php?date=${dateStr}&hour=${hour}&level=${level}`;
-            const resp = await fetch(url);
-            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-            const json = await resp.json();
+            const jsonLo = await this._fetchLevel(lo.level, dateStr, hour);
+            const jsonHi = needTwo ? await this._fetchLevel(hi.level, dateStr, hour) : jsonLo;
 
-            if (json.error) throw new Error(json.error);
-            if (!json.u || !json.v) throw new Error("Missing u/v arrays");
+            // Interpolate the two grids
+            const n = jsonLo.u.length;
+            const blendedU = new Array(n);
+            const blendedV = new Array(n);
+            for (let i = 0; i < n; i++) {
+                blendedU[i] = Math.round(((1 - t) * jsonLo.u[i] + t * jsonHi.u[i]) * 100) / 100;
+                blendedV[i] = Math.round(((1 - t) * jsonLo.v[i] + t * jsonHi.v[i]) * 100) / 100;
+            }
 
-            this._applyWindJSON(json);
-            this.windLevel = level;
+            // Build a merged JSON for the blended result
+            const blended = {
+                ...jsonLo,
+                u: blendedU,
+                v: blendedV,
+                level: `${Math.round(altFt)}ft`,
+                source: jsonLo.source ?? "GFS",
+                _loLevel: lo.level,
+                _hiLevel: hi.level,
+                _blendT: t,
+            };
 
-            // Auto-scale render altitude based on data level
-            const altFt = levelToAltFeet(level);
+            this._applyWindJSON(blended);
+            this.windLevel = lo.level === hi.level ? lo.level : `${lo.level}+${hi.level}`;
+            this._lastDateCycle = `${dateStr}_${hour}`;
+
+            // Auto-scale render altitude
             this.renderAltitude = Math.max(500, altFt * 0.3048 * 0.3);
 
             this.rebuildStreamlines();
             setRenderOne(true);
 
-            // Compute the server-side cache URL from the response metadata
-            const refDate = (json.refTime ?? "").replace(/[-T:Z]/g, "").slice(0, 8);
-            const refHour = (json.refTime ?? "").slice(11, 13);
-            this._lastCacheUrl = `data/wind/wind_${refDate || dateStr}_${refHour || hour}z_${json.level ?? "10m"}.json`;
-            this._storeWindFile();  // store in FileManager for serialization
+            // Store both source files for serialization
+            this._storeWindFiles(jsonLo, jsonHi, needTwo, dateStr, hour);
 
-            this.statusText = `GFS ${json.refTime?.slice(0, 10) ?? dateStr} ${levelLabel}`;
-            console.log(`Wind loaded: ${json.nx}x${json.ny} from ${json.source}`);
+            const altLabel = altFt < 300 ? "Surface" : `${altFt.toLocaleString()} ft`;
+            this.statusText = `GFS ${jsonLo.refTime?.slice(0, 10) ?? dateStr} ${altLabel}`;
+            console.log(`Wind loaded at ${altFt} ft (${lo.level}→${hi.level}, t=${t.toFixed(2)})`);
         } catch (err) {
             console.error("Wind fetch failed:", err);
             this.statusText = `Error: ${err.message}`;
         } finally {
             this.fetching = false;
         }
+    }
+
+    // Legacy single-level fetch (used by modDeserialize)
+    async fetchWindData(level) {
+        const ft = levelToAltFeet(level ?? "surface");
+        await this.fetchWindForAltitude(ft);
     }
 
     // ── apply wind JSON and store for serialization ────────────────
@@ -335,29 +384,48 @@ export class CNodeDisplayWindField extends CNode3DGroup {
         this._lastWindJSON = json;   // keep for serialization
     }
 
-    // Store wind data as a compressed file in FileManager for sitch serialization
+    // Store source wind level files in FileManager for serialization
+    _storeWindFiles(jsonLo, jsonHi, needTwo, dateStr, hour) {
+        // Remove any previous wind grid files from FileManager
+        const oldIds = this._windFileIds ?? [];
+        for (const oldId of oldIds) {
+            if (FileManager.list[oldId]) delete FileManager.list[oldId];
+        }
+        // Also sweep any stale windGrid_ entries not in our list
+        for (const key of Object.keys(FileManager.list)) {
+            if (key.startsWith("windGrid_")) delete FileManager.list[key];
+        }
+
+        const src = (jsonLo.source ?? "GFS").replace(/[^a-zA-Z0-9]/g, "");
+        this._windFileIds = [];
+
+        const store = (json, suffix) => {
+            const fileId = `windGrid_${src}_${suffix}`;
+            const compressed = pako.deflate(JSON.stringify(json));
+            if (FileManager.list[fileId]) delete FileManager.list[fileId];
+            FileManager.add(fileId, json, compressed.buffer);
+            const entry = FileManager.list[fileId];
+            entry.dynamicLink = true;
+            entry.dataType = "windGrid";
+            entry.filename = `wind-${src}-${suffix}.json.deflate`;
+            entry.compressed = true;
+            // Cache URL for serving without S3
+            const refDate = (json.refTime ?? "").replace(/[-T:Z]/g, "").slice(0, 8);
+            const refHour = (json.refTime ?? "").slice(11, 13);
+            const levelStr = json.level ?? "10m";
+            entry.staticURL = `data/wind/wind_${refDate || dateStr}_${refHour || hour}z_${levelStr}.json`;
+            entry.localStaticURL = entry.staticURL;
+            this._windFileIds.push(fileId);
+        };
+
+        store(jsonLo, jsonLo.level ?? "lo");
+        if (needTwo) store(jsonHi, jsonHi.level ?? "hi");
+    }
+
+    // Legacy single-file store (used by _storeWindFile calls in modDeserialize)
     _storeWindFile() {
         if (!this._lastWindJSON) return;
-        const jsonStr = JSON.stringify(this._lastWindJSON);
-        const compressed = pako.deflate(jsonStr);
-        const src = (this._lastWindJSON.source ?? "GFS").replace(/[^a-zA-Z0-9]/g, "");
-        const fileId = `windGridData_${src}`;
-        this._windFileId = fileId;
-
-        // Remove existing entry first to avoid "adding twice" assert
-        if (FileManager.list[fileId]) {
-            delete FileManager.list[fileId];
-        }
-        FileManager.add(fileId, this._lastWindJSON, compressed.buffer);
-        const entry = FileManager.list[fileId];
-        entry.dynamicLink = true;
-        entry.dataType = "windGrid";
-        entry.filename = `wind-${src}-grid-data.json.deflate`;
-        entry.compressed = true;
-        if (this._lastCacheUrl) {
-            entry.staticURL = this._lastCacheUrl;
-            entry.localStaticURL = this._lastCacheUrl;
-        }
+        this._storeWindFiles(this._lastWindJSON, this._lastWindJSON, false, "", "");
     }
 
     // Decompress and parse wind data from a FileManager entry
@@ -379,13 +447,15 @@ export class CNodeDisplayWindField extends CNode3DGroup {
     }
 
     modSerialize() {
-        this._storeWindFile();
+        if (this._lastWindJSON && (!this._windFileIds || this._windFileIds.length === 0)) {
+            this._storeWindFile();
+        }
 
         return {
             ...super.modSerialize(),
+            windAltFt: this.windAltFt,
             windLevel: this.windLevel,
-            windCacheUrl: this._lastCacheUrl ?? null,
-            windFileId: this._windFileId ?? null,
+            windFileIds: this._windFileIds ?? [],
             hasWindData: !!this._lastWindJSON,
         };
     }
@@ -393,30 +463,46 @@ export class CNodeDisplayWindField extends CNode3DGroup {
     async modDeserialize(v) {
         super.modDeserialize(v);
 
-        if (v.windCacheUrl) this._lastCacheUrl = v.windCacheUrl;
-
-        const fileId = v.windFileId ?? "windGridData";
-        if (v.hasWindData && FileManager.list[fileId]) {
-            const json = CNodeDisplayWindField._parseWindEntry(FileManager.list[fileId]);
-            if (json && json.u && json.v) {
-                this._applyWindJSON(json);
-                this.windLevel = v.windLevel ?? "surface";
-
-                const altFt = levelToAltFeet(this.windLevel);
-                this.renderAltitude = Math.max(500, altFt * 0.3048 * 0.3);
-
-                // Re-store in FileManager with correct URLs for re-saving
-                this._storeWindFile();
-
-                this.rebuildStreamlines();
-                setRenderOne(true);
-
-                const levelLabel = this.windLevel === "surface" ? "10m / Surface"
-                    : `${this.windLevel} hPa (~${levelToAltFeet(this.windLevel).toLocaleString()} ft)`;
-                this.statusText = `GFS ${json.refTime ?? "?"} ${levelLabel}`;
-                console.log("Wind data restored from saved file");
-            }
+        const fileIds = v.windFileIds ?? [];
+        // Backward compat: old single-file format
+        if (fileIds.length === 0 && v.windFileId && FileManager.list[v.windFileId]) {
+            fileIds.push(v.windFileId);
         }
+        if (!v.hasWindData || fileIds.length === 0) return;
+
+        const jsons = [];
+        for (const fid of fileIds) {
+            if (!FileManager.list[fid]) continue;
+            const json = CNodeDisplayWindField._parseWindEntry(FileManager.list[fid]);
+            if (json && json.u && json.v) jsons.push(json);
+        }
+        if (jsons.length === 0) return;
+
+        this.windAltFt = v.windAltFt ?? 33;
+
+        if (jsons.length === 1) {
+            this._applyWindJSON(jsons[0]);
+        } else {
+            const {t} = bracketingLevels(this.windAltFt);
+            const n = jsons[0].u.length;
+            const bU = new Array(n), bV = new Array(n);
+            for (let i = 0; i < n; i++) {
+                bU[i] = Math.round(((1 - t) * jsons[0].u[i] + t * jsons[1].u[i]) * 100) / 100;
+                bV[i] = Math.round(((1 - t) * jsons[0].v[i] + t * jsons[1].v[i]) * 100) / 100;
+            }
+            this._applyWindJSON({...jsons[0], u: bU, v: bV, level: `${Math.round(this.windAltFt)}ft`});
+        }
+
+        this.windLevel = v.windLevel ?? "surface";
+        this.renderAltitude = Math.max(500, this.windAltFt * 0.3048 * 0.3);
+        this._windFileIds = fileIds;
+
+        this.rebuildStreamlines();
+        setRenderOne(true);
+
+        const altLabel = this.windAltFt < 300 ? "Surface" : `${this.windAltFt.toLocaleString()} ft`;
+        this.statusText = `GFS ${jsons[0].refTime ?? "?"} ${altLabel}`;
+        console.log("Wind data restored from saved files");
     }
 
     // ── per-frame update ─────────────────────────────────────────────
@@ -424,6 +510,22 @@ export class CNodeDisplayWindField extends CNode3DGroup {
         super.update(frame);
         this.frameCount++;
         this.material.uniforms.uTime.value = this.frameCount;
+
+        // Check if the sitch date has moved to a different GFS cycle
+        if (this._lastDateCycle && !this.fetching) {
+            const dateNode = GlobalDateTimeNode;
+            const dateNow = dateNode?.dateNow;
+            if (dateNow) {
+                const dateStr = dateNow.toISOString().slice(0, 10).replace(/-/g, "");
+                const hour = Math.floor(dateNow.getUTCHours() / 6) * 6;
+                const currentCycle = `${dateStr}_${hour}`;
+                if (currentCycle !== this._lastDateCycle) {
+                    this._lastDateCycle = currentCycle;
+                    this._levelCache = {};  // clear cache for new cycle
+                    this.fetchWindForAltitude(this.windAltFt);
+                }
+            }
+        }
     }
 
     dispose() {
