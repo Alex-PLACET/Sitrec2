@@ -151,8 +151,8 @@ export class CNodeControllerPTZUI extends CNodeControllerAzElZoom {
             if (this.roll !== undefined ) {
                 this.rollController = guiPTZ.add(this, "roll", -180, 180, 0.005).listen().name(t("ptzUI.roll.label")).tooltip(t("ptzUI.roll.tooltip")).onChange(v => this.refresh()).setLabelColor(pszUIColor)
             }
-            guiPTZ.add(this, "xOffset", -10, 10, 0.001).listen().name(t("ptzUI.xOffset.label")).tooltip(t("ptzUI.xOffset.tooltip")).onChange(v => this.refresh()).setLabelColor(pszUIColor)
-            guiPTZ.add(this, "yOffset", -10, 10, 0.001).listen().name(t("ptzUI.yOffset.label")).tooltip(t("ptzUI.yOffset.tooltip")).onChange(v => this.refresh()).setLabelColor(pszUIColor)
+            guiPTZ.add(this, "xOffset", -20, 20, 0.001).listen().name(t("ptzUI.xOffset.label")).tooltip(t("ptzUI.xOffset.tooltip")).onChange(v => this.refresh()).setLabelColor(pszUIColor)
+            guiPTZ.add(this, "yOffset", -20, 20, 0.001).listen().name(t("ptzUI.yOffset.label")).tooltip(t("ptzUI.yOffset.tooltip")).onChange(v => this.refresh()).setLabelColor(pszUIColor)
             guiPTZ.add(this, "nearPlane", 0.001, 1, 0.001).listen().name(t("ptzUI.nearPlane.label")).tooltip(t("ptzUI.nearPlane.tooltip")).onChange(v => this.refresh()).setLabelColor(pszUIColor)
             guiPTZ.add(this, "relative").listen().name(t("ptzUI.relative.label")).tooltip(t("ptzUI.relative.tooltip")).onChange(v => this.refresh())
             guiPTZ.add(this, "satellite").listen().name(t("ptzUI.satellite.label")).tooltip(t("ptzUI.satellite.tooltip")).onChange(v => {
