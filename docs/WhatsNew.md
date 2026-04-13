@@ -45,6 +45,194 @@ Example entry format:
 
 ---
 
+## Version 2.45.1 (2026-04-13)
+
+### New Features
+- **Planet-Only Labels**: New "Only Label Planets" checkbox to hide star labels while keeping planet labels visible
+- **Dusk/Dawn Label Fading**: Star and planet labels now fade out at dusk and dawn for a cleaner sky view
+
+### Improvements
+- Allow arbitrary wind altitudes with interpolated values between levels
+- Performance: cache preRender/postRender node lists in CNodeManager instead of rebuilding each frame
+- Performance: skip terrain subdivision when cameras are stationary
+- Performance: reuse per-frame allocations in NightSky update
+- Robustified regression tests for reliability under heavy machine load
+
+### Bug Fixes
+- Fixed TLE status font size
+
+---
+
+## Version 2.45.0 (2026-04-12)
+
+### New Features
+- **Wind Field Visualization**: GFS weather data integration with animated streamline rendering
+
+### Improvements
+- Wind LOD improvements for better rendering at different zoom levels
+- Wind serialization support for saving/loading wind configurations
+- MCP tweaks for Docker sandbox compatibility
+- Allow Escape key to cancel version selection in sitrec.sh installer
+- Reduce semver retention in GHCR cleanup from 30 to 20 versions
+- Expand GHCR cleanup to also prune build-* tags and old semver versions
+
+### Bug Fixes
+- Fixed celestial sphere appearing squished when Match Video Aspect is active
+
+---
+
+## Version 2.44.8 (2026-04-11)
+
+### Improvements
+- Override description in annotations input, not just labels
+- Add manifest annotations so GHCR shows descriptions for each Docker image version
+
+### Bug Fixes
+- Fixed sitrec.sh versions list truncating newest releases
+
+---
+
+## Version 2.44.7 (2026-04-11)
+
+### Bug Fixes
+- Fixed lookView label drift when video is panned or zoomed
+
+---
+
+## Version 2.44.6 (2026-04-10)
+
+### Bug Fixes
+- Fixed lookView pan alternation by skipping fixUp for PTZ cameras
+
+---
+
+## Version 2.44.5 (2026-04-10)
+
+### New Features
+- **Tracking Cursor Extrapolation**: Tracking cursor now extrapolates past keyframes with a configurable "Show N Keyframes" setting
+- **Experimental Flight Viewer**: New tool for viewing flight data
+- MCP bridge extended to tools
+
+### Improvements
+- Add test-viewer menu control sweep regression test and fix sweep-discovered UI bugs
+- More robust MCP bridge connection handling
+- Scope bitstream keyframe detection to H.264 only
+
+### Bug Fixes
+- Fixed satellite track not appearing in the UI after loading a sitch
+- Fixed MCP bridge routing eval calls to non-Sitrec metabunk tabs
+- Fixed double stabilization when exporting stabilized videos
+
+---
+
+## Version 2.44.4 (2026-04-09)
+
+### Bug Fixes
+- Fixed VLC-exported MP4 video decode failures and chunk duplication
+
+---
+
+## Version 2.44.3 (2026-04-08)
+
+### Improvements
+- Avoid re-reading local files that have already been read or written, making re-saving locally much faster
+- Tracking point click radius now based on screen pixels instead of video pixels for consistent interaction
+- Smaller click radius for dragging track points to better distinguish them from the main tracking region
+
+---
+
+## Version 2.44.2 (2026-04-08)
+
+### Improvements
+- Optional larger file upload limits for admin users
+
+---
+
+## Version 2.44.1 (2026-04-08)
+
+### Improvements
+- Comprehensive i18n translations across the entire UI including menus, settings, node labels, tooltips, and data-driven label lookups
+
+### Bug Fixes
+- Fixed serialization issues when saving in a different language than the one loaded
+- Fixed nodeLabels keys not matching actual node IDs
+- Fixed settings menu disappearing after sitch change
+
+---
+
+## Version 2.44.0 (2026-04-08)
+
+### New Features
+- **Internationalization (i18n)**: Full translation support with English, French, and Spanish translations using i18next
+- **Flare Horizon Check**: Flares detected through the ground are now filtered using ellipsoid horizon checking
+
+### Improvements
+- Setting menu now remains active in the startup sitch browser
+
+### Bug Fixes
+- Fixed missing conversion path for high bit-depth tiled JPEG 2000 images
+
+---
+
+## Version 2.43.1 (2026-04-08)
+
+### Improvements
+- Added notes API methods and updated documentation
+
+### Bug Fixes
+- Fixed sitch API issues from PR #53: restored getSitchState, guarded built-in loads, prevented dialog triggers
+
+---
+
+## Version 2.43.0 (2026-04-08)
+
+### New Features
+- **Camera Orbit Track**: Orbit track visualization for camera position
+
+### Improvements
+- Performance: lazy track recalculation for large-frame sitches
+- Performance: cache munge values, skip unnecessary graph redraws and node recalculations
+- Show edges only on OSM buildings (cleaner rendering)
+- Skip spline recalculation on terrain change unless tracks are AGL
+
+### Bug Fixes
+- Fixed crash when fixedCameraPosition node does not exist
+- Fixed MCP server launch: run.sh referenced non-existent mcp-server.mjs
+
+---
+
+## Version 2.42.1 (2026-04-07)
+
+### Improvements
+- Lazy-compute LOS fitting nodes: skip recalculation when the fitting method is not selected
+
+---
+
+## Version 2.42.0 (2026-04-07)
+
+### New Features
+- **Physics-Based Trajectory Fitting**: Trajectory fitting using Nelder-Mead optimizer for physics-based motion models
+- **LOS Fitting Algorithms**: Added global LOS fitting methods — Constant Velocity, Constant Acceleration, Kalman filter, and Monte Carlo least-squares alongside the original RANSAC method
+
+### Improvements
+- Suppressed system context menu when right-clicking on sliders to set range
+
+---
+
+## Version 2.41.3 (2026-04-07)
+
+### Bug Fixes
+- Fixed crash loading MP4 files whose first sample is not a key frame
+
+---
+
+## Version 2.41.2 (2026-04-06)
+
+### Improvements
+- Only tag Docker image as 'latest' when it is the newest version
+
+---
+
 ## Version 2.41.1 (2026-04-06)
 
 ### Improvements
