@@ -1099,9 +1099,17 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
             const uniforms = this.satellites.lightCloud.material.uniforms;
             let shaderScale = Sit.satScale;
             shaderScale = view.adjustPointScale(shaderScale * 2);
+
+            if (this.satellites.lightCloud.useSkyAttenuation) {
+                const sunNode = NodeMan.get("theSun", true);
+                if (sunNode) {
+                    const skyBrightness = sunNode.calculateSkyBrightness(view.camera.position);
+                    shaderScale *= Math.max(0, 1 - skyBrightness);
+                }
+            }
+
             uniforms.baseScale.value = shaderScale;
             uniforms.distanceReference.value = 3000000;
-
         }
     }
 

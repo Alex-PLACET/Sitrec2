@@ -332,6 +332,7 @@ export class CPointLightCloud extends CNode3D {
         const nearScale = config.nearScale ?? 1.0;
         const farScale = config.farScale ?? 0.1;
         const baseScale = config.baseScale ?? 10;
+        this.mainViewBaseScale = baseScale;
         const minPointSize = config.minPointSize ?? this.minPointSize;
         const maxPointSize = config.maxPointSize ?? this.maxPointSize;
 
@@ -528,6 +529,15 @@ export class CPointLightCloud extends CNode3D {
 
         const camera = view.camera;
 
+        let skyFactor = 1;
+        if (this.useSkyAttenuation) {
+            const sunNode = NodeMan.get("theSun", true);
+            if (sunNode) {
+                const skyBrightness = sunNode.calculateSkyBrightness(camera.position);
+                skyFactor = Math.max(0, 1 - skyBrightness);
+            }
+        }
+
         let scale = this.baseScale;
 
         if (this.useBoostScale) {
@@ -536,18 +546,17 @@ export class CPointLightCloud extends CNode3D {
             scale = this.boostScale(scale, 5, distance, fovRadians, this.boostAmount);
         }
 
-        if (this.useSkyAttenuation) {
-            const sunNode = NodeMan.get("theSun", true);
-            if (sunNode) {
-                const skyBrightness = sunNode.calculateSkyBrightness(camera.position);
-                scale *= Math.max(0, 1 - skyBrightness);
-            }
-        }
-
+        scale *= skyFactor;
         scale = view.adjustPointScale(scale);
 
         this.material.uniforms.baseScale.value = scale;
         this.material.uniforms.cameraFOV.value = camera.fov;
+
+        if (this.mainViewMaterial) {
+            let mainScale = (this.mainViewBaseScale ?? 10) * skyFactor;
+            mainScale = view.adjustPointScale(mainScale);
+            this.mainViewMaterial.uniforms.baseScale.value = mainScale;
+        }
     }
 
     addToScene(scene) {

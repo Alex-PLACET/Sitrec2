@@ -784,7 +784,7 @@ export class CSatellite {
             mode: 'world',
             singleColor: null,  // per-satellite colors
             useLogDepth: true,
-            useSkyAttenuation: false,  // satellites handle their own visibility
+            useSkyAttenuation: true,
             useSizeRange: true,
             useDistanceAttenuation: true,
             distanceReference: 3000000,

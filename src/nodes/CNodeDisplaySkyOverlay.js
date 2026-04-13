@@ -126,7 +126,7 @@ export class CNodeDisplaySkyOverlay extends CNodeViewUI {
         }
 
         if (showSatelliteNames) {
-            this.renderSatelliteNames(earthSphere);
+            this.renderSatelliteNames(earthSphere, starAlpha);
         }
     }
 
@@ -207,7 +207,7 @@ export class CNodeDisplaySkyOverlay extends CNodeViewUI {
         }
     }
 
-    renderSatelliteNames(earthSphere) {
+    renderSatelliteNames(earthSphere, starAlpha = 1) {
         const satellites = this.nightSky.satellites;
         if (!satellites.TLEData) return;
 
@@ -292,8 +292,9 @@ export class CNodeDisplaySkyOverlay extends CNodeViewUI {
 
         candidates.sort((a, b) => a.distSq - b.distSq);
         
-        this.ctx.fillStyle = "#ffffff";
-        
+        const alphaHex = Math.floor(starAlpha * 255).toString(16).padStart(2, '0');
+        this.ctx.fillStyle = "#ffffff" + alphaHex;
+
         const maxLabels = this.maxSatelliteLabels;
         for (let i = 0; i < candidates.length && i < maxLabels; i++) {
             const sat = satData[candidates[i].index];
