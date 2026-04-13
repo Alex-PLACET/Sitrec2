@@ -676,7 +676,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
 
         par.validPct = 0;
         const nightSky = this;
-        labelMainViewPVS.addText("videoLabelInRange", "xx", 100, 2, 1.5, "#f0f00080", "right").update(function () {
+        labelMainViewPVS.addText("videoLabelInRange", "xx", 100, 2, -11, "#f0f00080", "right").update(function () {
 
             this.text = "";
 
