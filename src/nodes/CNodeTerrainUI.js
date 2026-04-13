@@ -1417,44 +1417,61 @@ export class CNodeTerrainUI extends CNode {
                 this.terrainNode.maps[this.mapType].map.subdivideTilesGeneral();
             }
 
-            // Prepare each view's camera with effective zoom + pan for accurate LOD.
-            // This ensures tile subdivision uses the actual rendered FOV and direction.
+            // Skip expensive view-specific subdivision if cameras haven't moved
+            // AND tiles have had time to settle. We use a grace period so that
+            // tiles still loading when the camera stops continue to get subdivided.
+            let cameraFingerprint = 0;
             for (const view of views) {
-                if (view && view.visible && view.prepareCameraForLOD) {
-                    view.prepareCameraForLOD();
+                if (view && view.visible && view.camera) {
+                    const e = view.camera.matrixWorld.elements;
+                    // Hash a few matrix elements that change on any move/rotate/zoom
+                    cameraFingerprint += e[0] + e[5] + e[10] + e[12] + e[13] + e[14];
+                    cameraFingerprint += view.camera.fov + view.camera.zoom;
                 }
             }
+            if (cameraFingerprint !== this._lastCameraFingerprint) {
+                this._lastCameraFingerprint = cameraFingerprint;
+                this._subdivGraceFrames = 120; // keep subdividing for ~4s after camera stops
+            } else if (this._subdivGraceFrames > 0) {
+                this._subdivGraceFrames--;
+            }
 
-            // subdivide the elevation first so elevation requests will come before textures
-            // this makes it more likely that the elevation will be ready when the texture is ready to make a tile.
-            if (this.terrainNode.elevationMap !== undefined) {
-                // For elevation, call with all views so both cameras are applied for subdivision decisions
-                // not sure about this. elevation is used at a lower resolution than the textures
-                // as the tiles are configurable (default: tileSegments x tileSegments)
+            if (this._subdivGraceFrames > 0) {
+                // Prepare each view's camera with effective zoom + pan for accurate LOD.
+                // This ensures tile subdivision uses the actual rendered FOV and direction.
                 for (const view of views) {
-                    if (view && view.visible) {
-                        this.terrainNode.elevationMap.subdivideTilesViewSpecific(view, this.elevationSubSize / this.elevationDetail);
+                    if (view && view.visible && view.prepareCameraForLOD) {
+                        view.prepareCameraForLOD();
                     }
                 }
-            }
 
-            // For texture maps, call subdivideTilesViewSpecific separately for each view
-            if (this.terrainNode.maps[this.mapType].map !== undefined) {
-                // Get the current map definition to check for textureSubSize override
-                const mapDef = this.mapSources[this.mapType];
-                const textureSubSize = mapDef?.textureSubSize ?? this.textureSubSize;
-
-                for (const view of views) {
-                    if (view && view.visible) {
-                        this.terrainNode.maps[this.mapType].map.subdivideTilesViewSpecific(view, textureSubSize / this.textureDetail);
+                // subdivide the elevation first so elevation requests will come before textures
+                // this makes it more likely that the elevation will be ready when the texture is ready to make a tile.
+                if (this.terrainNode.elevationMap !== undefined) {
+                    for (const view of views) {
+                        if (view && view.visible) {
+                            this.terrainNode.elevationMap.subdivideTilesViewSpecific(view, this.elevationSubSize / this.elevationDetail);
+                        }
                     }
                 }
-            }
 
-            // Restore cameras after LOD evaluation
-            for (const view of views) {
-                if (view && view.visible && view.restoreCameraAfterLOD) {
-                    view.restoreCameraAfterLOD();
+                // For texture maps, call subdivideTilesViewSpecific separately for each view
+                if (this.terrainNode.maps[this.mapType].map !== undefined) {
+                    const mapDef = this.mapSources[this.mapType];
+                    const textureSubSize = mapDef?.textureSubSize ?? this.textureSubSize;
+
+                    for (const view of views) {
+                        if (view && view.visible) {
+                            this.terrainNode.maps[this.mapType].map.subdivideTilesViewSpecific(view, textureSubSize / this.textureDetail);
+                        }
+                    }
+                }
+
+                // Restore cameras after LOD evaluation
+                for (const view of views) {
+                    if (view && view.visible && view.restoreCameraAfterLOD) {
+                        view.restoreCameraAfterLOD();
+                    }
                 }
             }
 
