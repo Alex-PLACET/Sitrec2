@@ -676,7 +676,7 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
 
         par.validPct = 0;
         const nightSky = this;
-        labelMainViewPVS.addText("videoLabelInRange", "xx", 100, 2, 1.5, "#f0f00080", "right").update(function () {
+        labelMainViewPVS.addText("videoLabelInRange", "xx", 100, 2, -11, "#f0f00080", "right").update(function () {
 
             this.text = "";
 
@@ -878,9 +878,9 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
         if (this.useDayNight) {
             const sun = Globals.sunTotal / Math.PI;
             this.sunLevel = sun;
-            const blue = new Vector3(0.53, 0.81, 0.92)
-            blue.multiplyScalar(sun)
-            this.skyColor = new Color(blue.x, blue.y, blue.z)
+            if (!this._skyBlue) this._skyBlue = new Vector3();
+            this._skyBlue.set(0.53, 0.81, 0.92).multiplyScalar(sun);
+            this.skyColor = new Color(this._skyBlue.x, this._skyBlue.y, this._skyBlue.z)
         }
 
 
@@ -901,20 +901,17 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
         // (The old EUS code also needed lat/lon tilts and a 180° Y flip
         //  to convert from Z-up celestial to Y-up local tangent plane.)
 
-        var nowDate = this.in.startTime.dateNow;
+        const nowDate = this.in.startTime.dateNow;
         const GMST = getSiderealTime(nowDate, 0); // degrees
 
-        const rotationMatrixZ = new Matrix4();
-        rotationMatrixZ.makeRotationZ(radians(-GMST));
+        if (!this._rotMatZ) this._rotMatZ = new Matrix4();
+        this._rotMatZ.makeRotationZ(radians(-GMST));
 
-        this.celestialSphere.applyMatrix4(rotationMatrixZ)
+        this.celestialSphere.applyMatrix4(this._rotMatZ)
 
         if (this.celestialDaySphere) {
-            this.celestialDaySphere.applyMatrix4(rotationMatrixZ)
+            this.celestialDaySphere.applyMatrix4(this._rotMatZ)
         }
-
-
-        var nowDate = this.in.startTime.dateNow
 
         // Keep the canonical ephemeris state tied to the look camera because the
         // celestial arrows/debug tools are anchored there. Individual views will

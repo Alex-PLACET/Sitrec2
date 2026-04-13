@@ -10,16 +10,47 @@ export class CNodeManager extends CManager{
         super (props)
         this.UniqueNodeNumber = 0;
         this.suspendRecalculateCount = 0;
-//        console.log("Instantiating CNodeManager")
+        // Cached lists of nodes that implement specific per-frame methods,
+        // rebuilt lazily to avoid iterating all ~300+ nodes every frame.
+        this._preRenderNodes = null;
+        this._postRenderNodes = null;
     }
 
+    // Invalidate cached method lists so they rebuild on next access.
+    _invalidateMethodCaches() {
+        this._preRenderNodes = null;
+        this._postRenderNodes = null;
+    }
 
+    // Return array of nodes that implement preRender (typically ~6 out of 300+).
+    getPreRenderNodes() {
+        if (this._preRenderNodes === null) {
+            this._preRenderNodes = [];
+            for (const entry of Object.values(this.list)) {
+                if (entry.data.preRender !== undefined) {
+                    this._preRenderNodes.push(entry.data);
+                }
+            }
+        }
+        return this._preRenderNodes;
+    }
+
+    // Return array of nodes that implement postRender (typically ~1).
+    getPostRenderNodes() {
+        if (this._postRenderNodes === null) {
+            this._postRenderNodes = [];
+            for (const entry of Object.values(this.list)) {
+                if (entry.data.postRender !== undefined) {
+                    this._postRenderNodes.push(entry.data);
+                }
+            }
+        }
+        return this._postRenderNodes;
+    }
 
     add(id, node) {
         super.add(id, node)
-        // todo: for now we're not registering all of the nodes when running as a console app
-        // assert (isConsole || this.nodeTypes[node.constructor.name.substring(5)] !== undefined,
-        //     "Node type <" + node.constructor.name + "> not registered with node factory")
+        this._invalidateMethodCaches();
     }
 
 
@@ -34,6 +65,7 @@ export class CNodeManager extends CManager{
     disposeRemove(id, inputs=false) {
         if (id === undefined || id === null)
             return;
+        this._invalidateMethodCaches();
         if (inputs) {
             const node = this.get(id)
             // Capture keys before iterating — recursive disposeRemove may mutate inputs

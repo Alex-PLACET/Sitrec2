@@ -96,11 +96,8 @@ export async function exportPanorama() {
             lookView.camera.updateMatrix();
             lookView.camera.updateMatrixWorld();
             
-            for (const entry of Object.values(NodeMan.list)) {
-                const node = entry.data;
-                if (node.preRender !== undefined) {
-                    node.preRender(lookView);
-                }
+            for (const node of NodeMan.getPreRenderNodes()) {
+                node.preRender(lookView);
             }
 
             const cameraPos = lookView.camera.position.clone();
@@ -201,11 +198,8 @@ export async function exportPanorama() {
             lookView.camera.updateMatrix();
             lookView.camera.updateMatrixWorld();
 
-            for (const entry of Object.values(NodeMan.list)) {
-                const node = entry.data;
-                if (node.preRender !== undefined) {
-                    node.preRender(lookView);
-                }
+            for (const node of NodeMan.getPreRenderNodes()) {
+                node.preRender(lookView);
             }
 
             lookView.renderCanvas(fd.frame);

@@ -28,6 +28,7 @@ export class CNodeDisplaySkyOverlay extends CNodeViewUI {
         this.nightSky = v.nightSky;
 
         this.showStarNames = false;
+        this.onlyLabelPlanets = false;
 
         const gui = v.gui ?? guiShowHide;
 
@@ -39,6 +40,11 @@ export class CNodeDisplaySkyOverlay extends CNodeViewUI {
             setRenderOne(true);
         }).name(this.overlayView.id + " Star names").tooltip("Show star name labels in this view").listen();
         this.addSimpleSerial("showStarNames");
+
+        gui.add(this, "onlyLabelPlanets").onChange(() => {
+            setRenderOne(true);
+        }).name(this.overlayView.id + " Only label planets").tooltip("When checked, suppress star labels but always show planet names").listen();
+        this.addSimpleSerial("onlyLabelPlanets");
 
 
     }
@@ -92,6 +98,14 @@ export class CNodeDisplaySkyOverlay extends CNodeViewUI {
         const actualCameraPosition = this.camera.position
         const date = this.in.startTime.dateNow
 
+        // Compute sky-brightness alpha so labels fade at dusk/dawn like the stars
+        let starAlpha = 1;
+        const sunNode = NodeMan.get("theSun", true);
+        if (sunNode) {
+            const skyBrightness = sunNode.calculateSkyBrightness(actualCameraPosition, date);
+            starAlpha = Math.max(0, 1 - skyBrightness);
+        }
+
         if (this.showStarNames) {
             const starCamera = this.camera.clone();
             if (this.camera.renderedFOV) {
@@ -108,7 +122,7 @@ export class CNodeDisplaySkyOverlay extends CNodeViewUI {
             starCamera.matrixWorld.copy(starCamera.matrix);
             starCamera.matrixWorldInverse.copy(starCamera.matrixWorld).invert();
             starCamera.updateProjectionMatrix();
-            this.renderStarNames(starCamera, earthSphere, actualCameraPosition, date);
+            this.renderStarNames(starCamera, earthSphere, actualCameraPosition, date, starAlpha);
         }
 
         if (showSatelliteNames) {
@@ -131,38 +145,43 @@ export class CNodeDisplaySkyOverlay extends CNodeViewUI {
         camera.rotateOnWorldAxis(right, -yOffsetRad);
     }
 
-    renderStarNames(camera, earthSphere, actualCameraPosition, date) {
-        for (var HR in this.nightSky.starField.commonNames) {
-            const n = HR - 1
+    renderStarNames(camera, earthSphere, actualCameraPosition, date, starAlpha = 1) {
+        const alphaHex = Math.floor(starAlpha * 255).toString(16).padStart(2, '0');
 
-            const mag = this.nightSky.starField.getStarMagnitude(n)
-            if (mag > Sit.starLimit) {
-                continue
-            }
+        if (!this.onlyLabelPlanets) {
+            this.ctx.fillStyle = "#ffffff" + alphaHex;
+            for (var HR in this.nightSky.starField.commonNames) {
+                const n = HR - 1
 
-            const ra = this.nightSky.starField.getStarRA(n)
-            const dec = this.nightSky.starField.getStarDEC(n)
-            
-            const starDirection = getCelestialDirectionFromRaDec(ra, dec, date)
-            
-            const ray = new Ray(actualCameraPosition, starDirection)
-            const target0 = V3()
-            const target1 = V3()
-            if (intersectSphere2(ray, earthSphere, target0, target1)) {
-                continue
-            }
+                const mag = this.nightSky.starField.getStarMagnitude(n)
+                if (mag > Sit.starLimit) {
+                    continue
+                }
 
-            const pos = raDec2Celestial(ra, dec, 100)
-            pos.applyMatrix4(this.nightSky.celestialSphere.matrix)
-            pos.project(camera)
+                const ra = this.nightSky.starField.getStarRA(n)
+                const dec = this.nightSky.starField.getStarDEC(n)
 
-            if (pos.z > -1 && pos.z < 1 && pos.x >= -1 && pos.x <= 1 && pos.y >= -1 && pos.y <= 1) {
-                const zoomedX = pos.x * this.zoom - this._panShiftX;
-                const zoomedY = pos.y * this.zoom + this._panShiftY;
+                const starDirection = getCelestialDirectionFromRaDec(ra, dec, date)
 
-                const x = (zoomedX + 1) * this.widthPx / 2 + 5
-                const y = (-zoomedY + 1) * this.heightPx / 2 - 5
-                this.ctx.fillText(this.nightSky.starField.commonNames[HR], x, y)
+                const ray = new Ray(actualCameraPosition, starDirection)
+                const target0 = V3()
+                const target1 = V3()
+                if (intersectSphere2(ray, earthSphere, target0, target1)) {
+                    continue
+                }
+
+                const pos = raDec2Celestial(ra, dec, 100)
+                pos.applyMatrix4(this.nightSky.celestialSphere.matrix)
+                pos.project(camera)
+
+                if (pos.z > -1 && pos.z < 1 && pos.x >= -1 && pos.x <= 1 && pos.y >= -1 && pos.y <= 1) {
+                    const zoomedX = pos.x * this.zoom - this._panShiftX;
+                    const zoomedY = pos.y * this.zoom + this._panShiftY;
+
+                    const x = (zoomedX + 1) * this.widthPx / 2 + 5
+                    const y = (-zoomedY + 1) * this.heightPx / 2 - 5
+                    this.ctx.fillText(this.nightSky.starField.commonNames[HR], x, y)
+                }
             }
         }
 
@@ -171,8 +190,11 @@ export class CNodeDisplaySkyOverlay extends CNodeViewUI {
             pos.applyMatrix4(this.nightSky.celestialSphere.matrix)
             pos.project(camera)
 
-            this.ctx.strokeStyle = planet.color;
-            this.ctx.fillStyle = planet.color;
+            // Apply alpha to the planet's own color
+            const c = planet.color;
+            const alphaColor = c.length === 7 ? c + alphaHex : c;
+            this.ctx.strokeStyle = alphaColor;
+            this.ctx.fillStyle = alphaColor;
 
             if (pos.z > -1 && pos.z < 1 && pos.x >= -1 && pos.x <= 1 && pos.y >= -1 && pos.y <= 1) {
                 const zoomedX = pos.x * this.zoom - this._panShiftX;
