@@ -6,7 +6,9 @@
 FROM php:8.4-apache
 
 RUN apt-get update && apt-get install -y libzip-dev libonig-dev \
+    python3 python3-pip \
     && docker-php-ext-install zip mbstring iconv \
+    && pip3 install --no-cache-dir --break-system-packages eccodes certifi \
     && rm -rf /var/lib/apt/lists/*
 
 COPY dist/ /var/www/html/
@@ -14,7 +16,8 @@ COPY dist/ /var/www/html/
 WORKDIR /var/www/html
 
 RUN mkdir ./sitrec-cache && chmod 777 ./sitrec-cache \
-    && mkdir ./sitrec-upload && chmod 777 ./sitrec-upload
+    && mkdir ./sitrec-upload && chmod 777 ./sitrec-upload \
+    && mkdir -p ./data/wind && chmod 777 ./data/wind
 
 # Suppress Apache ServerName warning
 RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf

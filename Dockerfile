@@ -65,7 +65,9 @@ RUN npm run deploy
 FROM php:8.4-apache
 
 RUN apt-get update && apt-get install -y libzip-dev libonig-dev \
+    python3 python3-pip \
     && docker-php-ext-install zip mbstring iconv \
+    && pip3 install --no-cache-dir --break-system-packages eccodes certifi \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /build/dist /var/www/html
@@ -80,7 +82,8 @@ WORKDIR /var/www/html
 # or mount a volume to /var/www/html/sitrec-upload
 
 RUN mkdir ./sitrec-cache && chmod 777 ./sitrec-cache \
-    && mkdir ./sitrec-upload && chmod 777 ./sitrec-upload
+    && mkdir ./sitrec-upload && chmod 777 ./sitrec-upload \
+    && mkdir -p ./data/wind && chmod 777 ./data/wind
 
 # Install the entrypoint script that converts Docker env vars
 # into shared.env.php (for PHP) and window.__SITREC_ENV__ (for JS)
