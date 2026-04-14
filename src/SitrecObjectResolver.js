@@ -169,7 +169,11 @@ export function toShareableCustomValue(value) {
  * @returns {string}
  */
 export function encodeShareParam(value) {
-    return encodeURIComponent(value)
+    // Decode first to prevent double-encoding (e.g. a value containing %20
+    // would otherwise become %2520 after encodeURIComponent).
+    let decoded;
+    try { decoded = decodeURIComponent(value); } catch { decoded = value; }
+    return encodeURIComponent(decoded)
         .replace(/%2F/gi, '/');
 }
 
