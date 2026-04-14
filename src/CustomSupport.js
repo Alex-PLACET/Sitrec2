@@ -697,6 +697,113 @@ export class CCustomManager {
         };
         // ── end Wind ────────────────────────────────────────────────
 
+        // ── Gimbal Analysis subfolder under Physics ─────────────
+        this._gimbalConfig = {
+            showGlare: true,
+            showATFLIR: true,
+            cloudWindFrom: 240,  cloudWindKnots: 17,
+            targetWindFrom: 274, targetWindKnots: 65,
+            localWindFrom: 270,  localWindKnots: 120,
+            startDistance: 32,
+            targetSpeed: 340,
+            defaultTraverse: "Const Air Spd",
+            fleetTurnStart: 0,  fleetTurnRate: 8,
+            fleetAcceleration: 2, fleetSpacing: 0.7,
+            fleetX: 20, fleetY: -5.27,
+        };
+
+        // Pre-fill from existing sitch if already enabled
+        if (Sit.gimbalSetup) {
+            Object.assign(this._gimbalConfig, Sit.gimbalSetup);
+        }
+
+        const gimbalFolder = addGUIFolder("gimbalAnalysis", "Gimbal Analysis", "physics");
+
+        // Show status if already active
+        if (Sit.gimbalSetup) {
+            gimbalFolder.add({status: "Active"}, "status").name("Status").disable();
+        }
+
+        const gc = this._gimbalConfig;
+
+        // Wind parameters
+        gimbalFolder.add(gc, "cloudWindFrom", 0, 360, 1).name("Cloud Wind From");
+        gimbalFolder.add(gc, "cloudWindKnots", 0, 100, 1).name("Cloud Wind Knots");
+        gimbalFolder.add(gc, "targetWindFrom", 0, 360, 1).name("Target Wind From");
+        gimbalFolder.add(gc, "targetWindKnots", 0, 200, 1).name("Target Wind Knots");
+        gimbalFolder.add(gc, "localWindFrom", 0, 360, 1).name("Local Wind From");
+        gimbalFolder.add(gc, "localWindKnots", 0, 200, 1).name("Local Wind Knots");
+
+        // Target parameters
+        gimbalFolder.add(gc, "startDistance", 1, 100, 0.1).name("Start Distance NM");
+        gimbalFolder.add(gc, "targetSpeed", 0, 600, 1).name("Target Speed kts");
+        gimbalFolder.add(gc, "defaultTraverse", [
+            "Straight Line", "Const Ground Spd", "Const Air Spd",
+            "Const Air AB", "Constant Altitude",
+        ]).name("Traverse Mode");
+
+        // Feature toggles
+        gimbalFolder.add(gc, "showGlare").name("Show Glare");
+        gimbalFolder.add(gc, "showATFLIR").name("Show ATFLIR Pod");
+
+        // Activate / update
+        if (!Sit.gimbalSetup) {
+            // Not yet active — show activation button
+            this._enableGimbalAnalysis = () => {
+                // Set the properties that will be serialized
+                Sit.jetStuff = true;
+                Sit.gimbalSetup = {...this._gimbalConfig};
+                Sit.showGlare = gc.showGlare;
+
+                // Ensure the gimbal data files are referenced
+                if (!Sit.files) Sit.files = {};
+                if (!Sit.files.GimbalCSV)     Sit.files.GimbalCSV     = 'gimbal/GimbalData.csv';
+                if (!Sit.files.GimbalCSV2)    Sit.files.GimbalCSV2    = 'gimbal/GimbalRotKeyframes.csv';
+                if (!Sit.files.GimbalCSV_Pip) Sit.files.GimbalCSV_Pip = 'gimbal/GimbalPIPKeyframes.csv';
+                if (!Sit.files.ATFLIRModel)   Sit.files.ATFLIRModel   = 'models/ATFLIR.glb';
+                if (!Sit.files.FA18Model)     Sit.files.FA18Model     = 'models/FA-18F.glb';
+                if (!Sit.files.TargetObjectFile) Sit.files.TargetObjectFile = 'models/FA-18F.glb';
+
+                // Set lat/lon defaults for Gimbal (off coast of Florida)
+                if (Sit.lat === undefined) Sit.lat = 28.5;
+                if (Sit.lon === undefined) Sit.lon = -79.5;
+
+                // Jet track infrastructure nodes
+                if (!Sit.jetLat)      Sit.jetLat      = {kind: "Constant", value: Sit.lat};
+                if (!Sit.jetLon)      Sit.jetLon      = {kind: "Constant", value: Sit.lon};
+                if (!Sit.jetAltitude) Sit.jetAltitude  = {kind: "inputFeet", value: 25000, desc: "Altitude", start: 24500, end: 25500, step: 1};
+                if (!Sit.jetOrigin)   Sit.jetOrigin    = {kind: "TrackFromLLA", lat: "jetLat", lon: "jetLon", alt: "jetAltitude"};
+                if (!Sit.lookCamera)  Sit.lookCamera   = {fov: 0.35};
+                if (!Sit.lookView)    Sit.lookView     = {left: 0.6656, top: 1 - 0.3333, width: -1, height: 0.333, draggable: true, resizable: true, shiftDrag: true, freeAspect: false, noOrbitControls: true};
+                if (Sit.azSlider === undefined) Sit.azSlider = {defer: true};
+
+                if (Sit.fps === undefined || Sit.fps === 30) Sit.fps = 29.97;
+                if (Sit.frames === undefined || Sit.frames === 500) Sit.frames = 1031;
+
+                // View defaults for Gimbal
+                if (!Sit.mainView) Sit.mainView = {left: 0, top: 0, width: 1, height: 1, fov: 10, background: '#000000'};
+
+                // Save and reload to activate
+                this.serialize("Custom", getDateTimeFilename()).then(() => {
+                    window.location.reload();
+                });
+            };
+            gimbalFolder.add(this, "_enableGimbalAnalysis").name(">> Enable Gimbal Analysis");
+        } else {
+            // Already active — update button applies parameter changes then reloads
+            this._updateGimbalConfig = () => {
+                Sit.gimbalSetup = {...this._gimbalConfig};
+                Sit.showGlare = gc.showGlare;
+                this.serialize("Custom", getDateTimeFilename()).then(() => {
+                    window.location.reload();
+                });
+            };
+            gimbalFolder.add(this, "_updateGimbalConfig").name("Apply Parameter Changes");
+        }
+
+        gimbalFolder.close();
+        // ── end Gimbal Analysis ─────────────────────────────────
+
         toggler('k', guiMenus.help.add(par, 'showKeyboardShortcuts').listen().name(t("custom.showHide.keyboardShortcuts.label")).onChange(value => {
             if (value) {
                 infoDiv.style.display = 'block';
