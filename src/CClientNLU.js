@@ -1,5 +1,5 @@
 import {sitrecAPI} from "./CSitrecAPI";
-import {guiMenus} from "./Globals";
+import {FileManager, guiMenus} from "./Globals";
 import GUI from "./js/lil-gui.esm";
 import {ModelFiles} from "./nodes/CNode3DObject";
 import * as math from 'mathjs';
@@ -7,6 +7,191 @@ import * as math from 'mathjs';
 const GEOMETRY_TYPES = ["sphere", "ellipsoid", "box", "capsule", "circle", "cone", "cylinder",
     "dodecahedron", "icosahedron", "octahedron", "ring", "tictac",
     "tetrahedron", "torus", "torusknot", "superegg"];
+
+// Solar system bodies handled by pointCameraAtNamedObject / lockCameraOnObject
+const SOLAR_SYSTEM_BODIES = new Set([
+    "sun", "moon", "mercury", "venus", "mars", "jupiter", "saturn", "uranus", "neptune"
+]);
+
+// Colloquial aliases that map to solar system body names
+const SOLAR_SYSTEM_ALIASES = {
+    "evening star": "Venus", "morning star": "Venus",
+    "the sun": "Sun", "the moon": "Moon",
+};
+
+// Catalog of deep-sky objects, constellations, and aliases not in IAU-CSN.
+// Stars are loaded lazily from the IAU-CSN data file (via FileManager).
+// RA in decimal hours, Dec in decimal degrees (J2000 epoch)
+const SKY_CATALOG = {
+    // ── Popular aliases for IAU star names ─────────────────────
+    // These colloquial / historical names don't appear in the IAU-CSN file
+    "north star":       [2.530,   89.264], // Polaris
+    "pole star":        [2.530,   89.264], // Polaris
+    "dog star":         [6.752,  -16.716], // Sirius
+    "rigil kentaurus":  [14.660, -60.835], // Alpha Centauri (not in IAU-CSN as this name)
+    "rigil kent":       [14.660, -60.835], // Alpha Centauri abbreviation
+    "alpha centauri":   [14.660, -60.835], // Toliman in IAU-CSN
+    "proxima centauri": [14.495, -62.680], // Proxima Centauri
+    "proxima":          [14.495, -62.680],
+    "barnard's star":   [17.964,   4.693], // Barnard's Star
+    "barnards star":    [17.964,   4.693],
+    "summer triangle":  [19.846,   8.868], // center approx (Altair)
+    "winter triangle":  [6.752,  -16.716], // center approx (Sirius)
+    "orion's belt":     [5.604,   -1.202], // Alnilam (center belt star)
+    "belt of orion":    [5.604,   -1.202],
+    "guardians":        [14.845,  74.156], // Kochab + Pherkad (Little Dipper guards)
+    "pointer stars":    [11.047,  59.067], // Merak–Dubhe midpoint
+    "gemma":            [15.578,  26.715], // Alphecca alias (Corona Borealis)
+
+    // ── Messier objects ───────────────────────────────────────
+    "m1":   [5.576,   22.015], "crab nebula":           [5.576,   22.015],
+    "m3":   [13.703,  28.377],
+    "m4":   [16.393, -26.526],
+    "m5":   [15.310,   2.081],
+    "m6":   [17.668, -32.216], "butterfly cluster":     [17.668, -32.216],
+    "m7":   [17.898, -34.793], "ptolemy cluster":       [17.898, -34.793],
+    "m8":   [18.063, -24.384], "lagoon nebula":         [18.063, -24.384],
+    "m10":  [16.952,  -4.100],
+    "m11":  [18.851,  -6.267], "wild duck cluster":     [18.851,  -6.267],
+    "m13":  [16.695,  36.462], "hercules cluster":      [16.695,  36.462],
+    "m15":  [21.500,  12.167],
+    "m16":  [18.314, -13.787], "eagle nebula":          [18.314, -13.787],
+    "m17":  [18.346, -16.171], "omega nebula":          [18.346, -16.171], "swan nebula": [18.346, -16.171],
+    "m20":  [18.043, -23.029], "trifid nebula":         [18.043, -23.029],
+    "m22":  [18.607, -23.905],
+    "m27":  [19.994,  22.721], "dumbbell nebula":       [19.994,  22.721],
+    "m31":  [0.712,   41.269], "andromeda galaxy":      [0.712,   41.269], "andromeda": [0.712, 41.269],
+    "m32":  [0.714,   40.866],
+    "m33":  [1.564,   30.660], "triangulum galaxy":     [1.564,   30.660],
+    "m35":  [6.149,   24.333],
+    "m36":  [5.601,   34.133],
+    "m37":  [5.873,   32.553],
+    "m38":  [5.478,   35.833],
+    "m41":  [6.767,  -20.733],
+    "m42":  [5.588,   -5.390], "orion nebula":          [5.588,   -5.390], "great nebula": [5.588, -5.390],
+    "m43":  [5.593,   -5.267],
+    "m44":  [8.672,   19.667], "beehive cluster":       [8.672,   19.667], "praesepe": [8.672, 19.667],
+    "m45":  [3.787,   24.117], "pleiades":              [3.787,   24.117], "seven sisters": [3.787, 24.117],
+    "m46":  [7.696,  -14.817],
+    "m47":  [7.612,  -14.500],
+    "m48":  [8.228,   -5.750],
+    "m49":  [12.497,   7.999],
+    "m50":  [7.053,   -8.333],
+    "m51":  [13.498,  47.195], "whirlpool galaxy":      [13.498,  47.195],
+    "m52":  [23.407,  61.600],
+    "m53":  [13.215,  18.168],
+    "m54":  [18.917, -30.476],
+    "m55":  [19.666, -30.964],
+    "m56":  [19.277,  30.184],
+    "m57":  [18.893,  33.029], "ring nebula":           [18.893,  33.029],
+    "m58":  [12.627,  11.818],
+    "m59":  [12.700,  11.647],
+    "m60":  [12.728,  11.553],
+    "m61":  [12.365,   4.474],
+    "m62":  [17.020, -30.114],
+    "m63":  [13.264,  42.029], "sunflower galaxy":      [13.264,  42.029],
+    "m64":  [12.944,  21.683], "black eye galaxy":      [12.944,  21.683],
+    "m65":  [11.318,  13.092],
+    "m66":  [11.338,  12.992],
+    "m67":  [8.854,   11.817],
+    "m74":  [1.611,   15.783],
+    "m78":  [5.779,    0.050],
+    "m79":  [5.407,  -24.524],
+    "m80":  [16.283, -22.976],
+    "m81":  [9.926,   69.065], "bode's galaxy":         [9.926,   69.065],
+    "m82":  [9.932,   69.680], "cigar galaxy":          [9.932,   69.680],
+    "m83":  [13.617, -29.866], "southern pinwheel":     [13.617, -29.866],
+    "m84":  [12.418,  12.886],
+    "m86":  [12.443,  12.947],
+    "m87":  [12.514,  12.391], "virgo a":               [12.514,  12.391],
+    "m92":  [17.286,  43.136],
+    "m97":  [11.248,  55.019], "owl nebula":            [11.248,  55.019],
+    "m101": [14.054,  54.349], "pinwheel galaxy":       [14.054,  54.349],
+    "m104": [12.666, -11.623], "sombrero galaxy":       [12.666, -11.623],
+    "m106": [12.316,  47.304],
+    "m110": [0.673,   41.685],
+
+    // ── Other notable objects ─────────────────────────────────
+    "ngc 869":  [2.324,  57.133], "double cluster h":     [2.324,  57.133],
+    "ngc 884":  [2.374,  57.150], "double cluster chi":   [2.374,  57.150],
+    "double cluster": [2.349, 57.142],
+    "ngc 3372": [10.745,-59.867], "carina nebula":        [10.745,-59.867], "eta carinae nebula": [10.745,-59.867],
+    "ngc 7000": [20.974, 44.333], "north america nebula": [20.974, 44.333],
+    "ngc 6992": [20.937, 31.717], "veil nebula":          [20.937, 31.717],
+    "ngc 253":  [0.793, -25.288], "sculptor galaxy":      [0.793, -25.288],
+    "ngc 2237": [6.535,   4.950], "rosette nebula":       [6.535,   4.950],
+    "47 tucanae":[0.402, -72.081], "ngc 104":             [0.402, -72.081],
+    "omega centauri": [13.447, -47.480], "ngc 5139":      [13.447, -47.480],
+    "large magellanic cloud": [5.392, -69.756], "lmc":    [5.392, -69.756],
+    "small magellanic cloud": [0.877, -72.800], "smc":    [0.877, -72.800],
+
+    // ── Constellation reference stars (brightest or central) ──
+    "orion":        [5.588,  -5.390], // centered on M42 / belt region
+    "big dipper":   [12.257, 57.032], // Megrez — center of asterism
+    "little dipper":[15.734, 77.795], // Pherkad — mid handle
+    "cassiopeia":   [1.107,  59.150], // Gamma Cas — center of W
+    "cygnus":       [20.691, 45.280], // Deneb
+    "lyra":         [18.616, 38.784], // Vega
+    "scorpius":     [16.490,-26.432], // Antares
+    "leo":          [10.140, 11.967], // Regulus
+    "gemini":       [7.755,  28.026], // Pollux
+    "taurus":       [4.599,  16.509], // Aldebaran
+    "virgo":        [13.420,-11.161], // Spica
+    "aquila":       [19.846,  8.868], // Altair
+    "sagittarius":  [18.403,-34.384], // Kaus Australis
+    "corona borealis": [15.578, 26.715], // Alphecca
+    "southern cross": [12.443,-63.099], "crux": [12.443,-63.099], // Gacrux
+};
+
+// Build a normalized lookup map from the hardcoded catalog (Messier, NGC, constellations)
+const _skyLookup = new Map();
+for (const [name, coords] of Object.entries(SKY_CATALOG)) {
+    _skyLookup.set(name, coords);
+}
+
+// Lazily parsed IAU-CSN star names (loaded from data file on first use)
+let _iauLoaded = false;
+
+function _loadIAUStarNames() {
+    if (_iauLoaded) return;
+    _iauLoaded = true;
+    try {
+        const data = FileManager.get("IAUCSN");
+        if (!data) return;
+        for (const line of data.split("\n")) {
+            if (line[0] === "#" || line[0] === "$" || line.trim() === "") continue;
+            const name = line.substring(0, 18).trim();
+            const raDeg = parseFloat(line.substring(104, 115));
+            const decDeg = parseFloat(line.substring(115, 126));
+            if (!name || isNaN(raDeg) || isNaN(decDeg)) continue;
+            const key = name.toLowerCase();
+            // Don't overwrite hardcoded entries (Messier, NGC, constellations)
+            if (!_skyLookup.has(key)) {
+                _skyLookup.set(key, [raDeg / 15, decDeg]); // RA degrees → hours
+            }
+        }
+    } catch {
+        // IAUCSN not loaded (nightSky disabled) — hardcoded catalog still works
+    }
+}
+
+/**
+ * Look up a sky object by name. Returns {ra, dec} in hours/degrees, or null.
+ * Checks hardcoded catalog (Messier, NGC, constellations) and IAU star names.
+ */
+function lookupSkyObject(name) {
+    _loadIAUStarNames();
+    const key = name.toLowerCase().replace(/^the\s+/, "").trim();
+    const coords = _skyLookup.get(key);
+    if (coords) return { ra: coords[0], dec: coords[1] };
+    // Try without "star", "cluster", "nebula", "galaxy" suffix
+    const stripped = key.replace(/\s+(star|cluster|nebula|galaxy)$/, "").trim();
+    if (stripped !== key) {
+        const c2 = _skyLookup.get(stripped);
+        if (c2) return { ra: c2[0], dec: c2[1] };
+    }
+    return null;
+}
 
 // Fallback for alias keys that don't appear in any ModelFiles key name
 const ALIAS_MODELS = {
@@ -298,6 +483,18 @@ class CClientNLU {
                 extract: (match) => ({intent: "POINT_AT", slots: {target: match[1].trim()}}),
                 confidence: 0.8
             },
+            {
+                name: "lock_on_object",
+                regex: /^(?:lock(?:\s+(?:on(?:\s+to)?|to))?|follow|track)\s+(?:the\s+)?(.+)$/i,
+                extract: (match) => ({intent: "LOCK_ON", slots: {target: match[1].trim()}}),
+                confidence: 0.85
+            },
+            {
+                name: "unlock_camera",
+                regex: /^(?:unlock|stop\s+(?:tracking|following|locking)|release\s+lock)$/i,
+                extract: () => ({intent: "UNLOCK"}),
+                confidence: 0.9
+            },
         ];
     }
 
@@ -543,8 +740,45 @@ class CClientNLU {
             case "GOTO_NAMED_LOCATION":
                 return this._geocodeAndGoto(slots.location);
 
-            case "POINT_AT":
-                return sitrecAPI.call("pointCameraAtNamedObject", {object: slots.target});
+            case "POINT_AT": {
+                const target = slots.target;
+                // Check colloquial aliases for solar system bodies first
+                const pointAlias = SOLAR_SYSTEM_ALIASES[target.toLowerCase()];
+                if (pointAlias) {
+                    return sitrecAPI.call("pointCameraAtNamedObject", {object: pointAlias});
+                }
+                // Solar system bodies use the named-object function
+                if (SOLAR_SYSTEM_BODIES.has(target.toLowerCase())) {
+                    return sitrecAPI.call("pointCameraAtNamedObject", {object: target});
+                }
+                // Check the sky catalog + IAU star names
+                const pointCoords = lookupSkyObject(target);
+                if (pointCoords) {
+                    return sitrecAPI.call("pointCameraAtRaDec", pointCoords);
+                }
+                // Fall through to named object (will return a helpful error)
+                return sitrecAPI.call("pointCameraAtNamedObject", {object: target});
+            }
+
+            case "LOCK_ON": {
+                const target = slots.target;
+                const lockAlias = SOLAR_SYSTEM_ALIASES[target.toLowerCase()];
+                if (lockAlias) {
+                    return sitrecAPI.call("lockCameraOnObject", {object: lockAlias});
+                }
+                if (SOLAR_SYSTEM_BODIES.has(target.toLowerCase())) {
+                    return sitrecAPI.call("lockCameraOnObject", {object: target});
+                }
+                const lockCoords = lookupSkyObject(target);
+                if (lockCoords) {
+                    return sitrecAPI.call("lockCameraOnRaDec", lockCoords);
+                }
+                // Fall through to named object lock (will return a helpful error)
+                return sitrecAPI.call("lockCameraOnObject", {object: target});
+            }
+
+            case "UNLOCK":
+                return sitrecAPI.call("unlockCamera");
 
             default:
                 return {success: false, error: `Unknown intent: ${intent}`};
@@ -613,6 +847,10 @@ class CClientNLU {
                 return `Moved to ${slots.location}`;
             case "POINT_AT":
                 return `Pointing at ${slots.target}`;
+            case "LOCK_ON":
+                return `Locked on to ${slots.target}`;
+            case "UNLOCK":
+                return "Camera unlocked";
             default:
                 return "Done";
         }

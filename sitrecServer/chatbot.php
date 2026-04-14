@@ -582,6 +582,13 @@ Sitrec is a Situation Recreation application written by Mick West. It can:
 - Calculate and display lines of sight and traverse paths
 The primary use is for resolving UAP sightings and other events by showing what was in the sky at a given time.
 
+CAMERA POINTING vs LOCKING:
+- "point at" / "look at" = one-shot pointing (camera stays still after). Use pointCameraAtNamedObject (planets/Sun/Moon) or pointCameraAtRaDec (stars/deep-sky).
+- "lock on" / "track" / "follow" = continuous tracking (camera follows the object as time changes). Use lockCameraOnObject (planets/Sun/Moon) or lockCameraOnRaDec (stars/deep-sky by RA/Dec).
+- "unlock" / "stop tracking" = stop any active lock. Use unlockCamera.
+- When the user says "lock on to M45" or "track Orion", look up the RA/Dec and use lockCameraOnRaDec. Common objects: M45 (Pleiades) RA=3h47m Dec=+24d07m, Orion (Betelgeuse) RA=5h55m Dec=+7d24m, Polaris RA=2h32m Dec=+89d16m, Sirius RA=6h45m Dec=-16d43m.
+- RA is in hours (0-24), Dec is in degrees (-90 to +90). Both accept decimal or sexagesimal ("3h47m", "3:47", "+24d07m").
+
 SATELLITE LOADING:
 - "load satellites" or general satellite requests → use satellitesLoadLEO
 - "load current starlink" specifically → use satellitesLoadCurrentStarlink

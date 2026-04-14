@@ -19,7 +19,8 @@ export class CNodeCamera extends CNode3D {
         super(v);
 
         this.isCamera = true;
-        
+        this.celestialLock = null; // {type:"named", object:"Moon"} or {type:"radec", ra:hours, dec:degrees}
+
         this.addInput("altAdjust", "altAdjust", true);
 
         this.startPos = v.startPos;
@@ -149,12 +150,58 @@ export class CNodeCamera extends CNode3D {
     update(f) {
         super.update(f);
 
-
         if (this.in.altAdjust !== undefined) {
             // raise or lower the position
             this.camera.position.copy(raisePoint(this.camera.position, f2m(this.in.altAdjust.v())))
         }
 
+        // Celestial lock: update PTZ angles to track the locked object.
+        // We ONLY set ptzController.az/el here — we do NOT call setFromDirection()
+        // or camera.lookAt(), because CNodeLOSFromCamera calls cameraNode.update()
+        // from within getValueFrame(), causing infinite recursion if we modify the
+        // camera or trigger any node evaluation from here.
+        if (this.celestialLock) {
+            let dir = null;
+            if (this.celestialLock.type === "named") {
+                dir = getCelestialDirection(this.celestialLock.object, GlobalDateTimeNode.dateNow);
+            } else if (this.celestialLock.type === "radec") {
+                const raRad = this.celestialLock.ra * (Math.PI / 12);
+                const decRad = this.celestialLock.dec * (Math.PI / 180);
+                dir = getCelestialDirectionFromRaDec(raRad, decRad, GlobalDateTimeNode.dateNow);
+            }
+            if (dir) {
+                // Compute az/el from the celestial direction without modifying the camera
+                const fakeTarget = this.camera.position.clone().add(dir.multiplyScalar(1000));
+                const toTarget = fakeTarget.clone().sub(this.camera.position).normalize();
+                const [az, el] = getAzElFromPositionAndForward(this.camera.position, toTarget);
+                const ptzController = NodeMan.get("ptzAngles", false);
+                if (ptzController) {
+                    ptzController.az = az;
+                    ptzController.el = el;
+                }
+            }
+        }
+    }
+
+    lockOnObject(objectName) {
+        const dir = getCelestialDirection(objectName, GlobalDateTimeNode.dateNow);
+        if (!dir) return false;
+        this.celestialLock = { type: "named", object: objectName };
+        this.setFromDirection(dir, true);
+        return true;
+    }
+
+    lockOnRaDec(ra, dec) {
+        this.celestialLock = { type: "radec", ra, dec };
+        const raRad = ra * (Math.PI / 12);
+        const decRad = dec * (Math.PI / 180);
+        const dir = getCelestialDirectionFromRaDec(raRad, decRad, GlobalDateTimeNode.dateNow);
+        this.setFromDirection(dir, true);
+        return true;
+    }
+
+    unlockCelestial() {
+        this.celestialLock = null;
     }
 
 
@@ -221,7 +268,12 @@ export class CNodeCamera extends CNode3D {
 
     }
 
-    setFromDirection(dir) {
+    setFromDirection(dir, fromLock = false) {
+        // If this is a manual point-at (not from the lock update loop), clear any active lock
+        if (!fromLock) {
+            this.celestialLock = null;
+        }
+
         const target = this.camera.position.clone().add(dir.multiplyScalar(1000)); // 1000m away in the direction of the celestial body
         this.camera.lookAt(target);
         this.camera.updateMatrixWorld();
@@ -236,7 +288,14 @@ export class CNodeCamera extends CNode3D {
         if (ptzController) {
             ptzController.az = az;
             ptzController.el = el;
-            ptzController.recalculateCascade();
+            // Only cascade for one-shot pointing (user/API action).
+            // During the per-frame lock update, the PTZ controller's apply()
+            // will read these values naturally — cascading here would cause
+            // infinite recursion via dependent nodes (e.g. CNodeLOSFromCamera)
+            // that re-evaluate the camera.
+            if (!fromLock) {
+                ptzController.recalculateCascade();
+            }
         } else {
             console.warn("CNodeCamera:setFromRaDec No PTZ Controller found to set az/el for camera " + this.id);
         }
@@ -245,12 +304,13 @@ export class CNodeCamera extends CNode3D {
 // set the camera orientation based on a named celestial object
     // e.g. "Sun", "Moon", "Mars"
     setFromNamedObject(objectName) {
-         const dir = getCelestialDirection(objectName, GlobalDateTimeNode.dateNow);
+        const dir = getCelestialDirection(objectName, GlobalDateTimeNode.dateNow);
         if (!dir) {
             console.warn("CNodeCamera:setFromNamedObject No direction found for object " + objectName);
-            return;
+            return false;
         }
         this.setFromDirection(dir);
+        return true;
     }
 
 

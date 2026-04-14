@@ -24,6 +24,41 @@ import {areControlsHidden, toggleControlsVisibility} from "./PageStructure";
 import {closeFullscreen, isFullscreen, openFullscreen} from "./utils";
 import {forceUpdateUIText} from "./nodes/CNodeViewUI";
 
+// Flexible RA parser: accepts decimal hours, "3h47m10s", "03:47:10", "3h47m", "3h 47m 10s", etc.
+function parseRA(input) {
+    if (input == null) return null;
+    const n = Number(input);
+    if (!isNaN(n) && isFinite(n)) return n; // decimal hours
+    const s = String(input).trim();
+    // sexagesimal: h/m/s or colon-separated
+    const m = s.match(/^(\d+(?:\.\d+)?)\s*[h:]\s*(\d+(?:\.\d+)?)?\s*[m:]?\s*(\d+(?:\.\d+)?)?\s*s?$/i);
+    if (m) {
+        const h = parseFloat(m[1]);
+        const min = m[2] ? parseFloat(m[2]) : 0;
+        const sec = m[3] ? parseFloat(m[3]) : 0;
+        return h + min / 60 + sec / 3600;
+    }
+    return null;
+}
+
+// Flexible Dec parser: accepts decimal degrees, "+24d07m00s", "24:07:00", "-24d07m", etc.
+function parseDec(input) {
+    if (input == null) return null;
+    const n = Number(input);
+    if (!isNaN(n) && isFinite(n)) return n; // decimal degrees
+    const s = String(input).trim();
+    // sexagesimal: d/m/s or colon-separated, optional leading sign
+    const m = s.match(/^([+-]?)\s*(\d+(?:\.\d+)?)\s*[d°:]\s*(\d+(?:\.\d+)?)?\s*['m:]?\s*(\d+(?:\.\d+)?)?\s*["s]?$/i);
+    if (m) {
+        const sign = m[1] === "-" ? -1 : 1;
+        const deg = parseFloat(m[2]);
+        const min = m[3] ? parseFloat(m[3]) : 0;
+        const sec = m[4] ? parseFloat(m[4]) : 0;
+        return sign * (deg + min / 60 + sec / 3600);
+    }
+    return null;
+}
+
 class CSitrecAPI {
     constructor() {
 
@@ -104,14 +139,57 @@ class CSitrecAPI {
             },
 
             pointCameraAtNamedObject: {
-                doc: "Point the camera at a named celestial object (e.g. 'Sun', 'Moon', 'Mars'). Use this for things that are not fixed.",
+                doc: "Point the camera at a named solar-system object: Sun, Moon, Mercury, Venus, Mars, Jupiter, Saturn, Uranus, Neptune. For stars, star clusters, or constellations (e.g. M45, Polaris, Orion), use pointCameraAtRaDec instead.",
                 params: {
-                    object: "Name of the celestial object (string)"
+                    object: "Name of the solar-system object (string)"
                 },
                 fn: (v) => {
                     const camera = NodeMan.get("lookCamera");
                     if (!camera) return { success: false, error: "lookCamera node not found" };
-                    camera.setFromNamedObject(v.object);
+                    const ok = camera.setFromNamedObject(v.object);
+                    if (!ok) return { success: false, error: `Unknown object '${v.object}'. Only solar-system bodies are supported (Sun, Moon, planets). For stars or deep-sky objects, use pointCameraAtRaDec with RA/Dec coordinates.` };
+                    return { success: true };
+                }
+            },
+
+            lockCameraOnObject: {
+                doc: "Lock (continuously track) the camera onto a solar-system object so it follows the object as time changes. Supported: Sun, Moon, Mercury, Venus, Mars, Jupiter, Saturn, Uranus, Neptune. Use lockCameraOnRaDec for stars or deep-sky objects.",
+                params: {
+                    object: "Name of the solar-system object (string)"
+                },
+                fn: (v) => {
+                    const camera = NodeMan.get("lookCamera");
+                    if (!camera) return { success: false, error: "lookCamera node not found" };
+                    const ok = camera.lockOnObject(v.object);
+                    if (!ok) return { success: false, error: `Unknown object '${v.object}'. Only solar-system bodies are supported. For stars or deep-sky objects, use lockCameraOnRaDec.` };
+                    return { success: true, locked: v.object };
+                }
+            },
+
+            lockCameraOnRaDec: {
+                doc: "Lock (continuously track) the camera onto a fixed sky position given by Right Ascension and Declination. The camera will follow the position as the sky rotates. RA can be decimal hours (e.g. 3.79) or sexagesimal ('3h47m' or '03:47:00'). Dec can be decimal degrees (e.g. 24.12) or sexagesimal ('+24d07m' or '24:07:00'). Use for stars, star clusters, galaxies, constellations, etc.",
+                params: {
+                    ra: "Right Ascension — decimal hours or sexagesimal string (e.g. 5.92 or '5h55m')",
+                    dec: "Declination — decimal degrees or sexagesimal string (e.g. 7.41 or '+7d24m')",
+                },
+                fn: (v) => {
+                    const camera = NodeMan.get("lookCamera");
+                    if (!camera) return { success: false, error: "lookCamera node not found" };
+                    const ra = parseRA(v.ra);
+                    const dec = parseDec(v.dec);
+                    if (ra === null) return { success: false, error: `Could not parse RA '${v.ra}'. Use decimal hours (e.g. 3.79) or sexagesimal (e.g. '3h47m10s').` };
+                    if (dec === null) return { success: false, error: `Could not parse Dec '${v.dec}'. Use decimal degrees (e.g. 24.12) or sexagesimal (e.g. '+24d07m00s').` };
+                    camera.lockOnRaDec(ra, dec);
+                    return { success: true, locked: { ra, dec } };
+                }
+            },
+
+            unlockCamera: {
+                doc: "Remove any celestial lock from the camera, so it stays at its current orientation and stops tracking.",
+                fn: () => {
+                    const camera = NodeMan.get("lookCamera");
+                    if (!camera) return { success: false, error: "lookCamera node not found" };
+                    camera.unlockCelestial();
                     return { success: true };
                 }
             },
@@ -433,12 +511,12 @@ class CSitrecAPI {
             },
 
             listCelestialObjects: {
-                doc: "List celestial objects that can be pointed at with pointCameraAtNamedObject.",
+                doc: "List celestial objects that can be pointed at or locked onto.",
                 fn: () => {
                     return {
                         planets: ["Mercury", "Venus", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune"],
                         other: ["Sun", "Moon"],
-                        note: "For stars and constellations, use pointCameraAtRaDec with RA/Dec coordinates."
+                        note: "Use pointCameraAtNamedObject/lockCameraOnObject for these. For stars and deep-sky objects, use pointCameraAtRaDec/lockCameraOnRaDec with RA/Dec coordinates. 'lock' functions continuously track; 'point' functions are one-shot."
                     };
                 }
             },
@@ -2201,6 +2279,9 @@ class CSitrecAPI {
             "setDateTime",
             "pointCameraAtRaDec",
             "pointCameraAtNamedObject",
+            "lockCameraOnObject",
+            "lockCameraOnRaDec",
+            "unlockCamera",
             "getFrame",
             "setFrame",
             "getMenuValue",

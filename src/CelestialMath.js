@@ -136,6 +136,9 @@ export function celestialToECEF(ra, dec, dist, gst) {
 // - body = (e.g "Sun", "Venus", "Moon", etc)
 // - date = date of observation (Date object)
 export function getCelestialDirection(body, date, pos) {
+    // Astronomy.Equator requires capitalized body names (e.g. "Moon", not "moon")
+    const normalizedBody = body.charAt(0).toUpperCase() + body.slice(1).toLowerCase();
+
     let LLA;
     // if a position is provided, use that to calculate the LLA of the observer
     // realistically this won't make any significant difference for the Sun,
@@ -150,10 +153,14 @@ export function getCelestialDirection(body, date, pos) {
     }
 
     let observer = new Astronomy.Observer(LLA.x, LLA.y, LLA.z);
-    const celestialInfo = Astronomy.Equator(body, date, observer, false, true);
-    const ra = (celestialInfo.ra) / 24 * 2 * Math.PI;   // Right Ascension NOTE, in hours, so 0..24 -> 0..2π
-    const dec = radians(celestialInfo.dec); // Declination
-    return getCelestialDirectionFromRaDec(ra, dec, date);
+    try {
+        const celestialInfo = Astronomy.Equator(normalizedBody, date, observer, false, true);
+        const ra = (celestialInfo.ra) / 24 * 2 * Math.PI;   // Right Ascension NOTE, in hours, so 0..24 -> 0..2π
+        const dec = radians(celestialInfo.dec); // Declination
+        return getCelestialDirectionFromRaDec(ra, dec, date);
+    } catch {
+        return null; // Unknown body name
+    }
 }
 
 export function getCelestialDirectionFromRaDec(ra, dec, date) {

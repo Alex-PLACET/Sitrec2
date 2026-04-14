@@ -282,8 +282,8 @@ class CNodeViewChat extends CNodeViewText {
                 // Navigation/transient commands (camera, frame, time, math) don't count
                 const navigationalIntents = new Set([
                     "MATH", "SET_FRAME", "SET_DATETIME", "SET_TIME_RELATIVE",
-                    "ZOOM_IN", "ZOOM_OUT", "POINT_AT", "PLAY", "PAUSE",
-                    "GOTO_LLA", "GOTO_NAMED_LOCATION",
+                    "ZOOM_IN", "ZOOM_OUT", "POINT_AT", "LOCK_ON", "UNLOCK",
+                    "PLAY", "PAUSE", "GOTO_LLA", "GOTO_NAMED_LOCATION",
                 ]);
                 if (!navigationalIntents.has(parseResult.intent)) {
                     markSitchDirty();
