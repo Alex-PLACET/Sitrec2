@@ -285,12 +285,10 @@ export class CNodeSAPage extends CNodeDDI {
 
         this.cy = oldCy;
 
-        var circleHeading = heading;
-        if (this.northUp) circleHeading = 0
         c.strokeStyle = this.friendlyColor;
         c.setLineDash([8, 4]);
         c.beginPath();
-        this.arc(50, 50, 37, 0-circleHeading, 360-circleHeading)
+        this.arc(50, 50, 37, 0, 360)
         c.stroke()
         c.setLineDash([]);
 
