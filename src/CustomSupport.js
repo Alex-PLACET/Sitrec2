@@ -30,6 +30,7 @@ import {
     GlobalDateTimeNode,
     Globals,
     guiMenus,
+    guiShowHideViews,
     infoDiv,
     NodeFactory,
     NodeMan,
@@ -699,12 +700,13 @@ export class CCustomManager {
         };
         // ── end Wind ────────────────────────────────────────────────
 
-        // ── SA Page — situational awareness display ────────────
-        this._saPageActive = NodeMan.exists("SAPage");
-        if (!this._saPageActive) {
-            this._addSAPage = () => {
+        // ── SA Page — checkbox under Show/Hide > Views ─────────
+        this._showSAPage = NodeMan.exists("SAPage");
+        guiShowHideViews.add(this, "_showSAPage").name("SA Page").onChange((value) => {
+            if (value && !NodeMan.exists("SAPage")) {
+                // First enable — create the SA page
                 const jetTrack = NodeMan.get("jetTrack", false) || NodeMan.get("cameraTrackSwitchSmooth", false);
-                if (!jetTrack) { showError("SA Page requires a track (jet track or camera track)"); return; }
+                if (!jetTrack) { showError("SA Page requires a track"); this._showSAPage = false; return; }
                 const windLocal = NodeMan.get("localWind", false);
                 const windTarget = NodeMan.get("targetWind", false);
 
@@ -718,26 +720,24 @@ export class CCustomManager {
                     draggable: true, resizable: true,
                 });
 
-                // Auto-add all loaded tracks (from TrackManager) as HAFU symbols
+                // Auto-add all loaded tracks as HAFU symbols
                 for (const id in TrackManager.list) {
                     const track = TrackManager.list[id].data;
                     if (track && track.id !== jetTrack.id) {
                         sa.addHAFU(track, "Unknown", "None", 0);
                     }
                 }
-
-                // Also add the target track if it exists
                 const targetTrack = NodeMan.get("targetTrackSwitchSmooth", false)
                     || NodeMan.get("LOSTraverseSelect", false);
                 if (targetTrack) {
                     sa.addHAFU(targetTrack, "Hostile", "None", 0);
                 }
-
-                this._saPageActive = true;
-                setRenderOne(true);
-            };
-            guiMenus.physics.add(this, "_addSAPage").name("Add SA Page");
-        }
+            }
+            // Toggle visibility
+            const saView = ViewMan.get("SAPage", false);
+            if (saView) saView.setVisible(value);
+            setRenderOne(true);
+        }).listen();
         // ── end SA Page ─────────────────────────────────────────
 
         // ── ATFLIR Pod — requires reload ────────────────────────
