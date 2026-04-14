@@ -767,15 +767,15 @@ export class CCustomManager {
                     aFrame: 0,
                     bFrame: 1030,
 
-                    lat: Sit.lat ?? 28.5,
-                    lon: Sit.lon ?? -79.5,
+                    lat: 28.5,
+                    lon: -79.5,
 
-                    jetLat:      {kind: "Constant", value: Sit.lat ?? 28.5},
-                    jetLon:      {kind: "Constant", value: Sit.lon ?? -79.5},
+                    jetLat:      {kind: "Constant", value: 28.5},
+                    jetLon:      {kind: "Constant", value: -79.5},
                     jetAltitude: {kind: "inputFeet", value: 25000, desc: "Altitude", start: 24500, end: 25500, step: 1},
                     jetOrigin:   {kind: "TrackFromLLA", lat: "jetLat", lon: "jetLon", alt: "jetAltitude"},
 
-                    TerrainModel: Sit.TerrainModel ?? {kind: "Terrain", lat: 34, lon: -118.3, zoom: 7, nTiles: 3, fullUI: true, dynamic: true},
+                    TerrainModel: {kind: "Terrain", lat: 34, lon: -118.3, zoom: 7, nTiles: 3, fullUI: true, dynamic: true},
 
                     files: {
                         GimbalCSV:       'gimbal/GimbalData.csv',
