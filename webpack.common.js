@@ -373,6 +373,8 @@ ${bodyContent}
     output: {
         filename: '[name].[contenthash].bundle.js',
         path: InstallPaths.dev_path,
-        clean: true, // this deletes the contents of path (InstallPaths.dev_path)
+        clean: {
+            keep: /sitrec-upload|sitrec-cache/,  // preserve user uploads and cache across builds
+        },
     },
 });
