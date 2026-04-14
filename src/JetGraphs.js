@@ -159,7 +159,7 @@ export function AddSpeedGraph(source, caption, minY = 0, maxY = 1000, left = 0.6
 
     let maybeGlare = {};
 
-    if (Sit.name.startsWith("gimbal")) {
+    if (Sit.showGimbalCharts || Sit.name.startsWith("gimbal")) {
         maybeGlare = {
             // black = glare angle
             compare4: new CNodeGraphSeries({
@@ -323,7 +323,7 @@ export function AddSpeedGraph(source, caption, minY = 0, maxY = 1000, left = 0.6
     })
 */
 
-    if (Sit.name.startsWith("gimbal") && Sit.name !== "gimbalsr71") {
+    if ((Sit.showGimbalCharts || Sit.name.startsWith("gimbal")) && Sit.name !== "gimbalsr71") {
         const speedGraphNodeFleet = new CNodeCurveEditor({
             id: "speedGraphFleet",
             left: 0.60, top: 0.25, width: -1, height: .25,
