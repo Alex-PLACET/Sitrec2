@@ -13,6 +13,7 @@ import {
     setLayerMaskRecursive
 } from "../threeExt";
 import {ECEFToLLAVD_radii, ECEFToLLAVD_Sphere, getLST, raDecToAzElRADIANS, wgs84} from "../LLA-ECEF-ENU";
+import {getLocalUpVector} from "../SphericalMath";
 // npm install three-text2d --save-dev
 // https://github.com/gamestdio/three-text2d
 //import { MeshText2D, textAlign } from 'three-text2d'
@@ -207,6 +208,10 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
         satGUI.add(this.satellites, 'flareAngle', 0, 20, 0.1).listen().name(t("nightSky.flareAngle.label")).tooltip(t("nightSky.flareAngle.tooltip"))
         this.addSimpleSerial("flareAngle")
 
+        satGUI.add(this.satellites, 'flareModel', ["Geocentric Nadir", "Geodetic Nadir"]).listen()
+            .name(t("nightSky.flareModel.label")).tooltip(t("nightSky.flareModel.tooltip"))
+            .onChange(() => setRenderOne(true))
+        this.addSimpleSerial("flareModel")
 
         satGUI.add(this.satellites, 'penumbraDepth', 0, 100000, 1).listen().name(t("nightSky.penumbraDepth.label"))
             .tooltip(t("nightSky.penumbraDepth.tooltip"))
@@ -825,8 +830,31 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
         propagateLayerMaskObject(this.equatorialSphereGroup)
     }
 
+    // Properties that live on this.satellites but are serialized via addSimpleSerial on this node.
+    // modSerialize/modDeserialize bridge the gap so values round-trip correctly.
+    getSatelliteSerials() {
+        return ["flareAngle", "flareModel", "penumbraDepth", "arrowRange"];
+    }
+
+    modSerialize() {
+        var result = super.modSerialize();
+        var satSerials = this.getSatelliteSerials();
+        for (var i = 0; i < satSerials.length; i++) {
+            result[satSerials[i]] = this.satellites[satSerials[i]];
+        }
+        return result;
+    }
+
     modDeserialize(v) {
         super.modDeserialize(v);
+
+        // Copy satellite properties from the deserialized values to the satellites object
+        var satSerials = this.getSatelliteSerials();
+        for (var i = 0; i < satSerials.length; i++) {
+            if (v[satSerials[i]] !== undefined) {
+                this.satellites[satSerials[i]] = v[satSerials[i]];
+            }
+        }
 
         if (Globals.exportTagNumber <= 2025003) {
             console.log("Old save with Dispay Range, updating from " + this.arrowRange + " to 100000");
@@ -1028,8 +1056,8 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
                         brightness *= 3;
                     }
 
-                    const globeToSat = satPosition.clone().sub(this.globe.center).normalize();
-                    const reflected = camToSat.clone().reflect(globeToSat).normalize();
+                    const satNormal = this.satellites.getSatelliteNormal(satPosition, this.globe.center);
+                    const reflected = camToSat.clone().reflect(satNormal).normalize();
                     const dot = Math.max(-1, Math.min(1, reflected.dot(toSun)));
                     const glintAngle = Math.abs(degrees(Math.acos(dot)));
 
@@ -1488,8 +1516,8 @@ export class CNodeDisplayNightSky extends CNode3DGroup {
 
                     if (camToSat.dot(v) > 0) {
 
-                        const globeToSat = X.clone().sub(O).normalize()
-                        const reflected = camToSat.clone().reflect(globeToSat).normalize()
+                        const satNormal = this.satellites.getSatelliteNormal(X, O)
+                        const reflected = camToSat.clone().reflect(satNormal).normalize()
                         const dot = reflected.dot(v)
                         const glintAngle = (degrees(Math.acos(dot)))
                         if ((glintAngle >= 0) && (glintAngle < bestGlintAngle)) {

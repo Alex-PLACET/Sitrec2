@@ -9,6 +9,7 @@ import {bestSat, CTLEData, satRecToDate} from "../TLEUtils";
 import {degrees} from "../utils";
 import {hideProgress, initProgress, updateProgress} from "../CProgressIndicator";
 import {DebugArrow, DebugArrowAB, getPointBelow, rayIntersectsEllipsoid, removeDebugArrow} from "../threeExt";
+import {getLocalUpVector} from "../SphericalMath";
 import * as LAYER from "../LayerMasks";
 import {assert} from "../assert";
 import {saveAs} from "file-saver";
@@ -49,6 +50,7 @@ export class CSatellite {
 
         // Flare and sun-related
         this.flareAngle = options.flareAngle ?? 5;
+        this.flareModel = options.flareModel ?? "Geocentric Nadir";
         this.penumbraDepth = options.penumbraDepth ?? 5000;
         this.toSun = V3(0, 0, 1);
         this.fromSun = V3(0, 0, -1);
@@ -1470,6 +1472,20 @@ export class CSatellite {
     }
 
     /**
+     * Compute the satellite surface normal for flare reflection based on the selected model.
+     * "Geocentric Nadir" - vector from Earth center to satellite (original, simple model)
+     * "Geodetic Nadir"   - WGS84 ellipsoid surface normal (physically correct for nadir-pointing satellites)
+     */
+    getSatelliteNormal(satPosition, globeCenter) {
+        if (this.flareModel === "Geocentric Nadir") {
+            return satPosition.clone().sub(globeCenter).normalize();
+        }
+        // Geodetic Nadir: normal to the WGS84 ellipsoid at the satellite's position.
+        // For a nadir-pointing satellite, the antenna panel is perpendicular to this direction.
+        return getLocalUpVector(satPosition);
+    }
+
+    /**
      * Perform flare detection and return flare info for a satellite
      * Called from CNodeDisplayNightSky for rendering
      */
@@ -1485,8 +1501,8 @@ export class CSatellite {
         const belowHorizon = rayIntersectsEllipsoid(camera.position, camToSat);
 
         if (!belowHorizon) {
-            const globeToSat = satPosition.clone().sub(globe.center).normalize();
-            const reflected = camToSat.clone().reflect(globeToSat).normalize();
+            const satNormal = this.getSatelliteNormal(satPosition, globe.center);
+            const reflected = camToSat.clone().reflect(satNormal).normalize();
             const dot = reflected.dot(toSun);
             const glintAngle = Math.abs(degrees(Math.acos(Math.max(-1, Math.min(1, dot)))));
 
