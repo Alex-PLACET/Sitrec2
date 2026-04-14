@@ -722,14 +722,16 @@ export class CCustomManager {
 
                 // Auto-add all loaded tracks as HAFU symbols
                 for (const id in TrackManager.list) {
-                    const track = TrackManager.list[id].data;
-                    if (track && track.id !== jetTrack.id) {
+                    const meta = TrackManager.list[id].data;
+                    // CMetaTrack wraps the actual position track in .trackNode
+                    const track = meta && meta.trackNode ? meta.trackNode : meta;
+                    if (track && typeof track.p === 'function' && track.id !== jetTrack.id) {
                         sa.addHAFU(track, "Unknown", "None", 0);
                     }
                 }
                 const targetTrack = NodeMan.get("targetTrackSwitchSmooth", false)
                     || NodeMan.get("LOSTraverseSelect", false);
-                if (targetTrack) {
+                if (targetTrack && typeof targetTrack.p === 'function') {
                     sa.addHAFU(targetTrack, "Hostile", "None", 0);
                 }
             }

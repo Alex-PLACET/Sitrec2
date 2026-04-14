@@ -60,8 +60,8 @@ export class CNodeSAPage extends CNodeDDI {
         v.defaultFontSize = 4
         super(v)
         this.input("jetTrack")
-        this.input("windLocal")
-        this.input("windTarget")
+        this.input("windLocal", true)
+        this.input("windTarget", true)
         this.radius = 40; // %
         this.pips = []
         this.hafus = []
