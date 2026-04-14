@@ -48,6 +48,59 @@ import {AddGenericNodeGraph} from "./JetGraphs";
 import {ViewMan} from "./CViewManager";
 import * as LAYER from "./LayerMasks";
 
+/**
+ * Node IDs that the gimbal pipeline creates imperatively.
+ * If any of these already exist (e.g. from the base custom sitch template),
+ * they must be removed before the gimbal pipeline runs so we don't get
+ * "adding <id> twice" asserts.
+ */
+const GIMBAL_PIPELINE_NODE_IDS = [
+    // SetupGimbal
+    "azMarkus", "azEditor", "azSources",
+    "jetTAS", "elStart", "elRise", "el",
+    "bank", "recordedAngle", "userBankAngle",
+    "glareAngle", "Unsmoothed", "movingAverage", "markusSmoothed",
+    "MickKeyframe", "markusKeyframe",
+    "unsmoothedArray", "movingAverageArray", "markusSmoothedArray", "markusKeyFrameArray",
+    "recordedCueAz", "recordedCueAzArray",
+    "turnRateBS", "watchTAS",
+    "cloudSpeedEditor",
+    "cloudWind", "targetWind", "localWind",
+    "initialHeading",
+    "turnRateFromClouds", "turnRate",
+    "userTurnRateFine", "userTurnRateLarge",
+    "jetTrack", "SAPage",
+    "JetLOS", "gimbalTriangulate",
+    // SetupCommon
+    "cloudAltitude", "cloudAltitudeGUI",
+    // SetupTraverseNodes / CreateTraverseNodes
+    "startDistance", "speedScaled",
+    "LOSTraverseConstantDistance",
+    "LOSTraverseConstantSpeed", "LOSTraverseConstantAirSpeed",
+    "LOSTraverseStraightLine", "LOSTraverseStraightConstantAir",
+    "LOSTraverseConstantAltitude",
+    "LOSTraverseSelect",
+    "targetRelativeHeading", "targetActualHeading",
+    // handleGimbalSetup extras
+    "airTrack",
+    "AirTrackDisplay",
+    "sizeScaled", "targetModel", "targetSphere",
+    // SetupTrackLOSNodes
+    "JetLOSDisplayNode", "jetTrackDisplayNode",
+    "jetTrackColor", "jetTrackColor2",
+    "LOSTraverseDisplayNode",
+    // SetupCloudNodes
+    "cloudData", "cloudDisplay", "cloudMaterial",
+    "LOSHorizonTrack", "LOSHorizonDisplay",
+    // Fleet
+    "fleetTurnStart", "fleetTurnRate", "fleetAcceleration",
+    "fleetSpacing", "fleetX", "fleetY",
+    "fleeter01", "fleeter02", "fleeter03", "fleeter04", "fleeter05",
+    "tf01", "tf02", "tf03", "tf04", "tf05",
+    "fleeter01Display", "fleeter02Display", "fleeter03Display",
+    "fleeter04Display", "fleeter05Display",
+];
+
 
 /**
  * Process Gimbal CSV data files and attach results to Sit.
@@ -299,6 +352,15 @@ export function handleGimbalSetup(config) {
     Sit.showGimbalCharts = config.showGimbalCharts !== false;
 
     const defaultTraverse = config.defaultTraverse ?? "Const Air Spd";
+
+    // 0. Remove any pre-existing nodes that the gimbal pipeline will recreate.
+    //    The base custom sitch template defines nodes like targetWind, localWind,
+    //    turnRate, jetTrack, etc. that SetupGimbal() also creates imperatively.
+    for (const id of GIMBAL_PIPELINE_NODE_IDS) {
+        if (NodeMan.exists(id)) {
+            NodeMan.unlinkDisposeRemove(id);
+        }
+    }
 
     // 1. Process CSV data
     processGimbalCSVData();

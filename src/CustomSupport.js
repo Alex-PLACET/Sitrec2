@@ -750,41 +750,88 @@ export class CCustomManager {
         if (!Sit.gimbalSetup) {
             // Not yet active — show activation button
             this._enableGimbalAnalysis = () => {
-                // Set the properties that will be serialized
-                Sit.jetStuff = true;
-                Sit.gimbalSetup = {...this._gimbalConfig};
-                Sit.showGlare = gc.showGlare;
+                // The base custom sitch (SitCustom.js) has its own wind/track/traverse
+                // infrastructure that fundamentally conflicts with the Gimbal pipeline.
+                // Instead of trying to patch Sit, we build a clean gimbal sitch definition
+                // and navigate to it as a new custom sitch.
+                const gimbalSitch = {
+                    name: "custom",
+                    isCustom: true,
+                    canMod: false,
+                    isTextable: false,
+                    jetStuff: true,
+                    azSlider: {defer: true},
 
-                // Ensure the gimbal data files are referenced
-                if (!Sit.files) Sit.files = {};
-                if (!Sit.files.GimbalCSV)     Sit.files.GimbalCSV     = 'gimbal/GimbalData.csv';
-                if (!Sit.files.GimbalCSV2)    Sit.files.GimbalCSV2    = 'gimbal/GimbalRotKeyframes.csv';
-                if (!Sit.files.GimbalCSV_Pip) Sit.files.GimbalCSV_Pip = 'gimbal/GimbalPIPKeyframes.csv';
-                if (!Sit.files.ATFLIRModel)   Sit.files.ATFLIRModel   = 'models/ATFLIR.glb';
-                if (!Sit.files.FA18Model)     Sit.files.FA18Model     = 'models/FA-18F.glb';
-                if (!Sit.files.TargetObjectFile) Sit.files.TargetObjectFile = 'models/FA-18F.glb';
+                    fps: 29.97,
+                    frames: 1031,
+                    aFrame: 0,
+                    bFrame: 1030,
 
-                // Set lat/lon defaults for Gimbal (off coast of Florida)
-                if (Sit.lat === undefined) Sit.lat = 28.5;
-                if (Sit.lon === undefined) Sit.lon = -79.5;
+                    lat: Sit.lat ?? 28.5,
+                    lon: Sit.lon ?? -79.5,
 
-                // Jet track infrastructure nodes
-                if (!Sit.jetLat)      Sit.jetLat      = {kind: "Constant", value: Sit.lat};
-                if (!Sit.jetLon)      Sit.jetLon      = {kind: "Constant", value: Sit.lon};
-                if (!Sit.jetAltitude) Sit.jetAltitude  = {kind: "inputFeet", value: 25000, desc: "Altitude", start: 24500, end: 25500, step: 1};
-                if (!Sit.jetOrigin)   Sit.jetOrigin    = {kind: "TrackFromLLA", lat: "jetLat", lon: "jetLon", alt: "jetAltitude"};
-                if (!Sit.lookCamera)  Sit.lookCamera   = {fov: 0.35};
-                if (!Sit.lookView)    Sit.lookView     = {left: 0.6656, top: 1 - 0.3333, width: -1, height: 0.333, draggable: true, resizable: true, shiftDrag: true, freeAspect: false, noOrbitControls: true};
-                if (Sit.azSlider === undefined) Sit.azSlider = {defer: true};
+                    jetLat:      {kind: "Constant", value: Sit.lat ?? 28.5},
+                    jetLon:      {kind: "Constant", value: Sit.lon ?? -79.5},
+                    jetAltitude: {kind: "inputFeet", value: 25000, desc: "Altitude", start: 24500, end: 25500, step: 1},
+                    jetOrigin:   {kind: "TrackFromLLA", lat: "jetLat", lon: "jetLon", alt: "jetAltitude"},
 
-                if (Sit.fps === undefined || Sit.fps === 30) Sit.fps = 29.97;
-                if (Sit.frames === undefined || Sit.frames === 500) Sit.frames = 1031;
+                    TerrainModel: Sit.TerrainModel ?? {kind: "Terrain", lat: 34, lon: -118.3, zoom: 7, nTiles: 3, fullUI: true, dynamic: true},
 
-                // View defaults for Gimbal
-                if (!Sit.mainView) Sit.mainView = {left: 0, top: 0, width: 1, height: 1, fov: 10, background: '#000000'};
+                    files: {
+                        GimbalCSV:       'gimbal/GimbalData.csv',
+                        GimbalCSV2:      'gimbal/GimbalRotKeyframes.csv',
+                        GimbalCSV_Pip:   'gimbal/GimbalPIPKeyframes.csv',
+                        ATFLIRModel:     'models/ATFLIR.glb',
+                        FA18Model:       'models/FA-18F.glb',
+                        TargetObjectFile:'models/FA-18F.glb',
+                    },
 
-                // Save and reload to activate
-                this.serialize("Custom", getDateTimeFilename()).then(() => {
+                    mainCamera: {
+                        startCameraPositionLLA: [28.470586, -79.100902, 26132.346324],
+                        startCameraTargetLLA:   [28.470824, -79.110720, 25870.046771],
+                    },
+                    mainView: {left: 0, top: 0, width: 1, height: 1, fov: 10, background: '#000000'},
+
+                    lookCamera: {fov: 0.35},
+                    lookView: {
+                        left: 0.6656, top: 1 - 0.3333, width: -1, height: 0.333,
+                        draggable: true, resizable: true, shiftDrag: true, freeAspect: false, noOrbitControls: true,
+                    },
+
+                    lighting: {
+                        kind: "Lighting", ambientIntensity: 0.35,
+                        IRAmbientIntensity: 1.0, sunIntensity: 0.7,
+                        sunScattering: 0.6, ambientOnly: false,
+                    },
+
+                    focusTracks: {
+                        "Default": "default",
+                        "Jet track": "jetTrack",
+                        "Traverse Path (UFO)": "LOSTraverseSelect",
+                    },
+
+                    include_JetLabels: true,
+                    include_Compasses: true,
+
+                    sprites: {
+                        kind: "FlowOrbs", nSprites: 1000, wind: "targetWind",
+                        colorMethod: "Hue From Altitude", hueAltitudeMax: 1400,
+                        camera: "lookCamera", visible: false, defer: true,
+                    },
+
+                    gimbalSetup: {...this._gimbalConfig},
+                };
+
+                // Replace Sit's own properties with the clean gimbal definition
+                // so getCustomSitchString()'s ...Sit spread picks up only gimbal data.
+                const keep = new Set(Object.getOwnPropertyNames(Object.getPrototypeOf(Sit)));
+                for (const k of Object.getOwnPropertyNames(Sit)) {
+                    if (!keep.has(k)) delete Sit[k];
+                }
+                Object.assign(Sit, gimbalSitch);
+
+                // Save and reload
+                this.serialize("GimbalAnalysis", getDateTimeFilename()).then(() => {
                     window.location.reload();
                 });
             };
