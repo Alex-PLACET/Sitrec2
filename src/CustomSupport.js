@@ -103,12 +103,43 @@ export class CCustomManager {
 
         // Settings will be initialized in setup() after login check
         this.settingsInitialized = false;
-
-        // Settings saver with intelligent debouncing (5 second delay)
-        this.settingsSaver = new SettingsSaver(5000);
-        this.editingObjectNodeId = null;
-        this.editingObjectMenu = null;
     }
+
+    _createSAPage() {
+        const jetTrack = NodeMan.get("jetTrack", false) || NodeMan.get("cameraTrackSwitchSmooth", false);
+        if (!jetTrack) { showError("SA Page requires a track"); this._showSAPage = false; return; }
+        const windLocal = NodeMan.get("localWind", false);
+        const windTarget = NodeMan.get("targetWind", false);
+
+        const sa = new CNodeSAPage({
+            id: "SAPage",
+            jetTrack: jetTrack.id,
+            windLocal: windLocal ? windLocal.id : undefined,
+            windTarget: windTarget ? windTarget.id : undefined,
+            left: 0.0, top: 0.5, width: -1, height: 0.5,
+            background: new Color().setRGB(0, 0, 0),
+            draggable: true, resizable: true, shiftDrag: true,
+        });
+
+        // Auto-add all loaded tracks as HAFU symbols
+        for (const id in TrackManager.list) {
+            const meta = TrackManager.list[id].data;
+            const track = meta && meta.trackNode ? meta.trackNode : meta;
+            if (track && typeof track.p === 'function' && track.id !== jetTrack.id) {
+                sa.addHAFU(track, "Unknown", "None", 0);
+            }
+        }
+        const targetTrack = NodeMan.get("targetTrackSwitchSmooth", false)
+            || NodeMan.get("LOSTraverseSelect", false);
+        if (targetTrack && typeof targetTrack.p === 'function') {
+            sa.addHAFU(targetTrack, "Hostile", "None", 0);
+        }
+    }
+
+    // Settings saver with intelligent debouncing (5 second delay)
+    settingsSaver = new SettingsSaver(5000);
+    editingObjectNodeId = null;
+    editingObjectMenu = null;
 
     async initializeSettings() {
         await initializeSettings();
@@ -701,41 +732,16 @@ export class CCustomManager {
         // ── end Wind ────────────────────────────────────────────────
 
         // ── SA Page — checkbox under Show/Hide > Views ─────────
+        // If showSAPage was saved, create the SA page now (after tracks are loaded)
+        if (Sit.showSAPage && !NodeMan.exists("SAPage")) {
+            this._createSAPage();
+        }
         this._showSAPage = NodeMan.exists("SAPage");
         guiShowHideViews.add(this, "_showSAPage").name("SA Page").onChange((value) => {
             if (value && !NodeMan.exists("SAPage")) {
-                // First enable — create the SA page
-                const jetTrack = NodeMan.get("jetTrack", false) || NodeMan.get("cameraTrackSwitchSmooth", false);
-                if (!jetTrack) { showError("SA Page requires a track"); this._showSAPage = false; return; }
-                const windLocal = NodeMan.get("localWind", false);
-                const windTarget = NodeMan.get("targetWind", false);
-
-                const sa = new CNodeSAPage({
-                    id: "SAPage",
-                    jetTrack: jetTrack.id,
-                    windLocal: windLocal ? windLocal.id : undefined,
-                    windTarget: windTarget ? windTarget.id : undefined,
-                    left: 0.0, top: 0.5, width: -1, height: 0.5,
-                    background: new Color().setRGB(0, 0, 0),
-                    draggable: true, resizable: true,
-                });
-
-                // Auto-add all loaded tracks as HAFU symbols
-                for (const id in TrackManager.list) {
-                    const meta = TrackManager.list[id].data;
-                    // CMetaTrack wraps the actual position track in .trackNode
-                    const track = meta && meta.trackNode ? meta.trackNode : meta;
-                    if (track && typeof track.p === 'function' && track.id !== jetTrack.id) {
-                        sa.addHAFU(track, "Unknown", "None", 0);
-                    }
-                }
-                const targetTrack = NodeMan.get("targetTrackSwitchSmooth", false)
-                    || NodeMan.get("LOSTraverseSelect", false);
-                if (targetTrack && typeof targetTrack.p === 'function') {
-                    sa.addHAFU(targetTrack, "Hostile", "None", 0);
-                }
+                this._createSAPage();
             }
-            // Toggle visibility
+            Sit.showSAPage = value; // persist for serialization
             const saView = ViewMan.get("SAPage", false);
             if (saView) saView.setVisible(value);
             setRenderOne(true);
