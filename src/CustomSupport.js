@@ -118,7 +118,7 @@ export class CCustomManager {
             windTarget: windTarget ? windTarget.id : undefined,
             left: 0.0, top: 0.5, width: -1, height: 0.5,
             background: new Color().setRGB(0, 0, 0),
-            draggable: true, resizable: true, shiftDrag: true,
+            draggable: true, resizable: true,
         });
 
         // Auto-add all loaded tracks as HAFU symbols
@@ -759,7 +759,7 @@ export class CCustomManager {
                 if (!Sit.lookCamera) Sit.lookCamera = {fov: 0.35};
                 if (!Sit.lookView) Sit.lookView = {
                     left: 0.6656, top: 1 - 0.3333, width: -1, height: 0.333,
-                    draggable: true, resizable: true, shiftDrag: true, freeAspect: false, noOrbitControls: true,
+                    draggable: true, resizable: true, freeAspect: false, noOrbitControls: true,
                 };
                 this.serialize("Custom", getDateTimeFilename()).then(() => {
                     window.location.reload();
@@ -830,7 +830,7 @@ export class CCustomManager {
                     mainView: {left: 0, top: 0, width: 1, height: 1, fov: 10, background: '#000000'},
                     lookCamera: {fov: 0.35},
                     lookView: {left: 0.6656, top: 0.6667, width: -1, height: 0.333,
-                        draggable: true, resizable: true, shiftDrag: true, freeAspect: false, noOrbitControls: true},
+                        draggable: true, resizable: true, freeAspect: false, noOrbitControls: true},
                     lighting: {kind: "Lighting", ambientIntensity: 0.35, IRAmbientIntensity: 1.0,
                         sunIntensity: 0.7, sunScattering: 0.6, ambientOnly: false},
                     focusTracks: {"Default": "default", "Jet track": "jetTrack", "Traverse Path (UFO)": "LOSTraverseSelect"},
