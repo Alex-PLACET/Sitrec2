@@ -289,7 +289,7 @@ export function UpdateHUD(text="") {
 
         ;
     }
-    if (ViewMan.list.video.data.videoPercentLoaded > 0 && ViewMan.list.video.data.videoPercentLoaded < 100) {
+    if (ViewMan.list.video && ViewMan.list.video.data.videoPercentLoaded > 0 && ViewMan.list.video.data.videoPercentLoaded < 100) {
         keyInfo += "Loading Video " + VideoPercentLoaded + "%<br>";
     }
 
@@ -1039,9 +1039,11 @@ export function initViews() {
 
     ViewMan.get("chart").setVisible(par.showChart);
 
-    const labelOriginalVideo = new CNodeViewUI({id: "labelOriginalVideo", overlayView: ViewMan.list.video.data});
-    labelOriginalVideo.addText("videolabel", "ORIGINAL VIDEO", 70, 10, 3, "#f0f00080")
-    labelOriginalVideo.setVisible(true)
+    if (ViewMan.list.video) {
+        const labelOriginalVideo = new CNodeViewUI({id: "labelOriginalVideo", overlayView: ViewMan.list.video.data});
+        labelOriginalVideo.addText("videolabel", "ORIGINAL VIDEO", 70, 10, 3, "#f0f00080")
+        labelOriginalVideo.setVisible(true)
+    }
 
     if (1 || !isLocal) {
         const labelMainView = new CNodeViewUI({id: "labelMainView", overlayView: ViewMan.list.mainView.data});
