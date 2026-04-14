@@ -90,6 +90,8 @@ import {CNodeTrackSwitch} from "./nodes/CNodeTrackSwitch";
 import {getNearbyWeatherBalloons, importSoundingDialog} from "./SondeFetch";
 import {getCurrentLanguage, setLanguage, SUPPORTED_LANGUAGE_OPTIONS, t} from "./i18n";
 import {bracketingLevels} from "./nodes/CNodeDisplayWindField";
+import {CNodeSAPage} from "./nodes/CNodeSAPage";
+import {Color} from "three";
 
 export class CCustomManager {
     constructor() {
@@ -697,156 +699,140 @@ export class CCustomManager {
         };
         // ── end Wind ────────────────────────────────────────────────
 
-        // ── Gimbal Analysis subfolder under Physics ─────────────
+        // ── SA Page — situational awareness display ────────────
+        this._saPageActive = NodeMan.exists("SAPage");
+        if (!this._saPageActive) {
+            this._addSAPage = () => {
+                const jetTrack = NodeMan.get("jetTrack", false) || NodeMan.get("cameraTrackSwitchSmooth", false);
+                if (!jetTrack) { showError("SA Page requires a track (jet track or camera track)"); return; }
+                const windLocal = NodeMan.get("localWind", false);
+                const windTarget = NodeMan.get("targetWind", false);
+
+                new CNodeSAPage({
+                    id: "SAPage",
+                    jetTrack: jetTrack.id,
+                    windLocal: windLocal ? windLocal.id : undefined,
+                    windTarget: windTarget ? windTarget.id : undefined,
+                    left: 0.0, top: 0.5, width: -1, height: 0.5,
+                    background: new Color().setRGB(0, 0, 0),
+                    draggable: true, resizable: true,
+                });
+                this._saPageActive = true;
+                setRenderOne(true);
+            };
+            guiMenus.physics.add(this, "_addSAPage").name("Add SA Page");
+        }
+        // ── end SA Page ─────────────────────────────────────────
+
+        // ── ATFLIR Pod — requires reload ────────────────────────
+        if (!Sit.showATFLIR && !Sit.jetStuff) {
+            this._addATFLIR = () => {
+                Sit.showATFLIR = true;
+                Sit.jetStuff = true;
+                if (!Sit.files) Sit.files = {};
+                if (!Sit.files.ATFLIRModel) Sit.files.ATFLIRModel = 'models/ATFLIR.glb';
+                if (!Sit.files.FA18Model)   Sit.files.FA18Model   = 'models/FA-18F.glb';
+                if (!Sit.lookCamera) Sit.lookCamera = {fov: 0.35};
+                if (!Sit.lookView) Sit.lookView = {
+                    left: 0.6656, top: 1 - 0.3333, width: -1, height: 0.333,
+                    draggable: true, resizable: true, shiftDrag: true, freeAspect: false, noOrbitControls: true,
+                };
+                this.serialize("Custom", getDateTimeFilename()).then(() => {
+                    window.location.reload();
+                });
+            };
+            guiMenus.physics.add(this, "_addATFLIR").name("Add ATFLIR Pod (reload)");
+        }
+        // ── end ATFLIR Pod ──────────────────────────────────────
+
+        // ── Gimbal Preset — full pipeline, creates a new sitch ──
+        const gimbalFolder = addGUIFolder("gimbalAnalysis", "Gimbal Analysis Preset", "physics");
+
         this._gimbalConfig = {
-            showGlare: true,
-            showATFLIR: true,
+            showGlare: true, showATFLIR: true,
             cloudWindFrom: 240,  cloudWindKnots: 17,
             targetWindFrom: 274, targetWindKnots: 65,
             localWindFrom: 270,  localWindKnots: 120,
-            startDistance: 32,
-            targetSpeed: 340,
+            startDistance: 32,   targetSpeed: 340,
             defaultTraverse: "Const Air Spd",
             fleetTurnStart: 0,  fleetTurnRate: 8,
             fleetAcceleration: 2, fleetSpacing: 0.7,
             fleetX: 20, fleetY: -5.27,
         };
+        if (Sit.gimbalSetup) Object.assign(this._gimbalConfig, Sit.gimbalSetup);
+        const gc = this._gimbalConfig;
 
-        // Pre-fill from existing sitch if already enabled
-        if (Sit.gimbalSetup) {
-            Object.assign(this._gimbalConfig, Sit.gimbalSetup);
-        }
-
-        const gimbalFolder = addGUIFolder("gimbalAnalysis", "Gimbal Analysis", "physics");
-
-        // Show status if already active
         if (Sit.gimbalSetup) {
             gimbalFolder.add({status: "Active"}, "status").name("Status").disable();
         }
 
-        const gc = this._gimbalConfig;
-
-        // Wind parameters
         gimbalFolder.add(gc, "cloudWindFrom", 0, 360, 1).name("Cloud Wind From");
         gimbalFolder.add(gc, "cloudWindKnots", 0, 100, 1).name("Cloud Wind Knots");
         gimbalFolder.add(gc, "targetWindFrom", 0, 360, 1).name("Target Wind From");
         gimbalFolder.add(gc, "targetWindKnots", 0, 200, 1).name("Target Wind Knots");
         gimbalFolder.add(gc, "localWindFrom", 0, 360, 1).name("Local Wind From");
         gimbalFolder.add(gc, "localWindKnots", 0, 200, 1).name("Local Wind Knots");
-
-        // Target parameters
         gimbalFolder.add(gc, "startDistance", 1, 100, 0.1).name("Start Distance NM");
         gimbalFolder.add(gc, "targetSpeed", 0, 600, 1).name("Target Speed kts");
         gimbalFolder.add(gc, "defaultTraverse", [
             "Straight Line", "Const Ground Spd", "Const Air Spd",
             "Const Air AB", "Constant Altitude",
         ]).name("Traverse Mode");
-
-        // Feature toggles
         gimbalFolder.add(gc, "showGlare").name("Show Glare");
         gimbalFolder.add(gc, "showATFLIR").name("Show ATFLIR Pod");
 
-        // Activate / update
         if (!Sit.gimbalSetup) {
-            // Not yet active — show activation button
             this._enableGimbalAnalysis = () => {
-                // The base custom sitch (SitCustom.js) has its own wind/track/traverse
-                // infrastructure that fundamentally conflicts with the Gimbal pipeline.
-                // Instead of trying to patch Sit, we build a clean gimbal sitch definition
-                // and navigate to it as a new custom sitch.
                 const gimbalSitch = {
-                    name: "custom",
-                    isCustom: true,
-                    canMod: false,
-                    isTextable: false,
-                    jetStuff: true,
-                    azSlider: {defer: true},
-
-                    fps: 29.97,
-                    frames: 1031,
-                    aFrame: 0,
-                    bFrame: 1030,
-
-                    lat: 28.5,
-                    lon: -79.5,
-
-                    jetLat:      {kind: "Constant", value: 28.5},
-                    jetLon:      {kind: "Constant", value: -79.5},
+                    name: "custom", isCustom: true, canMod: false, isTextable: false,
+                    jetStuff: true, azSlider: {defer: true},
+                    fps: 29.97, frames: 1031, aFrame: 0, bFrame: 1030,
+                    lat: 28.5, lon: -79.5,
+                    jetLat: {kind: "Constant", value: 28.5},
+                    jetLon: {kind: "Constant", value: -79.5},
                     jetAltitude: {kind: "inputFeet", value: 25000, desc: "Altitude", start: 24500, end: 25500, step: 1},
-                    jetOrigin:   {kind: "TrackFromLLA", lat: "jetLat", lon: "jetLon", alt: "jetAltitude"},
-
+                    jetOrigin: {kind: "TrackFromLLA", lat: "jetLat", lon: "jetLon", alt: "jetAltitude"},
                     TerrainModel: {kind: "Terrain", lat: 34, lon: -118.3, zoom: 7, nTiles: 3, fullUI: true, dynamic: true},
-
                     files: {
-                        GimbalCSV:       'gimbal/GimbalData.csv',
-                        GimbalCSV2:      'gimbal/GimbalRotKeyframes.csv',
-                        GimbalCSV_Pip:   'gimbal/GimbalPIPKeyframes.csv',
-                        ATFLIRModel:     'models/ATFLIR.glb',
-                        FA18Model:       'models/FA-18F.glb',
-                        TargetObjectFile:'models/FA-18F.glb',
+                        GimbalCSV: 'gimbal/GimbalData.csv', GimbalCSV2: 'gimbal/GimbalRotKeyframes.csv',
+                        GimbalCSV_Pip: 'gimbal/GimbalPIPKeyframes.csv',
+                        ATFLIRModel: 'models/ATFLIR.glb', FA18Model: 'models/FA-18F.glb',
+                        TargetObjectFile: 'models/FA-18F.glb',
                     },
-
                     mainCamera: {
                         startCameraPositionLLA: [28.470586, -79.100902, 26132.346324],
-                        startCameraTargetLLA:   [28.470824, -79.110720, 25870.046771],
+                        startCameraTargetLLA: [28.470824, -79.110720, 25870.046771],
                     },
                     mainView: {left: 0, top: 0, width: 1, height: 1, fov: 10, background: '#000000'},
-
                     lookCamera: {fov: 0.35},
-                    lookView: {
-                        left: 0.6656, top: 1 - 0.3333, width: -1, height: 0.333,
-                        draggable: true, resizable: true, shiftDrag: true, freeAspect: false, noOrbitControls: true,
-                    },
-
-                    lighting: {
-                        kind: "Lighting", ambientIntensity: 0.35,
-                        IRAmbientIntensity: 1.0, sunIntensity: 0.7,
-                        sunScattering: 0.6, ambientOnly: false,
-                    },
-
-                    focusTracks: {
-                        "Default": "default",
-                        "Jet track": "jetTrack",
-                        "Traverse Path (UFO)": "LOSTraverseSelect",
-                    },
-
-                    include_JetLabels: true,
-                    include_Compasses: true,
-
-                    sprites: {
-                        kind: "FlowOrbs", nSprites: 1000, wind: "targetWind",
+                    lookView: {left: 0.6656, top: 0.6667, width: -1, height: 0.333,
+                        draggable: true, resizable: true, shiftDrag: true, freeAspect: false, noOrbitControls: true},
+                    lighting: {kind: "Lighting", ambientIntensity: 0.35, IRAmbientIntensity: 1.0,
+                        sunIntensity: 0.7, sunScattering: 0.6, ambientOnly: false},
+                    focusTracks: {"Default": "default", "Jet track": "jetTrack", "Traverse Path (UFO)": "LOSTraverseSelect"},
+                    include_JetLabels: true, include_Compasses: true,
+                    sprites: {kind: "FlowOrbs", nSprites: 1000, wind: "targetWind",
                         colorMethod: "Hue From Altitude", hueAltitudeMax: 1400,
-                        camera: "lookCamera", visible: false, defer: true,
-                    },
-
+                        camera: "lookCamera", visible: false, defer: true},
                     gimbalSetup: {...this._gimbalConfig},
                 };
-
-                // Build the sitch file content directly — bypassing getCustomSitchString()
-                // which does ...Sit and picks up contaminating SitCustom properties.
                 const sitchStr = JSON.stringify({stringified: true, isASitchFile: true, ...gimbalSitch}, null, 2);
-                const version = getDateTimeFilename();
-                FileManager.rehoster.rehostFile("GimbalAnalysis", new TextEncoder().encode(sitchStr), version + ".js").then((staticRef) => {
+                FileManager.rehoster.rehostFile("GimbalAnalysis", new TextEncoder().encode(sitchStr), getDateTimeFilename() + ".js").then((staticRef) => {
                     FileManager.loadURL = staticRef;
-                    const url = SITREC_APP + "?custom=" + encodeShareParam(toShareableCustomValue(staticRef));
-                    window.location.href = url;
+                    window.location.href = SITREC_APP + "?custom=" + encodeShareParam(toShareableCustomValue(staticRef));
                 });
             };
-            gimbalFolder.add(this, "_enableGimbalAnalysis").name(">> Enable Gimbal Analysis");
+            gimbalFolder.add(this, "_enableGimbalAnalysis").name(">> Create Gimbal Sitch");
         } else {
-            // Already active — update button applies parameter changes then reloads
             this._updateGimbalConfig = () => {
                 Sit.gimbalSetup = {...this._gimbalConfig};
                 Sit.showGlare = gc.showGlare;
-                this.serialize("Custom", getDateTimeFilename()).then(() => {
-                    window.location.reload();
-                });
+                this.serialize("Custom", getDateTimeFilename()).then(() => { window.location.reload(); });
             };
             gimbalFolder.add(this, "_updateGimbalConfig").name("Apply Parameter Changes");
         }
-
         gimbalFolder.close();
-        // ── end Gimbal Analysis ─────────────────────────────────
+        // ── end Gimbal Preset ───────────────────────────────────
 
         toggler('k', guiMenus.help.add(par, 'showKeyboardShortcuts').listen().name(t("custom.showHide.keyboardShortcuts.label")).onChange(value => {
             if (value) {
