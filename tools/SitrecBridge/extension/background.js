@@ -11,10 +11,17 @@
  * Multi-browser coordination:
  *   The MCP server accepts only ONE extension at a time (first-come-first-served).
  *   If another browser's extension is already connected, the server sends a
- *   {type: "rejected"} message and closes the socket. This extension then sets
- *   rejectedByServer=true and stops all auto-reconnect attempts. Only the user
- *   clicking "Reconnect" in the popup can override this (sends "force-extension"
- *   to the server, which replaces the existing connection).
+ *   {type: "rejected"} message and closes the socket. This extension retries
+ *   up to 3 times, then auto-escalates to a forced reconnect (sends
+ *   "force-extension" to the server). This handles ghost sockets left behind
+ *   by dead MV3 service workers. If the force also fails (real competing
+ *   browser), it yields. The user can always override via "Reconnect" in the
+ *   popup.
+ *
+ *   The server uses app-level probing ({type:"probe"} / {type:"probe-ack"})
+ *   instead of WebSocket ping/pong to detect stale sockets, because Chrome's
+ *   networking stack auto-responds to protocol-level pings even when the
+ *   service worker that created the socket is dead.
  */
 
 const WS_URL = "ws://127.0.0.1:9780";
@@ -135,6 +142,15 @@ async function connect() {
                     serverInfo = { serverPid: msg.serverPid, sessionCount: msg.sessionCount };
                 }
                 updatePopupState();
+                return;
+            }
+
+            // App-level liveness probe from server — respond immediately so
+            // the server knows this service worker is alive (not a ghost socket).
+            if (msg.type === "probe") {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: "probe-ack" }));
+                }
                 return;
             }
 
