@@ -822,17 +822,14 @@ export class CCustomManager {
                     gimbalSetup: {...this._gimbalConfig},
                 };
 
-                // Replace Sit's own properties with the clean gimbal definition
-                // so getCustomSitchString()'s ...Sit spread picks up only gimbal data.
-                const keep = new Set(Object.getOwnPropertyNames(Object.getPrototypeOf(Sit)));
-                for (const k of Object.getOwnPropertyNames(Sit)) {
-                    if (!keep.has(k)) delete Sit[k];
-                }
-                Object.assign(Sit, gimbalSitch);
-
-                // Save and reload
-                this.serialize("GimbalAnalysis", getDateTimeFilename()).then(() => {
-                    window.location.reload();
+                // Build the sitch file content directly — bypassing getCustomSitchString()
+                // which does ...Sit and picks up contaminating SitCustom properties.
+                const sitchStr = JSON.stringify({stringified: true, isASitchFile: true, ...gimbalSitch}, null, 2);
+                const version = getDateTimeFilename();
+                FileManager.rehoster.rehostFile("GimbalAnalysis", new TextEncoder().encode(sitchStr), version + ".js").then((staticRef) => {
+                    FileManager.loadURL = staticRef;
+                    const url = SITREC_APP + "?custom=" + encodeShareParam(toShareableCustomValue(staticRef));
+                    window.location.href = url;
                 });
             };
             gimbalFolder.add(this, "_enableGimbalAnalysis").name(">> Enable Gimbal Analysis");
