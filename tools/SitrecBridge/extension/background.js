@@ -31,6 +31,7 @@ const knownSitrecTabs = new Map();  // Tab ID → { buildDir } — confirmed as 
 let forceNextConnect = false;   // Set by popup "Reconnect" to override server rejection
 let rejectedByServer = false;   // True after max retries — suppresses auto-reconnect until popup Reconnect
 let rejectionRetries = 0;       // Count of consecutive rejections before giving up
+let autoForceAttempted = false;  // True after one auto-force — prevents infinite force wars between browsers
 let sourceVersion = null;       // Version from source manifest.json (sent by MCP server)
 let serverInfo = null;          // { serverPid, sessionCount } from MCP server
 let healthCheckPending = false; // Waiting for pong response
@@ -98,9 +99,22 @@ async function connect() {
                     ws.close();
                 }
                 if (rejectionRetries >= MAX_REJECTION_RETRIES) {
-                    rejectedByServer = true;
                     rejectionRetries = 0;
-                    console.log("[SitrecBridge] Max rejection retries reached — stopping auto-reconnect");
+                    if (!autoForceAttempted) {
+                        // Normal retries exhausted — the "other" extension is responding
+                        // to pings but may be a ghost socket from a closed browser.
+                        // Auto-escalate to a forced reconnect instead of giving up.
+                        console.log("[SitrecBridge] Max rejection retries reached — auto-forcing reconnect");
+                        autoForceAttempted = true;
+                        forceNextConnect = true;
+                        reconnectInterval = 1000;
+                        scheduleReconnect();
+                    } else {
+                        // Already tried auto-force and got rejected again — there's a
+                        // real other browser fighting for the connection. Yield.
+                        console.log("[SitrecBridge] Auto-force already attempted — yielding to other browser");
+                        rejectedByServer = true;
+                    }
                 } else {
                     // Retry after a delay — the server may clear the stale connection
                     reconnectInterval = 3000;
@@ -116,6 +130,7 @@ async function connect() {
                 sourceVersion = msg.sourceVersion || null;
                 rejectedByServer = false;
                 rejectionRetries = 0;
+                autoForceAttempted = false;
                 if (msg.serverPid || msg.sessionCount) {
                     serverInfo = { serverPid: msg.serverPid, sessionCount: msg.sessionCount };
                 }
@@ -723,6 +738,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             ws = null;
         }
         rejectedByServer = false;   // Clear suppression
+        autoForceAttempted = false; // Manual reconnect resets auto-force guard
         serverInfo = null;          // Clear stale server info
         forceNextConnect = true;    // Tell server to replace existing extension
         connect();
