@@ -769,9 +769,19 @@ export class CNodeDisplayTrack extends CNode3DGroup {
 
                 // The top point
                 linePoints.push(A);
-                // Fast MSL=0 projection using EGM96 geoid undulation (HAE = N).
+                // Ground point: for relativeToGround polygons, use terrain elevation
+                // so the wall extends to the actual ground surface, not sea level.
+                // This prevents buildings from appearing too tall when the terrain
+                // mesh doesn't fully hide the below-ground wall portion.
                 const lla = ECEFToLLAVD_radii(A);
-                const bottom = LLAToECEF(lla.x, lla.y, meanSeaLevelOffset(lla.x, lla.y));
+                let bottom;
+                if (this.showCap && this.in.track.altitudeMode === "relativeToGround"
+                    && this.in.track.centerElevation !== undefined) {
+                    bottom = LLAToECEF(lla.x, lla.y, this.in.track.centerElevation);
+                } else {
+                    // Default: project down to MSL=0 using EGM96 geoid undulation (HAE = N).
+                    bottom = LLAToECEF(lla.x, lla.y, meanSeaLevelOffset(lla.x, lla.y));
+                }
                 groundPoints.push(bottom);
             }
         }

@@ -433,8 +433,10 @@ export class CNodeTrackFromLLAArray extends CNodeTrack {
                 // get the center of the track
                 const center = LLAToECEF(lat, lon, alt);
 
-                // get the ground point below the center (best avaialble from the terrain elevation
-                this.centerGroundPoint = terrainNode.getPointBelow(center, 0, true);
+                // Use elevation map lookup (not raycast) because terrain mesh geometry
+                // updates asynchronously via recalculateCurve(), so raycast can hit
+                // stale mesh positions when elevationChanged fires.
+                this.centerGroundPoint = terrainNode.getPointBelow(center, 0, false);
 
                 // get MSL point below the center (i.e. point on WGS84 sphere
                 this.centerMSLPoint = pointOnSphereBelow(center);
@@ -471,7 +473,9 @@ export class CNodeTrackFromLLAArray extends CNodeTrack {
 
                 const terrainNode = NodeMan.get("TerrainModel", false);
                 if (terrainNode !== undefined) {
-                    pos = terrainNode.getPointBelow(pos, alt, true)
+                    // Use elevation map lookup (not raycast) to avoid async
+                    // mesh update race condition
+                    pos = terrainNode.getPointBelow(pos, alt, false)
                 }
 
             }
