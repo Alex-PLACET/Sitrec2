@@ -708,7 +708,7 @@ export class CCustomManager {
                 const windLocal = NodeMan.get("localWind", false);
                 const windTarget = NodeMan.get("targetWind", false);
 
-                new CNodeSAPage({
+                const sa = new CNodeSAPage({
                     id: "SAPage",
                     jetTrack: jetTrack.id,
                     windLocal: windLocal ? windLocal.id : undefined,
@@ -717,6 +717,22 @@ export class CCustomManager {
                     background: new Color().setRGB(0, 0, 0),
                     draggable: true, resizable: true,
                 });
+
+                // Auto-add all loaded tracks (from TrackManager) as HAFU symbols
+                for (const id in TrackManager.list) {
+                    const track = TrackManager.list[id].data;
+                    if (track && track.id !== jetTrack.id) {
+                        sa.addHAFU(track, "Unknown", "None", 0);
+                    }
+                }
+
+                // Also add the target track if it exists
+                const targetTrack = NodeMan.get("targetTrackSwitchSmooth", false)
+                    || NodeMan.get("LOSTraverseSelect", false);
+                if (targetTrack) {
+                    sa.addHAFU(targetTrack, "Hostile", "None", 0);
+                }
+
                 this._saPageActive = true;
                 setRenderOne(true);
             };

@@ -141,7 +141,7 @@ export class CNodeSAPage extends CNodeDDI {
 
     update(frame) {
         super.update(frame)
-        var heading = this.in.jetTrack.v(frame).heading;
+        var heading = this.getTrackHeading(frame);
         if (this.northUp) heading = 0
         for (var i=0;i<36;i++) {
             const angle = radians(i*10 - heading)
@@ -226,13 +226,30 @@ export class CNodeSAPage extends CNodeDDI {
     }
 
 
+    // Compute heading from the track. Prefers the track's own .heading property;
+    // falls back to computing it from consecutive positions.
+    getTrackHeading(frame) {
+        const vData = this.in.jetTrack.v(frame);
+        if (vData && vData.heading !== undefined) return vData.heading;
+        // Derive heading from position delta
+        const f = frame > 0 ? frame : 1;
+        const p0 = this.in.jetTrack.p(f - 1);
+        const p1 = this.in.jetTrack.p(f);
+        const delta = p1.clone().sub(p0);
+        const east = getLocalEastVector(p0);
+        const north = getLocalNorthVector(p0);
+        const dx = delta.dot(east);
+        const dy = delta.dot(north);
+        return (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+    }
+
     // render for CNodeSAPage
     renderCanvas(frame) {
         super.renderCanvas(frame)
 
 
         const camPos = this.in.jetTrack.p(frame)
-        const heading = this.in.jetTrack.v(frame).heading;
+        const heading = this.getTrackHeading(frame);
         this.angleSA = radians(heading)
         if (this.northUp)
             this.angleSA = 0
