@@ -5041,8 +5041,8 @@ export function detectCSVType(csv) {
 
     // only give an error warning for custom, as some sitches have custom code to use
     // specific columns of CSV files.
-    // Skip warning for legacy sitches with setup functions - they handle their own CSVs (e.g. Gimbal)
-    if (Sit.isCustom && typeof Sit.setup !== 'function') {
+    // Skip warning for legacy sitches with setup functions or gimbalSetup - they handle their own CSVs
+    if (Sit.isCustom && typeof Sit.setup !== 'function' && !Sit.gimbalSetup) {
         showError("Unhandled CSV type detected.  Please add to detectCSVType() function.")
     }
     return "Unknown";
