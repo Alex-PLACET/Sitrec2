@@ -99,8 +99,8 @@ export class CNodeDDI extends CNodeViewUI {
         this._boundDocMouseMove = (e) => this._handleDocMouseMove(e);
         document.addEventListener('mousemove', this._boundDocMouseMove);
 
-        this._boundCanvasMouseDown = (e) => this._handleCanvasMouseDown(e);
-        this.canvas.addEventListener('mousedown', this._boundCanvasMouseDown);
+        this._boundCanvasPointerDown = (e) => this._handleCanvasPointerDown(e);
+        this.canvas.addEventListener('pointerdown', this._boundCanvasPointerDown);
 
         this._boundCanvasDblClick = (e) => { e.stopPropagation(); e.preventDefault(); };
         this.canvas.addEventListener('dblclick', this._boundCanvasDblClick);
@@ -143,7 +143,7 @@ export class CNodeDDI extends CNodeViewUI {
         }
     }
 
-    _handleCanvasMouseDown(e) {
+    _handleCanvasPointerDown(e) {
         const rect = this.canvas.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
@@ -156,6 +156,7 @@ export class CNodeDDI extends CNodeViewUI {
             if (b.callback) {
                 b.callback(b);
             }
+            // Stop the event from reaching makeDraggable on the parent div
             e.stopPropagation();
             e.preventDefault();
             setRenderOne(true);
@@ -182,7 +183,7 @@ export class CNodeDDI extends CNodeViewUI {
 
     dispose() {
         document.removeEventListener('mousemove', this._boundDocMouseMove);
-        this.canvas.removeEventListener('mousedown', this._boundCanvasMouseDown);
+        this.canvas.removeEventListener('pointerdown', this._boundCanvasPointerDown);
         this.canvas.removeEventListener('dblclick', this._boundCanvasDblClick);
         super.dispose();
     }

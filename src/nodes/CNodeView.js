@@ -738,10 +738,22 @@ class CNodeView extends CNode {
                         this.height *= 2;
                     }
                 } else {
-                    this.width = 1;
-                    this.height = 1;
-                    this.left = 0;
-                    this.top = 0;
+                    // Preserve negative-width/height convention for aspect-ratio views.
+                    // A negative width means "compute from height * abs(width)" (square when -1).
+                    if (this.width < 0) {
+                        this.height = 1;
+                        this.left = 0;
+                        this.top = 0;
+                    } else if (this.height < 0) {
+                        this.width = 1;
+                        this.left = 0;
+                        this.top = 0;
+                    } else {
+                        this.width = 1;
+                        this.height = 1;
+                        this.left = 0;
+                        this.top = 0;
+                    }
                 }
 
                 if (this.width > 1) this.width = 1;
