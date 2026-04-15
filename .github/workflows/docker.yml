@@ -214,14 +214,16 @@ jobs:
         run: npm ci || npm install
         env:
           PUPPETEER_SKIP_DOWNLOAD: true
-
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
 
       - name: Run Playwright smoke test
-        run: npx playwright test --config=playwright.docker.config.js
-        env:
-          DOCKER_SMOKE_URL: http://localhost:8080
+        run: |
+          docker run --rm --ipc=host --network=host \
+            -v "${{ github.workspace }}:/work" \
+            -w /work \
+            -e DOCKER_SMOKE_URL=http://localhost:8080 \
+            mcr.microsoft.com/playwright:v1.58.2-noble \
+            npx playwright test --config=playwright.docker.config.js
 
       - name: Upload smoke test snapshots
         if: always()
