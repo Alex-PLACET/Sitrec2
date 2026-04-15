@@ -116,8 +116,14 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
             this.showDateUTC || this.showTimeUTC || this.showDateTimeUTC;
     }
 
+    hasAnyOSDDataSeries() {
+        const controller = NodeMan.get("osdDataSeriesController", false);
+        return controller && controller.getVisibleTracks().length > 0;
+    }
+
     shouldBeVisible() {
-        return this.showInfo && this.hasAnyInfoItem();
+        if (!this.showInfo) return false;
+        return this.hasAnyInfoItem() || this.hasAnyOSDDataSeries();
     }
 
     updateVisibility() {
@@ -726,14 +732,22 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
             const x = this.videoPx(track.x);
             const y = this.videoPy(track.y);
             const metrics = c.measureText(text);
-            const textHeight = metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent;
+            // Always use "0" as the minimum height reference so the box
+            // doesn't shrink for short glyphs like "-" or ".".
+            const refMetrics = c.measureText("0");
+            const textHeight = Math.max(
+                metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent,
+                refMetrics.actualBoundingBoxAscent + refMetrics.actualBoundingBoxDescent
+            );
             const vPad = textHeight * 0.05;
             const indicatorGap = padding;
             const indicatorMetrics = indicator ? c.measureText(indicator) : null;
             const indicatorWidth = indicatorMetrics ? indicatorGap + indicatorMetrics.width : 0;
-            const bgX = x - metrics.width / 2 - padding;
-            const bgY = y - metrics.actualBoundingBoxAscent - padding - vPad;
-            const bgW = metrics.width + padding * 2 + indicatorWidth;
+            const boxWidth = Math.max(metrics.width, refMetrics.width);
+            const bgX = x - boxWidth / 2 - padding;
+            const boxAscent = Math.max(metrics.actualBoundingBoxAscent, refMetrics.actualBoundingBoxAscent);
+            const bgY = y - boxAscent - padding - vPad;
+            const bgW = boxWidth + padding * 2 + indicatorWidth;
             const bgH = textHeight + padding * 2 + vPad * 2;
             
             if (track.lock) {
@@ -763,7 +777,7 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
                 if (cursorVisible) {
                     const beforeCursor = text.slice(0, cursorPos);
                     const beforeWidth = c.measureText(beforeCursor).width;
-                    const cursorX = x - metrics.width / 2 + beforeWidth;
+                    const cursorX = x - boxWidth / 2 + beforeWidth;
                     const cursorTop = y - textHeight;
                     const cursorBottom = y + textHeight * 0.2;
                     c.strokeStyle = '#FFFFFF';
@@ -779,7 +793,7 @@ export class CNodeVideoInfoUI extends CNodeViewUI {
             if (indicator) {
                 const indicatorColor = direction > 0 ? '#00FF00' : direction < 0 ? '#FF4444' : '#FFFF00';
                 c.fillStyle = indicatorColor;
-                const indicatorX = x + metrics.width / 2 + indicatorGap;
+                const indicatorX = x + boxWidth / 2 + indicatorGap;
                 c.textAlign = 'left';
                 c.fillText(indicator, indicatorX, y);
                 c.textAlign = 'center';

@@ -176,7 +176,10 @@ class COSDDataSeries {
         this.guiFolder.add(this, "type", OSD_DATA_SERIES_TYPES).name(t("osdController.seriesType.label")).listen();
 
         this.guiFolder.add(this, "show").name(t("osdController.seriesShow.label")).listen()
-            .onChange(() => setRenderOne());
+            .onChange(() => {
+                this.controller.updateVideoInfoVisibility();
+                setRenderOne();
+            });
 
         this.guiFolder.add(this, "lock").name(t("osdController.seriesLock.label")).listen()
             .onChange(() => {
@@ -563,12 +566,20 @@ export class CNodeOSDDataSeriesController extends CNode {
         }
     }
 
+    updateVideoInfoVisibility() {
+        const videoInfo = NodeMan.get("videoInfo", false);
+        if (videoInfo && videoInfo.updateVisibility) {
+            videoInfo.updateVisibility();
+        }
+    }
+
     addNewTrack() {
         const track = new COSDDataSeries(this, this.tracks.length);
         this.tracks.push(track);
         track.setupGUI(this.guiFolder);
         this.updateSliderStatus();
         this.rebuildGraphDropdowns();
+        this.updateVideoInfoVisibility();
         setRenderOne();
         return track;
     }
@@ -585,6 +596,7 @@ export class CNodeOSDDataSeriesController extends CNode {
             this.rebuildGraphDropdowns();
             this.updateGraph();
             this.updateDataTrack();
+            this.updateVideoInfoVisibility();
             setRenderOne();
         }
     }
@@ -916,6 +928,7 @@ export class CNodeOSDDataSeriesController extends CNode {
         }
 
         this.updateDataTrack();
+        this.updateVideoInfoVisibility();
     }
 
     disposeDataTrack(sig) {
