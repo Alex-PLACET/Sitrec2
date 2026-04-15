@@ -142,19 +142,26 @@ import {
 // Initialize debug log capture BEFORE any console output
 debugLog.init();
 
-// Global context menu blocker for 3D canvas views only
+// Global context menu blocker
 // Uses capture mode (true) so it catches events before other listeners
-// Allows the native browser context menu (copy/paste) on DOM elements like
-// the Notes view, debug log, chatbot, and the custom context menu itself
+// Only allows the native browser context menu when text is selected (for copy/paste)
 let contextMenuWasOpen = false;
 document.addEventListener('contextmenu', (event) => {
     if (event.target.tagName === 'CANVAS') {
         event.preventDefault();
         event.stopPropagation();
     } else {
-        // Track that a native context menu was shown, so we can suppress
-        // the mousedown that dismisses it (prevents accidental slider drags)
-        contextMenuWasOpen = true;
+        // Allow native context menu only if text is selected (for copy/paste)
+        // or if the target is an editable element (for paste into inputs)
+        const selection = window.getSelection();
+        const hasSelection = selection && !selection.isCollapsed && selection.toString().trim() !== '';
+        const tag = event.target.tagName;
+        const isEditable = tag === 'INPUT' || tag === 'TEXTAREA' || event.target.isContentEditable;
+        if (hasSelection || isEditable) {
+            contextMenuWasOpen = true;
+        } else {
+            event.preventDefault();
+        }
     }
 }, { capture: true });
 

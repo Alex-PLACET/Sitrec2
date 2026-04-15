@@ -2694,10 +2694,16 @@ export class CNodeView3D extends CNodeViewCanvas {
         console.log(`Checking celestial objects:`);
         console.log(`  Ray direction (from origin): (${rayDirection.x.toFixed(4)}, ${rayDirection.y.toFixed(4)}, ${rayDirection.z.toFixed(4)})`);
 
+        // Earth occlusion: ray from actual camera position toward celestial object
+        // If the ray hits the Earth sphere, the object is behind the Earth and shouldn't be selectable
+        const earthGlobe = new Sphere(new Vector3(0, 0, 0), wgs84.POLAR_RADIUS);
+        const earthHitTemp = new Vector3();
+        const occlusionRay = { origin: savedCameraPos, direction: new Vector3() };
+
         // Check planets (using pixel-based distance from edge)
         const maxEdgeDistance = 20;
         let closestEdgeDistance = maxEdgeDistance;
-        
+
         if (nightSkyNode.planets.planetSprites) {
             console.log(`Checking ${Object.keys(nightSkyNode.planets.planetSprites).length} planets (edge threshold: ${maxEdgeDistance}px)`);
             for (const [planetName, planetData] of Object.entries(nightSkyNode.planets.planetSprites)) {
@@ -2706,7 +2712,11 @@ export class CNodeView3D extends CNodeViewCanvas {
                 // Get planet position and project to screen coordinates
                 const planetWorldPos = new Vector3();
                 planetData.sprite.getWorldPosition(planetWorldPos);
-                
+
+                // Skip planets occluded by the Earth
+                occlusionRay.direction.copy(planetWorldPos).normalize();
+                if (intersectSphere2(occlusionRay, earthGlobe, earthHitTemp)) continue;
+
                 // Project center to NDC
                 const pos = planetWorldPos.clone().project(this.camera);
                 
@@ -2758,9 +2768,6 @@ export class CNodeView3D extends CNodeViewCanvas {
             this.camera.position.copy(savedCameraPos);
             this.camera.updateMatrixWorld();
 
-            const globe = new Sphere(new Vector3(0, 0, 0), wgs84.POLAR_RADIUS);
-            const satRaycaster = new Raycaster();
-            const earthHit = new Vector3();
             const containerOffsetX = ViewMan.screenOffsetX || 0;
             const maxSatPixelDistance = 15;
             let closestSatDistance = maxSatPixelDistance;
@@ -2788,10 +2795,9 @@ export class CNodeView3D extends CNodeViewCanvas {
 
                 // Skip satellites occluded by the Earth (Earth hit is closer than the satellite)
                 const camToSat = satPos.clone().sub(this.camera.position);
-                const satDir = camToSat.clone().normalize();
-                satRaycaster.set(this.camera.position, satDir);
-                if (intersectSphere2(satRaycaster.ray, globe, earthHit)) {
-                    if (earthHit.distanceTo(this.camera.position) < camToSat.length()) continue;
+                occlusionRay.direction.copy(camToSat).normalize();
+                if (intersectSphere2(occlusionRay, earthGlobe, earthHitTemp)) {
+                    if (earthHitTemp.distanceTo(this.camera.position) < camToSat.length()) continue;
                 }
 
                 closestSatDistance = pixelDistance;
@@ -2828,6 +2834,11 @@ export class CNodeView3D extends CNodeViewCanvas {
                 
                 const pos = raDec2Celestial(ra, dec, 100);
                 pos.applyMatrix4(nightSkyNode.celestialSphere.matrix);
+
+                // Skip stars occluded by the Earth
+                occlusionRay.direction.copy(pos).normalize();
+                if (intersectSphere2(occlusionRay, earthGlobe, earthHitTemp)) continue;
+
                 pos.project(this.camera);
                 
                 if (pos.z > -1 && pos.z < 1 && pos.x >= -1 && pos.x <= 1 && pos.y >= -1 && pos.y <= 1) {
