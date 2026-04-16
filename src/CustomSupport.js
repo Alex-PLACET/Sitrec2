@@ -569,19 +569,28 @@ export class CCustomManager {
             cameraLOSController.addOption("Celestial Lock", celestialController);
         }
 
-        // Create the "Camera + Auto Track" LOS adapter node if it doesn't already exist.
-        // Added here rather than in SitCustom.js so that sitches saved before this node was
-        // introduced still get it on reload. The sync function below adds the Switch option
-        // once video geometry is available.
-        if (Sit.isCustom && !NodeMan.exists("autoTrackLOS")
-            && NodeMan.exists("JetLOSCameraCenter") && NodeMan.exists("fovSwitch")
-            && NodeMan.exists("video")) {
-            new CNodeAutoTrackLOS({
-                id: "autoTrackLOS",
-                videoView: "video",
-                cameraLOSNode: "JetLOSCameraCenter",
-                fovNode: "fovSwitch",
-            });
+        // Create the "Camera + Auto Track" LOS adapter node and wire it into the JetLOS switch.
+        // Added here (rather than in SitCustom.js) so that sitches saved before this node was
+        // introduced still get it on reload. The option is always present once setup completes;
+        // CNodeAutoTrackLOS.getValueFrame() falls back safely to the plain camera LOS when the
+        // auto-tracker isn't active or video geometry isn't ready.
+        if (Sit.isCustom && NodeMan.exists("JetLOSCameraCenter") && NodeMan.exists("fovSwitch")
+            && NodeMan.exists("video") && NodeMan.exists("JetLOS")) {
+            if (!NodeMan.exists("autoTrackLOS")) {
+                new CNodeAutoTrackLOS({
+                    id: "autoTrackLOS",
+                    videoView: "video",
+                    cameraLOSNode: "JetLOSCameraCenter",
+                    fovNode: "fovSwitch",
+                });
+            }
+            const jetLOS = NodeMan.get("JetLOS");
+            const autoTrackLOS = NodeMan.get("autoTrackLOS");
+            const autoTrackOptionName = "Camera + Auto Track";
+            if (jetLOS.inputs[autoTrackOptionName] === undefined) {
+                jetLOS.addOption(autoTrackOptionName, autoTrackLOS);
+                jetLOS.controller?.updateDisplay();
+            }
         }
 
         // When the PTZ controller is disabled (i.e. another angles source like a track
@@ -844,30 +853,7 @@ export class CCustomManager {
             }
         };
 
-        const syncAutoTrackLOSSourceOption = () => {
-            if (!Sit.isCustom || !NodeMan.exists("JetLOS") || !NodeMan.exists("autoTrackLOS")) {
-                return;
-            }
-
-            const jetLOS = NodeMan.get("JetLOS");
-            const autoTrackLOS = NodeMan.get("autoTrackLOS");
-            const optionName = "Camera + Auto Track";
-            const shouldExposeOption = autoTrackLOS.hasVideoGeometry?.() ?? false;
-            const hasOption = jetLOS.inputs[optionName] !== undefined;
-
-            // Hide the auto-track LOS mode until a video with real pixel space exists.
-            // (Selecting it without tracking data safely falls back to the camera LOS.)
-            if (shouldExposeOption && !hasOption) {
-                jetLOS.addOption(optionName, autoTrackLOS);
-                jetLOS.controller?.updateDisplay();
-            } else if (!shouldExposeOption && hasOption) {
-                jetLOS.removeOption(optionName);
-                jetLOS.controller?.updateDisplay();
-            }
-        };
-
         syncTrackingOverlayLOSSourceOption();
-        syncAutoTrackLOSSourceOption();
 
         // Listen for events that mean we've changed the camera track
         // and hence established a sitch we don't want subsequent tracks to mess up.
@@ -926,7 +912,6 @@ export class CCustomManager {
             }
 
             syncTrackingOverlayLOSSourceOption();
-            syncAutoTrackLOSSourceOption();
 
             if (data.width !== undefined && data.height !== undefined) {
                 // this is a video loaded from a file, so we can use the width and height directly
@@ -986,7 +971,6 @@ export class CCustomManager {
 
         EventManager.addEventListener("videoAvailabilityChanged", () => {
             syncTrackingOverlayLOSSourceOption();
-            syncAutoTrackLOSSourceOption();
         });
 
 

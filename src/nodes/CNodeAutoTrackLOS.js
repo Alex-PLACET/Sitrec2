@@ -8,7 +8,7 @@
 // video's vertical FOV, and rotate the camera's heading by those angles.
 
 import {CNode} from "./CNode";
-import {NodeMan} from "../Globals";
+import {NodeMan, Sit} from "../Globals";
 import {assert} from "../assert";
 import {radians} from "../utils";
 import {extractFOV} from "./CNodeControllerVarious";
@@ -22,6 +22,12 @@ export class CNodeAutoTrackLOS extends CNode {
         // videoView is looked up at eval time (it's not in the compute graph),
         // so we just store its ID here.
         this.videoViewID = v.videoView ?? "video";
+        // Must match Sit.frames so that a CNodeSwitch whose current choice is this node
+        // reports a non-zero frame count to downstream traverse/display nodes. Without this,
+        // the Switch would set its own frames to 0 when this input is selected, and traverse
+        // nodes (which iterate 0..LOS.frames) would produce empty arrays.
+        this.frames = Sit.frames;
+        this.useSitFrames = true;
     }
 
     getVideoView() {
