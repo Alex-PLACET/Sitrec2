@@ -364,9 +364,11 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
 
         // Watchdog: if MP4Box never fires onReady (e.g. corrupt/truncated MP4
         // that passed the magic-byte check), fail loudly instead of hanging
-        // pendingActions forever. 10s is generous — in practice a healthy
-        // MP4Box resolves in milliseconds to a few hundred ms.
-        const GET_CONFIG_TIMEOUT_MS = 10000;
+        // pendingActions forever. Kept generous (2 min) because large MP4s
+        // over slow connections can legitimately take tens of seconds before
+        // the moov atom has been read and parsed — a healthy MP4Box still
+        // resolves in milliseconds to a few hundred ms on fast loads.
+        const GET_CONFIG_TIMEOUT_MS = 120000;
         let configTimedOut = false;
         this._getConfigTimer = setTimeout(() => {
             this._getConfigTimer = null;
