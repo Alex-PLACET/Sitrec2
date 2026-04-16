@@ -11,6 +11,7 @@ import * as LAYER from "../LayerMasks";
 import JSZip from "jszip";
 import {saveAs} from "file-saver";
 import {t} from "../i18n";
+import {parseSingleCoordinate} from "../CoordinateParser";
 
 const DEFAULT_X = 50;
 const DEFAULT_Y = 20;
@@ -318,7 +319,7 @@ export class CNodeOSDDataSeriesController extends CNode {
         for (let f = frameMin; f <= frameMax; f++) {
             const val = track.getValue(f);
             if (!val || val === PLACEHOLDER_TEXT) continue;
-            const num = parseFloat(val);
+            const num = this._parseNumericValue(val);
             if (!isNaN(num)) data.push({ frame: f, value: num });
         }
         return data;
@@ -967,10 +968,19 @@ export class CNodeOSDDataSeriesController extends CNode {
     _isNumericSeries(track) {
         for (let f = 0; f < Sit.frames; f++) {
             if (track.isKeyframe(f)) {
-                if (isNaN(parseFloat(track.frameData[f]))) return false;
+                if (isNaN(this._parseNumericValue(track.frameData[f]))) return false;
             }
         }
         return true;
+    }
+
+    _parseNumericValue(val) {
+        let num = parseFloat(val);
+        if (isNaN(num)) {
+            const parsed = parseSingleCoordinate(val);
+            if (parsed !== null) num = parsed;
+        }
+        return num;
     }
 
     _buildExpandedArray(track) {
@@ -979,7 +989,7 @@ export class CNodeOSDDataSeriesController extends CNode {
             const kfs = [];
             for (let f = 0; f < Sit.frames; f++) {
                 if (track.isKeyframe(f)) {
-                    const num = parseFloat(track.frameData[f]);
+                    const num = this._parseNumericValue(track.frameData[f]);
                     if (!isNaN(num)) kfs.push({frame: f, value: num});
                 }
             }
