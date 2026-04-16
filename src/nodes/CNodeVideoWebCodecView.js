@@ -11,12 +11,14 @@ import {par} from "../par";
 import {FileManager, Globals} from "../Globals";
 
 import {SITREC_APP} from "../configUtils";
-import {CVideoMp4Data} from "../CVideoMp4Data";
+import {CVideoMp4Data, detectVideoContainer} from "../CVideoMp4Data";
 import {CVideoH264Data} from "../CVideoH264Data";
 import {CVideoAudioOnly} from "../CVideoAudioOnly";
 import {isAudioOnlyFormat} from "../AudioFormats";
 import {VideoLoadingManager} from "../CVideoLoadingManager";
 import {resolveURLForFetch} from "../SitrecObjectResolver";
+import {showError} from "../showError";
+import {TSParser} from "../TSParser";
 import {t} from "../i18n";
 
 export class CNodeVideoWebCodecView extends CNodeVideoView {
@@ -154,44 +156,201 @@ export class CNodeVideoWebCodecView extends CNodeVideoView {
             this.videoData?.stopStreaming?.();
         }
 
-        this._doUploadFile(file);
+        await this._doUploadFile(file);
     }
 
-    _doUploadFile(file) {
+    async _doUploadFile(file) {
         this.fileName = file.name;
         this.staticURL = undefined;
 
         this.addLoadingMessage()
-        
+
         Globals.pendingActions++;
         this.videoLoadPending = true;
-        
+
         const fileName = file.name.toLowerCase();
-        
-        if (isAudioOnlyFormat(fileName) || 
+
+        // Audio-only files bypass container detection
+        if (isAudioOnlyFormat(fileName) ||
             (fileName.endsWith('.mp4') && file.type && file.type.startsWith('audio/'))) {
             console.log("Using audio-only handler for: " + file.name);
             this.videoData = new CVideoAudioOnly({id: this.id + "_data_" + this.videos.length, dropFile: file},
                 this.loadedCallback.bind(this), this.errorCallback.bind(this));
+            this._finishUploadSetup(file);
+            return;
         }
-        else if (fileName.endsWith('.h264') || fileName.endsWith('.dad') || file.type === 'video/h264') {
+
+        // Peek at magic bytes to identify the real container — extensions lie
+        // (e.g. a .mpg file that is actually MPEG-TS inside). Only 512 bytes
+        // are read here; File.slice() does not pull the rest into memory.
+        let detection = null;
+        try {
+            const headerBuf = await file.slice(0, 512).arrayBuffer();
+            detection = detectVideoContainer(headerBuf);
+            console.log(`[Upload] Container detected as "${detection.format}" for "${file.name}"`);
+        } catch (err) {
+            console.warn(`[Upload] Could not read header for "${file.name}":`, err);
+        }
+
+        // MPEG-TS: extract the H.264 elementary stream via TSParser and hand
+        // it to CVideoH264Data. Works regardless of file extension, so a .mpg
+        // that is actually TS loads transparently.
+        if (detection && detection.format === "MPEG-TS") {
+            await this._loadTsFileAsVideo(file);
+            return;
+        }
+
+        // Clearly-unsupported containers (MPEG-PS, AVI, MKV, WebM, FLV, Ogg,
+        // MPEG-1 video ES): fail fast with a single clear error. Unknown
+        // signatures fall through to the MP4 path where the watchdog catches
+        // genuine parse hangs.
+        if (detection && !detection.supported &&
+            detection.format !== "Raw H.264 (Annex-B)" &&
+            detection.format !== "unknown") {
+            this._abortUnsupportedUpload(file, detection);
+            return;
+        }
+
+        // Raw H.264 Annex-B stream (by extension, MIME, or magic bytes)
+        if ((detection && detection.format === "Raw H.264 (Annex-B)") ||
+            fileName.endsWith('.h264') || fileName.endsWith('.dad') ||
+            file.type === 'video/h264') {
             console.log("Using H.264 specialized handler for: " + file.name);
             this.videoData = new CVideoH264Data({id: this.id + "_data_" + this.videos.length, dropFile: file},
                 this.loadedCallback.bind(this), this.errorCallback.bind(this));
         } else {
+            // Default: MP4 / ISO-BMFF path (with internal getConfig watchdog)
             this.videoData = new CVideoMp4Data({id: this.id + "_data_" + this.videos.length, dropFile: file},
                 this.loadedCallback.bind(this), this.errorCallback.bind(this));
         }
-        
+
+        this._finishUploadSetup(file);
+    }
+
+    /**
+     * Complete the per-file setup common to every upload path: register the
+     * load with VideoLoadingManager, stamp _loadingId so the pending-actions
+     * diagnostic can track it, and add the video entry to the menu.
+     */
+    _finishUploadSetup(file) {
         const videoDataId = this.videoData.id;
         VideoLoadingManager.registerLoading(videoDataId, file.name);
         this.videoData._loadingId = videoDataId;
-        
-        // Add to videos array immediately so menu is populated during loading
+        // Replay any milestone set before _loadingId was assigned so the
+        // diagnostic reflects the latest known state.
+        if (this.videoData._lastStatus) {
+            VideoLoadingManager.setStatus(videoDataId, this.videoData._lastStatus);
+        }
+
         this.addVideoEntry(file.name, undefined, false);
-        
+
         par.frame = 0;
         par.paused = false;
+    }
+
+    /**
+     * Abort the load with a single, user-focused error for a container type
+     * Sitrec can't handle. No videoData is created, so we decrement
+     * pendingActions directly and update the overlay to show the error state.
+     */
+    _abortUnsupportedUpload(file, detection) {
+        const lines = [
+            `Cannot load "${file.name}" — ${detection.format} not supported.`,
+            ``,
+            detection.description,
+            `Sitrec needs an MP4/MOV container.`,
+        ];
+        if (detection.hint) lines.push(``, `Fix: ${detection.hint}`);
+        const message = lines.join("\n");
+
+        console.error(
+            `[Upload] Rejecting "${file.name}" — container "${detection.format}". ` +
+            `First 32 bytes: ${detection.headerHex}`
+        );
+        showError(message);
+
+        Globals.pendingActions--;
+        this.videoLoadPending = false;
+        this._showUploadError(file.name);
+    }
+
+    /**
+     * Auto-extract H.264 from an MPEG-TS container and hand it to the H.264
+     * video data class. The TSParser is the same one CFileManager uses for
+     * .ts files — we reuse it here so .mpg-with-TS-inside (common from some
+     * cameras/recorders) loads transparently instead of hanging MP4Box.
+     */
+    async _loadTsFileAsVideo(file) {
+        console.log(`[Upload] Auto-extracting H.264 from MPEG-TS container "${file.name}"`);
+        try {
+            const buffer = await file.arrayBuffer();
+            const streams = TSParser.extractTSStreams(buffer);
+
+            if (!streams || streams.length === 0) {
+                throw new Error("no elementary streams found in MPEG-TS container");
+            }
+
+            console.log(`[Upload] TSParser extracted ${streams.length} stream(s):`);
+            streams.forEach((s, i) => console.log(
+                `  [${i}] PID ${s.pid} type=${s.type} codec_type=${s.codec_type} ` +
+                `size=${s.data.byteLength} bytes` +
+                (s.fps ? ` @ ${s.fps.toFixed(2)} fps` : "")
+            ));
+
+            const videoStream = streams.find(s =>
+                s.codec_type === "video" &&
+                (s.type === "h264" || s.extension === "h264")
+            );
+
+            if (!videoStream) {
+                const foundTypes = streams
+                    .map(s => `${s.type || "?"}/${s.codec_type || "?"}`)
+                    .join(", ");
+                throw new Error(
+                    `no H.264 video stream found in the MPEG-TS container ` +
+                    `(streams present: ${foundTypes}). Only H.264 auto-extraction ` +
+                    `is supported — re-encode with ffmpeg to MP4:\n` +
+                    `  ffmpeg -i "${file.name}" -c:v libx264 -c:a aac -movflags +faststart output.mp4`
+                );
+            }
+
+            console.log(
+                `[Upload] Feeding H.264 stream to CVideoH264Data: PID ${videoStream.pid}, ` +
+                `${videoStream.data.byteLength.toLocaleString()} bytes` +
+                (videoStream.fps ? `, ${videoStream.fps.toFixed(2)} fps` : "")
+            );
+
+            this.videoData = new CVideoH264Data({
+                id: this.id + "_data_" + this.videos.length,
+                buffer: videoStream.data,
+                filename: file.name,
+                fps: videoStream.fps || undefined,
+            }, this.loadedCallback.bind(this), this.errorCallback.bind(this));
+
+            this._finishUploadSetup(file);
+        } catch (err) {
+            console.error(`[Upload] MPEG-TS extraction failed for "${file.name}":`, err);
+            showError(
+                `Cannot load "${file.name}" — MPEG-TS extraction failed.\n\n` +
+                (err.message || String(err))
+            );
+            Globals.pendingActions--;
+            this.videoLoadPending = false;
+            this._showUploadError(file.name);
+        }
+    }
+
+    /**
+     * Update the overlay to the "Error Loading" state used by errorCallback.
+     * Factored out so _abortUnsupportedUpload and _loadTsFileAsVideo can
+     * share it without creating a dummy videoData first.
+     */
+    _showUploadError(fileName) {
+        if (!this.overlay) return;
+        this.overlay.removeText("videoLoading");
+        if (this.overlay.canvas) this.overlay.canvas.style.display = '';
+        this.overlay.addText("videoError", "Error Loading", 50, 45, 5, "#f0f000", "center");
+        this.overlay.addText("videoErrorName", fileName, 50, 55, 1.5, "#f0f000", "center");
     }
 
 

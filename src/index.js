@@ -91,6 +91,7 @@ import {updateLockTrack} from "./updateLockTrack";
 import {updateFrame} from "./updateFrame";
 import {checkLogin} from "./login";
 import {CFileManager, waitForParsingToComplete} from "./CFileManager";
+import {VideoLoadingManager} from "./CVideoLoadingManager";
 import {disposeDebugArrows, disposeDebugSpheres, disposeScene} from "./threeExt";
 import {removeMeasurementUI, setupMeasurementUI} from "./nodes/CNodeLabels3D";
 import {imageQueueManager} from "./js/get-pixels-mick";
@@ -2403,6 +2404,26 @@ function flushGPUAndCheckBacklog() {
 }
 
 
+// Throttle state for the pending-actions diagnostic.
+// Logs on count change or every 2s while count > 0, showing what's stuck.
+const _pendingLogState = { count: -1, time: 0, start: 0 };
+
+function logPendingStatus() {
+    const now = performance.now();
+    if (_pendingLogState.start === 0) _pendingLogState.start = now;
+    const changed = _pendingLogState.count !== Globals.pendingActions;
+    const overdue = (now - _pendingLogState.time) > 2000;
+    if (!changed && !overdue) return;
+
+    const elapsed = ((now - _pendingLogState.start) / 1000).toFixed(1);
+    const videoSummary = VideoLoadingManager.getActiveLoadsSummary();
+    const parts = [`count=${Globals.pendingActions}`, `elapsed=${elapsed}s`];
+    if (videoSummary) parts.push(`video=[${videoSummary}]`);
+    console.log(`[Pending] ${parts.join(" ")}`);
+    _pendingLogState.count = Globals.pendingActions;
+    _pendingLogState.time = now;
+}
+
 function renderMain(elapsed) {
     // Skip rendering during situation transitions to prevent accessing disposed nodes
     if (isTransitioning) {
@@ -2421,13 +2442,15 @@ function renderMain(elapsed) {
 
     if (Globals.pendingActions > 0) {
         Globals.wasPending = 5;
-        console.log("Pending actions: " + Globals.pendingActions)
+        logPendingStatus();
     } else if (Globals.wasPending > 0) {
         Globals.wasPending--;
         if (Globals.wasPending === 0) {
             // Check for pending tiles and video frames before declaring all actions complete
             if (!hasPendingTiles() && !hasPendingVideoFrames()) {
                 console.log("No pending actions")
+                _pendingLogState.start = 0;
+                _pendingLogState.count = -1;
             } else {
                 // If there are pending tiles or video frames, reset the counter to wait for them
                 Globals.wasPending = 5;

@@ -7,6 +7,141 @@ import {showError} from "./showError";
 import {VideoLoadingManager} from "./CVideoLoadingManager";
 
 /**
+ * Inspect the leading bytes of a video file and identify its container.
+ * The MP4 loader only understands ISO-BMFF (files with an "ftyp" box at
+ * offset 4). Detecting common unsupported formats up front lets us fail fast
+ * with an actionable error rather than handing the buffer to MP4Box and
+ * waiting for a timeout that may or may not arrive.
+ *
+ * Returns { format, description, supported, hint, headerHex }.
+ */
+export function detectVideoContainer(arrayBuffer) {
+    const view = new Uint8Array(arrayBuffer, 0, Math.min(512, arrayBuffer.byteLength));
+    const asAscii = (off, len) => {
+        let s = "";
+        for (let i = 0; i < len && off + i < view.length; i++) {
+            const c = view[off + i];
+            s += (c >= 0x20 && c < 0x7f) ? String.fromCharCode(c) : ".";
+        }
+        return s;
+    };
+    const hex = (off, len) => Array.from(view.slice(off, off + len))
+        .map(x => x.toString(16).padStart(2, "0")).join(" ");
+    const headerHex = hex(0, Math.min(32, view.length));
+
+    // ISO-BMFF (MP4/MOV/3GP/F4V): "ftyp" box at offset 4, major brand at 8.
+    if (view.length >= 12 && asAscii(4, 4) === "ftyp") {
+        const brand = asAscii(8, 4).trim();
+        return {
+            format: "ISO-BMFF",
+            description: `MP4/MOV-family container (major brand "${brand}")`,
+            supported: true,
+            hint: "",
+            headerHex,
+        };
+    }
+
+    // MPEG Program Stream: Pack header 00 00 01 BA. Common for .mpg/.mpeg/.vob.
+    if (view[0] === 0x00 && view[1] === 0x00 && view[2] === 0x01 && view[3] === 0xBA) {
+        return {
+            format: "MPEG-PS",
+            description: "MPEG-1/2 Program Stream (typical .mpg / .mpeg / .vob / DVD rips)",
+            supported: false,
+            hint: 'ffmpeg -i input.mpg -c:v libx264 -c:a aac -movflags +faststart output.mp4',
+            headerHex,
+        };
+    }
+
+    // MPEG-1 video elementary stream: Sequence header 00 00 01 B3.
+    if (view[0] === 0x00 && view[1] === 0x00 && view[2] === 0x01 && view[3] === 0xB3) {
+        return {
+            format: "MPEG-1 video ES",
+            description: "Raw MPEG-1 video elementary stream (no container)",
+            supported: false,
+            hint: 'ffmpeg -i input.m1v -c:v libx264 output.mp4',
+            headerHex,
+        };
+    }
+
+    // MPEG Transport Stream: 0x47 sync byte every 188 bytes.
+    if (view[0] === 0x47 && view.length >= 189 && view[188] === 0x47) {
+        return {
+            format: "MPEG-TS",
+            description: "MPEG Transport Stream (.ts / .m2ts / broadcast capture)",
+            supported: false,
+            hint: 'ffmpeg -i input.ts -c copy output.mp4',
+            headerHex,
+        };
+    }
+
+    // Matroska / WebM: EBML header 1A 45 DF A3.
+    if (view[0] === 0x1A && view[1] === 0x45 && view[2] === 0xDF && view[3] === 0xA3) {
+        const ascii = asAscii(0, Math.min(view.length, 256));
+        const isWebm = ascii.includes("webm");
+        return {
+            format: isWebm ? "WebM" : "Matroska (MKV)",
+            description: isWebm ? "WebM container" : "Matroska container",
+            supported: false,
+            hint: 'ffmpeg -i input.mkv -c copy output.mp4',
+            headerHex,
+        };
+    }
+
+    // AVI: "RIFF" + size + "AVI ".
+    if (asAscii(0, 4) === "RIFF" && asAscii(8, 4) === "AVI ") {
+        return {
+            format: "AVI",
+            description: "Microsoft AVI container",
+            supported: false,
+            hint: 'ffmpeg -i input.avi -c:v libx264 -c:a aac output.mp4',
+            headerHex,
+        };
+    }
+
+    // Adobe Flash Video: "FLV" signature.
+    if (asAscii(0, 3) === "FLV") {
+        return {
+            format: "FLV",
+            description: "Adobe Flash Video",
+            supported: false,
+            hint: 'ffmpeg -i input.flv -c:v libx264 -c:a aac output.mp4',
+            headerHex,
+        };
+    }
+
+    // Ogg (Theora/Vorbis): "OggS".
+    if (asAscii(0, 4) === "OggS") {
+        return {
+            format: "Ogg",
+            description: "Ogg container (Theora/Vorbis)",
+            supported: false,
+            hint: 'ffmpeg -i input.ogv -c:v libx264 -c:a aac output.mp4',
+            headerHex,
+        };
+    }
+
+    // Raw H.264 Annex-B: start code 00 00 00 01 or 00 00 01.
+    if (view[0] === 0x00 && view[1] === 0x00 &&
+        (view[2] === 0x01 || (view[2] === 0x00 && view[3] === 0x01))) {
+        return {
+            format: "Raw H.264 (Annex-B)",
+            description: "Raw H.264 elementary stream (no container)",
+            supported: false,
+            hint: 'Rename to .h264 to use the raw-stream handler, or wrap: ffmpeg -i input.264 -c copy output.mp4',
+            headerHex,
+        };
+    }
+
+    return {
+        format: "unknown",
+        description: "unrecognised container signature",
+        supported: false,
+        hint: 'Re-encode: ffmpeg -i input.xxx -c:v libx264 -c:a aac -movflags +faststart output.mp4',
+        headerHex,
+    };
+}
+
+/**
  * MP4 video data handler using WebCodec API
  * Handles MP4/MOV files with demuxing and frame caching
  * 
@@ -48,7 +183,17 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
 
         if (v.file !== undefined ) {
             console.log(`[CVideoMp4Data] Loading video file: ${v.file}`);
+            this._markStatus("fetching remote file");
             const loadPromise = FileManager.loadAsset(v.file, "video").then(result => {
+                this._markStatus(`file fetched (${result.parsed.byteLength} bytes), inspecting container`);
+                const detection = detectVideoContainer(result.parsed);
+                this._detectedContainer = detection;
+                if (!detection.supported) {
+                    this._reportUnsupportedContainer(detection, result.parsed.byteLength);
+                    FileManager.disposeRemove("video");
+                    return;
+                }
+                this._markStatus(`container ok (${detection.format}), demuxing`);
                 // the file.appendBuffer expects an ArrayBuffer with a fileStart value (a byte offset) and
                 // and byteLength (total byte length)
                 result.parsed.fileStart = 0;        // patch in the fileStart of 0, as this is the whole thing
@@ -72,11 +217,20 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
             // Handle drag and drop files
             // v.dropFile is a File object, which comes from DragDropHandler
             if (v.dropFile !== undefined) {
+                this._markStatus("reading dropped file");
                 let reader = new FileReader()
                 reader.readAsArrayBuffer(v.dropFile)
                 // could maybe do partial loads, but this is local, so it's loading fast
                 // however would be a faster start.
                 reader.onloadend = () => {
+                    this._markStatus(`dropped file read (${reader.result.byteLength} bytes), inspecting container`);
+                    const detection = detectVideoContainer(reader.result);
+                    this._detectedContainer = detection;
+                    if (!detection.supported) {
+                        this._reportUnsupportedContainer(detection, reader.result.byteLength);
+                        return;
+                    }
+                    this._markStatus(`container ok (${detection.format}), demuxing`);
                     // reader.result will be an ArrayBuffer
                     // the file.appendBuffer expects an ArrayBuffer with a fileStart value (a byte offset) and
                     // and byteLength (total byte length)
@@ -138,6 +292,63 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
     }
 
     /**
+     * Push a milestone to the VideoLoadingManager so the pending-actions
+     * diagnostic can surface where a stalled load is stuck. `_loadingId` is
+     * assigned by CNodeVideoView *after* this constructor runs, so early
+     * milestones (set in the constructor body) fall through to a direct
+     * console.log so they are still visible in the trace.
+     */
+    _markStatus(status) {
+        this._lastStatus = status;
+        if (this._loadingId) {
+            VideoLoadingManager.setStatus(this._loadingId, status);
+        } else {
+            console.log(`[VideoLoad] (pre-register) ${this.filename}: ${status}`);
+        }
+    }
+
+    /**
+     * Build a user-facing error for an unsupported container, show it, mark
+     * the load failed, and decrement pendingActions. The console gets the
+     * full diagnostic (header hex, size) for developers; the on-screen
+     * message stays focused on what the user needs to act on.
+     */
+    _reportUnsupportedContainer(detection, fileSize) {
+        // Mark aborted so the getConfig watchdog (scheduled synchronously by
+        // startWithDemuxer before the async file-read completed) does not
+        // fire a second error 10s later.
+        this._aborted = true;
+        if (this._getConfigTimer) {
+            clearTimeout(this._getConfigTimer);
+            this._getConfigTimer = null;
+        }
+
+        const userLines = [
+            `Cannot load "${this.filename}" — ${detection.format} not supported.`,
+            ``,
+            detection.description,
+            `Sitrec needs an MP4/MOV container.`,
+        ];
+        if (detection.hint) {
+            userLines.push(``, `Fix: ${detection.hint}`);
+        }
+        const userMessage = userLines.join("\n");
+
+        console.error(
+            `[CVideoMp4Data] Unsupported container "${detection.format}" for ` +
+            `"${this.filename}" (${fileSize.toLocaleString()} bytes). ` +
+            `First 32 bytes: ${detection.headerHex}`
+        );
+        this._markStatus(`error: unsupported container (${detection.format})`);
+        showError(userMessage);
+        if (this.errorCallback) {
+            const err = new Error(`Unsupported container: ${detection.format}`);
+            err.detection = detection;
+            this.errorCallback(err);
+        }
+    }
+
+    /**
      * Initialize video processing with demuxer
      * Sets up decoder, processes video/audio tracks, and manages loading callbacks
      * @param {MP4Demuxer} demuxer - The MP4 demuxer instance
@@ -149,7 +360,47 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
 
         this.demuxFrame = 0;
 
+        this._markStatus("awaiting demuxer getConfig()");
+
+        // Watchdog: if MP4Box never fires onReady (e.g. corrupt/truncated MP4
+        // that passed the magic-byte check), fail loudly instead of hanging
+        // pendingActions forever. 10s is generous — in practice a healthy
+        // MP4Box resolves in milliseconds to a few hundred ms.
+        const GET_CONFIG_TIMEOUT_MS = 10000;
+        let configTimedOut = false;
+        this._getConfigTimer = setTimeout(() => {
+            this._getConfigTimer = null;
+            if (this._aborted) return; // already reported (unsupported container)
+            configTimedOut = true;
+            const det = this._detectedContainer;
+            const fmt = det ? det.format : "unknown";
+            const userMessage = [
+                `Cannot load "${this.filename}" — MP4 parser timed out after ${GET_CONFIG_TIMEOUT_MS / 1000}s.`,
+                ``,
+                `The file looks like ${fmt} but couldn't be parsed — it's likely corrupt, truncated, or uses an unsupported MP4 variant.`,
+                ``,
+                `Fix: ffmpeg -i input -c:v libx264 -c:a aac -movflags +faststart output.mp4`,
+            ].join("\n");
+            console.error(
+                `[CVideoMp4Data] getConfig watchdog fired after ${GET_CONFIG_TIMEOUT_MS / 1000}s ` +
+                `for "${this.filename}". Detected: ${fmt}. First 32 bytes: ${det ? det.headerHex : "(no data)"}`
+            );
+            this._markStatus(`error: getConfig() timed out after ${GET_CONFIG_TIMEOUT_MS / 1000}s`);
+            showError(userMessage);
+            if (this.errorCallback) {
+                const err = new Error(`MP4 demuxer timeout (${fmt})`);
+                err.detection = det;
+                this.errorCallback(err);
+            }
+        }, GET_CONFIG_TIMEOUT_MS);
+
         const configPromise = demuxer.getConfig().then((config) => {
+            if (configTimedOut) return; // watchdog already failed this load
+            if (this._getConfigTimer) {
+                clearTimeout(this._getConfigTimer);
+                this._getConfigTimer = null;
+            }
+            this._markStatus(`got config (${config.codec} ${config.codedWidth}x${config.codedHeight}), configuring decoder`);
             this.videoWidth = config.codedWidth;
             this.videoHeight = config.codedHeight;
             
@@ -185,11 +436,12 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
             }
             
             const completeExtraction = () => {
+                this._markStatus(`demux complete (${this.frames} video chunks), waiting for audio decode`);
                 this.buildTimestampMap();
 
                 const audioWaitStartTime = Date.now();
                 const audioWaitTimeout = 15000;
-                
+
                 const waitForAudioDecoding = () => {
                     // Check if audio decoding is complete
                     if (this.audioHandler && this.audioHandler.checkDecodingComplete()) {
@@ -197,6 +449,7 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
                         finishLoading();
                     } else if (Date.now() - audioWaitStartTime > audioWaitTimeout) {
                         console.warn(`[CVideoMp4Data] Audio decoding timeout after ${audioWaitTimeout}ms, proceeding with video load`);
+                        this._markStatus(`audio decode timed out after ${audioWaitTimeout}ms, finishing anyway`);
                         finishLoading();
                     } else if (this.audioHandler && this.audioHandler.expectedAudioSamples > 0) {
                         // Still waiting for audio decoding, check again in 50ms
@@ -210,6 +463,7 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
                 };
                 
                 const finishLoading = () => {
+                    this._markStatus("finalizing, invoking loadedCallback");
                     // at this point demuxing should be done, so we should have an accurate frame count
                     // note, that's only true if we are not loading the video async
                     // (i.e. the entire video is loaded before we start decoding)
@@ -238,14 +492,16 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
                 waitForAudioDecoding();
             };
 
+            this._markStatus("initializing audio");
             this.audioHandler.initializeAudio(demuxer).then(() => {
                 console.log(`[CVideoMp4Data] Audio handler initialized, starting extraction with both video and audio`);
-                
+                this._markStatus("audio ready, starting demuxer.start()");
+
                 // Set expected audio sample count for the audio handler
                 if (demuxer.audioTrack) {
                     this.audioHandler.setExpectedAudioSamples(demuxer.audioTrack.nb_samples);
                 }
-                
+
                 // Now start extraction with both video and audio callbacks
                 demuxer.start(
                     (chunk) => {
@@ -263,6 +519,7 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
             }).catch(e => {
                 console.warn(`[CVideoMp4Data] Audio initialization failed:`, e);
                 console.log(`[CVideoMp4Data] Proceeding with video-only extraction...`);
+                this._markStatus(`audio init failed (${e?.message || e}), video-only demux`);
                 demuxer.start((chunk) => {
                     this._addChunkToGroups(chunk, demuxer);
                 }, null, completeExtraction);
@@ -270,12 +527,19 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
                 // Error will be ignored if callbacks are cleared
                 if (this.errorCallback) {
                     console.error("Error initializing audio:", err);
+                    this._markStatus(`error: audio init rejected (${err?.message || err})`);
                     this.errorCallback(err);
                 }
             });
 
         }).catch(err => {
+            if (this._getConfigTimer) {
+                clearTimeout(this._getConfigTimer);
+                this._getConfigTimer = null;
+            }
+            if (configTimedOut) return; // already reported by watchdog
             console.error("Error getting config:", err);
+            this._markStatus(`error: getConfig rejected (${err?.message || err})`);
             showError("Video loading error: " + (err.message || err));
             if (this._loadingId) {
                 VideoLoadingManager.completeLoading(this._loadingId);
@@ -341,6 +605,12 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
             const progress = (this.frames / demuxer.source.totalFrames) * 100;
             VideoLoadingManager.updateProgress(this._loadingId, progress);
         }
+
+        // Every ~500 frames (~every 16s at 30fps) refresh the diagnostic milestone
+        // so a stalled demuxer can be distinguished from a merely slow one.
+        if ((this.frames & 0x1FF) === 0) {
+            this._markStatus(`demuxing (${this.frames}/${demuxer.source.totalFrames || "?"} frames)`);
+        }
     }
 
     /**
@@ -373,6 +643,12 @@ export class CVideoMp4Data extends CVideoWebCodecBase {
         if (this._audioWaitTimeout) {
             clearTimeout(this._audioWaitTimeout);
             this._audioWaitTimeout = null;
+        }
+
+        // Clear demuxer getConfig watchdog
+        if (this._getConfigTimer) {
+            clearTimeout(this._getConfigTimer);
+            this._getConfigTimer = null;
         }
 
         // Clear callbacks to prevent them from firing after disposal
