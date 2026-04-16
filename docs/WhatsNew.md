@@ -45,6 +45,118 @@ Example entry format:
 
 ---
 
+## Version 2.45.12 (2026-04-16)
+
+### New Features
+- **MPEG-TS auto-extraction**: Files containing MPEG Transport Streams (even when named `.mpg`) now auto-extract their H.264 video stream via the existing TSParser instead of hanging the MP4 loader
+
+### Improvements
+- Video load diagnostics: replaced per-frame "Pending actions" log spam with a throttled `[Pending]` status line that shows which video is stuck and at which stage
+- Unsupported video containers (MPEG-PS, AVI, MKV, WebM, FLV, Ogg) now fail fast with a single clear error and an `ffmpeg` conversion hint
+
+### Bug Fixes
+- Fixed silent video load hangs where a file's extension didn't match its actual container (e.g., `.mpg` holding MPEG-TS fed to MP4Box)
+- Added a 2-minute safety-net watchdog on MP4 `getConfig()` so corrupt/truncated ISO-BMFF no longer pins the pending-actions counter indefinitely
+
+---
+
+## Version 2.45.11 (2026-04-16)
+
+### New Features
+- **Camera + Auto Track LOS source**: new line-of-sight option combining camera position with the auto-tracked target point
+
+### Improvements
+- Renamed Physics > Wind subfolder to "Wind Data" for clarity
+
+### Bug Fixes
+- Fixed Camera + Auto Track LOS so the traverse and LOS pipelines work together correctly
+
+---
+
+## Version 2.45.10 (2026-04-15)
+
+### Improvements
+- OSD graph now draws a full crosshair spanning the full graph
+- Smoothed OSD latitude/longitude tracks
+
+---
+
+## Version 2.45.9 (2026-04-15)
+
+### Bug Fixes
+- Fixed OSD graph for coordinate-format data series (e.g. `N 032 54.87`)
+
+---
+
+## Version 2.45.8 (2026-04-15)
+
+### Improvements
+- Use a pre-built Playwright Docker image for smoke tests (faster CI runs)
+- Bumped `follow-redirects` dependency to 1.16.0
+
+---
+
+## Version 2.45.7 (2026-04-15)
+
+### Bug Fixes
+- Fixed OSD data series visibility and minimum box sizing
+
+---
+
+## Version 2.45.6 (2026-04-15)
+
+### Improvements
+- Suppress the browser context menu on non-text elements
+
+### Bug Fixes
+- Fixed celestial object occlusion
+- Fixed KML polygon altitude race condition with async terrain mesh updates
+
+---
+
+## Version 2.45.5 (2026-04-14)
+
+### New Features
+- **Celestial Lock System**: lock the camera to celestial objects with improved pointing behaviour
+- **Selectable Flare Model**: choose the model used for satellite normal direction, affecting flare calculations
+- Additional language translations
+
+### Improvements
+- Satellites now fade during daytime based on sky brightness attenuation
+- Wider range on X and Y offsets for the KM sitch
+- Preserve `sitrec-upload` and `sitrec-cache` volumes across Docker builds
+- MCP bridge auto force-retries after three failed connection attempts
+- Further MCP robustification
+
+### Bug Fixes
+- Fixed double URL-encoding of spaces in custom sitch share links
+
+---
+
+## Version 2.45.4 (2026-04-13)
+
+### Bug Fixes
+- Fixed Docker build failing when target directories already existed (now uses `mkdir -p`)
+
+---
+
+## Version 2.45.3 (2026-04-13)
+
+### Bug Fixes
+- Fixed Docker production build (npm upgrade + missing `scripts/` directory)
+
+---
+
+## Version 2.45.2 (2026-04-13)
+
+### Improvements
+- Added Python3 + eccodes to Docker images so wind-data fetching works in containers
+
+### Bug Fixes
+- Fixed wind proxy for local (non-Docker) development
+
+---
+
 ## Version 2.45.1 (2026-04-13)
 
 ### New Features
