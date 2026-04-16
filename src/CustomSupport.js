@@ -77,6 +77,7 @@ import {deserializeAutoTracking, serializeAutoTracking} from "./CObjectTracking"
 import {getCursorPositionFromTopView} from "./mouseMoveView";
 import {addMenuToLeftSidebar, addMenuToRightSidebar, isInLeftSidebar, isInRightSidebar} from "./PageStructure";
 import {CNodeControllerCelestial} from "./nodes/CNodeControllerVarious";
+import {CNodeAutoTrackLOS} from "./nodes/CNodeAutoTrackLOS";
 import {CNodeVideoInfoUI} from "./nodes/CNodeVideoInfoUI";
 import {CNodeOSDDataSeriesController} from "./nodes/CNodeOSDDataSeriesController";
 import {CNodeGUIValue} from "./nodes/CNodeGUIValue";
@@ -568,6 +569,21 @@ export class CCustomManager {
             cameraLOSController.addOption("Celestial Lock", celestialController);
         }
 
+        // Create the "Camera + Auto Track" LOS adapter node if it doesn't already exist.
+        // Added here rather than in SitCustom.js so that sitches saved before this node was
+        // introduced still get it on reload. The sync function below adds the Switch option
+        // once video geometry is available.
+        if (Sit.isCustom && !NodeMan.exists("autoTrackLOS")
+            && NodeMan.exists("JetLOSCameraCenter") && NodeMan.exists("fovSwitch")
+            && NodeMan.exists("video")) {
+            new CNodeAutoTrackLOS({
+                id: "autoTrackLOS",
+                videoView: "video",
+                cameraLOSNode: "JetLOSCameraCenter",
+                fovNode: "fovSwitch",
+            });
+        }
+
         // When the PTZ controller is disabled (i.e. another angles source like a track
         // is driving the camera), sync the PTZ az/el/roll from the resulting camera orientation.
         // This way switching back to Manual PTZ preserves the current view.
@@ -828,7 +844,30 @@ export class CCustomManager {
             }
         };
 
+        const syncAutoTrackLOSSourceOption = () => {
+            if (!Sit.isCustom || !NodeMan.exists("JetLOS") || !NodeMan.exists("autoTrackLOS")) {
+                return;
+            }
+
+            const jetLOS = NodeMan.get("JetLOS");
+            const autoTrackLOS = NodeMan.get("autoTrackLOS");
+            const optionName = "Camera + Auto Track";
+            const shouldExposeOption = autoTrackLOS.hasVideoGeometry?.() ?? false;
+            const hasOption = jetLOS.inputs[optionName] !== undefined;
+
+            // Hide the auto-track LOS mode until a video with real pixel space exists.
+            // (Selecting it without tracking data safely falls back to the camera LOS.)
+            if (shouldExposeOption && !hasOption) {
+                jetLOS.addOption(optionName, autoTrackLOS);
+                jetLOS.controller?.updateDisplay();
+            } else if (!shouldExposeOption && hasOption) {
+                jetLOS.removeOption(optionName);
+                jetLOS.controller?.updateDisplay();
+            }
+        };
+
         syncTrackingOverlayLOSSourceOption();
+        syncAutoTrackLOSSourceOption();
 
         // Listen for events that mean we've changed the camera track
         // and hence established a sitch we don't want subsequent tracks to mess up.
@@ -887,6 +926,7 @@ export class CCustomManager {
             }
 
             syncTrackingOverlayLOSSourceOption();
+            syncAutoTrackLOSSourceOption();
 
             if (data.width !== undefined && data.height !== undefined) {
                 // this is a video loaded from a file, so we can use the width and height directly
@@ -946,6 +986,7 @@ export class CCustomManager {
 
         EventManager.addEventListener("videoAvailabilityChanged", () => {
             syncTrackingOverlayLOSSourceOption();
+            syncAutoTrackLOSSourceOption();
         });
 
 
