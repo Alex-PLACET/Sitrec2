@@ -649,7 +649,7 @@ export class CCustomManager {
         par.windAltFt = 33;       // default = surface (~10m)
         par.windStatus = "Not activated";
 
-        const windFolder = addGUIFolder("wind", "Wind", "physics");
+        const windFolder = addGUIFolder("wind", "Wind Data", "physics");
 
         // Source selector — available before activation
         this._windSourceOptions = ["GFS (NOAA)"];
