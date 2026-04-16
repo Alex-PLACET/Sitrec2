@@ -317,7 +317,8 @@ export class CNodeOSDDataSeriesController extends CNode {
         if (!track) return [];
         const data = [];
         for (let f = frameMin; f <= frameMax; f++) {
-            const val = track.getValue(f);
+            if (!track.isKeyframe(f)) continue;
+            const val = track.frameData[f];
             if (!val || val === PLACEHOLDER_TEXT) continue;
             const num = this._parseNumericValue(val);
             if (!isNaN(num)) data.push({ frame: f, value: num });

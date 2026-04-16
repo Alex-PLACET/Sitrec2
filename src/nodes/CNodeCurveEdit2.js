@@ -1006,37 +1006,34 @@ export class CNodeOSDGraphView extends CNodeCurveEditorView2 {
         return { x: graphX, y: graphY };
     }
 
+    interpolateSeriesAtFrame(s, frame) {
+        if (!s || s.data.length === 0) return null;
+        const exact = s.data.find(p => p.frame === frame);
+        if (exact) return { x: exact.x, y: exact.y };
+        const sorted = [...s.data].sort((a, b) => a.frame - b.frame);
+        let before = null, after = null;
+        for (const p of sorted) {
+            if (p.frame <= frame) before = p;
+            if (p.frame >= frame && !after) after = p;
+        }
+        if (!before && !after) return null;
+        if (!before) return { x: after.x, y: after.y };
+        if (!after || before.frame === after.frame) return { x: before.x, y: before.y };
+        const t = (frame - before.frame) / (after.frame - before.frame);
+        return { x: before.x + t * (after.x - before.x), y: before.y + t * (after.y - before.y) };
+    }
+
     getCrosshairScreenPos() {
-        if (this.isFrameX || this.series.length === 0) return null;
+        if (this.series.length === 0) return null;
         const currentFrame = Math.floor(par.frame);
         const s = this.series[0];
-        if (!s || s.data.length === 0) return null;
-
-        let interpX, interpY;
-        const exact = s.data.find(p => p.frame === currentFrame);
-        if (exact) {
-            interpX = exact.x;
-            interpY = exact.y;
-        } else {
-            const sorted = [...s.data].sort((a, b) => a.frame - b.frame);
-            let before = null, after = null;
-            for (const p of sorted) {
-                if (p.frame <= currentFrame) before = p;
-                if (p.frame >= currentFrame && !after) after = p;
-            }
-            if (!before && !after) return null;
-            if (!before) { interpX = after.x; interpY = after.y; }
-            else if (!after || before.frame === after.frame) { interpX = before.x; interpY = before.y; }
-            else {
-                const t = (currentFrame - before.frame) / (after.frame - before.frame);
-                interpX = before.x + t * (after.x - before.x);
-                interpY = before.y + t * (after.y - before.y);
-            }
-        }
+        const interp = this.interpolateSeriesAtFrame(s, currentFrame);
+        if (!interp) return null;
+        const interpX = this.isFrameX ? currentFrame : interp.x;
         const isY2 = s.yAxis === 2;
         const sMinY = isY2 ? this.minY2 : this.minY;
         const sMaxY = isY2 ? this.maxY2 : this.maxY;
-        return this.graphToScreenAxis(interpX, interpY, sMinY, sMaxY);
+        return this.graphToScreenAxis(interpX, interp.y, sMinY, sMaxY);
     }
 
     getAllDataSorted() {
@@ -1410,34 +1407,39 @@ export class CNodeOSDGraphView extends CNodeCurveEditorView2 {
                 ctx.moveTo(frameScreen.x, margin);
                 ctx.lineTo(frameScreen.x, height - margin);
                 ctx.stroke();
+
+                // Draw horizontal crosshair lines and dots at interpolated Y values
+                for (let si = 0; si < this.series.length; si++) {
+                    const s = this.series[si];
+                    const interp = this.interpolateSeriesAtFrame(s, currentFrame);
+                    if (!interp) continue;
+                    const isY2 = s.yAxis === 2;
+                    const sMinY = isY2 ? this.minY2 : this.minY;
+                    const sMaxY = isY2 ? this.maxY2 : this.maxY;
+                    const yScreen = this.graphToScreenAxis(currentFrame, interp.y, sMinY, sMaxY);
+                    ctx.strokeStyle = '#ff0';
+                    ctx.lineWidth = 1;
+                    ctx.setLineDash([4, 4]);
+                    ctx.beginPath();
+                    ctx.moveTo(margin, yScreen.y);
+                    ctx.lineTo(margin + graphWidth, yScreen.y);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                    const color = SERIES_COLORS[si % SERIES_COLORS.length];
+                    ctx.fillStyle = color;
+                    ctx.beginPath();
+                    ctx.arc(frameScreen.x, yScreen.y, 5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
             }
         } else {
             for (const s of this.series) {
-                let interpX, interpY;
-                const exact = s.data.find(p => p.frame === currentFrame);
-                if (exact) {
-                    interpX = exact.x;
-                    interpY = exact.y;
-                } else {
-                    const sorted = [...s.data].sort((a, b) => a.frame - b.frame);
-                    let before = null, after = null;
-                    for (const p of sorted) {
-                        if (p.frame <= currentFrame) before = p;
-                        if (p.frame >= currentFrame && !after) after = p;
-                    }
-                    if (!before && !after) continue;
-                    if (!before) { interpX = after.x; interpY = after.y; }
-                    else if (!after || before.frame === after.frame) { interpX = before.x; interpY = before.y; }
-                    else {
-                        const t = (currentFrame - before.frame) / (after.frame - before.frame);
-                        interpX = before.x + t * (after.x - before.x);
-                        interpY = before.y + t * (after.y - before.y);
-                    }
-                }
+                const interp = this.interpolateSeriesAtFrame(s, currentFrame);
+                if (!interp) continue;
                 const isY2 = s.yAxis === 2;
                 const sMinY = isY2 ? this.minY2 : this.minY;
                 const sMaxY = isY2 ? this.maxY2 : this.maxY;
-                const screen = this.graphToScreenAxis(interpX, interpY, sMinY, sMaxY);
+                const screen = this.graphToScreenAxis(interp.x, interp.y, sMinY, sMaxY);
                 ctx.strokeStyle = '#ff0';
                 ctx.lineWidth = 1;
                 ctx.beginPath();

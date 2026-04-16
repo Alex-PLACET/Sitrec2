@@ -59,12 +59,12 @@ export class CNodeOSDDataSeriesTrack extends CNodeTrack {
         return arr;
     }
 
-    expandLerp(track) {
+    expandLerp(track, parseFn = parseFloat) {
         const kfs = [];
         for (let f = 0; f < this.frames; f++) {
             if (track.isKeyframe(f)) {
-                const num = parseFloat(track.frameData[f]);
-                if (!isNaN(num)) kfs.push({frame: f, value: num});
+                const num = parseFn(track.frameData[f]);
+                if (num !== null && !isNaN(num)) kfs.push({frame: f, value: num});
             }
         }
         const n = kfs.length;
@@ -142,18 +142,13 @@ export class CNodeOSDDataSeriesTrack extends CNodeTrack {
                 }
             }
         } else if (hasLatLon) {
-            const latExpanded = this.expandStepped(byType["Latitude"]);
-            const lonExpanded = this.expandStepped(byType["Longitude"]);
+            const latExpanded = this.expandLerp(byType["Latitude"], parseSingleCoordinate);
+            const lonExpanded = this.expandLerp(byType["Longitude"], parseSingleCoordinate);
 
             for (let f = 0; f < this.frames; f++) {
-                const latVal = latExpanded[f];
-                const lonVal = lonExpanded[f];
-                if (!latVal || latVal === "?????" || !lonVal || lonVal === "?????") continue;
-                const parsedLat = parseSingleCoordinate(latVal);
-                const parsedLon = parseSingleCoordinate(lonVal);
-                if (parsedLat !== null && parsedLon !== null) {
-                    latArr[f] = parsedLat;
-                    lonArr[f] = parsedLon;
+                if (latExpanded[f] !== null && lonExpanded[f] !== null) {
+                    latArr[f] = latExpanded[f];
+                    lonArr[f] = lonExpanded[f];
                 }
             }
         }
