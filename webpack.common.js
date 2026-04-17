@@ -374,7 +374,7 @@ ${bodyContent}
         filename: '[name].[contenthash].bundle.js',
         path: InstallPaths.dev_path,
         clean: {
-            keep: /sitrec-upload|sitrec-cache/,  // preserve user uploads and cache across builds
+            keep: /sitrec-upload|sitrec-cache|sitrec-videos/,  // preserve user uploads, cache, and sandbox video symlink across builds
         },
     },
 });
