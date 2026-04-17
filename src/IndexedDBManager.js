@@ -137,6 +137,28 @@ class IndexedDBManager {
     }
 
     /**
+     * Delete a setting by key
+     * @param {string} key
+     * @returns {Promise<void>}
+     */
+    async deleteSetting(key) {
+        await this.init();
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction([STORES.SETTINGS], 'readwrite');
+            const store = transaction.objectStore(STORES.SETTINGS);
+            const request = store.delete(key);
+
+            request.onsuccess = () => {
+                resolve();
+            };
+
+            request.onerror = () => {
+                reject(new Error('Failed to delete setting: ' + request.error));
+            };
+        });
+    }
+
+    /**
      * Save a file to IndexedDB
      * @param {string} filename
      * @param {Blob|ArrayBuffer} data

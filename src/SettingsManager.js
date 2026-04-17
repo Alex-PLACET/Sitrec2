@@ -7,6 +7,7 @@ import {indexedDBManager} from "./IndexedDBManager";
 import {isServerless} from "./configUtils";
 import {assert} from "./assert";
 import {getEnvBool} from "./envUtils";
+import {hasAnyKey as byokHasAnyKey} from "./BYOKKeyStore";
 
 // Environment variable flags for storage methods (default to false if not specified)
 // Set to 'true', 'false', '1', '0', 'yes', or 'no'
@@ -302,6 +303,15 @@ export async function initializeSettings() {
             showAttribution: true, // Show map/elevation data source attribution overlay
             language: "en", // UI language
         };
+    }
+
+    // BYOK key presence is derived from IndexedDB, independent of the
+    // settings-load path below. It must be computed BEFORE any early returns
+    // so the value is correct in every mode (regression, serverless, server).
+    try {
+        Globals.hasByokKeys = await byokHasAnyKey();
+    } catch (e) {
+        Globals.hasByokKeys = false;
     }
 
     if (Globals.regression) {
