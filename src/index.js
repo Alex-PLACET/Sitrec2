@@ -2405,7 +2405,9 @@ function flushGPUAndCheckBacklog() {
 
 
 // Throttle state for the pending-actions diagnostic.
-// Logs on count change or every 2s while count > 0, showing what's stuck.
+// Logs on count change or every 2s, showing what's stuck. Keeps the literal
+// "Pending actions:" phrase so existing console-text filters in the
+// regression tests continue to match; extra diagnostic info is appended.
 const _pendingLogState = { count: -1, time: 0, start: 0 };
 
 function logPendingStatus() {
@@ -2417,9 +2419,9 @@ function logPendingStatus() {
 
     const elapsed = ((now - _pendingLogState.start) / 1000).toFixed(1);
     const videoSummary = VideoLoadingManager.getActiveLoadsSummary();
-    const parts = [`count=${Globals.pendingActions}`, `elapsed=${elapsed}s`];
-    if (videoSummary) parts.push(`video=[${videoSummary}]`);
-    console.log(`[Pending] ${parts.join(" ")}`);
+    const extras = [`elapsed=${elapsed}s`];
+    if (videoSummary) extras.push(`video=[${videoSummary}]`);
+    console.log(`Pending actions: ${Globals.pendingActions} (${extras.join(", ")})`);
     _pendingLogState.count = Globals.pendingActions;
     _pendingLogState.time = now;
 }
@@ -2444,6 +2446,11 @@ function renderMain(elapsed) {
         Globals.wasPending = 5;
         logPendingStatus();
     } else if (Globals.wasPending > 0) {
+        // Emit the terminal "Pending actions: 0" on the first frame after
+        // the transition to zero (throttle suppresses it on subsequent
+        // frames until "No pending actions" fires). Tests that watch for
+        // the "Pending actions" phrase rely on seeing this zero line.
+        logPendingStatus();
         Globals.wasPending--;
         if (Globals.wasPending === 0) {
             // Check for pending tiles and video frames before declaring all actions complete
