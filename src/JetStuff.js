@@ -1192,6 +1192,20 @@ export function SetupCommon(altitude=25000) {
 
 export function CommonJetStuff() {
     console.log(">>>+++ CommonJetStuff()")
+    // For the piece-by-piece Gimbal build, the traverse track hasn't been
+    // created yet.  All graphs here depend on LOSTraverseSelect, so bail
+    // cleanly — the user can invoke them later once traverse is added
+    // (see CustomSupport._setupManualBuildFolder "Gimbal Graphs" step).
+    if (!NodeMan.exists("LOSTraverseSelect")) {
+        console.log("CommonJetStuff: deferred (LOSTraverseSelect not yet created)");
+        return;
+    }
+    // Idempotent: `chart` is the first node initViews() creates; if it already
+    // exists we've been here before (e.g. re-invocation from a manual-build step).
+    if (NodeMan.exists("chart")) {
+        console.log("CommonJetStuff: already run, skipping");
+        return;
+    }
     // only gimbal uses this
     AddSpeedGraph("LOSTraverseSelect","Traverse Speed",0,360,0.6,0,-1,0.25,
         [
@@ -1229,7 +1243,16 @@ export function initJetStuff() {
     const view = NodeMan.get("mainView");
     view.preRenderFunction = function () {
 
-        const displayWindArrows = ViewMan.get("SAPage").buttonBoxed(16);  // wind button
+        // Piece-by-piece Gimbal build: these nodes are created on demand, so
+        // bail out cleanly until the pipeline is far enough along.
+        const sa = ViewMan.get("SAPage", false);
+        if (!sa) return;
+        if (!NodeMan.exists("localWind") || !NodeMan.exists("targetWind")
+            || !NodeMan.exists("LOSTraverseSelect") || !NodeMan.exists("jetTrack")) {
+            return;
+        }
+
+        const displayWindArrows = sa.buttonBoxed(16);  // wind button
 
         const windTrackLocal = NodeMan.get("localWind")
         const windTrackTarget = NodeMan.get("targetWind")

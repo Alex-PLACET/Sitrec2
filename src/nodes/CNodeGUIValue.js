@@ -159,14 +159,18 @@ export class CNodeGUIValue extends CNodeGUIConstant {
 
             if (this.link !== undefined) {
                 const link = NodeMan.get(this.link);
-                // the default will be to set the value with recalculation
-                link.setValue(linkedValue);
+                // Skip if the linked node was replaced by a different kind of node
+                // (e.g. a GUIValue → Switch swap via the gimbal pipeline) that has no setValue.
+                if (link && typeof link.setValue === 'function') {
+                    link.setValue(linkedValue);
+                }
             }
 
             if (this.quietLink !== undefined) {
                 const link = NodeMan.get(this.quietLink);
-                // quietLink is a link that does not trigger recalculation
-                link.setValue(linkedValue, true);
+                if (link && typeof link.setValue === 'function') {
+                    link.setValue(linkedValue, true);
+                }
             }
         }
     }

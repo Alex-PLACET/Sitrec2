@@ -85,6 +85,9 @@ export class   CNodeATFLIRUI extends CNodeViewUI {
         if (this.overlayView && !this.overlayView.visible) return;
         super.renderCanvas(frame)
 
+        // bank node is created by the Gimbal core step; skip overlay until then.
+        if (!NodeMan.exists("bank")) return;
+
         // const a = -radians(this.horizonAngle)
         const a = radians(NodeMan.get("bank").v(par.frame))
         const c = this.ctx
