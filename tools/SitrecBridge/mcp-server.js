@@ -262,30 +262,17 @@ function setupExtensionConnection(ws, force = false) {
             return;
         }
 
-        // Probe the existing socket at the APPLICATION level.  WebSocket
-        // protocol-level ping/pong is handled by Chrome's networking stack even
-        // when the MV3 service worker that created the socket is dead — so a
-        // protocol ping always succeeds for ghost sockets.  Instead, send a JSON
-        // message that only a live service worker can respond to.
-        log("Primary: Extension already connected — probing liveness (app-level)...");
-        let probeAcked = false;
-        const probeHandler = (raw) => {
-            try {
-                const msg = JSON.parse(raw.toString());
-                if (msg.type === "probe-ack") probeAcked = true;
-            } catch {}
-        };
-        extensionSocket.on("message", probeHandler);
-        try {
-            extensionSocket.send(JSON.stringify({ type: "probe" }));
-        } catch {
-            // send failed — socket is definitely dead
-            probeAcked = false;
-        }
+        // Probe the existing socket — if it's stale (e.g., after extension reload),
+        // the pong callback won't fire and we replace it with the new connection.
+        log("Primary: Extension already connected — probing liveness...");
+        let pongReceived = false;
+        const pongHandler = () => { pongReceived = true; };
+        extensionSocket.once("pong", pongHandler);
+        extensionSocket.ping();
 
         setTimeout(() => {
-            extensionSocket?.removeListener("message", probeHandler);
-            if (probeAcked) {
+            extensionSocket?.removeListener("pong", pongHandler);
+            if (pongReceived) {
                 // Existing socket is alive — reject the newcomer
                 log("Primary: Existing extension is alive — rejecting new connection");
                 ws.send(JSON.stringify({ type: "rejected", reason: "Another extension is already connected" }));
