@@ -1996,6 +1996,15 @@ async function setupFunctions() {
 //    console.log("SituationSetup()")
     await SituationSetup(false);
 
+// If gimbalSetup is defined, pre-apply its flags to Sit so that initJetStuff picks them up.
+    if (Sit.gimbalSetup && Sit.setup === undefined) {
+        const gc = Sit.gimbalSetup;
+        Sit.showATFLIR = gc.showATFLIR !== false;
+        Sit.showGimbalDragMesh = gc.showGimbalDragMesh !== false;
+        Sit.showGimbalCharts = gc.showGimbalCharts !== false;
+        Sit.showGlare = gc.showGlare ?? false;
+    }
+
 // jetStuff is set in Gimbal, GoFast, Agua, and FLIR1
     if (Sit.jetStuff) {
         initJetVariables();
@@ -2020,6 +2029,14 @@ async function setupFunctions() {
 // however only Gimbal actually used setup2() as gimbal and gimabalfar have different setup2() functions
 
     if (Sit.setup  !== undefined) Sit.setup();
+
+    // If gimbalSetup is present and no explicit setup() handled it, run the Gimbal analysis pipeline.
+    // This allows custom sitches (created via web UI) to use gimbal features without a setup() function.
+    if (Sit.gimbalSetup && Sit.setup === undefined) {
+        const {handleGimbalSetup} = await import("./GimbalCustomSetup");
+        handleGimbalSetup(Sit.gimbalSetup);
+    }
+
     if (Sit.setup2 !== undefined) Sit.setup2();
     // we are allowing more, see SitFAA2023
     if (Sit.setup3 !== undefined) Sit.setup3();

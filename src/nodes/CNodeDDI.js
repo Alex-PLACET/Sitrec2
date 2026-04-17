@@ -1,6 +1,5 @@
 import {CNodeViewUI} from "./CNodeViewUI";
 import {Vector2} from "three";
-import {mouseToCanvas} from "../ViewUtils";
 import {setRenderOne} from "../Globals";
 
 // A DDI is a screen in a fighter jet, F/A-18 or similar
@@ -78,61 +77,101 @@ export class CDDIButton {
 }
 
 function inside(x,y,left,top,right,bot) {
-  //  console.log ("inside check: ("+x+","+y+") vs ("+left+","+top+" -> "+right+","+bot)
     return x>=left && x<=right && y>=top && y<=bot
 }
 
 export class CNodeDDI extends CNodeViewUI {
     constructor(v) {
+        // DDI is always square aspect
+        if (v.freeAspect === undefined) v.freeAspect = false;
+
         super(v);
         this.buttons = new Array(20)
 
         this.autoFill = true;
-        this.autoFillColor = v.autoFillColor ?? "#000000";  // "#304030";
+        this.autoFillColor = v.autoFillColor ?? "#000000";
 
-       // test to set all buttons to their number
-       // for (var i=1;i<=20;i++) this.setButton(i,"BTN"+i)
+        // MQ9UI-style click handling:
+        // Canvas starts with pointerEvents 'none' so events pass through for dragging.
+        // On mousemove, if cursor is over a button, enable pointerEvents so clicks are captured.
+        this.canvas.style.pointerEvents = 'none';
 
+        this._boundDocMouseMove = (e) => this._handleDocMouseMove(e);
+        document.addEventListener('mousemove', this._boundDocMouseMove);
+
+        this._boundCanvasPointerDown = (e) => this._handleCanvasPointerDown(e);
+        this.canvas.addEventListener('pointerdown', this._boundCanvasPointerDown);
+
+        this._boundCanvasDblClick = (e) => { e.stopPropagation(); e.preventDefault(); };
+        this.canvas.addEventListener('dblclick', this._boundCanvasDblClick);
     }
 
-    // placeholder for hovering
-    onMouseMove(e,mouseX,mouseY) {
-    }
-
-
-    onMouseDown(e,mouseX,mouseY) {
-//        console.log("CNodeDDI Mouse Down "+e)
-        const [x,y] = mouseToCanvas(this, mouseX, mouseY)
-        this.buttons.forEach(b => {
-            const bb = b.textObject.bbox
-            if (bb !== undefined) {
-                const cx = this.px(b.position.x)
-                const cy = this.py(b.position.y)
-                if (inside(x, y, cx + bb.left, cy + bb.top, cx + bb.right, cy + bb.bottom)) {
-                    console.log("Hit")
-                    if (b.toggle) {
-                        b.textObject.boxed = !b.textObject.boxed;
-                    }
-                    if (b.callback) {
-                        b.callback(b)
-                    }
-                    setRenderOne(true);
-                }
+    // Check if canvas-relative coordinates are over a DDI button
+    _hitTestButton(canvasX, canvasY) {
+        for (const b of this.buttons) {
+            if (!b) continue;
+            const bb = b.textObject.bbox;
+            if (!bb) continue;
+            const cx = this.px(b.position.x);
+            const cy = this.py(b.position.y);
+            if (inside(canvasX, canvasY, cx + bb.left, cy + bb.top, cx + bb.right, cy + bb.bottom)) {
+                return b;
             }
-        })
+        }
+        return null;
     }
 
-    onMouseUp(e,mouseX,mouseY) {
+    _handleDocMouseMove(e) {
+        const rect = this.canvas.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return;
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        // Only care about moves within the canvas bounds
+        if (x < 0 || y < 0 || x > rect.width || y > rect.height) {
+            this.canvas.style.pointerEvents = 'none';
+            this.canvas.style.cursor = '';
+            return;
+        }
+
+        if (this._hitTestButton(x, y)) {
+            this.canvas.style.pointerEvents = 'auto';
+            this.canvas.style.cursor = 'pointer';
+        } else {
+            this.canvas.style.pointerEvents = 'none';
+            this.canvas.style.cursor = '';
+        }
     }
 
-    onMouseDrag(e,mouseX,mouseY) {
+    _handleCanvasPointerDown(e) {
+        const rect = this.canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        const b = this._hitTestButton(x, y);
+        if (b) {
+            if (b.toggle) {
+                b.textObject.boxed = !b.textObject.boxed;
+            }
+            if (b.callback) {
+                b.callback(b);
+            }
+            // Stop the event from reaching makeDraggable on the parent div
+            e.stopPropagation();
+            e.preventDefault();
+            setRenderOne(true);
+        }
     }
+
+    // Legacy hooks — kept for compatibility but no longer the primary path.
+    onMouseMove(e,mouseX,mouseY) {}
+    onMouseDown(e,mouseX,mouseY) {}
+    onMouseUp(e,mouseX,mouseY) {}
+    onMouseDrag(e,mouseX,mouseY) {}
 
     setButton(number, text="BTN", toggle=false, callback=null) {
         this.buttons[number] = new CDDIButton(number,text, toggle, callback)
         this.buttons[number].textObject = this.addText(number,text,this.buttons[number].position.x, this.buttons[number].position.y, 3.5)
-  //      this.buttons[number].textObject.boxed = true;
-
     }
 
     setButtonText(n, text) {
@@ -140,5 +179,12 @@ export class CNodeDDI extends CNodeViewUI {
     }
 
     update() {
+    }
+
+    dispose() {
+        document.removeEventListener('mousemove', this._boundDocMouseMove);
+        this.canvas.removeEventListener('pointerdown', this._boundCanvasPointerDown);
+        this.canvas.removeEventListener('dblclick', this._boundCanvasDblClick);
+        super.dispose();
     }
 }

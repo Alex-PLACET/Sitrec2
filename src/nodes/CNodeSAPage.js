@@ -1,9 +1,14 @@
 import {cos, metersFromNM, radians, sin} from "../utils";
 import {CNodeDDI} from "./CNodeDDI";
-import {Globals, Sit} from "../Globals";
+import {Globals, setRenderOne, Sit} from "../Globals";
 import {par} from "../par";
 import {trackVelocity} from "../trackUtils";
 import {getLocalEastVector, getLocalNorthVector} from "../SphericalMath";
+
+// SCL zoom levels the SCL/ button cycles through (nautical miles).
+// Ordered smallest-to-largest; scroll wheel steps through this list
+// (scroll up = zoom in = smaller scale, scroll down = zoom out).
+const SCL_STEPS = [5, 10, 20, 40, 80, 160];
 
 const pipText = ['N', '⦁', '⦁', '3', '⦁', '⦁', '6', '⦁', '⦁',
     'E', '⦁', '⦁','12', '⦁', '⦁','15', '⦁', '⦁',
@@ -60,8 +65,8 @@ export class CNodeSAPage extends CNodeDDI {
         v.defaultFontSize = 4
         super(v)
         this.input("jetTrack")
-        this.input("windLocal")
-        this.input("windTarget")
+        this.input("windLocal", true)
+        this.input("windTarget", true)
         this.radius = 40; // %
         this.pips = []
         this.hafus = []
@@ -93,10 +98,21 @@ export class CNodeSAPage extends CNodeDDI {
         })
      //   this.setButton(7,"DCLTR")
         this.setButton(8,"SCL/"+this.scale,false,button => {
-            this.scale/=2
-            if (this.scale <5) this.scale=160
+            // Cycle down through allowed steps, wrap back to largest.
+            const i = SCL_STEPS.indexOf(this.scale);
+            this.scale = i <= 0 ? SCL_STEPS[SCL_STEPS.length - 1] : SCL_STEPS[i - 1];
             this.updateScaleDisplay()
         })
+
+        // Scroll-wheel zoom: step through SCL_STEPS while the cursor is over the
+        // SA page.  Uses a document-level listener (like CNodeDDI's mousemove
+        // hover detection) because the canvas itself is pointer-events:'none'
+        // until the cursor hits a button, so wheel events don't reach it
+        // directly.  Accumulator + threshold smooths trackpad gestures so one
+        // physical scroll = one scale step rather than 5+.
+        this._wheelAccum = 0;
+        this._boundDocWheel = (e) => this._handleDocWheel(e);
+        document.addEventListener('wheel', this._boundDocWheel, {passive: false});
     //    this.setButton(9,"MK1")
         this.setButton(10,"DCNTR",true, button => {
             if (button.textObject.boxed) {
@@ -139,9 +155,58 @@ export class CNodeSAPage extends CNodeDDI {
         this.buttons[8].textObject.text="SCL/"+this.scale*(this.decentered?2:1);
     }
 
+    // Step the SCL scale by `dir` positions through SCL_STEPS.
+    //   dir = -1 → smaller scale (zoom in)
+    //   dir = +1 → larger  scale (zoom out)
+    // Clamped at both ends rather than wrapping — wrap-around on wheel
+    // would be surprising.
+    stepScale(dir) {
+        const i = SCL_STEPS.indexOf(this.scale);
+        const next = i < 0
+            ? SCL_STEPS[SCL_STEPS.length - 1]  // scale was off-table; snap to largest
+            : SCL_STEPS[Math.max(0, Math.min(SCL_STEPS.length - 1, i + dir))];
+        if (next === this.scale) return false;
+        this.scale = next;
+        this.updateScaleDisplay();
+        return true;
+    }
+
+    _handleDocWheel(e) {
+        const rect = this.canvas.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return;
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        if (x < 0 || y < 0 || x > rect.width || y > rect.height) return;
+
+        // Accumulate deltaY and step once per threshold crossed so trackpad
+        // inertia flicks don't blow through every zoom level in one frame.
+        const STEP_THRESHOLD = 40;
+        this._wheelAccum += e.deltaY;
+        let stepped = false;
+        while (this._wheelAccum >= STEP_THRESHOLD) {
+            this._wheelAccum -= STEP_THRESHOLD;
+            if (this.stepScale(+1)) stepped = true;
+        }
+        while (this._wheelAccum <= -STEP_THRESHOLD) {
+            this._wheelAccum += STEP_THRESHOLD;
+            if (this.stepScale(-1)) stepped = true;
+        }
+
+        // Always prevent page scroll while hovering the SA view — otherwise a
+        // wheel event that hits the clamp would scroll the browser instead.
+        e.preventDefault();
+        e.stopPropagation();
+        if (stepped) setRenderOne(true);
+    }
+
+    dispose() {
+        document.removeEventListener('wheel', this._boundDocWheel);
+        super.dispose();
+    }
+
     update(frame) {
         super.update(frame)
-        var heading = this.in.jetTrack.v(frame).heading;
+        var heading = this.getTrackHeading(frame);
         if (this.northUp) heading = 0
         for (var i=0;i<36;i++) {
             const angle = radians(i*10 - heading)
@@ -226,13 +291,30 @@ export class CNodeSAPage extends CNodeDDI {
     }
 
 
+    // Compute heading from the track. Prefers the track's own .heading property;
+    // falls back to computing it from consecutive positions.
+    getTrackHeading(frame) {
+        const vData = this.in.jetTrack.v(frame);
+        if (vData && vData.heading !== undefined) return vData.heading;
+        // Derive heading from position delta
+        const f = frame > 0 ? frame : 1;
+        const p0 = this.in.jetTrack.p(f - 1);
+        const p1 = this.in.jetTrack.p(f);
+        const delta = p1.clone().sub(p0);
+        const east = getLocalEastVector(p0);
+        const north = getLocalNorthVector(p0);
+        const dx = delta.dot(east);
+        const dy = delta.dot(north);
+        return (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+    }
+
     // render for CNodeSAPage
     renderCanvas(frame) {
         super.renderCanvas(frame)
 
 
         const camPos = this.in.jetTrack.p(frame)
-        const heading = this.in.jetTrack.v(frame).heading;
+        const heading = this.getTrackHeading(frame);
         this.angleSA = radians(heading)
         if (this.northUp)
             this.angleSA = 0
@@ -268,12 +350,10 @@ export class CNodeSAPage extends CNodeDDI {
 
         this.cy = oldCy;
 
-        var circleHeading = heading;
-        if (this.northUp) circleHeading = 0
         c.strokeStyle = this.friendlyColor;
         c.setLineDash([8, 4]);
         c.beginPath();
-        this.arc(50, 50, 37, 0-circleHeading, 360-circleHeading)
+        this.arc(50, 50, 37, 0, 360)
         c.stroke()
         c.setLineDash([]);
 

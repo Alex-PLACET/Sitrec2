@@ -30,6 +30,7 @@ import {
     GlobalDateTimeNode,
     Globals,
     guiMenus,
+    guiShowHideViews,
     infoDiv,
     NodeFactory,
     NodeMan,
@@ -91,6 +92,14 @@ import {CNodeTrackSwitch} from "./nodes/CNodeTrackSwitch";
 import {getNearbyWeatherBalloons, importSoundingDialog} from "./SondeFetch";
 import {getCurrentLanguage, setLanguage, SUPPORTED_LANGUAGE_OPTIONS, t} from "./i18n";
 import {bracketingLevels} from "./nodes/CNodeDisplayWindField";
+import {CNodeSAPage} from "./nodes/CNodeSAPage";
+import {
+    gimbalStepCore, gimbalStepTraverse, gimbalStepAirTrack,
+    gimbalStepFleet, gimbalStepSAHAFU, gimbalStepTrackLOSNodes,
+    gimbalStepClouds, gimbalStepGraphs, gimbalStepTargetModel,
+    gimbalStepAirTrackDisplay, gimbalStepCommonViews,
+} from "./GimbalCustomSetup";
+import {Color} from "three";
 
 export class CCustomManager {
     constructor() {
@@ -101,12 +110,136 @@ export class CCustomManager {
 
         // Settings will be initialized in setup() after login check
         this.settingsInitialized = false;
-
-        // Settings saver with intelligent debouncing (5 second delay)
-        this.settingsSaver = new SettingsSaver(5000);
-        this.editingObjectNodeId = null;
-        this.editingObjectMenu = null;
     }
+
+    /**
+     * Wire up per-step buttons inside the Gimbal Analysis Preset folder so
+     * the user can build the pipeline piece by piece.  Each button runs its
+     * step live AND sets the corresponding flag in Sit.gimbalSetup.pipeline
+     * so the state persists across save/reload.
+     */
+    _setupManualBuildFolder(parentFolder) {
+        const gs = Sit.gimbalSetup;
+        // Ensure pipeline object exists even for legacy sitches that set
+        // gimbalSetup without an explicit pipeline — we don't retro-flag
+        // everything, we just give the user a place to track new additions.
+        if (!gs.pipeline) gs.pipeline = null;
+
+        const manualFolder = parentFolder.addFolder("Manual Build").close();
+
+        const markDone = (key) => {
+            if (!Sit.gimbalSetup.pipeline) Sit.gimbalSetup.pipeline = {};
+            Sit.gimbalSetup.pipeline[key] = true;
+        };
+
+        const step = (label, key, prereq, run) => {
+            const state = {run: () => {
+                try {
+                    const miss = prereq && prereq();
+                    if (miss) { showError(miss); return; }
+                    run();
+                    markDone(key);
+                    setRenderOne(true);
+                } catch (e) {
+                    console.error("Gimbal manual step failed:", e);
+                    showError("Step failed: " + (e && e.message ? e.message : e));
+                }
+            }};
+            manualFolder.add(state, "run").name(label);
+        };
+
+        const need = (ids, msg) => () => {
+            for (const id of ids) {
+                if (!NodeMan.exists(id)) return msg + " (missing: " + id + ")";
+            }
+            return null;
+        };
+
+        step("Core (az/el/bank/winds/jetTrack/SAPage)", "core",
+            need(["jetAltitude", "jetOrigin"], "Core step needs jetOrigin + jetAltitude"),
+            () => gimbalStepCore(this._gimbalConfig));
+
+        step("Traverse Nodes", "traverse",
+            need(["JetLOS", "jetTrack"], "Traverse needs Core first"),
+            () => gimbalStepTraverse(this._gimbalConfig.defaultTraverse ?? "Const Air Spd"));
+
+        step("Air Track (target airspeed)", "airTrack",
+            need(["LOSTraverseSelect", "targetWind"], "Air Track needs Traverse + Core"),
+            () => gimbalStepAirTrack());
+
+        step("Track LOS Display Nodes", "trackLOS",
+            need(["JetLOS", "jetTrack", "LOSTraverseSelect"], "Track LOS needs Core + Traverse"),
+            () => gimbalStepTrackLOSNodes());
+
+        step("Clouds", "clouds",
+            need(["jetTrack", "cloudAltitude"], "Clouds need Core"),
+            () => gimbalStepClouds());
+
+        step("Fleet (5-ship)", "fleet",
+            need(["LOSTraverseSelect"], "Fleet needs Traverse"),
+            () => gimbalStepFleet(this._gimbalConfig));
+
+        step("Jet Views (chart + ATFLIR pod)", "commonViews",
+            need(["LOSTraverseSelect"], "Jet Views needs Traverse"),
+            () => gimbalStepCommonViews());
+
+        step("Fleet HAFUs on SA Page", "saHAFU",
+            () => {
+                if (!ViewMan.get("SAPage", false)) return "HAFUs need SA Page (enable it under Show/Hide > Views)";
+                if (!NodeMan.exists("fleeter01")) return "HAFUs need Fleet step first";
+                if (!NodeMan.exists("LOSTraverseSelect")) return "HAFUs need Traverse step first";
+                return null;
+            },
+            () => gimbalStepSAHAFU());
+
+        step("Gimbal Graphs", "graphs",
+            need(["cloudSpeedEditor", "azEditor", "LOSTraverseSelect"], "Graphs need Core + Traverse"),
+            () => gimbalStepGraphs());
+
+        step("Target Model (FA-18F)", "targetModel",
+            need(["LOSTraverseSelect", "airTrack", "targetWind"], "Target Model needs Traverse + Air Track"),
+            () => gimbalStepTargetModel());
+
+        step("Air Track Display", "airTrackDisplay",
+            need(["airTrack"], "Air Track Display needs Air Track step"),
+            () => gimbalStepAirTrackDisplay());
+    }
+
+    _createSAPage() {
+        const jetTrack = NodeMan.get("jetTrack", false) || NodeMan.get("cameraTrackSwitchSmooth", false);
+        if (!jetTrack) { showError("SA Page requires a track"); this._showSAPage = false; return; }
+        const windLocal = NodeMan.get("localWind", false);
+        const windTarget = NodeMan.get("targetWind", false);
+
+        const sa = new CNodeSAPage({
+            id: "SAPage",
+            jetTrack: jetTrack.id,
+            windLocal: windLocal ? windLocal.id : undefined,
+            windTarget: windTarget ? windTarget.id : undefined,
+            left: 0.0, top: 0.5, width: -1, height: 0.5,
+            background: new Color().setRGB(0, 0, 0),
+            draggable: true, resizable: true,
+        });
+
+        // Auto-add all loaded tracks as HAFU symbols
+        for (const id in TrackManager.list) {
+            const meta = TrackManager.list[id].data;
+            const track = meta && meta.trackNode ? meta.trackNode : meta;
+            if (track && typeof track.p === 'function' && track.id !== jetTrack.id) {
+                sa.addHAFU(track, "Unknown", "None", 0);
+            }
+        }
+        const targetTrack = NodeMan.get("targetTrackSwitchSmooth", false)
+            || NodeMan.get("LOSTraverseSelect", false);
+        if (targetTrack && typeof targetTrack.p === 'function') {
+            sa.addHAFU(targetTrack, "Hostile", "None", 0);
+        }
+    }
+
+    // Settings saver with intelligent debouncing (5 second delay)
+    settingsSaver = new SettingsSaver(5000);
+    editingObjectNodeId = null;
+    editingObjectMenu = null;
 
     async initializeSettings() {
         await initializeSettings();
@@ -721,6 +854,222 @@ export class CCustomManager {
             folder.add({refetch}, "refetch").name("Refresh Wind Data");
         };
         // ── end Wind ────────────────────────────────────────────────
+
+        // ── SA Page — checkbox under Show/Hide > Views ─────────
+        // If showSAPage was saved, create the SA page now (after tracks are loaded)
+        if (Sit.showSAPage && !NodeMan.exists("SAPage")) {
+            this._createSAPage();
+        }
+        // Backing field + reactive getter so the checkbox reflects the live SAPage
+        // visibility even when the SAPage is created later (e.g. by handleGimbalSetup
+        // which runs after CustomManager.setup).
+        this.__showSAPage = NodeMan.exists("SAPage");
+        Object.defineProperty(this, "_showSAPage", {
+            configurable: true,
+            get: () => {
+                const sa = ViewMan.get("SAPage", false);
+                if (sa) return !!sa.visible;
+                return this.__showSAPage;
+            },
+            set: (v) => { this.__showSAPage = v; },
+        });
+        guiShowHideViews.add(this, "_showSAPage").name("SA Page").onChange((value) => {
+            if (value && !NodeMan.exists("SAPage")) {
+                this._createSAPage();
+            }
+            Sit.showSAPage = value; // persist for serialization
+            const saView = ViewMan.get("SAPage", false);
+            if (saView) saView.setVisible(value);
+            setRenderOne(true);
+        }).listen();
+        // ── end SA Page ─────────────────────────────────────────
+
+        // ── ATFLIR Pod — requires reload ────────────────────────
+        if (!Sit.showATFLIR && !Sit.jetStuff) {
+            this._addATFLIR = () => {
+                Sit.showATFLIR = true;
+                Sit.jetStuff = true;
+                if (!Sit.files) Sit.files = {};
+                if (!Sit.files.ATFLIRModel) Sit.files.ATFLIRModel = 'models/ATFLIR.glb';
+                if (!Sit.files.FA18Model)   Sit.files.FA18Model   = 'models/FA-18F.glb';
+                if (!Sit.lookCamera) Sit.lookCamera = {fov: 0.35};
+                if (!Sit.lookView) Sit.lookView = {
+                    left: 0.6656, top: 1 - 0.3333, width: -1, height: 0.333,
+                    draggable: true, resizable: true, freeAspect: false, noOrbitControls: true,
+                };
+                this.serialize("Custom", getDateTimeFilename()).then(() => {
+                    window.location.reload();
+                });
+            };
+            guiMenus.physics.add(this, "_addATFLIR").name("Add ATFLIR Pod (reload)");
+        }
+        // ── end ATFLIR Pod ──────────────────────────────────────
+
+        // ── Gimbal Preset — full pipeline, creates a new sitch ──
+        const gimbalFolder = addGUIFolder("gimbalAnalysis", "Gimbal Analysis Preset", "physics");
+
+        this._gimbalConfig = {
+            showGlare: true, showATFLIR: true,
+            cloudWindFrom: 240,  cloudWindKnots: 17,
+            targetWindFrom: 274, targetWindKnots: 65,
+            localWindFrom: 270,  localWindKnots: 120,
+            startDistance: 32,   targetSpeed: 340,
+            defaultTraverse: "Const Air Spd",
+            fleetTurnStart: 0,  fleetTurnRate: 8,
+            fleetAcceleration: 2, fleetSpacing: 0.7,
+            fleetX: 20, fleetY: -5.27,
+        };
+        if (Sit.gimbalSetup) Object.assign(this._gimbalConfig, Sit.gimbalSetup);
+        const gc = this._gimbalConfig;
+
+        if (Sit.gimbalSetup) {
+            gimbalFolder.add({status: "Active"}, "status").name("Status").disable();
+        }
+
+        gimbalFolder.add(gc, "cloudWindFrom", 0, 360, 1).name("Cloud Wind From");
+        gimbalFolder.add(gc, "cloudWindKnots", 0, 100, 1).name("Cloud Wind Knots");
+        gimbalFolder.add(gc, "targetWindFrom", 0, 360, 1).name("Target Wind From");
+        gimbalFolder.add(gc, "targetWindKnots", 0, 200, 1).name("Target Wind Knots");
+        gimbalFolder.add(gc, "localWindFrom", 0, 360, 1).name("Local Wind From");
+        gimbalFolder.add(gc, "localWindKnots", 0, 200, 1).name("Local Wind Knots");
+        gimbalFolder.add(gc, "startDistance", 1, 100, 0.1).name("Start Distance NM");
+        gimbalFolder.add(gc, "targetSpeed", 0, 600, 1).name("Target Speed kts");
+        gimbalFolder.add(gc, "defaultTraverse", [
+            "Straight Line", "Const Ground Spd", "Const Air Spd",
+            "Const Air AB", "Constant Altitude",
+        ]).name("Traverse Mode");
+        gimbalFolder.add(gc, "showGlare").name("Show Glare");
+        gimbalFolder.add(gc, "showATFLIR").name("Show ATFLIR Pod");
+
+        const makeBaseGimbalSitch = (pipeline) => {
+            // An empty `pipeline` object means "nothing auto-runs" — the
+            // manual-build variant.  In that mode we have to strip sitch
+            // options that resolve references at setup-time (azSlider,
+            // include_JetLabels, sprites/FlowOrbs) because their target
+            // nodes (azSources, jetTrack, targetWind) won't exist yet.
+            const isManual = pipeline && Object.keys(pipeline).length === 0;
+            const s = {
+                name: "custom", isCustom: true, canMod: false, isTextable: false,
+                jetStuff: true,
+                fps: 29.97, frames: 1031, aFrame: 0, bFrame: 1030,
+                lat: 28.5, lon: -79.5,
+                jetLat: {kind: "Constant", value: 28.5},
+                jetLon: {kind: "Constant", value: -79.5},
+                jetAltitude: {kind: "inputFeet", value: 25000, desc: "Altitude", start: 24500, end: 25500, step: 1},
+                jetOrigin: {kind: "TrackFromLLA", lat: "jetLat", lon: "jetLon", alt: "jetAltitude"},
+                TerrainModel: {kind: "Terrain", lat: 34, lon: -118.3, zoom: 7, nTiles: 3, fullUI: true, dynamic: true},
+                files: {
+                    GimbalCSV: 'gimbal/GimbalData.csv', GimbalCSV2: 'gimbal/GimbalRotKeyframes.csv',
+                    GimbalCSV_Pip: 'gimbal/GimbalPIPKeyframes.csv',
+                    ATFLIRModel: 'models/ATFLIR.glb', FA18Model: 'models/FA-18F.glb',
+                    TargetObjectFile: 'models/FA-18F.glb',
+                },
+                mainCamera: {
+                    startCameraPositionLLA: [28.470586, -79.100902, 26132.346324],
+                    startCameraTargetLLA: [28.470824, -79.110720, 25870.046771],
+                },
+                mainView: {left: 0, top: 0, width: 1, height: 1, fov: 10, background: '#000000'},
+                videoView: {left: 0.8250, top: 0.6666, width: -1, height: 0.3333, background: [1, 0, 0, 0]},
+                syncVideoZoom: true,
+                lookCamera: {fov: 0.35},
+                lookView: {left: 0.6656, top: 0.6667, width: -1, height: 0.333,
+                    draggable: true, resizable: true, shiftDrag: true, freeAspect: false, noOrbitControls: true},
+                mirrorVideo: {transparency: 0.15, autoClear: true, autoFill: false},
+                lighting: {kind: "Lighting", ambientIntensity: 0.35, IRAmbientIntensity: 1.0,
+                    sunIntensity: 0.7, sunScattering: 0.6, ambientOnly: false},
+                focusTracks: {"Default": "default", "Jet track": "jetTrack", "Traverse Path (UFO)": "LOSTraverseSelect"},
+                include_Compasses: true,
+                gimbalSetup: {...this._gimbalConfig, ...(pipeline ? {pipeline} : {})},
+            };
+            if (!isManual) {
+                s.azSlider = {defer: true};
+                s.include_JetLabels = true;
+                s.sprites = {kind: "FlowOrbs", nSprites: 1000, wind: "targetWind",
+                    colorMethod: "Hue From Altitude", hueAltitudeMax: 1400,
+                    camera: "lookCamera", visible: false, defer: true};
+            }
+            return s;
+        };
+
+        if (!Sit.gimbalSetup) {
+            this._enableGimbalAnalysis = async () => {
+                const gimbalSitch = makeBaseGimbalSitch(null);
+
+                // Rehost any dropped video + supporting files so the user can drag a
+                // Gimbal .mp4 onto the base custom sitch and still have it carried over
+                // into the new Gimbal sitch when they click "Create Gimbal Sitch".
+                await FileManager.rehostDynamicLinks(true);
+
+                const videoNode = NodeMan.exists("video") ? NodeMan.get("video") : null;
+                if (videoNode) {
+                    const videoURL = videoNode.videos?.[videoNode.currentVideoIndex]?.staticURL
+                        || videoNode.staticURL;
+                    const droppedSize = videoNode.videos?.[videoNode.currentVideoIndex]?.videoData?.videoDroppedData?.byteLength ?? 0;
+                    // Only carry over when the URL looks real AND the rehosted file is
+                    // at least plausibly the size of what we dropped. Rehost can silently
+                    // fail when PHP's post_max_size is exceeded — the returned URL points
+                    // at a tiny error HTML file that would break the sitch on reload.
+                    let accept = false;
+                    if (videoURL && /^(https?:|sitrec:|\/)/.test(videoURL)) {
+                        try {
+                            const head = await fetch(videoURL, {method: "HEAD"});
+                            const len = parseInt(head.headers.get("Content-Length") || "0", 10);
+                            if (head.ok && (len >= droppedSize / 2 || len >= 100000)) {
+                                accept = true;
+                            } else {
+                                console.warn("Gimbal preset: rehosted video is too small (" + len + " B for " + droppedSize + " B source), ignoring");
+                            }
+                        } catch (e) {
+                            console.warn("Gimbal preset: couldn't verify rehosted video:", e.message);
+                        }
+                    }
+                    if (accept) gimbalSitch.videoFile = videoURL;
+                }
+                if (Sit.loadedFiles && Object.keys(Sit.loadedFiles).length > 0) {
+                    gimbalSitch.loadedFiles = {...Sit.loadedFiles};
+                }
+                if (FileManager.loadedFilesMetadata
+                    && Object.keys(FileManager.loadedFilesMetadata).length > 0) {
+                    gimbalSitch.loadedFilesMetadata = {...FileManager.loadedFilesMetadata};
+                }
+
+                const sitchStr = JSON.stringify({stringified: true, isASitchFile: true, ...gimbalSitch}, null, 2);
+                FileManager.rehoster.rehostFile("GimbalAnalysis", new TextEncoder().encode(sitchStr), getDateTimeFilename() + ".js").then((staticRef) => {
+                    FileManager.loadURL = staticRef;
+                    window.location.href = SITREC_APP + "?custom=" + encodeShareParam(toShareableCustomValue(staticRef));
+                });
+            };
+            gimbalFolder.add(this, "_enableGimbalAnalysis").name(">> Create Gimbal Sitch");
+
+            // Variant: same base sitch, but with an EMPTY pipeline so nothing
+            // auto-runs on load — user then clicks manual-build buttons.
+            this._enableGimbalManualBase = async () => {
+                const gimbalSitch = makeBaseGimbalSitch({});  // empty pipeline = run no steps
+                await FileManager.rehostDynamicLinks(true);
+                const sitchStr = JSON.stringify({stringified: true, isASitchFile: true, ...gimbalSitch}, null, 2);
+                FileManager.rehoster.rehostFile("GimbalManualBase",
+                    new TextEncoder().encode(sitchStr),
+                    getDateTimeFilename() + ".js"
+                ).then((staticRef) => {
+                    FileManager.loadURL = staticRef;
+                    window.location.href = SITREC_APP + "?custom=" + encodeShareParam(toShareableCustomValue(staticRef));
+                });
+            };
+            gimbalFolder.add(this, "_enableGimbalManualBase").name(">> Create Gimbal Base (manual build)");
+        } else {
+            this._updateGimbalConfig = () => {
+                // preserve pipeline flags, just update config knobs
+                const pipeline = Sit.gimbalSetup.pipeline;
+                Sit.gimbalSetup = {...this._gimbalConfig, ...(pipeline ? {pipeline} : {})};
+                Sit.showGlare = gc.showGlare;
+                this.serialize("Custom", getDateTimeFilename()).then(() => { window.location.reload(); });
+            };
+            gimbalFolder.add(this, "_updateGimbalConfig").name("Apply Parameter Changes");
+
+            this._setupManualBuildFolder(gimbalFolder);
+        }
+        gimbalFolder.close();
+        // ── end Gimbal Preset ───────────────────────────────────
 
         toggler('k', guiMenus.help.add(par, 'showKeyboardShortcuts').listen().name(t("custom.showHide.keyboardShortcuts.label")).onChange(value => {
             if (value) {

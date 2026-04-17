@@ -289,7 +289,7 @@ export function UpdateHUD(text="") {
 
         ;
     }
-    if (ViewMan.list.video.data.videoPercentLoaded > 0 && ViewMan.list.video.data.videoPercentLoaded < 100) {
+    if (ViewMan.list.video && ViewMan.list.video.data.videoPercentLoaded > 0 && ViewMan.list.video.data.videoPercentLoaded < 100) {
         keyInfo += "Loading Video " + VideoPercentLoaded + "%<br>";
     }
 
@@ -514,29 +514,14 @@ export function SetupTrackLOSNodes() {
 
 //    console.log("+++ JetLOSDisplayNode")
 
-    if (Sit.name.startsWith("gimbal")) {
+    if (Sit.gimbalSetup || Sit.name.startsWith("gimbal")) {
         new CNodeDisplayLOS({
             id: "JetLOSDisplayNode",
             inputs: {
                 LOS: "JetLOS",
             },
-            //     highlightLines:{369:makeMatLine(0xff0000,2)}, // GoFast first frame with RNG
-
             color: 0x004040,
-
-
-            // // @dimebag2 lines
-            // highlightLines: {
-            //     30: makeMatLine(0x800000, 2),  // 1*30 PT1 Red
-            //     330: makeMatLine(0x000080, 2), // 11 sec PT2 Blue
-            //     630: makeMatLine(0x805300, 2), // 21 sec PT3 Orange
-            //     930: makeMatLine(0x800080, 2), // 31 sec PT4 Magnenta
-            //     1020: makeMatLine(0x008000, 2)
-            // }, // 34 sec PT5 green
-
-
         })
-
     }
 
 //    console.log("+++ JetTrackDisplayNode")
@@ -1054,9 +1039,11 @@ export function initViews() {
 
     ViewMan.get("chart").setVisible(par.showChart);
 
-    const labelOriginalVideo = new CNodeViewUI({id: "labelOriginalVideo", overlayView: ViewMan.list.video.data});
-    labelOriginalVideo.addText("videolabel", "ORIGINAL VIDEO", 70, 10, 3, "#f0f00080")
-    labelOriginalVideo.setVisible(true)
+    if (ViewMan.list.video) {
+        const labelOriginalVideo = new CNodeViewUI({id: "labelOriginalVideo", overlayView: ViewMan.list.video.data});
+        labelOriginalVideo.addText("videolabel", "ORIGINAL VIDEO", 70, 10, 3, "#f0f00080")
+        labelOriginalVideo.setVisible(true)
+    }
 
     if (1 || !isLocal) {
         const labelMainView = new CNodeViewUI({id: "labelMainView", overlayView: ViewMan.list.mainView.data});
@@ -1068,7 +1055,7 @@ export function initViews() {
 
 
 
-    if (Sit.name.startsWith("gimbal") || Sit.name === "flir1") {
+    if (Sit.showATFLIR || Sit.name.startsWith("gimbal") || Sit.name === "flir1") {
 
         // a grid spaced one Nautical mile square
         const gridSquaresGround = 200
@@ -1134,7 +1121,7 @@ export function initViews() {
 
     });
 
-    if (Sit.name.startsWith("gimbal")) {
+    if (Sit.showGimbalDragMesh || Sit.name.startsWith("gimbal")) {
         const dragMesh = new Mesh(geometry, material);
         dragMesh.visible = false;
         dragMesh.name = "dragMesh"
@@ -1144,7 +1131,7 @@ export function initViews() {
     // These are Az, El, so the numbers read on screen
 
 
-    if (Sit.name.startsWith("gimbal") && Sit.showGlare) {
+    if ((Sit.showGimbalDragMesh || Sit.name.startsWith("gimbal")) && Sit.showGlare) {
         LocalFrame.add(glareSprite);
         showHider(glareSprite, "Glare Spr[I]te", false, 'i').name(t("showHiders.glareSprite.label"))
     }
@@ -1160,7 +1147,7 @@ export function initViews() {
     }
 
 
-    if (Sit.name.startsWith("gimbal")) {
+    if (Sit.showGimbalCharts || Sit.name.startsWith("gimbal")) {
         // this is calculated at the start, and when glareAngle switch node is changed
         calculateGlareStartAngle();
 
@@ -1205,6 +1192,20 @@ export function SetupCommon(altitude=25000) {
 
 export function CommonJetStuff() {
     console.log(">>>+++ CommonJetStuff()")
+    // For the piece-by-piece Gimbal build, the traverse track hasn't been
+    // created yet.  All graphs here depend on LOSTraverseSelect, so bail
+    // cleanly — the user can invoke them later once traverse is added
+    // (see CustomSupport._setupManualBuildFolder "Gimbal Graphs" step).
+    if (!NodeMan.exists("LOSTraverseSelect")) {
+        console.log("CommonJetStuff: deferred (LOSTraverseSelect not yet created)");
+        return;
+    }
+    // Idempotent: `chart` is the first node initViews() creates; if it already
+    // exists we've been here before (e.g. re-invocation from a manual-build step).
+    if (NodeMan.exists("chart")) {
+        console.log("CommonJetStuff: already run, skipping");
+        return;
+    }
     // only gimbal uses this
     AddSpeedGraph("LOSTraverseSelect","Traverse Speed",0,360,0.6,0,-1,0.25,
         [
@@ -1215,7 +1216,7 @@ export function CommonJetStuff() {
     ])
     AddAltitudeGraph(10000, 45000)
 
-    if (Sit.name === "gimbal") {
+    if (Sit.showGimbalCharts || Sit.name === "gimbal") {
         AddTailAngleGraph(null, {left: 0.73, top: .25, width: -1, height: .25})
     }
 
@@ -1242,7 +1243,16 @@ export function initJetStuff() {
     const view = NodeMan.get("mainView");
     view.preRenderFunction = function () {
 
-        const displayWindArrows = ViewMan.get("SAPage").buttonBoxed(16);  // wind button
+        // Piece-by-piece Gimbal build: these nodes are created on demand, so
+        // bail out cleanly until the pipeline is far enough along.
+        const sa = ViewMan.get("SAPage", false);
+        if (!sa) return;
+        if (!NodeMan.exists("localWind") || !NodeMan.exists("targetWind")
+            || !NodeMan.exists("LOSTraverseSelect") || !NodeMan.exists("jetTrack")) {
+            return;
+        }
+
+        const displayWindArrows = sa.buttonBoxed(16);  // wind button
 
         const windTrackLocal = NodeMan.get("localWind")
         const windTrackTarget = NodeMan.get("targetWind")
