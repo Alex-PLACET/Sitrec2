@@ -2396,6 +2396,7 @@ function startAnalysis(videoView) {
 let motionFolder = null;
 let motionTrackCounter = 0;
 let createTrackMenuItem = null;
+let exportMotionMenuItem = null;
 
 async function analyzeAllFrames(progressCallback) {
     if (!motionAnalyzer) return false;
@@ -2496,6 +2497,57 @@ async function createTrackFromMotion() {
     setMenuItemLabel(createTrackMenuItem, "menu.createTrack.label");
     setRenderOne(true);
     console.log(`Created motion track '${trackId}' from ${motionAnalyzer.resultCache.size} analyzed frames, ${metersPerPixel.toFixed(3)} m/px`);
+}
+
+async function exportMotionCSV() {
+    const result = await ensureOpenCVAndAnalyzer(
+        exportMotionMenuItem,
+        mt("status.loadingOpenCv"),
+        mt("menu.exportMotion.label")
+    );
+    if (!result) return;
+
+    if (!motionAnalyzer.isCacheFull()) {
+        setMenuItemLabel(exportMotionMenuItem, "status.analyzingPercent", {pct: 0});
+        await analyzeAllFrames((current, total) => {
+            const pct = Math.round(100 * current / total);
+            setMenuItemLabel(exportMotionMenuItem, "status.analyzingPercent", {pct});
+        });
+    }
+
+    setMenuItemLabel(exportMotionMenuItem, "status.saving");
+
+    const aFrame = Sit.aFrame || 0;
+    const bFrame = Sit.bFrame ?? (Sit.frames - 1);
+    const fps = Sit.fps || 30;
+
+    const lines = ["frame,angle_deg,magnitude_px,time_sec,utc_time"];
+    for (let f = aFrame; f <= bFrame; f++) {
+        const cached = motionAnalyzer.resultCache.get(f);
+        let angleDeg = 0;
+        let magnitude = 0;
+        if (cached && cached.smoothedDirection) {
+            const sd = cached.smoothedDirection;
+            angleDeg = ((sd.angle * 180 / Math.PI) + 360) % 360;
+            magnitude = sd.magnitude;
+        }
+        const timeSec = f / fps;
+        const utc = GlobalDateTimeNode ? GlobalDateTimeNode.frameToDate(f).toISOString() : "";
+        lines.push(`${f},${angleDeg.toFixed(4)},${magnitude.toFixed(4)},${timeSec.toFixed(4)},${utc}`);
+    }
+
+    const csv = lines.join("\n") + "\n";
+    const blob = new Blob([csv], {type: "text/csv"});
+    const filename = `${getExportPrefix()}_motion_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    console.log(`Motion CSV exported: ${filename} (${bFrame - aFrame + 1} frames)`);
+    setMenuItemLabel(exportMotionMenuItem, "menu.exportMotion.label");
 }
 
 const MAX_PANORAMA_WIDTH = 20000;
@@ -3008,6 +3060,7 @@ export function addMotionAnalysisMenu() {
     const menuActions = {
         analyzeMotion: toggleMotionAnalysis,
         createTrack: createTrackFromMotion,
+        exportMotion: exportMotionCSV,
         exportPanorama: exportMotionPanorama,
         exportPanoVideo: exportPanoVideo,
         stabilizeVideo: toggleStabilization,
@@ -3021,6 +3074,11 @@ export function addMotionAnalysisMenu() {
     createTrackMenuItem = motionFolder.add(menuActions, 'createTrack')
         .name(mt("menu.createTrack.label"))
         .tooltip(mt("menu.createTrack.tooltip"))
+        .perm();
+
+    exportMotionMenuItem = motionFolder.add(menuActions, 'exportMotion')
+        .name(mt("menu.exportMotion.label"))
+        .tooltip(mt("menu.exportMotion.tooltip"))
         .perm();
 
     const flowParams = {
