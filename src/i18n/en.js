@@ -483,6 +483,10 @@ const en = {
                 label: "Create Track from Motion",
                 tooltip: "Analyze all frames and create a ground track from motion vectors",
             },
+            exportMotion: {
+                label: "Export Motion",
+                tooltip: "Export per-frame motion as CSV (frame, angle, magnitude, time, UTC)",
+            },
             alignWithFlow: {
                 label: "Align with Flow",
                 tooltip: "Rotate image so motion direction is horizontal",
