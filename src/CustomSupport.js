@@ -91,13 +91,19 @@ import {CNodeOrbitTrack} from "./nodes/CNodeOrbitTrack";
 import {CNodeTrackSwitch} from "./nodes/CNodeTrackSwitch";
 import {getNearbyWeatherBalloons, importSoundingDialog} from "./SondeFetch";
 import {getCurrentLanguage, setLanguage, SUPPORTED_LANGUAGE_OPTIONS, t} from "./i18n";
-import {bracketingLevels} from "./nodes/CNodeDisplayWindField";
 import {CNodeSAPage} from "./nodes/CNodeSAPage";
 import {
-    gimbalStepCore, gimbalStepTraverse, gimbalStepAirTrack,
-    gimbalStepFleet, gimbalStepSAHAFU, gimbalStepTrackLOSNodes,
-    gimbalStepClouds, gimbalStepGraphs, gimbalStepTargetModel,
-    gimbalStepAirTrackDisplay, gimbalStepCommonViews,
+    gimbalStepAirTrack,
+    gimbalStepAirTrackDisplay,
+    gimbalStepClouds,
+    gimbalStepCommonViews,
+    gimbalStepCore,
+    gimbalStepFleet,
+    gimbalStepGraphs,
+    gimbalStepSAHAFU,
+    gimbalStepTargetModel,
+    gimbalStepTrackLOSNodes,
+    gimbalStepTraverse,
 } from "./GimbalCustomSetup";
 import {Color} from "three";
 
@@ -863,6 +869,12 @@ export class CCustomManager {
         // Backing field + reactive getter so the checkbox reflects the live SAPage
         // visibility even when the SAPage is created later (e.g. by handleGimbalSetup
         // which runs after CustomManager.setup).
+        //
+        // The setter MUST also push to the live view's visibility.  lil-gui's
+        // setValue() writes the property, then fires onChange with getValue().
+        // If the setter only updates the backing field, the getter still
+        // returns the stale sa.visible, so onChange receives the old value
+        // and every toggle is a no-op.
         this.__showSAPage = NodeMan.exists("SAPage");
         Object.defineProperty(this, "_showSAPage", {
             configurable: true,
@@ -871,15 +883,19 @@ export class CCustomManager {
                 if (sa) return !!sa.visible;
                 return this.__showSAPage;
             },
-            set: (v) => { this.__showSAPage = v; },
+            set: (v) => {
+                this.__showSAPage = v;
+                const sa = ViewMan.get("SAPage", false);
+                if (sa) sa.setVisible(v);
+            },
         });
         guiShowHideViews.add(this, "_showSAPage").name("SA Page").onChange((value) => {
             if (value && !NodeMan.exists("SAPage")) {
                 this._createSAPage();
+                const sa = ViewMan.get("SAPage", false);
+                if (sa) sa.setVisible(true);
             }
             Sit.showSAPage = value; // persist for serialization
-            const saView = ViewMan.get("SAPage", false);
-            if (saView) saView.setVisible(value);
             setRenderOne(true);
         }).listen();
         // ── end SA Page ─────────────────────────────────────────
@@ -911,8 +927,6 @@ export class CCustomManager {
         this._gimbalConfig = {
             showGlare: true, showATFLIR: true,
             cloudWindFrom: 240,  cloudWindKnots: 17,
-            targetWindFrom: 274, targetWindKnots: 65,
-            localWindFrom: 270,  localWindKnots: 120,
             startDistance: 32,   targetSpeed: 340,
             defaultTraverse: "Const Air Spd",
             fleetTurnStart: 0,  fleetTurnRate: 8,
@@ -928,16 +942,6 @@ export class CCustomManager {
 
         gimbalFolder.add(gc, "cloudWindFrom", 0, 360, 1).name("Cloud Wind From");
         gimbalFolder.add(gc, "cloudWindKnots", 0, 100, 1).name("Cloud Wind Knots");
-        gimbalFolder.add(gc, "targetWindFrom", 0, 360, 1).name("Target Wind From");
-        gimbalFolder.add(gc, "targetWindKnots", 0, 200, 1).name("Target Wind Knots");
-        gimbalFolder.add(gc, "localWindFrom", 0, 360, 1).name("Local Wind From");
-        gimbalFolder.add(gc, "localWindKnots", 0, 200, 1).name("Local Wind Knots");
-        gimbalFolder.add(gc, "startDistance", 1, 100, 0.1).name("Start Distance NM");
-        gimbalFolder.add(gc, "targetSpeed", 0, 600, 1).name("Target Speed kts");
-        gimbalFolder.add(gc, "defaultTraverse", [
-            "Straight Line", "Const Ground Spd", "Const Air Spd",
-            "Const Air AB", "Constant Altitude",
-        ]).name("Traverse Mode");
         gimbalFolder.add(gc, "showGlare").name("Show Glare");
         gimbalFolder.add(gc, "showATFLIR").name("Show ATFLIR Pod");
 
@@ -948,6 +952,33 @@ export class CCustomManager {
             // include_JetLabels, sprites/FlowOrbs) because their target
             // nodes (azSources, jetTrack, targetWind) won't exist yet.
             const isManual = pipeline && Object.keys(pipeline).length === 0;
+
+            // Seed the generated sitch from the live nodes of the current
+            // (base custom) sitch so the user sees only one set of controls:
+            // target/local wind live at the top of Physics, and start
+            // distance / target speed / traverse mode live in the Traverse
+            // menu. The preset folder no longer duplicates these.
+            const liveSeed = {};
+            if (NodeMan.exists("targetWind")) {
+                const tw = NodeMan.get("targetWind");
+                liveSeed.targetWindFrom = tw.from;
+                liveSeed.targetWindKnots = tw.knots;
+            }
+            if (NodeMan.exists("localWind")) {
+                const lw = NodeMan.get("localWind");
+                liveSeed.localWindFrom = lw.from;
+                liveSeed.localWindKnots = lw.knots;
+            }
+            if (NodeMan.exists("startDistance")) {
+                liveSeed.startDistance = NodeMan.get("startDistance").value;
+            }
+            if (NodeMan.exists("speedScaled")) {
+                liveSeed.targetSpeed = NodeMan.get("speedScaled").value;
+            }
+            if (NodeMan.exists("LOSTraverseSelect")) {
+                liveSeed.defaultTraverse = NodeMan.get("LOSTraverseSelect").choice;
+            }
+
             const s = {
                 name: "custom", isCustom: true, canMod: false, isTextable: false,
                 jetStuff: true,
@@ -979,7 +1010,7 @@ export class CCustomManager {
                     sunIntensity: 0.7, sunScattering: 0.6, ambientOnly: false},
                 focusTracks: {"Default": "default", "Jet track": "jetTrack", "Traverse Path (UFO)": "LOSTraverseSelect"},
                 include_Compasses: true,
-                gimbalSetup: {...this._gimbalConfig, ...(pipeline ? {pipeline} : {})},
+                gimbalSetup: {...this._gimbalConfig, ...liveSeed, ...(pipeline ? {pipeline} : {})},
             };
             if (!isManual) {
                 s.azSlider = {defer: true};

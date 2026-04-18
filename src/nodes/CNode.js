@@ -104,6 +104,17 @@ class CNode {
         // Clean up export button (if it exists)
          FileManager.removeExportButton(this)
 
+        // Destroy any lil-gui controllers this node added to its GUI.
+        // Nodes commonly call `this.gui.add(this, "prop", ...)` in their
+        // constructor; without this cleanup, those controllers outlive the
+        // node and become orphans when the node is removed (e.g. by a
+        // pipeline re-run), producing duplicate/stale sliders.
+        if (this.gui && typeof this.gui.controllersRecursive === "function") {
+            for (const c of this.gui.controllersRecursive()) {
+                if (c.object === this) c.destroy();
+            }
+        }
+
         // clear the inputs and outputs
 
         // remove this from the outputs of all the input nodes

@@ -815,8 +815,8 @@ export function SetupGimbal() {
         name: "Cloud",
         arrowColor: "white",
         pos: "jetTrack",
-
-    }, gui)
+        gui: "physics",
+    })
 
     new CNodeWind({
         id: "targetWind",
@@ -825,8 +825,8 @@ export function SetupGimbal() {
         name: "Target",
         arrowColor: "yellow",
         pos: "LOSTraverseSelect",
-
-    }, gui)
+        gui: "physics",
+    })
 
     new CNodeWind({
         id: "localWind",
@@ -835,8 +835,8 @@ export function SetupGimbal() {
         name: "Local",
         arrowColor: "cyan",
         pos: "jetTrack",
-
-    }, gui)
+        gui: "physics",
+    })
 
 
     new CNodeHeading({
