@@ -782,83 +782,126 @@ export class CCustomManager {
 
         // ── Wind Visualization subfolder under Physics ──────────────
         this._windNode = null;
-        this._windActivated = false;
 
-        par.windSource = "GFS (NOAA)";
-        par.windAltFt = 33;       // default = surface (~10m)
-        par.windStatus = "Not activated";
+        // Source labels ↔ internal source keys used by CNodeDisplayWindField.
+        // UWYO/IGRA2 auto-fetch nearby soundings if none of that source are
+        // loaded. Manual Soundings uses whatever the user has dropped in.
+        this._windSourceOptions = {
+            "GFS (NOAA)":       "gfs",
+            "UWYO Soundings":   "uwyo",
+            "IGRA2 Soundings":  "igra2",
+            "Manual Soundings": "manual-soundings",
+            "open-meteo":       "openmeteo",
+            "Manual":           "manual",
+        };
+        par.windSource = "Manual";
+        par.windAltFt = 33;       // default = surface (~10m) — display altitude
+        par.windStatus = "Not loaded";
+        par.windShow = false;
+        par.windOpacity = 0.9;
+        par.windSpacing = 1.5;
+        par.windMaxSpeed = 30;
 
         const windFolder = addGUIFolder("wind", "Wind Data", "physics");
 
-        // Source selector — available before activation
-        this._windSourceOptions = ["GFS (NOAA)"];
-        windFolder.add(par, "windSource", this._windSourceOptions).name("Source");
+        // UWYO/IGRA2 auto-load: if no profiles of the selected source exist,
+        // fetch `par.balloonCount` nearest soundings. Manual Soundings skips
+        // this — the user supplies the data. GFS/open-meteo/Manual: no-op.
+        this._ensureSoundingsForWind = async (sourceKey) => {
+            if (sourceKey !== "uwyo" && sourceKey !== "igra2") return;
+            let have = false;
+            NodeMan.iterate((id, n) => {
+                if (n && n.constructor?.name === "CNodeAtmosphericProfile"
+                    && n.source === sourceKey) have = true;
+            });
+            if (have) return;
+            par.windStatus = `Loading ${sourceKey.toUpperCase()} soundings...`;
+            await getNearbyWeatherBalloons(par.balloonCount, sourceKey);
+        };
 
-        // Altitude slider in feet — interpolates between GFS pressure levels
-        windFolder.add(par, "windAltFt", 0, 45000, 100).name("Altitude (ft)").onChange(async () => {
-            if (this._windNode) {
-                await this._windNode.fetchWindForAltitude(par.windAltFt);
-                par.windStatus = this._windNode.statusText;
+        // Lazily create the wind node and load data for the current source.
+        // Source changes and the first Show Wind toggle both go through here.
+        this._loadWindForCurrentSource = async () => {
+            const sourceKey = this._windSourceOptions[par.windSource];
+            if (!this._windNode) {
+                this._windNode = NodeFactory.create("DisplayWindField", {
+                    id: "windField",
+                    source: sourceKey,
+                    windAltFt: par.windAltFt,
+                    lineOpacity: par.windOpacity,
+                    seedSpacing: par.windSpacing,
+                    maxWindSpeed: par.windMaxSpeed,
+                });
+                // Stay hidden until the user toggles Show Wind on.
+                this._windNode.visible = par.windShow;
+                this._windNode.group.visible = par.windShow;
             }
+            this._windNode.source = sourceKey;
+            par.windStatus = "Loading...";
+            await this._ensureSoundingsForWind(sourceKey);
+            await this._windNode.fetchWindForAltitude(par.windAltFt);
+            par.windStatus = this._windNode.statusText;
+        };
+
+        // Source selector — loads data for the new source immediately.
+        windFolder.add(par, "windSource", Object.keys(this._windSourceOptions))
+            .name("Source")
+            .onChange(async () => { await this._loadWindForCurrentSource(); });
+
+        // Display altitude in feet. Target/local winds use their own track
+        // altitudes, independent of this.
+        windFolder.add(par, "windAltFt", 0, 45000, 100).name("Altitude (ft)").onChange(async () => {
+            if (!this._windNode) return;
+            par.windStatus = "Loading...";
+            await this._windNode.fetchWindForAltitude(par.windAltFt);
+            par.windStatus = this._windNode.statusText;
         }).elastic(1000, 60000, true);
+
+        // Show Wind checkbox — first toggle on creates the field and loads
+        // data; later toggles just flip visibility.
+        windFolder.add(par, "windShow").name("Show Wind").onChange(async (v) => {
+            if (v && !this._windNode) {
+                await this._loadWindForCurrentSource();
+            }
+            if (this._windNode) {
+                this._windNode.visible = v;
+                this._windNode.group.visible = v;
+                setRenderOne(true);
+            }
+        });
 
         // Status display
         this._windStatusCtrl = windFolder.add(par, "windStatus").name("Status").listen().disable();
 
-        // Activate button
-        this._activateWindField = async () => {
-            if (this._windActivated) return;
-            this._windActivated = true;
-            par.windStatus = "Activating...";
+        windFolder.add(par, "windOpacity", 0, 1, 0.01).name("Opacity").onChange(() => {
+            if (!this._windNode) return;
+            this._windNode.lineOpacity = par.windOpacity;
+            this._windNode.material.uniforms.uOpacity.value = par.windOpacity;
+            setRenderOne(true);
+        });
 
-            // Create the node (lazy)
-            if (!this._windNode) {
-                this._windNode = NodeFactory.create("DisplayWindField", {id: "windField"});
-            }
+        windFolder.add(par, "windSpacing", 1.5, 10, 0.5).name("Spacing (\u00b0)").onChange(() => {
+            if (!this._windNode) return;
+            this._windNode.seedSpacing = par.windSpacing;
+            this._windNode.rebuildStreamlines();
+            setRenderOne(true);
+        });
 
-            // Fetch wind data for the selected altitude
+        windFolder.add(par, "windMaxSpeed", 5, 80, 1).name("Max Speed (m/s)").onChange(() => {
+            if (!this._windNode) return;
+            this._windNode.maxWindSpeed = par.windMaxSpeed;
+            this._windNode.material.uniforms.uMaxSpeed.value = par.windMaxSpeed;
+            setRenderOne(true);
+        });
+
+        const refresh = async () => {
+            if (!this._windNode) return;
+            this._windNode._levelCache = {};  // force re-fetch of GFS grids
+            par.windStatus = "Loading...";
             await this._windNode.fetchWindForAltitude(par.windAltFt);
-
-            // Show the post-activation controls and sync status
-            this._activateBtn.hide();
-            this._showPostActivationControls(windFolder);
             par.windStatus = this._windNode.statusText;
         };
-        this._activateBtn = windFolder.add(this, "_activateWindField").name("Activate Wind Field");
-
-        // Deferred controls added after activation
-        this._showPostActivationControls = (folder) => {
-            const n = this._windNode;
-            if (!n) return;
-
-            folder.add(n, "visible").name("Show Wind").onChange(() => {
-                n.group.visible = n.visible;
-                setRenderOne(true);
-            }).listen();
-
-            folder.add(n, "lineOpacity", 0, 1, 0.01).name("Opacity").onChange(() => {
-                n.material.uniforms.uOpacity.value = n.lineOpacity;
-                setRenderOne(true);
-            });
-
-            folder.add(n, "seedSpacing", 1.5, 10, 0.5).name("Spacing (\u00b0)").onChange(() => {
-                n.rebuildStreamlines();
-                setRenderOne(true);
-            });
-
-            folder.add(n, "maxWindSpeed", 5, 80, 1).name("Max Speed (m/s)").onChange(() => {
-                n.material.uniforms.uMaxSpeed.value = n.maxWindSpeed;
-                setRenderOne(true);
-            });
-
-            // Re-fetch button
-            const refetch = async () => {
-                n._levelCache = {};  // clear cache to force re-fetch
-                await n.fetchWindForAltitude(par.windAltFt);
-                par.windStatus = n.statusText;
-            };
-            folder.add({refetch}, "refetch").name("Refresh Wind Data");
-        };
+        windFolder.add({refresh}, "refresh").name("Refresh Wind Data");
         // ── end Wind ────────────────────────────────────────────────
 
         // ── SA Page — checkbox under Show/Hide > Views ─────────

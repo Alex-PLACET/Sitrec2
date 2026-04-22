@@ -32,7 +32,7 @@ sitch = {
     startDistanceMin: 0.01,
     startDistanceMax: 300,  // this will be elastic, so not an issue
 
-    startTime: "2022-09-19T20:50:26.970Z",
+    startTime: "2025-09-19T20:50:26.970Z",
     // default terrain covers some of the local area
     TerrainModel: {kind: "Terrain", lat: 34, lon: -118.3, zoom: 7, nTiles: 3, fullUI: true, dynamic: true},
     // terrainUI: {kind: "TerrainUI", terrain: "TerrainModel"},

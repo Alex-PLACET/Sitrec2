@@ -251,6 +251,10 @@ export function metersPerSecondFromKnots(k) {
     return 0.514444 * k
 }
 
+export function knotsFromMetersPerSecond(ms) {
+    return ms / 0.514444
+}
+
 // given a time in ms, an interval in ms, and function f
 // then call f for that time, every interval
 export async function doOver(time, interval, f) {

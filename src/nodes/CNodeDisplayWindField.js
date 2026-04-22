@@ -3,9 +3,9 @@
 // along each streamline, creating a flowing effect without per-frame geometry updates.
 
 import {CNode3DGroup} from "./CNode3DGroup";
-import {LLAToECEF} from "../LLA-ECEF-ENU";
+import {ECEFToLLAVD_radii, LLAToECEF} from "../LLA-ECEF-ENU";
 import {sharedUniforms} from "../js/map33/material/SharedUniforms";
-import {FileManager, GlobalDateTimeNode, Sit} from "../Globals";
+import {FileManager, GlobalDateTimeNode, NodeMan, Sit} from "../Globals";
 import pako from "pako";
 import * as LAYER from "../LayerMasks";
 import {
@@ -13,6 +13,8 @@ import {
     ShaderMaterial,
 } from "three";
 import {setRenderOne} from "../Globals";
+import {knotsFromMetersPerSecond, metersPerSecondFromKnots} from "../utils";
+import {meanSeaLevelOffset} from "../EGM96Geoid";
 
 const R_EARTH = 6371000; // meters
 const DEG = Math.PI / 180;
@@ -77,16 +79,22 @@ export class CNodeDisplayWindField extends CNode3DGroup {
         this.maxWindSpeed   = v.maxWindSpeed   ?? 30;
         this.minSpeedCutoff = v.minSpeedCutoff ?? 0.5;
 
-        this.windAltFt      = v.windAltFt ?? 33;  // feet — drives which levels to fetch
+        this.windAltFt      = v.windAltFt ?? 33;  // feet — display altitude
         this.windLevel      = "surface";          // descriptive label for status
         this.statusText     = "Not loaded";
+
+        // Source of the wind field:
+        //   "gfs" | "uwyo" | "igra2" | "manual-soundings" | "openmeteo" | "manual"
+        // The three sounding sources share the same IDW pipeline but filter
+        // the profile pool differently (see _gatherSondeProfiles).
+        this.source = v.source ?? "gfs";
 
         this.frameCount = 0;
         this.linesMesh = null;
         this.dataSource = "none";
         this.fetching = false;
         this._lastDateCycle = null;  // "YYYYMMDD_HH" of the last-fetched GFS cycle
-        this._levelCache = {};       // level string → {u, v, json} for interpolation
+        this._levelCache = {};       // level string → GFS json (one per pressure level)
 
         // ---------- shader material ----------
         this.material = new ShaderMaterial({
@@ -299,14 +307,66 @@ export class CNodeDisplayWindField extends CNode3DGroup {
         return json;
     }
 
-    // ── fetch and interpolate wind at the current altitude ───────────
+    // ── Populate the display field from the active source ────────────
+    //
+    // Source-agnostic entry point. The caller sets `this.source` first.
+    // After filling, target/local winds are propagated from the source
+    // sampled at their respective altitudes (not the display altitude).
     async fetchWindForAltitude(altFt) {
-        if (this.fetching) return;
-        this.fetching = true;
-
         altFt = altFt ?? this.windAltFt;
+
+        // Coalesce rapid slider drags: if a fetch is in flight, record the
+        // latest requested altitude and let the in-flight fetch pick it up
+        // when it finishes. This avoids dropping the final slider value.
+        if (this.fetching) {
+            this._pendingAltFt = altFt;
+            return;
+        }
+        this.fetching = true;
         this.windAltFt = altFt;
 
+        try {
+            if (this.source === "gfs") {
+                await this._fillFromGFS(altFt);
+            } else if (this.source === "uwyo"
+                    || this.source === "igra2"
+                    || this.source === "manual-soundings") {
+                await this._fillFromSoundings(altFt, this.source);
+            } else if (this.source === "openmeteo") {
+                await this._fillFromOpenMeteo(altFt);
+            } else if (this.source === "manual") {
+                this._fillFromManual(altFt);
+            } else {
+                throw new Error(`Unknown wind source: ${this.source}`);
+            }
+
+            // Draw streamlines at the actual wind altitude (meters MSL).
+            this.renderAltitude = Math.max(50, altFt * 0.3048);
+
+            this.rebuildStreamlines();
+            setRenderOne(true);
+
+            // Propagate wind at each node's *own* altitude
+            await this.propagateToWindNodes();
+        } catch (err) {
+            console.error("Wind fetch failed:", err);
+            this.statusText = `Error: ${err.message}`;
+        } finally {
+            this.fetching = false;
+        }
+
+        // If the slider moved during the fetch, re-run for the latest altitude.
+        if (this._pendingAltFt != null && this._pendingAltFt !== altFt) {
+            const next = this._pendingAltFt;
+            this._pendingAltFt = null;
+            await this.fetchWindForAltitude(next);
+        } else {
+            this._pendingAltFt = null;
+        }
+    }
+
+    // ── GFS: global pressure-level grids ────────────────────────────
+    async _fillFromGFS(altFt) {
         const dateNode = GlobalDateTimeNode;
         const dateNow = dateNode?.dateNow ?? new Date();
         const dateStr = dateNow.toISOString().slice(0, 10).replace(/-/g, "");
@@ -320,52 +380,334 @@ export class CNodeDisplayWindField extends CNode3DGroup {
             : `Fetching ${lo.level === "surface" ? "Surface" : lo.level + " hPa"}...`;
         console.log(`Wind alt ${altFt} ft → ${lo.level}(${(1 - t).toFixed(2)}) + ${hi.level}(${t.toFixed(2)})`);
 
-        try {
-            const jsonLo = await this._fetchLevel(lo.level, dateStr, hour);
-            const jsonHi = needTwo ? await this._fetchLevel(hi.level, dateStr, hour) : jsonLo;
+        const jsonLo = await this._fetchLevel(lo.level, dateStr, hour);
+        const jsonHi = needTwo ? await this._fetchLevel(hi.level, dateStr, hour) : jsonLo;
 
-            // Interpolate the two grids
-            const n = jsonLo.u.length;
-            const blendedU = new Array(n);
-            const blendedV = new Array(n);
-            for (let i = 0; i < n; i++) {
-                blendedU[i] = Math.round(((1 - t) * jsonLo.u[i] + t * jsonHi.u[i]) * 100) / 100;
-                blendedV[i] = Math.round(((1 - t) * jsonLo.v[i] + t * jsonHi.v[i]) * 100) / 100;
+        const n = jsonLo.u.length;
+        const blendedU = new Array(n);
+        const blendedV = new Array(n);
+        for (let i = 0; i < n; i++) {
+            blendedU[i] = Math.round(((1 - t) * jsonLo.u[i] + t * jsonHi.u[i]) * 100) / 100;
+            blendedV[i] = Math.round(((1 - t) * jsonLo.v[i] + t * jsonHi.v[i]) * 100) / 100;
+        }
+
+        const blended = {
+            ...jsonLo,
+            u: blendedU,
+            v: blendedV,
+            level: `${Math.round(altFt)}ft`,
+            source: jsonLo.source ?? "GFS",
+            _loLevel: lo.level,
+            _hiLevel: hi.level,
+            _blendT: t,
+        };
+
+        this._applyWindJSON(blended);
+        this.windLevel = lo.level === hi.level ? lo.level : `${lo.level}+${hi.level}`;
+        this._lastDateCycle = `${dateStr}_${hour}`;
+        this._storeWindFiles(jsonLo, jsonHi, needTwo, dateStr, hour);
+
+        const altLabel = altFt < 300 ? "Surface" : `${altFt.toLocaleString()} ft`;
+        this.statusText = `GFS ${jsonLo.refTime?.slice(0, 10) ?? dateStr} ${altLabel}`;
+    }
+
+    // ── Soundings (UWYO / IGRA2 / Manual): IDW from loaded profiles ─
+    //
+    // All three sounding sources share this path; they differ only in which
+    // profiles are eligible. "manual-soundings" takes whatever the user has
+    // loaded (any source); "uwyo" and "igra2" filter to matching profiles.
+    async _fillFromSoundings(altFt, sourceKey) {
+        const {profiles, label} = this._resolveSoundingProfiles(sourceKey);
+        if (profiles.length === 0) {
+            throw new Error(`No ${label} profiles loaded`);
+        }
+        const altM = altFt * 0.3048;
+
+        const samples = [];
+        for (const p of profiles) {
+            if (p.stationLat == null || p.stationLon == null) continue;
+            const data = p.getAtAltitude(altM);
+            if (!data || data.windDir == null || data.windSpeed == null) continue;
+            samples.push({
+                lat: p.stationLat,
+                lon: p.stationLon,
+                // Met-convention: u = east, v = north. windDir is FROM.
+                ...fromDirSpeedToUV(data.windDir, data.windSpeed),
+            });
+        }
+        if (samples.length === 0) {
+            throw new Error(`${label} profiles have no wind at that altitude`);
+        }
+
+        this._buildGridFromSamples(samples, label);
+        this.windLevel = `${Math.round(altFt)}ft`;
+        const altLabel = altFt < 300 ? "Surface" : `${altFt.toLocaleString()} ft`;
+        this.statusText = `${label} (${samples.length}) ${altLabel}`;
+    }
+
+    // Map internal source key → {profiles, label}. Separated so sampleAtLLA
+    // and _fillFromSoundings share the same filter semantics.
+    _resolveSoundingProfiles(sourceKey) {
+        if (sourceKey === "uwyo") {
+            return {profiles: this._gatherSondeProfiles("uwyo"), label: "UWYO"};
+        }
+        if (sourceKey === "igra2") {
+            return {profiles: this._gatherSondeProfiles("igra2"), label: "IGRA2"};
+        }
+        // manual-soundings — any loaded profile, regardless of origin
+        return {profiles: this._gatherSondeProfiles(null), label: "Manual Soundings"};
+    }
+
+    // ── Open-Meteo: fetch at target/local and tile globally ─────────
+    //
+    // Each activation can trigger up to 4 fetches (2 for display + 2 for
+    // propagation at each node's own altitude). Results are cached in
+    // `_omCache` keyed on (lat, lon, altFt-bucket, date-hour) so the
+    // propagation pass reuses fetches done for the display pass when
+    // altitudes happen to match.
+    async _fillFromOpenMeteo(altFt) {
+        const altLabel = altFt < 300 ? "Surface" : `${altFt.toLocaleString()} ft`;
+        this.statusText = `Fetching open-meteo at ${altLabel}...`;
+
+        const points = this._windNodePositions();
+        if (points.length === 0) {
+            throw new Error("No target/local wind node with an origin track");
+        }
+
+        const samples = [];
+        for (const pt of points) {
+            try {
+                const uv = await this._cachedOpenMeteo(pt.lat, pt.lon, altFt * 0.3048);
+                if (uv) samples.push({lat: pt.lat, lon: pt.lon, u: uv.u, v: uv.v});
+            } catch (err) {
+                console.warn("open-meteo fetch failed for", pt, err.message);
             }
+        }
+        if (samples.length === 0) {
+            throw new Error("open-meteo returned no usable samples");
+        }
 
-            // Build a merged JSON for the blended result
-            const blended = {
-                ...jsonLo,
-                u: blendedU,
-                v: blendedV,
-                level: `${Math.round(altFt)}ft`,
-                source: jsonLo.source ?? "GFS",
-                _loLevel: lo.level,
-                _hiLevel: hi.level,
-                _blendT: t,
-            };
+        this._buildGridFromSamples(samples, "OpenMeteo");
+        this.windLevel = `${Math.round(altFt)}ft`;
+        this.statusText = `open-meteo (${samples.length}) ${altLabel}`;
+    }
 
-            this._applyWindJSON(blended);
-            this.windLevel = lo.level === hi.level ? lo.level : `${lo.level}+${hi.level}`;
-            this._lastDateCycle = `${dateStr}_${hour}`;
+    async _cachedOpenMeteo(lat, lon, altM) {
+        if (!this._omCache) this._omCache = new Map();
+        const dateNow = GlobalDateTimeNode?.dateNow ?? new Date();
+        // Cache key: round lat/lon to 4 decimals, altitude to 100m, date to hour.
+        const key = `${lat.toFixed(4)}|${lon.toFixed(4)}|${Math.round(altM / 100)}|${dateNow.toISOString().slice(0, 13)}`;
+        if (this._omCache.has(key)) return this._omCache.get(key);
+        const uv = await fetchOpenMeteoUV(lat, lon, altM);
+        this._omCache.set(key, uv);
+        return uv;
+    }
 
-            // Auto-scale render altitude
-            this.renderAltitude = Math.max(500, altFt * 0.3048 * 0.3);
+    // ── Manual: uniform global field from targetWind ────────────────
+    _fillFromManual(altFt) {
+        const tw = NodeMan.get("targetWind", false);
+        if (!tw) throw new Error("No targetWind node for Manual source");
+        if (!Number.isFinite(tw.from) || !Number.isFinite(tw.knots)) {
+            throw new Error("targetWind has no numeric from/knots for Manual source");
+        }
 
-            this.rebuildStreamlines();
-            setRenderOne(true);
+        const {u, v} = fromDirSpeedKnotsToUV(tw.from, tw.knots);
+        this._buildUniformGrid(u, v, "Manual");
+        this.windLevel = `${Math.round(altFt)}ft`;
+        const altLabel = altFt < 300 ? "Surface" : `${altFt.toLocaleString()} ft`;
+        this.statusText = `Manual ${Math.round(tw.from)}° ${Math.round(tw.knots)} kn @ ${altLabel}`;
+    }
 
-            // Store both source files for serialization
-            this._storeWindFiles(jsonLo, jsonHi, needTwo, dateStr, hour);
+    // ── Find relevant wind nodes' positions (lat/lon/alt) ───────────
+    // Each wind node is sampled at its track's *current-frame* position and
+    // altitude. If a node has no originTrack, fall back to the conventional
+    // track for its role (LOSTraverseSelect/targetTrack for target,
+    // jetTrack/cameraTrack for local).
+    _windNodePositions() {
+        // Prefer targetTrack first: LOSTraverseSelect is a switch that in
+        // some sitches depends on targetWind itself, which would make wind
+        // sampling circular (values would oscillate, not diverge — but best
+        // avoided).
+        const fallbacks = {
+            targetWind: ["targetTrack", "LOSTraverseSelect", "cameraTrack"],
+            localWind:  ["jetTrack", "cameraTrack"],
+        };
+        const resolveTrack = (node, id) => {
+            let t = node.originTrack;
+            if (typeof t === "string" && NodeMan.exists(t)) t = NodeMan.get(t);
+            if (t && typeof t.p === "function") return t;
+            for (const name of (fallbacks[id] ?? [])) {
+                if (NodeMan.exists(name)) {
+                    const cand = NodeMan.get(name);
+                    if (cand && typeof cand.p === "function") return cand;
+                }
+            }
+            return null;
+        };
 
-            const altLabel = altFt < 300 ? "Surface" : `${altFt.toLocaleString()} ft`;
-            this.statusText = `GFS ${jsonLo.refTime?.slice(0, 10) ?? dateStr} ${altLabel}`;
-            console.log(`Wind loaded at ${altFt} ft (${lo.level}→${hi.level}, t=${t.toFixed(2)})`);
-        } catch (err) {
-            console.error("Wind fetch failed:", err);
-            this.statusText = `Error: ${err.message}`;
+        const out = [];
+        for (const id of ["targetWind", "localWind"]) {
+            if (!NodeMan.exists(id)) continue;
+            const n = NodeMan.get(id);
+            const track = resolveTrack(n, id);
+            if (!track) continue;
+            const f = Sit.currentFrame ?? 0;
+            const pos = track.p(f);
+            const lla = ECEFToLLAVD_radii(pos);
+            out.push({id, lat: lla.x, lon: lla.y, altM: lla.z - meanSeaLevelOffset(lla.x, lla.y)});
+        }
+        return out;
+    }
+
+    // `sourceFilter`: "uwyo" | "igra2" | null (no filter — any source).
+    _gatherSondeProfiles(sourceFilter = null) {
+        const profiles = [];
+        NodeMan.iterate((id, node) => {
+            if (!node || node.constructor?.name !== "CNodeAtmosphericProfile") return;
+            if (sourceFilter && node.source !== sourceFilter) return;
+            profiles.push(node);
+        });
+        return profiles;
+    }
+
+    // ── Build a coarse global grid from scattered (lat,lon,u,v) samples
+    // via inverse-distance weighting. Used by non-GFS sources.
+    _buildGridFromSamples(samples, sourceLabel) {
+        const nx = 72, ny = 37;           // 5° resolution
+        const dlon = 5, dlat = -5;
+        const lon0 = 0, lat0 = 90;
+        const u = new Array(nx * ny);
+        const v = new Array(nx * ny);
+
+        const POWER = 2;
+        for (let j = 0; j < ny; j++) {
+            const lat = lat0 + j * dlat;
+            for (let i = 0; i < nx; i++) {
+                const lon = lon0 + i * dlon;
+                let wsum = 0, usum = 0, vsum = 0;
+                for (const s of samples) {
+                    const d = greatCircleDistanceDeg(lat, lon, s.lat, s.lon);
+                    // Clamp very-small distance so exact hits don't divide by 0.
+                    const dd = Math.max(d, 0.01);
+                    const w = 1 / Math.pow(dd, POWER);
+                    wsum += w; usum += w * s.u; vsum += w * s.v;
+                }
+                const idx = j * nx + i;
+                u[idx] = wsum > 0 ? Math.round((usum / wsum) * 100) / 100 : 0;
+                v[idx] = wsum > 0 ? Math.round((vsum / wsum) * 100) / 100 : 0;
+            }
+        }
+
+        this._applyWindJSON({
+            nx, ny, lon0, lat0, dlon, dlat,
+            u, v,
+            source: sourceLabel,
+            level: `${Math.round(this.windAltFt)}ft`,
+        });
+        // Non-GFS sources don't persist to FileManager; recompute on load
+        this._windFileIds = [];
+    }
+
+    _buildUniformGrid(u, v, sourceLabel) {
+        const nx = 72, ny = 37;
+        const dlon = 5, dlat = -5;
+        const lon0 = 0, lat0 = 90;
+        const n = nx * ny;
+        const uArr = new Array(n).fill(Math.round(u * 100) / 100);
+        const vArr = new Array(n).fill(Math.round(v * 100) / 100);
+
+        this._applyWindJSON({
+            nx, ny, lon0, lat0, dlon, dlat,
+            u: uArr, v: vArr,
+            source: sourceLabel,
+            level: `${Math.round(this.windAltFt)}ft`,
+        });
+        this._windFileIds = [];
+    }
+
+    // ── Sample wind at a specific (lat,lon,altMeters) per-source ────
+    // Returns {u,v} in m/s, or null. Used to drive target/local winds.
+    async sampleAtLLA(lat, lon, altM) {
+        if (this.source === "gfs") {
+            return await this._sampleGFSAtLLA(lat, lon, altM);
+        }
+        if (this.source === "uwyo"
+            || this.source === "igra2"
+            || this.source === "manual-soundings") {
+            return this._sampleSoundingsAtLLA(lat, lon, altM, this.source);
+        }
+        if (this.source === "openmeteo") {
+            try { return await this._cachedOpenMeteo(lat, lon, altM); }
+            catch (e) { console.warn("openmeteo sample:", e.message); return null; }
+        }
+        if (this.source === "manual") {
+            // Manual is authoritative in the wind nodes themselves — no-op.
+            return null;
+        }
+        return null;
+    }
+
+    async _sampleGFSAtLLA(lat, lon, altM) {
+        const altFt = altM / 0.3048;
+        const {lo, hi, t} = bracketingLevels(altFt);
+        const dateNow = GlobalDateTimeNode?.dateNow ?? new Date();
+        const dateStr = dateNow.toISOString().slice(0, 10).replace(/-/g, "");
+        const hour = Math.floor(dateNow.getUTCHours() / 6) * 6;
+
+        const jsonLo = await this._fetchLevel(lo.level, dateStr, hour);
+        const jsonHi = lo.level === hi.level
+            ? jsonLo
+            : await this._fetchLevel(hi.level, dateStr, hour);
+        const sLo = sampleJSONGrid(jsonLo, lat, lon);
+        const sHi = sampleJSONGrid(jsonHi, lat, lon);
+        return {u: (1 - t) * sLo.u + t * sHi.u, v: (1 - t) * sLo.v + t * sHi.v};
+    }
+
+    _sampleSoundingsAtLLA(lat, lon, altM, sourceKey) {
+        const {profiles} = this._resolveSoundingProfiles(sourceKey);
+        if (profiles.length === 0) return null;
+
+        const POWER = 2;
+        let wsum = 0, usum = 0, vsum = 0;
+        for (const p of profiles) {
+            if (p.stationLat == null || p.stationLon == null) continue;
+            const data = p.getAtAltitude(altM);
+            if (!data || data.windDir == null || data.windSpeed == null) continue;
+            const uv = fromDirSpeedToUV(data.windDir, data.windSpeed);
+            const d = greatCircleDistanceDeg(lat, lon, p.stationLat, p.stationLon);
+            if (d < 0.01) return uv;
+            const w = 1 / Math.pow(d, POWER);
+            wsum += w; usum += w * uv.u; vsum += w * uv.v;
+        }
+        if (wsum === 0) return null;
+        return {u: usum / wsum, v: vsum / wsum};
+    }
+
+    // ── Drive target/local wind nodes from the active source ────────
+    //
+    // `recalculateCascade()` can trigger downstream nodes that eventually
+    // call back into the wind field (e.g., altitude slider listeners).
+    // The `_propagating` guard prevents re-entrant propagation loops.
+    async propagateToWindNodes() {
+        if (this.source === "manual") return; // Manual is user-driven
+        if (this._propagating) return;
+        this._propagating = true;
+        try {
+            const positions = this._windNodePositions();
+            for (const pt of positions) {
+                const uv = await this.sampleAtLLA(pt.lat, pt.lon, pt.altM);
+                if (!uv) continue;
+                const {from, knots} = fromUVToDirKnots(uv.u, uv.v);
+                const node = NodeMan.get(pt.id);
+                node.from = Math.round(from);
+                node.knots = Math.round(knots);
+                if (node.guiFrom) node.guiFrom.updateDisplay();
+                if (node.guiKnots) node.guiKnots.updateDisplay();
+                node.recalculateCascade();
+                console.log(`Propagated ${pt.id} @ ${pt.altM.toFixed(0)}m → from ${node.from}° at ${node.knots} kn`);
+            }
         } finally {
-            this.fetching = false;
+            this._propagating = false;
         }
     }
 
@@ -447,21 +789,38 @@ export class CNodeDisplayWindField extends CNode3DGroup {
     }
 
     modSerialize() {
-        if (this._lastWindJSON && (!this._windFileIds || this._windFileIds.length === 0)) {
+        // Only GFS writes files we can rehydrate from. Other sources are
+        // recomputed on load (see modDeserialize), so skip the _storeWindFile
+        // path for them — it would tag the file with the wrong source and
+        // confuse a later GFS activation.
+        if (this.source === "gfs"
+            && this._lastWindJSON
+            && (!this._windFileIds || this._windFileIds.length === 0)) {
             this._storeWindFile();
         }
 
         return {
             ...super.modSerialize(),
+            source: this.source,
             windAltFt: this.windAltFt,
             windLevel: this.windLevel,
-            windFileIds: this._windFileIds ?? [],
-            hasWindData: !!this._lastWindJSON,
+            windFileIds: this.source === "gfs" ? (this._windFileIds ?? []) : [],
+            hasWindData: this.source === "gfs" && !!this._lastWindJSON,
         };
     }
 
     async modDeserialize(v) {
         super.modDeserialize(v);
+
+        this.source = v.source ?? "gfs";
+        this.windAltFt = v.windAltFt ?? 33;
+
+        // Non-GFS sources are recomputed on demand — caller re-activates
+        // via the GUI. Just restore state here; no files to reload.
+        if (this.source !== "gfs") {
+            this.windLevel = v.windLevel ?? `${Math.round(this.windAltFt)}ft`;
+            return;
+        }
 
         const fileIds = v.windFileIds ?? [];
         // Backward compat: old single-file format
@@ -478,7 +837,11 @@ export class CNodeDisplayWindField extends CNode3DGroup {
         }
         if (jsons.length === 0) return;
 
-        this.windAltFt = v.windAltFt ?? 33;
+        // Sort the two-file blend by ascending altitude so
+        // jsons[0] = lo, jsons[1] = hi — matches bracketingLevels().
+        if (jsons.length > 1) {
+            jsons.sort((a, b) => levelToAltFeet(a.level) - levelToAltFeet(b.level));
+        }
 
         if (jsons.length === 1) {
             this._applyWindJSON(jsons[0]);
@@ -494,7 +857,7 @@ export class CNodeDisplayWindField extends CNode3DGroup {
         }
 
         this.windLevel = v.windLevel ?? "surface";
-        this.renderAltitude = Math.max(500, this.windAltFt * 0.3048 * 0.3);
+        this.renderAltitude = Math.max(50, this.windAltFt * 0.3048);
         this._windFileIds = fileIds;
 
         this.rebuildStreamlines();
@@ -537,6 +900,154 @@ export class CNodeDisplayWindField extends CNode3DGroup {
     }
 }
 
+
+// ═══════════════════════════════════════════════════════════════════
+//  Wind-sample helpers (shared across sources)
+// ═══════════════════════════════════════════════════════════════════
+
+// Bilinear sample of a GFS-style grid JSON at (lat,lon). Returns {u,v} in m/s.
+export function sampleJSONGrid(json, lat, lon) {
+    lon = ((lon % 360) + 360) % 360;
+    lat = Math.max(-90, Math.min(90, lat));
+
+    const fi = (lon - json.lon0) / json.dlon;
+    const fj = (lat - json.lat0) / json.dlat;
+
+    let i0 = Math.floor(fi);
+    let j0 = Math.floor(fj);
+    const si = fi - i0;
+    const sj = fj - j0;
+
+    i0 = ((i0 % json.nx) + json.nx) % json.nx;
+    const i1 = (i0 + 1) % json.nx;
+    j0 = Math.max(0, Math.min(j0, json.ny - 2));
+    const j1 = j0 + 1;
+
+    const w00 = (1 - si) * (1 - sj);
+    const w10 = si * (1 - sj);
+    const w01 = (1 - si) * sj;
+    const w11 = si * sj;
+
+    const a = j0 * json.nx + i0;
+    const b = j0 * json.nx + i1;
+    const c = j1 * json.nx + i0;
+    const d = j1 * json.nx + i1;
+    return {
+        u: w00 * json.u[a] + w10 * json.u[b] + w01 * json.u[c] + w11 * json.u[d],
+        v: w00 * json.v[a] + w10 * json.v[b] + w01 * json.v[c] + w11 * json.v[d],
+    };
+}
+
+// Meteorological (from-direction, speed-in-knots) → (u,v) in m/s.
+// u = east, v = north (same convention as GFS grids).
+export function fromDirSpeedKnotsToUV(fromDeg, knots) {
+    return fromDirSpeedToUV(fromDeg, metersPerSecondFromKnots(knots));
+}
+
+// Meteorological (from-direction, speed-in-m/s) → (u,v).
+export function fromDirSpeedToUV(fromDeg, speedMS) {
+    // Wind is going TO (from + 180°). u east-component, v north-component.
+    const toRad = (fromDeg + 180) * Math.PI / 180;
+    return {
+        u: speedMS * Math.sin(toRad),
+        v: speedMS * Math.cos(toRad),
+    };
+}
+
+// (u,v) in m/s → {from in deg, knots}.
+export function fromUVToDirKnots(u, v) {
+    const speedMS = Math.sqrt(u * u + v * v);
+    const toDeg = Math.atan2(u, v) * 180 / Math.PI; // heading wind is going TO
+    let from = (toDeg + 180) % 360;
+    if (from < 0) from += 360;
+    return {from, knots: knotsFromMetersPerSecond(speedMS)};
+}
+
+// Approximate great-circle distance on a unit sphere, in degrees (cheap).
+export function greatCircleDistanceDeg(lat1, lon1, lat2, lon2) {
+    const D = Math.PI / 180;
+    const sLat = Math.sin((lat2 - lat1) * D / 2);
+    const sLon = Math.sin((lon2 - lon1) * D / 2);
+    const a = sLat * sLat + Math.cos(lat1 * D) * Math.cos(lat2 * D) * sLon * sLon;
+    return 2 * Math.asin(Math.min(1, Math.sqrt(a))) * 180 / Math.PI;
+}
+
+// ── Open-Meteo wind fetch at (lat,lon,altM) → {u,v} in m/s ──
+const _openMeteoPressureLevels = [1000, 975, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100, 70, 50, 30];
+const _openMeteoApproxAlt = {
+    1000: 100, 975: 300, 950: 500, 925: 750, 900: 1000,
+    850: 1500, 800: 2000, 700: 3000, 600: 4200, 500: 5500,
+    400: 7200, 300: 9200, 250: 10400, 200: 11800, 150: 13600,
+    100: 16200, 70: 18500, 50: 20600, 30: 23800,
+};
+export async function fetchOpenMeteoUV(lat, lon, altM) {
+    // Select a small subset of pressure levels bracketing altM.
+    // Pressure levels are sorted by ascending altitude; pick the first whose
+    // approx altitude meets/exceeds altM, else the last.
+    let upper = _openMeteoPressureLevels.findIndex(l => _openMeteoApproxAlt[l] >= altM);
+    if (upper < 0) upper = _openMeteoPressureLevels.length - 1;
+    const lo = Math.max(0, upper - 1);
+    const hi = Math.min(_openMeteoPressureLevels.length - 1, upper + 1);
+    const levels = _openMeteoPressureLevels.slice(lo, hi + 1);
+
+    const dateNow = GlobalDateTimeNode?.dateNow ?? new Date();
+    const dateStr = dateNow.toISOString().slice(0, 10);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const isHistorical = dateNow < today;
+    const baseUrl = isHistorical
+        ? "https://historical-forecast-api.open-meteo.com/v1/forecast"
+        : "https://api.open-meteo.com/v1/forecast";
+    const wsVars = levels.map(l => `wind_speed_${l}hPa`).join(",");
+    const wdVars = levels.map(l => `wind_direction_${l}hPa`).join(",");
+    const ghVars = levels.map(l => `geopotential_height_${l}hPa`).join(",");
+    const url = `${baseUrl}?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}`
+        + `&hourly=${wsVars},${wdVars},${ghVars}`
+        + `&wind_speed_unit=ms&start_date=${dateStr}&end_date=${dateStr}`;
+
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 30000);
+    let data;
+    try {
+        const resp = await fetch(url, {signal: ctrl.signal});
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        data = await resp.json();
+    } finally { clearTimeout(to); }
+
+    const hourIndex = dateNow.getUTCHours();
+    const valid = [];
+    for (const l of levels) {
+        const h = data.hourly?.[`geopotential_height_${l}hPa`]?.[hourIndex];
+        const s = data.hourly?.[`wind_speed_${l}hPa`]?.[hourIndex];
+        const d = data.hourly?.[`wind_direction_${l}hPa`]?.[hourIndex];
+        if (h == null || s == null || d == null) continue;
+        valid.push({h, s, d});
+    }
+    if (valid.length === 0) return null;
+    valid.sort((a, b) => a.h - b.h);
+
+    // Height-interpolate speed and (circular) direction
+    let hit;
+    if (altM <= valid[0].h) hit = valid[0];
+    else if (altM >= valid[valid.length - 1].h) hit = valid[valid.length - 1];
+    else {
+        for (let i = 0; i < valid.length - 1; i++) {
+            if (altM >= valid[i].h && altM <= valid[i + 1].h) {
+                const t = (altM - valid[i].h) / (valid[i + 1].h - valid[i].h);
+                const speed = valid[i].s + t * (valid[i + 1].s - valid[i].s);
+                // circular interp on direction
+                const aR = valid[i].d * Math.PI / 180, bR = valid[i + 1].d * Math.PI / 180;
+                const sV = Math.sin(aR) * (1 - t) + Math.sin(bR) * t;
+                const cV = Math.cos(aR) * (1 - t) + Math.cos(bR) * t;
+                let dir = Math.atan2(sV, cV) * 180 / Math.PI;
+                if (dir < 0) dir += 360;
+                hit = {s: speed, d: dir};
+                break;
+            }
+        }
+    }
+    if (!hit) return null;
+    return fromDirSpeedToUV(hit.d, hit.s); // speed already in m/s
+}
 
 // ═══════════════════════════════════════════════════════════════════
 //  GLSL Shaders
