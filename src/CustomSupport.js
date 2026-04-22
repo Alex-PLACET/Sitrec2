@@ -90,6 +90,7 @@ import {CNodeFloodSim} from "./nodes/CNodeFloodSim";
 import {CNodeOrbitTrack} from "./nodes/CNodeOrbitTrack";
 import {CNodeTrackSwitch} from "./nodes/CNodeTrackSwitch";
 import {getNearbyWeatherBalloons, importSoundingDialog} from "./SondeFetch";
+import {WIND_SOURCES, windSourceLabelsToKeys, windSourceByKey} from "./nodes/WindSources";
 import {getCurrentLanguage, setLanguage, SUPPORTED_LANGUAGE_OPTIONS, t} from "./i18n";
 import {CNodeSAPage} from "./nodes/CNodeSAPage";
 import {
@@ -764,37 +765,20 @@ export class CCustomManager {
         //     this.serializeButton.moveToFirst();
         // }
 
-        // Weather Balloons subfolder under Physics
+        // Sounding-loader state — folded into the Wind Data folder below.
+        // `balloonCount` name kept for backward compat with saved par state.
         par.balloonCount = 1;
-        par.balloonSource = "uwyo";
-        this._getNearbyBalloons = () => getNearbyWeatherBalloons(par.balloonCount, par.balloonSource);
         this._importSounding = importSoundingDialog;
-
-        const balloonFolder = addGUIFolder("weatherBalloons", "Weather Balloons", "physics");
-        balloonFolder.add(par, "balloonCount", 1, 10, 1).name(t("custom.balloons.count.label"))
-            .tooltip(t("custom.balloons.count.tooltip"));
-        balloonFolder.add(par, "balloonSource", ["uwyo", "igra2"]).name(t("custom.balloons.source.label"))
-            .tooltip(t("custom.balloons.source.tooltip"));
-        balloonFolder.add(this, "_getNearbyBalloons").name(t("custom.balloons.getNearby.label"))
-            .tooltip(t("custom.balloons.getNearby.tooltip"));
-        balloonFolder.add(this, "_importSounding").name(t("custom.balloons.importSounding.label"))
-            .tooltip(t("custom.balloons.importSounding.tooltip"));
 
         // ── Wind Visualization subfolder under Physics ──────────────
         this._windNode = null;
 
-        // Source labels ↔ internal source keys used by CNodeDisplayWindField.
-        // UWYO/IGRA2 auto-fetch nearby soundings if none of that source are
-        // loaded. Manual Soundings uses whatever the user has dropped in.
-        this._windSourceOptions = {
-            "GFS (NOAA)":       "gfs",
-            "UWYO Soundings":   "uwyo",
-            "IGRA2 Soundings":  "igra2",
-            "Manual Soundings": "manual-soundings",
-            "open-meteo":       "openmeteo",
-            "Manual":           "manual",
-        };
-        par.windSource = "Manual";
+        // Source labels ↔ internal source keys — single source of truth in
+        // src/nodes/WindSources.js. UWYO/IGRA2 auto-fetch nearby soundings
+        // if none of that source are loaded; Manual Soundings uses whatever
+        // the user has dropped in.
+        this._windSourceOptions = windSourceLabelsToKeys();
+        par.windSource = windSourceByKey("manual").label;
         par.windAltFt = 33;       // default = surface (~10m) — display altitude
         par.windStatus = "Not loaded";
         par.windOpacity = 0.9;
@@ -822,34 +806,35 @@ export class CCustomManager {
 
         const windFolder = addGUIFolder("wind", "Wind Data", "physics");
 
-        // UWYO/IGRA2 auto-load: if no profiles of the selected source exist,
-        // fetch `par.balloonCount` nearest soundings. Manual Soundings skips
-        // this — the user supplies the data. GFS/open-meteo/Manual: no-op.
-        // Returns true on success, false on fatal failure (caller surfaces
-        // the real reason instead of the misleading "No profiles loaded").
+        // Auto-load nearby soundings when a source declares autoLoad and no
+        // matching profiles exist yet. Returns true on success, false on
+        // fatal failure (caller surfaces the real reason instead of a
+        // misleading "No profiles loaded" later).
         this._ensureSoundingsForWind = async (sourceKey) => {
-            if (sourceKey !== "uwyo" && sourceKey !== "igra2") return true;
+            const src = windSourceByKey(sourceKey);
+            const autoKey = src?.autoLoad;
+            if (!autoKey) return true;
             let have = false;
             NodeMan.iterate((id, n) => {
                 if (n && n.constructor?.name === "CNodeAtmosphericProfile"
-                    && n.source === sourceKey) have = true;
+                    && n.source === autoKey) have = true;
             });
             if (have) return true;
-            par.windStatus = `Loading ${sourceKey.toUpperCase()} soundings...`;
+            par.windStatus = `Loading ${src.short} soundings...`;
             try {
-                const results = await getNearbyWeatherBalloons(par.balloonCount, sourceKey);
+                const results = await getNearbyWeatherBalloons(par.balloonCount, autoKey);
                 const ok = Array.isArray(results) && results.some(r => r && r.success);
                 if (!ok) {
                     const firstErr = Array.isArray(results)
                         ? (results.find(r => r && r.error)?.error ?? "no soundings returned")
                         : "no soundings returned";
-                    par.windStatus = `${sourceKey.toUpperCase()} fetch failed: ${firstErr}`;
+                    par.windStatus = `${src.short} fetch failed: ${firstErr}`;
                     return false;
                 }
                 return true;
             } catch (e) {
-                console.error(`${sourceKey} auto-fetch threw:`, e);
-                par.windStatus = `${sourceKey.toUpperCase()} fetch failed: ${e.message}`;
+                console.error(`${autoKey} auto-fetch threw:`, e);
+                par.windStatus = `${src.short} fetch failed: ${e.message}`;
                 return false;
             }
         };
@@ -945,6 +930,14 @@ export class CCustomManager {
             par.windStatus = this._windNode.statusText;
         };
         windFolder.add({refresh}, "refresh").name("Refresh Wind Data");
+
+        // ── Sounding-loader controls (used by UWYO/IGRA2 sources) ──
+        // `balloonCount` drives how many nearby soundings auto-load. Manual
+        // Soundings ignores this; GFS/open-meteo/Manual don't use soundings.
+        windFolder.add(par, "balloonCount", 1, 10, 1).name("Sounding Count")
+            .tooltip(t("custom.balloons.count.tooltip"));
+        windFolder.add(this, "_importSounding").name(t("custom.balloons.importSounding.label"))
+            .tooltip(t("custom.balloons.importSounding.tooltip"));
         // ── end Wind ────────────────────────────────────────────────
 
         // ── SA Page — checkbox under Show/Hide > Views ─────────

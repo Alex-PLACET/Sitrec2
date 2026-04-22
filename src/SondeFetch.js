@@ -515,6 +515,10 @@ export async function getNearbyWeatherBalloons(count = 1, source = "uwyo") {
     return results;
 }
 
+// Semantic alias. The wind system treats these as soundings, not "balloons".
+// Keep both exports — the old name is part of the CSitrecAPI allowlist.
+export const getNearbySoundings = getNearbyWeatherBalloons;
+
 /**
  * Import Sounding dialog — station picker + date/hour, fetches from UWYO,
  * and imports into the current sitch as a track.

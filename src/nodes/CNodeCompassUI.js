@@ -7,15 +7,10 @@ import {Globals, NodeMan} from "../Globals";
 import {Vector3} from "three";
 import {arModeManager} from "../ARMode";
 
+import {windSourceShortLabels} from "./WindSources";
+
 // Internal source key → short label shown under the compass.
-const WIND_SOURCE_LABELS = {
-    gfs: "GFS",
-    uwyo: "UWYO",
-    igra2: "IGRA2",
-    "manual-soundings": "Manual Soundings",
-    openmeteo: "open-meteo",
-    manual: "Manual",
-};
+const WIND_SOURCE_LABELS = windSourceShortLabels();
 
 export class   CNodeCompassUI extends CNodeViewUI {
 
