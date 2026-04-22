@@ -462,6 +462,27 @@ rsync -avz --delete -e ssh "$LOCAL_DIR/" "$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR"
 
 Ensure the five server directories exist on the production server with appropriate write permissions for `sitrec-cache` and `sitrec-upload`.
 
+### Production Server Requirements
+
+The Docker images (`Dockerfile`, `Dockerfile.dev`, `Dockerfile.release`) already include everything below. Bare-metal / non-Docker deploys must install it manually on the server.
+
+| Feature | Requirement |
+|---------|-------------|
+| PHP backend | `php-cli`, `php-xml`, `php-mbstring`, `php-curl`, `php-zip`, `composer` |
+| Wind visualization | `python3`, `pip3`, and the pip packages `eccodes` and `certifi` — `sitrecServer/windProxy.php` shells out to `tools/fetch_wind.py`, which parses GRIB2 with `eccodes`. Without these, every wind request returns HTTP 502. |
+| Wind cache dir | `data/wind/` writable by the web-server user (auto-created on first request if the parent is writable). |
+
+One-time setup on a fresh Ubuntu / Debian server (run as root or with `sudo`):
+
+```bash
+apt-get update
+apt-get install -y php-cli php-xml php-mbstring php-curl php-zip composer \
+                   python3 python3-pip
+pip3 install --no-cache-dir --break-system-packages eccodes certifi
+```
+
+`--break-system-packages` is a no-op on Ubuntu ≤ 22.04 and required on Debian 12+ / Ubuntu 24.04+ (PEP 668).
+
 ---
 
 ## Code Overview
