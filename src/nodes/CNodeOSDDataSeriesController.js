@@ -326,7 +326,24 @@ export class CNodeOSDDataSeriesController extends CNode {
         return data;
     }
 
-    resolveAxisData(storedValue, frameMin, frameMax) {
+    getTrackInterpolatedData(trackIndex, frameMin = 0, frameMax = Sit.frames - 1) {
+        const track = this.tracks[trackIndex];
+        if (!track) return [];
+        if (!this._isNumericSeries(track)) {
+            return this.getTrackNumericData(trackIndex, frameMin, frameMax);
+        }
+        const arr = this._buildExpandedArray(track);
+        const data = [];
+        for (let f = frameMin; f <= frameMax; f++) {
+            const v = arr[f];
+            if (v !== null && v !== undefined && !isNaN(v)) {
+                data.push({ frame: f, value: v });
+            }
+        }
+        return data;
+    }
+
+    resolveAxisData(storedValue, frameMin, frameMax, interpolated = true) {
         if (storedValue === "None") return null;
         if (storedValue === "Frame" || storedValue === "FrameAB") {
             const data = [];
@@ -335,7 +352,9 @@ export class CNodeOSDDataSeriesController extends CNode {
         }
         if (storedValue.startsWith("OSD")) {
             const idx = parseInt(storedValue.substring(3), 10) - 1;
-            return this.getTrackNumericData(idx, frameMin, frameMax);
+            return interpolated
+                ? this.getTrackInterpolatedData(idx, frameMin, frameMax)
+                : this.getTrackNumericData(idx, frameMin, frameMax);
         }
         return null;
     }
@@ -369,8 +388,8 @@ export class CNodeOSDDataSeriesController extends CNode {
         const xData = this.resolveAxisData(xStored, frameMin, frameMax);
         const series = [];
 
-        const buildSeries = (yStored, label, yAxis) => {
-            const yData = this.resolveAxisData(yStored, frameMin, frameMax);
+        const buildSeries = (yStored, label, yAxis, interpolated) => {
+            const yData = this.resolveAxisData(yStored, frameMin, frameMax, interpolated);
             if (!yData || yData.length === 0) return;
 
             const points = [];
@@ -390,7 +409,7 @@ export class CNodeOSDDataSeriesController extends CNode {
                     points.push({ x: d.frame, y: d.value, frame: d.frame });
                 }
             }
-            series.push({ data: points, label: label, yAxis: yAxis });
+            series.push({ data: points, label: label, yAxis: yAxis, raw: !interpolated });
         };
 
         const getLabel = (stored) => {
@@ -402,8 +421,18 @@ export class CNodeOSDDataSeriesController extends CNode {
             return stored;
         };
 
-        if (y1Stored !== "None") buildSeries(y1Stored, getLabel(y1Stored), 1);
-        if (y2Stored !== "None") buildSeries(y2Stored, getLabel(y2Stored), 2);
+        // For OSD-backed series, emit both an interpolated (blue) and a raw-keyframes (dashed red) variant.
+        // Non-OSD selections (Frame, FrameAB) only get the single series.
+        const emitPair = (yStored, yAxis) => {
+            if (yStored === "None") return;
+            buildSeries(yStored, getLabel(yStored), yAxis, true);
+            if (yStored.startsWith("OSD")) {
+                buildSeries(yStored, getLabel(yStored), yAxis, false);
+            }
+        };
+
+        emitPair(y1Stored, 1);
+        emitPair(y2Stored, 2);
 
         this.graphView.xLabel = xData ? getLabel(xStored) : "Frame";
         this.graphView.isFrameX = (xStored === "None" || xStored === "Frame" || xStored === "FrameAB");

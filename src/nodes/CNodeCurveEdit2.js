@@ -1095,7 +1095,10 @@ export class CNodeOSDGraphView extends CNodeCurveEditorView2 {
     }
 
     onMouseDown(e) {
-        if (this.isFrameX) return;
+        if (this.isFrameX) {
+            super.onMouseDown(e);
+            return;
+        }
         const crosshair = this.getCrosshairScreenPos();
         const rect = this.canvas.getBoundingClientRect();
         const mx = e.clientX - rect.left;
@@ -1339,6 +1342,7 @@ export class CNodeOSDGraphView extends CNodeCurveEditorView2 {
         const y1Labels = [];
         const y2Labels = [];
         for (const s of this.series) {
+            if (s.raw) continue;
             if (s.yAxis === 2) y2Labels.push(s.label);
             else y1Labels.push(s.label);
         }
@@ -1360,23 +1364,47 @@ export class CNodeOSDGraphView extends CNodeCurveEditorView2 {
             const isY2 = s.yAxis === 2;
             const sMinY = isY2 ? this.minY2 : this.minY;
             const sMaxY = isY2 ? this.maxY2 : this.maxY;
-            const color = SERIES_COLORS[si % SERIES_COLORS.length];
+            const mainColor = isY2 ? SERIES_COLORS[1] : SERIES_COLORS[0];
+            const rawStroke = 'rgba(255, 0, 0, 0.5)';
 
             if (this.isFrameX) {
-                ctx.strokeStyle = color;
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                let started = false;
-                for (const pt of s.data) {
-                    const screen = this.graphToScreenAxis(pt.x, pt.y, sMinY, sMaxY);
-                    if (!started) { ctx.moveTo(screen.x, screen.y); started = true; }
-                    else ctx.lineTo(screen.x, screen.y);
+                if (s.raw) {
+                    ctx.strokeStyle = rawStroke;
+                    ctx.lineWidth = 1;
+                    ctx.setLineDash([5, 5]);
+                    ctx.beginPath();
+                    let prev = null;
+                    for (const pt of s.data) {
+                        const screen = this.graphToScreenAxis(pt.x, pt.y, sMinY, sMaxY);
+                        if (prev === null) {
+                            ctx.moveTo(screen.x, screen.y);
+                        } else {
+                            ctx.lineTo(screen.x, prev.y);
+                            ctx.lineTo(screen.x, screen.y);
+                        }
+                        prev = screen;
+                    }
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                } else {
+                    ctx.strokeStyle = mainColor;
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([]);
+                    ctx.beginPath();
+                    let started = false;
+                    for (const pt of s.data) {
+                        const screen = this.graphToScreenAxis(pt.x, pt.y, sMinY, sMaxY);
+                        if (!started) { ctx.moveTo(screen.x, screen.y); started = true; }
+                        else ctx.lineTo(screen.x, screen.y);
+                    }
+                    ctx.stroke();
                 }
-                ctx.stroke();
             } else {
-                ctx.fillStyle = color;
-                ctx.strokeStyle = color;
+                const stroke = s.raw ? rawStroke : mainColor;
+                ctx.fillStyle = stroke;
+                ctx.strokeStyle = stroke;
                 ctx.lineWidth = 1;
+                if (s.raw) ctx.setLineDash([5, 5]);
                 ctx.beginPath();
                 let prev = null;
                 for (const pt of s.data) {
@@ -1388,11 +1416,14 @@ export class CNodeOSDGraphView extends CNodeCurveEditorView2 {
                     prev = screen;
                 }
                 ctx.stroke();
-                for (const pt of s.data) {
-                    const screen = this.graphToScreenAxis(pt.x, pt.y, sMinY, sMaxY);
-                    ctx.beginPath();
-                    ctx.arc(screen.x, screen.y, 3, 0, Math.PI * 2);
-                    ctx.fill();
+                ctx.setLineDash([]);
+                if (!s.raw) {
+                    for (const pt of s.data) {
+                        const screen = this.graphToScreenAxis(pt.x, pt.y, sMinY, sMaxY);
+                        ctx.beginPath();
+                        ctx.arc(screen.x, screen.y, 3, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
                 }
             }
         }
@@ -1411,6 +1442,7 @@ export class CNodeOSDGraphView extends CNodeCurveEditorView2 {
                 // Draw horizontal crosshair lines and dots at interpolated Y values
                 for (let si = 0; si < this.series.length; si++) {
                     const s = this.series[si];
+                    if (s.raw) continue;
                     const interp = this.interpolateSeriesAtFrame(s, currentFrame);
                     if (!interp) continue;
                     const isY2 = s.yAxis === 2;
@@ -1425,7 +1457,7 @@ export class CNodeOSDGraphView extends CNodeCurveEditorView2 {
                     ctx.lineTo(margin + graphWidth, yScreen.y);
                     ctx.stroke();
                     ctx.setLineDash([]);
-                    const color = SERIES_COLORS[si % SERIES_COLORS.length];
+                    const color = isY2 ? SERIES_COLORS[1] : SERIES_COLORS[0];
                     ctx.fillStyle = color;
                     ctx.beginPath();
                     ctx.arc(frameScreen.x, yScreen.y, 5, 0, Math.PI * 2);
@@ -1434,6 +1466,7 @@ export class CNodeOSDGraphView extends CNodeCurveEditorView2 {
             }
         } else {
             for (const s of this.series) {
+                if (s.raw) continue;
                 const interp = this.interpolateSeriesAtFrame(s, currentFrame);
                 if (!interp) continue;
                 const isY2 = s.yAxis === 2;
