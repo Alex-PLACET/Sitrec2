@@ -297,7 +297,22 @@ export class CNodeDisplayWindField extends CNode3DGroup {
         if (this._levelCache[cacheKey]) return this._levelCache[cacheKey];
 
         const url = `sitrecServer/windProxy.php?date=${dateStr}&hour=${hour}&level=${level}`;
-        const resp = await fetch(url);
+        // The proxy shells out to fetch_wind.py which pulls a GRIB2 slice from
+        // NOMADS/AWS — can take 10–20s on a cold cache. 60s covers the worst
+        // case without letting a stalled proxy hang the UI indefinitely.
+        const ctrl = new AbortController();
+        const to = setTimeout(() => ctrl.abort(), 60000);
+        let resp;
+        try {
+            resp = await fetch(url, {signal: ctrl.signal});
+        } catch (e) {
+            if (e.name === "AbortError") {
+                throw new Error(`Timeout fetching ${level} (60s)`);
+            }
+            throw e;
+        } finally {
+            clearTimeout(to);
+        }
         if (!resp.ok) throw new Error(`HTTP ${resp.status} for level ${level}`);
         const json = await resp.json();
         if (json.error) throw new Error(json.error);
@@ -821,10 +836,23 @@ export class CNodeDisplayWindField extends CNode3DGroup {
         this.source = v.source ?? "gfs";
         this.windAltFt = v.windAltFt ?? 33;
 
-        // Non-GFS sources are recomputed on demand — caller re-activates
-        // via the GUI. Just restore state here; no files to reload.
+        // Non-GFS sources don't persist grids — they're recomputed on demand.
+        // If the saved sitch had the wind field visible, re-fetch after the
+        // rest of the sitch finishes deserializing (dependent nodes like
+        // CNodeAtmosphericProfile / targetTrack may not exist yet at this
+        // point in the restore pass).
         if (this.source !== "gfs") {
             this.windLevel = v.windLevel ?? `${Math.round(this.windAltFt)}ft`;
+            if (this.visible) {
+                this.statusText = "Reloading...";
+                setTimeout(() => {
+                    this.fetchWindForAltitude(this.windAltFt).catch(err => {
+                        console.warn("Non-GFS wind reload failed:", err);
+                    });
+                }, 0);
+            } else {
+                this.statusText = "Not loaded";
+            }
             return;
         }
 
