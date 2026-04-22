@@ -315,15 +315,18 @@ export class CNodeDisplayWindField extends CNode3DGroup {
     async fetchWindForAltitude(altFt) {
         altFt = altFt ?? this.windAltFt;
 
-        // Coalesce rapid slider drags: if a fetch is in flight, record the
-        // latest requested altitude and let the in-flight fetch pick it up
-        // when it finishes. This avoids dropping the final slider value.
+        // Coalesce rapid changes: if a fetch is in flight, record the latest
+        // desired (altitude, source) and let the in-flight fetch pick it up
+        // when it finishes. Tracking source as well as altitude means a
+        // dropdown change during a fetch isn't silently dropped.
         if (this.fetching) {
             this._pendingAltFt = altFt;
+            this._pendingSource = this.source;
             return;
         }
         this.fetching = true;
         this.windAltFt = altFt;
+        const ranSource = this.source;
 
         try {
             if (this.source === "gfs") {
@@ -355,13 +358,16 @@ export class CNodeDisplayWindField extends CNode3DGroup {
             this.fetching = false;
         }
 
-        // If the slider moved during the fetch, re-run for the latest altitude.
-        if (this._pendingAltFt != null && this._pendingAltFt !== altFt) {
-            const next = this._pendingAltFt;
-            this._pendingAltFt = null;
-            await this.fetchWindForAltitude(next);
-        } else {
-            this._pendingAltFt = null;
+        // Re-run if the slider moved or the source changed during the fetch.
+        const pendingAlt = this._pendingAltFt;
+        const pendingSource = this._pendingSource;
+        this._pendingAltFt = null;
+        this._pendingSource = null;
+        const altChanged = pendingAlt != null && pendingAlt !== altFt;
+        const sourceChanged = pendingSource != null && pendingSource !== ranSource;
+        if (altChanged || sourceChanged) {
+            if (sourceChanged) this.source = pendingSource;
+            await this.fetchWindForAltitude(pendingAlt ?? altFt);
         }
     }
 

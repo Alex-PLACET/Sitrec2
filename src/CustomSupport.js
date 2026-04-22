@@ -797,26 +797,61 @@ export class CCustomManager {
         par.windSource = "Manual";
         par.windAltFt = 33;       // default = surface (~10m) — display altitude
         par.windStatus = "Not loaded";
-        par.windShow = false;
         par.windOpacity = 0.9;
         par.windSpacing = 1.5;
         par.windMaxSpeed = 30;
+
+        // windShow is a live alias for this._windNode.visible so the Wind Data
+        // folder checkbox and the Show/Hide "Wind Field" checkbox stay in sync.
+        // Backing field covers the pre-creation state (node hasn't been made
+        // yet); once the node exists, the node is the single source of truth.
+        this._windShowBacking = false;
+        Object.defineProperty(par, "windShow", {
+            configurable: true,
+            enumerable: true,
+            get: () => this._windNode ? !!this._windNode.visible : this._windShowBacking,
+            set: (v) => {
+                this._windShowBacking = !!v;
+                if (this._windNode) {
+                    this._windNode.visible = !!v;
+                    this._windNode.group.visible = !!v;
+                    setRenderOne(true);
+                }
+            },
+        });
 
         const windFolder = addGUIFolder("wind", "Wind Data", "physics");
 
         // UWYO/IGRA2 auto-load: if no profiles of the selected source exist,
         // fetch `par.balloonCount` nearest soundings. Manual Soundings skips
         // this — the user supplies the data. GFS/open-meteo/Manual: no-op.
+        // Returns true on success, false on fatal failure (caller surfaces
+        // the real reason instead of the misleading "No profiles loaded").
         this._ensureSoundingsForWind = async (sourceKey) => {
-            if (sourceKey !== "uwyo" && sourceKey !== "igra2") return;
+            if (sourceKey !== "uwyo" && sourceKey !== "igra2") return true;
             let have = false;
             NodeMan.iterate((id, n) => {
                 if (n && n.constructor?.name === "CNodeAtmosphericProfile"
                     && n.source === sourceKey) have = true;
             });
-            if (have) return;
+            if (have) return true;
             par.windStatus = `Loading ${sourceKey.toUpperCase()} soundings...`;
-            await getNearbyWeatherBalloons(par.balloonCount, sourceKey);
+            try {
+                const results = await getNearbyWeatherBalloons(par.balloonCount, sourceKey);
+                const ok = Array.isArray(results) && results.some(r => r && r.success);
+                if (!ok) {
+                    const firstErr = Array.isArray(results)
+                        ? (results.find(r => r && r.error)?.error ?? "no soundings returned")
+                        : "no soundings returned";
+                    par.windStatus = `${sourceKey.toUpperCase()} fetch failed: ${firstErr}`;
+                    return false;
+                }
+                return true;
+            } catch (e) {
+                console.error(`${sourceKey} auto-fetch threw:`, e);
+                par.windStatus = `${sourceKey.toUpperCase()} fetch failed: ${e.message}`;
+                return false;
+            }
         };
 
         // Lazily create the wind node and load data for the current source.
@@ -824,6 +859,10 @@ export class CCustomManager {
         this._loadWindForCurrentSource = async () => {
             const sourceKey = this._windSourceOptions[par.windSource];
             if (!this._windNode) {
+                // Capture the pre-creation show state; par.windShow is a
+                // getter that will delegate to the node once it exists, so
+                // we need the backing field here, not par.windShow.
+                const initiallyVisible = this._windShowBacking;
                 this._windNode = NodeFactory.create("DisplayWindField", {
                     id: "windField",
                     source: sourceKey,
@@ -832,13 +871,13 @@ export class CCustomManager {
                     seedSpacing: par.windSpacing,
                     maxWindSpeed: par.windMaxSpeed,
                 });
-                // Stay hidden until the user toggles Show Wind on.
-                this._windNode.visible = par.windShow;
-                this._windNode.group.visible = par.windShow;
+                this._windNode.visible = initiallyVisible;
+                this._windNode.group.visible = initiallyVisible;
             }
             this._windNode.source = sourceKey;
             par.windStatus = "Loading...";
-            await this._ensureSoundingsForWind(sourceKey);
+            const ok = await this._ensureSoundingsForWind(sourceKey);
+            if (!ok) return; // status already set with the real failure reason
             await this._windNode.fetchWindForAltitude(par.windAltFt);
             par.windStatus = this._windNode.statusText;
         };
@@ -858,15 +897,19 @@ export class CCustomManager {
         }).elastic(1000, 60000, true);
 
         // Show Wind checkbox — first toggle on creates the field and loads
-        // data; later toggles just flip visibility.
-        windFolder.add(par, "windShow").name("Show Wind").onChange(async (v) => {
+        // data; later toggles just flip visibility. `.listen()` keeps it in
+        // sync with the Show/Hide menu's "Wind Field" toggle (which also
+        // writes node.visible, and par.windShow is a getter for that).
+        windFolder.add(par, "windShow").name("Show Wind").listen().onChange(async (v) => {
             if (v && !this._windNode) {
                 await this._loadWindForCurrentSource();
-            }
-            if (this._windNode) {
-                this._windNode.visible = v;
-                this._windNode.group.visible = v;
-                setRenderOne(true);
+                // Setter on par.windShow already mirrored v to node.visible
+                // via _windShowBacking; re-sync now that node exists.
+                if (this._windNode) {
+                    this._windNode.visible = !!v;
+                    this._windNode.group.visible = !!v;
+                    setRenderOne(true);
+                }
             }
         });
 
