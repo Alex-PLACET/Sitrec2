@@ -784,12 +784,6 @@ export class CNodeDisplayWindField extends CNode3DGroup {
         }
     }
 
-    // Legacy single-level fetch (used by modDeserialize)
-    async fetchWindData(level) {
-        const ft = levelToAltFeet(level ?? "surface");
-        await this.fetchWindForAltitude(ft);
-    }
-
     // ── apply wind JSON and store for serialization ────────────────
     _applyWindJSON(json) {
         this.setGridParams(json.nx, json.ny, json.lon0, json.lat0, json.dlon, json.dlat);

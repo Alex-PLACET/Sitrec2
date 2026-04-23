@@ -882,14 +882,14 @@ export class CCustomManager {
         }).elastic(1000, 60000, true);
 
         // Show Wind checkbox — first toggle on creates the field and loads
-        // data; later toggles just flip visibility. `.listen()` keeps it in
-        // sync with the Show/Hide menu's "Wind Field" toggle (which also
-        // writes node.visible, and par.windShow is a getter for that).
+        // data; later toggles just flip visibility. If a previous load failed
+        // (node exists but empty), toggling back on retries the load instead
+        // of showing an invisible empty field forever. `.listen()` keeps it
+        // in sync with the Show/Hide menu's "Wind Field" toggle.
         windFolder.add(par, "windShow").name("Show Wind").listen().onChange(async (v) => {
-            if (v && !this._windNode) {
+            const needsLoad = v && (!this._windNode || !this._windNode.windU);
+            if (needsLoad) {
                 await this._loadWindForCurrentSource();
-                // Setter on par.windShow already mirrored v to node.visible
-                // via _windShowBacking; re-sync now that node exists.
                 if (this._windNode) {
                     this._windNode.visible = !!v;
                     this._windNode.group.visible = !!v;
