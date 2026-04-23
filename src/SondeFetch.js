@@ -438,18 +438,24 @@ export async function getNearbyWeatherBalloons(count = 1, source = "uwyo") {
         .map(s => ({ ...s, dist: haversineKm(camLat, camLon, s.lat, s.lon) }))
         .sort((a, b) => a.dist - b.dist);
 
-    const selected = sorted.slice(0, count);
+    // Walk the sorted list until we have `count` successful imports *with
+    // usable wind data*, or we hit the attempt cap. A successful fetch
+    // whose resulting profile has no wind levels is discarded and we keep
+    // going — e.g. the station had a launch at that date but the sensor
+    // failed, so the imported track is useless as a wind sample.
+    const maxAttempts = Math.min(sorted.length, count * 3);
     const results = [];
+    let successes = 0;
 
-    for (let idx = 0; idx < selected.length; idx++) {
+    for (let idx = 0; idx < maxAttempts && successes < count; idx++) {
         if (cancelledRef.cancelled) {
             console.log("Weather balloon import cancelled by user");
             break;
         }
 
-        const station = selected[idx];
+        const station = sorted[idx];
         const label = `${station.wmo} ${station.name} (${Math.round(station.dist)}km)`;
-        updateProgress({ status: `Fetching ${idx + 1}/${selected.length}: ${label}` });
+        updateProgress({ status: `Fetching ${successes + 1}/${count}: ${label}` });
 
         try {
             let filename;
@@ -492,8 +498,14 @@ export async function getNearbyWeatherBalloons(count = 1, source = "uwyo") {
                 await FileManager.parseResult(filename, new TextEncoder().encode(html).buffer);
             }
 
-            console.log(`Imported balloon: ${station.wmo} ${station.name} (${Math.round(station.dist)}km away)`);
-            results.push({ station: station.wmo, name: station.name, dist: Math.round(station.dist), filename, success: true });
+            if (profileHasUsableWind(station, filename)) {
+                console.log(`Imported balloon: ${station.wmo} ${station.name} (${Math.round(station.dist)}km away)`);
+                results.push({ station: station.wmo, name: station.name, dist: Math.round(station.dist), filename, success: true });
+                successes++;
+            } else {
+                console.warn(`Imported ${station.wmo} ${station.name} but it has no usable wind profile — trying next station`);
+                results.push({ station: station.wmo, name: station.name, success: false, error: "no usable wind data" });
+            }
         } catch (e) {
             if (e.message.includes("rate limit")) {
                 // Rate limit hit — wait and retry this station
@@ -511,8 +523,31 @@ export async function getNearbyWeatherBalloons(count = 1, source = "uwyo") {
         }
     }
 
+    if (successes < count) {
+        console.warn(`Sounding fetch: wanted ${count}, got ${successes} after ${results.length} attempts`);
+    }
+
     hideProgress();
     return results;
+}
+
+// After an import, check that a CNodeAtmosphericProfile exists for this
+// station and has at least a couple of wind levels. Filters out stations
+// that reported a launch but had no usable wind data (equipment failure,
+// truncated telemetry, etc).
+function profileHasUsableWind(station, filename) {
+    const wmo = station.wmo;
+    let found = null;
+    NodeMan.iterate((id, node) => {
+        if (!node || node.constructor?.name !== "CNodeAtmosphericProfile") return;
+        // Match by stationId prefix — UWYO uses the WMO number directly,
+        // IGRA2 encodes it inside a longer id (e.g. "USM00072451").
+        if (node.stationId && node.stationId.includes(wmo)) found = node;
+    });
+    if (!found) return false;
+    const windLevels = found.getWindProfile();
+    // At least 2 levels — single-level profiles can't be interpolated.
+    return windLevels.length >= 2;
 }
 
 // Semantic alias. The wind system treats these as soundings, not "balloons".

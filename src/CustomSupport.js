@@ -767,7 +767,8 @@ export class CCustomManager {
 
         // Sounding-loader state — folded into the Wind Data folder below.
         // `balloonCount` name kept for backward compat with saved par state.
-        par.balloonCount = 1;
+        // Default 3 so 3-nearest IDW has enough samples to be meaningful.
+        par.balloonCount = 3;
         this._importSounding = importSoundingDialog;
 
         // ── Wind Visualization subfolder under Physics ──────────────

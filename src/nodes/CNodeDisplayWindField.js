@@ -572,7 +572,12 @@ export class CNodeDisplayWindField extends CNode3DGroup {
         return uv;
     }
 
-    // ── Manual: uniform global field from targetWind ────────────────
+    // ── Manual: targetWind direction/speed anchored to target track(s) ──
+    // Like the sounding sources, Manual puts samples at the target/local
+    // track positions so the field fades with distance via coverage —
+    // a user-chosen wind is representative only near the object it applies
+    // to, not globally. Falls back to a uniform global field only if no
+    // target/local node exists.
     _fillFromManual(altFt) {
         const tw = NodeMan.get("targetWind", false);
         if (!tw) throw new Error("No targetWind node for Manual source");
@@ -581,7 +586,13 @@ export class CNodeDisplayWindField extends CNode3DGroup {
         }
 
         const {u, v} = fromDirSpeedKnotsToUV(tw.from, tw.knots);
-        this._buildUniformGrid(u, v, "Manual");
+        const points = this._windNodePositions();
+        if (points.length === 0) {
+            this._buildUniformGrid(u, v, "Manual");
+        } else {
+            const samples = points.map(pt => ({lat: pt.lat, lon: pt.lon, u, v}));
+            this._buildGridFromSamples(samples, "Manual");
+        }
         this.windLevel = `${Math.round(altFt)}ft`;
         const altLabel = altFt < 300 ? "Surface" : `${altFt.toLocaleString()} ft`;
         this.statusText = `Manual ${Math.round(tw.from)}° ${Math.round(tw.knots)} kn @ ${altLabel}`;
@@ -640,9 +651,11 @@ export class CNodeDisplayWindField extends CNode3DGroup {
     }
 
     // ── Build a coarse global grid from scattered (lat,lon,u,v) samples
-    // via inverse-distance weighting. Also produces a coverage field that
-    // fades with distance to the nearest sample — the shader uses it to
-    // dim streamlines in regions where the IDW extrapolation is unreliable.
+    // via inverse-distance weighting over the K=3 nearest samples (haversine
+    // distance). Using only the 3 closest samples per cell keeps the result
+    // locally representative instead of smearing every distant sample across
+    // the whole globe. Coverage = exp(-d_nearest / L) still drives shader
+    // opacity falloff for regions far from any sample.
     _buildGridFromSamples(samples, sourceLabel) {
         const nx = 72, ny = 37;           // 5° resolution
         const dlon = 5, dlat = -5;
@@ -652,21 +665,32 @@ export class CNodeDisplayWindField extends CNode3DGroup {
         const cov = new Array(nx * ny);
 
         const POWER = 2;
+        const K = Math.min(3, samples.length);
         const L = this.coverageLengthDeg;  // decay length scale (degrees)
+        // Per-cell distance buffer; reused across cells to avoid allocation.
+        const dists = new Array(samples.length);
         for (let j = 0; j < ny; j++) {
             const lat = lat0 + j * dlat;
             for (let i = 0; i < nx; i++) {
                 const lon = lon0 + i * dlon;
+                for (let k = 0; k < samples.length; k++) {
+                    dists[k] = {
+                        d: greatCircleDistanceDeg(lat, lon, samples[k].lat, samples[k].lon),
+                        s: samples[k],
+                    };
+                }
+                // Partial-sort would be fine but samples.length is small
+                // (typically 1-10), so full sort is clearer and cheap enough.
+                dists.sort((a, b) => a.d - b.d);
                 let wsum = 0, usum = 0, vsum = 0;
-                let dMin = Infinity;
-                for (const s of samples) {
-                    const d = greatCircleDistanceDeg(lat, lon, s.lat, s.lon);
-                    if (d < dMin) dMin = d;
+                for (let k = 0; k < K; k++) {
+                    const {d, s} = dists[k];
                     // Clamp very-small distance so exact hits don't divide by 0.
                     const dd = Math.max(d, 0.01);
                     const w = 1 / Math.pow(dd, POWER);
                     wsum += w; usum += w * s.u; vsum += w * s.v;
                 }
+                const dMin = dists[0].d;
                 const idx = j * nx + i;
                 u[idx] = wsum > 0 ? Math.round((usum / wsum) * 100) / 100 : 0;
                 v[idx] = wsum > 0 ? Math.round((vsum / wsum) * 100) / 100 : 0;
@@ -745,17 +769,30 @@ export class CNodeDisplayWindField extends CNode3DGroup {
         const {profiles} = this._resolveSoundingProfiles(sourceKey);
         if (profiles.length === 0) return null;
 
-        const POWER = 2;
-        let wsum = 0, usum = 0, vsum = 0;
+        // Build the same (lat,lon,u,v) sample list the grid builder uses,
+        // then 3-nearest IDW with haversine distance. Matches grid behavior
+        // so target/local wind values line up with the visualised field.
+        const items = [];
         for (const p of profiles) {
             if (p.stationLat == null || p.stationLon == null) continue;
             const data = p.getAtAltitude(altM);
             if (!data || data.windDir == null || data.windSpeed == null) continue;
             const uv = fromDirSpeedToUV(data.windDir, data.windSpeed);
             const d = greatCircleDistanceDeg(lat, lon, p.stationLat, p.stationLon);
-            if (d < 0.01) return uv;
-            const w = 1 / Math.pow(d, POWER);
-            wsum += w; usum += w * uv.u; vsum += w * uv.v;
+            if (d < 0.01) return uv; // Exact station hit — use directly.
+            items.push({d, u: uv.u, v: uv.v});
+        }
+        if (items.length === 0) return null;
+
+        items.sort((a, b) => a.d - b.d);
+        const K = Math.min(3, items.length);
+        const POWER = 2;
+        let wsum = 0, usum = 0, vsum = 0;
+        for (let k = 0; k < K; k++) {
+            const {d, u, v} = items[k];
+            const dd = Math.max(d, 0.01);
+            const w = 1 / Math.pow(dd, POWER);
+            wsum += w; usum += w * u; vsum += w * v;
         }
         if (wsum === 0) return null;
         return {u: usum / wsum, v: vsum / wsum};
