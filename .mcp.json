@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "sitrec-bridge": {
-      "command": "/Users/mick/Dropbox/sitrec-dev/sitrec/tools/SitrecBridge/run.sh"
+      "command": "${CLAUDE_PROJECT_DIR}/tools/SitrecBridge/run.sh"
     }
   }
 }

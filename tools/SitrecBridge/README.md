@@ -124,14 +124,18 @@ Most tools accept an optional `tab` parameter to target a specific Sitrec tab (b
 
 | Environment Variable | Default | Description |
 |---------------------|---------|-------------|
-| `SITREC_BRIDGE_PORT` | `9780` | WebSocket server port |
+| `SITREC_BRIDGE_PORT` | `9780` (sandbox) / scan 9799→9780 (host fallback) | WebSocket server port |
+| `SITREC_BRIDGE_HOST` | `127.0.0.1` | Bind address (set to `0.0.0.0` inside Docker) |
+| `SITREC_BRIDGE_PAIRED_ORIGIN` | (unset) | If set (e.g. `http://localhost:8081`), this server is paired to that browser origin and the extension routes only matching tabs here. Unset = host fallback (catches any unmatched tab). |
+
+The Chrome extension scans ports 9780–9799 for MCP servers and opens a connection to each. Multi-sandbox isolation: `wt sandbox` pairs build port `8080+N` ↔ MCP port `9780+N`, advertising `pairedOrigin: http://localhost:80NN`. The extension routes commands by matching the originating server's `pairedOrigin` to the tab's URL origin.
 
 ## Troubleshooting
 
-**Extension shows "Disconnected":**
-- Make sure the MCP server is running (via Claude Code or `node mcp-server.mjs`)
-- Check that port 9780 isn't blocked or in use
-- Click "Reconnect" in the popup
+**Popup shows "No MCP servers":**
+- Make sure at least one MCP server is running (Claude Code or `node mcp-server.js`)
+- Click "Reconnect" in the popup to force a fresh port scan
+- Check the service worker console (`chrome://extensions` → SitrecBridge → "service worker") for `probe error` lines
 
 **"No Sitrec tab found":**
 - Open Sitrec in Chrome (not Firefox/Safari)

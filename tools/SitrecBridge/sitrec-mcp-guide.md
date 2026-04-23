@@ -6,21 +6,21 @@ Reference for AI agents interacting with Sitrec via the SitrecBridge MCP server.
 
 Sitrec is a 3D situation recreation app built with Three.js. It uses a **node-based computational graph** where everything — tracks, cameras, effects, UI — is a node.
 
-**Message path:** MCP Client (stdio) -> MCP Server (WebSocket :9780) -> Chrome Extension (background.js) -> Content Script -> Page Bridge (page-bridge.js, main world) -> Sitrec globals.
+**Message path:** MCP Client (stdio) -> MCP Server (WebSocket :9780+N) -> Chrome Extension (background.js) -> Content Script -> Page Bridge (page-bridge.js, main world) -> Sitrec globals.
 
-### Multi-session support
-Multiple Claude Code sessions can share one Sitrec instance simultaneously. The first MCP server to start becomes the **primary** (owns the WebSocket server on port 9780, Chrome extension connects here). Subsequent servers automatically detect the port is in use and join as **secondary** peers — they connect as WebSocket clients to the primary, which relays their requests to the extension and routes responses back.
+### Multi-sandbox isolation
+Each MCP server runs as its own WebSocket primary on a unique port in 9780–9799. Sandboxes launched via `wt sandbox` get a deterministic pairing: build port `8080+N` ↔ MCP port `9780+N`, with the sandbox advertising `pairedOrigin: http://localhost:80NN`. The Chrome extension scans the port range, opens a connection to each MCP server, and routes commands to the tab whose origin matches the originating server's `pairedOrigin`.
 
-Use `sitrec_status` to see which mode you're in (`"mode": "primary"` or `"mode": "secondary"`). If the primary exits, secondaries will reconnect automatically when a new primary starts.
+A host-side Claude session (no `SITREC_BRIDGE_PAIRED_ORIGIN` set) becomes a **fallback** server: it scans 9799→9780 for the first free port (descending so it never steals a sandbox's reserved low port), advertises `pairedOrigin: null`, and the extension routes any tab not matched by another MCP to it.
 
-### Multi-tab support
-Multiple Sitrec tabs can be open simultaneously (e.g. `/sitrec` and `/build2`). Use `sitrec_list_tabs` to see all open Sitrec tabs with their IDs and URLs. Then pass the `tab` parameter on any tool to target a specific tab:
+Use `sitrec_status` to see this server's `pairedOrigin`, `boundPort`, and whether the extension is connected. If your tab's origin doesn't match any paired server, an explicit error tells you which origin the server is paired to.
+
+### Multi-tab support within a paired origin
+Multiple Sitrec tabs at the *same* origin (e.g. two `localhost:8080` tabs) share one MCP server. Use `sitrec_list_tabs` to see all open Sitrec tabs with their IDs, URLs, and origins. Pass the `tab` parameter on any tool to target a specific tab:
 
 - **By URL substring:** `tab: "build2"` — matches the first tab whose URL contains "build2"
 - **By numeric tab ID:** `tab: 361294686` — targets an exact Chrome tab ID
-- **Omit `tab`:** defaults to the first Sitrec tab found (current behavior)
-
-This allows different Claude Code sessions to control different Sitrec instances independently. The extension popup shows which Sitrec tab belongs to the current browser window.
+- **Omit `tab`:** defaults to the first matching tab for this server's `pairedOrigin`
 
 ## Key Globals (accessible via `sitrec_eval`)
 

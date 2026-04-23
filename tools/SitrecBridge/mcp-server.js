@@ -8,14 +8,18 @@
  * Architecture:
  *   MCP Client <--stdio--> This Server <--WebSocket--> Chrome Extension <--message--> Sitrec Page
  *
- * Multi-session support:
- *   The first MCP server to start becomes the "primary" — it owns the WebSocket
- *   server on the port and the Chrome extension connects to it. Subsequent MCP
- *   servers detect the port is in use and connect as "peer" WebSocket clients to
- *   the primary, which relays their requests to the extension and routes responses
- *   back. This allows multiple Claude Code sessions to share one Sitrec instance.
+ * Multi-sandbox isolation:
+ *   Every MCP server runs as its own WebSocket primary on a unique port.
+ *   - Sandbox mode (SITREC_BRIDGE_PAIRED_ORIGIN set, e.g. http://localhost:8081):
+ *       binds to SITREC_BRIDGE_PORT (the container's internal port; the host-side
+ *       port is forwarded by `wt sandbox`). The extension routes any tab whose
+ *       origin matches PAIRED_ORIGIN to this server.
+ *   - Host fallback mode (PAIRED_ORIGIN unset): scans 9799→9780 for the first
+ *       free port (descending so it never steals a sandbox's reserved low port),
+ *       advertises pairedOrigin=null. The extension routes any tab not matched
+ *       by another MCP to a fallback server.
  *
- * Based on the relay pattern from https://github.com/railsblueprint/blueprint-mcp
+ *   Peer/secondary relay was removed in favour of one-MCP-per-server isolation.
  */
 
 import {Server} from "@modelcontextprotocol/sdk/server/index.js";
@@ -38,9 +42,18 @@ const WS_PORT = parseInt(process.env.SITREC_BRIDGE_PORT || "9780", 10);
 const WS_HOST = process.env.SITREC_BRIDGE_HOST || "127.0.0.1"; // Localhost only — avoids macOS firewall EPERM on 0.0.0.0; override with 0.0.0.0 in Docker
 const SITREC_CWD = process.cwd(); // Used to auto-match this MCP session to the correct Sitrec tab
 
-// Protocol version — bump when the wire format changes (e.g., adding _cwd).
-// Secondaries check this against the primary and force-replace stale primaries.
-const PROTOCOL_VERSION = 3;
+// Origin this server is paired to (e.g., "http://localhost:8081"). Set by
+// `wt sandbox` for sandbox containers; null for host fallback servers.
+const PAIRED_ORIGIN = process.env.SITREC_BRIDGE_PAIRED_ORIGIN || null;
+
+// Host-fallback port scan range. When PAIRED_ORIGIN is null, we scan this range
+// descending so that sandbox pairings (which claim low ports 9780+N) are never
+// stolen by a host Claude session.
+const FALLBACK_PORT_MIN = 9780;
+const FALLBACK_PORT_MAX = 9799;
+
+// Protocol version — bump when the wire format changes.
+const PROTOCOL_VERSION = 4;
 
 // Load the agent guide once at startup
 let agentGuide = "";
@@ -63,39 +76,31 @@ function log(...args) {
 // handles the protocol side, but the WebSocket server/client keeps the process
 // alive. We detect stdin close and shut down cleanly.
 
-let wsServer = null;  // reference to WebSocket server (primary only), set in startAsPrimary
+let wsServer = null;  // WebSocket server reference, set in startServer
 
 function shutdownGracefully(reason) {
     log(`Shutting down: ${reason}`);
 
-    // Close WebSocket server (primary) or client (secondary)
     if (wsServer) {
         wsServer.close();
         wsServer = null;
-    }
-    if (primarySocket) {
-        primarySocket.close();
-        primarySocket = null;
     }
     if (extensionSocket) {
         extensionSocket.close();
         extensionSocket = null;
     }
 
-    // Clear timers
     if (keepaliveTimer) {
         clearInterval(keepaliveTimer);
         keepaliveTimer = null;
     }
 
-    // Reject pending requests
     for (const [id, req] of pendingRequests) {
         clearTimeout(req.timer);
         req.reject(new Error(`Server shutting down: ${reason}`));
     }
     pendingRequests.clear();
 
-    // Give a moment for cleanup, then exit
     setTimeout(() => process.exit(0), 200);
 }
 
@@ -124,83 +129,21 @@ setInterval(() => {
 }, ORPHAN_CHECK_INTERVAL_MS).unref();  // unref so this timer alone doesn't keep process alive
 
 // ── WebSocket Relay ─────────────────────────────────────────────────────────
-// Supports two modes:
-//   "primary" — owns the WebSocket server, extension connects here, relays for peers
-//   "secondary" — connects as a client to the primary, sends requests through it
 
-let mode = null;                    // "primary" or "secondary"
-let extensionSocket = null;         // Chrome extension connection (primary only)
-let primarySocket = null;           // Connection to the primary server (secondary only)
+let extensionSocket = null;         // Chrome extension connection
 const pendingRequests = new Map();  // id → { resolve, reject, timer }
-const peerRequestMap = new Map();   // primaryId → { peerSocket, peerId } (primary only)
 let requestCounter = 0;
 let keepaliveTimer = null;
-let extensionConnectedResolve = null; // resolve callback for waitForExtension()
-const peerSockets = new Set();          // Connected peer sockets (primary only)
-let consecutiveSecondaryTimeouts = 0;   // Consecutive timeout errors in secondary mode
-const MAX_CONSECUTIVE_TIMEOUTS = 2;     // Auto-promote to primary after this many
+let boundPort = null;               // The port we successfully bound to
 
-// ── Auto-Promotion ─────────────────────────────────────────────────────────
-// When a secondary detects the primary has lost its extension connection,
-// it force-promotes to primary so the extension reconnects to it.
-
-function waitForExtension(timeoutMs = 10000) {
-    if (extensionSocket && extensionSocket.readyState === WebSocket.OPEN) {
-        return Promise.resolve();
-    }
-    return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => {
-            extensionConnectedResolve = null;
-            reject(new Error("Timed out waiting for extension to connect after promotion"));
-        }, timeoutMs);
-        extensionConnectedResolve = () => { clearTimeout(timer); resolve(); };
-    });
-}
-
-async function forcePromoteToPrimary() {
-    if (mode === "primary") return;
-    log("Secondary: Force-promoting to primary...");
-
-    if (primarySocket) {
-        try { primarySocket.close(); } catch {}
-        primarySocket = null;
-    }
-    for (const [id, { reject, timer }] of pendingRequests) {
-        clearTimeout(timer);
-        reject(new Error("Promoting to primary"));
-    }
-    pendingRequests.clear();
-
-    const pids = findListeningPids(WS_PORT);
-    for (const pid of pids) {
-        try { process.kill(pid, "SIGTERM"); } catch {}
-    }
-    await new Promise(r => setTimeout(r, 500));
-
-    return new Promise((resolve, reject) => {
-        const testServer = new WebSocketServer({ host: WS_HOST, port: WS_PORT });
-        testServer.on("listening", () => {
-            testServer.close(() => {
-                startAsPrimary(WS_PORT);
-                log("Secondary: Promoted to primary — waiting for extension...");
-                resolve();
-            });
-        });
-        testServer.on("error", (err) => {
-            reject(new Error(`Force promotion failed: ${err.message}`));
-        });
-    });
-}
-
-// ── Primary Mode ────────────────────────────────────────────────────────────
-
-function startAsPrimary(port) {
-    mode = "primary";
+function startServer(port) {
     const wss = new WebSocketServer({ host: WS_HOST, port });
-    wsServer = wss;  // store reference for graceful shutdown
+    wsServer = wss;
+    boundPort = port;
 
     wss.on("listening", () => {
-        log(`Primary: WebSocket server listening on ws://localhost:${port}`);
+        log(`Listening on ws://${WS_HOST}:${port}` +
+            (PAIRED_ORIGIN ? ` (paired to ${PAIRED_ORIGIN})` : ` (host fallback)`));
     });
 
     wss.on("error", (err) => {
@@ -208,40 +151,30 @@ function startAsPrimary(port) {
     });
 
     wss.on("connection", (ws) => {
-        // Wait briefly for a peer identification message.
-        // The extension never sends one, so after a short timeout we treat it as extension.
+        // Wait briefly for a force-extension marker; otherwise treat as a
+        // normal extension connection.
         let identified = false;
 
         const earlyHandler = (raw) => {
             try {
                 const msg = JSON.parse(raw.toString());
-                if (msg.type === "peer") {
-                    identified = true;
-                    ws.removeListener("message", earlyHandler);
-                    setupPeerConnection(ws, msg.version);
-                    return;
-                }
                 if (msg.type === "force-extension") {
-                    // User explicitly requested reconnect — replace existing without probing
                     identified = true;
                     ws.removeListener("message", earlyHandler);
                     setupExtensionConnection(ws, true);
                     return;
                 }
             } catch {}
-            // Not a peer message — treat as extension, but let the normal handler process it
             if (!identified) {
                 identified = true;
                 ws.removeListener("message", earlyHandler);
                 setupExtensionConnection(ws, false);
-                // Re-dispatch this message through the extension handler
                 handleExtensionMessage(raw);
             }
         };
 
         ws.on("message", earlyHandler);
 
-        // If no message within 500ms, assume it's the extension
         setTimeout(() => {
             if (!identified) {
                 identified = true;
@@ -255,16 +188,15 @@ function startAsPrimary(port) {
 function setupExtensionConnection(ws, force = false) {
     if (extensionSocket && extensionSocket.readyState === WebSocket.OPEN) {
         if (force) {
-            // User explicitly requested this connection — replace existing
-            log("Primary: Forced reconnect — replacing existing extension");
+            log("Forced reconnect — replacing existing extension");
             extensionSocket.close();
             finishExtensionSetup(ws);
             return;
         }
 
-        // Probe the existing socket — if it's stale (e.g., after extension reload),
-        // the pong callback won't fire and we replace it with the new connection.
-        log("Primary: Extension already connected — probing liveness...");
+        // Probe the existing socket — if stale (e.g., extension reload),
+        // the pong won't arrive and we replace it with the newcomer.
+        log("Extension already connected — probing liveness...");
         let pongReceived = false;
         const pongHandler = () => { pongReceived = true; };
         extensionSocket.once("pong", pongHandler);
@@ -273,15 +205,13 @@ function setupExtensionConnection(ws, force = false) {
         setTimeout(() => {
             extensionSocket?.removeListener("pong", pongHandler);
             if (pongReceived) {
-                // Existing socket is alive — reject the newcomer
-                log("Primary: Existing extension is alive — rejecting new connection");
+                log("Existing extension is alive — rejecting new connection");
                 ws.send(JSON.stringify({ type: "rejected", reason: "Another extension is already connected" }));
                 setTimeout(() => {
                     if (ws.readyState === WebSocket.OPEN) ws.close();
                 }, 5000);
             } else {
-                // Existing socket is stale — replace it
-                log("Primary: Existing extension is stale — replacing with new connection");
+                log("Existing extension is stale — replacing with new connection");
                 extensionSocket.close();
                 finishExtensionSetup(ws);
             }
@@ -294,23 +224,22 @@ function setupExtensionConnection(ws, force = false) {
 
 function finishExtensionSetup(ws) {
     extensionSocket = ws;
-    log("Primary: Extension connected");
+    log("Extension connected");
 
-    // Notify waitForExtension() if anyone is waiting (e.g., after auto-promotion)
-    if (extensionConnectedResolve) {
-        extensionConnectedResolve();
-        extensionConnectedResolve = null;
-    }
-
-    // Send the source manifest version so the extension can detect if it needs reloading
     try {
         const sourceManifest = JSON.parse(readFileSync(join(__dirname, "extension", "manifest.json"), "utf-8"));
-        ws.send(JSON.stringify({ type: "version-info", sourceVersion: sourceManifest.version, serverPid: process.pid, sessionCount: peerSockets.size + 1 }));
+        ws.send(JSON.stringify({
+            type: "version-info",
+            sourceVersion: sourceManifest.version,
+            serverPid: process.pid,
+            protocolVersion: PROTOCOL_VERSION,
+            pairedOrigin: PAIRED_ORIGIN,
+            boundPort,
+        }));
     } catch (e) {
-        log("Primary: Could not read source manifest for version check:", e.message);
+        log("Could not read source manifest for version check:", e.message);
     }
 
-    // Keepalive pings to prevent service worker suspension
     clearInterval(keepaliveTimer);
     keepaliveTimer = setInterval(() => {
         if (extensionSocket && extensionSocket.readyState === WebSocket.OPEN) {
@@ -321,57 +250,33 @@ function finishExtensionSetup(ws) {
     ws.on("message", (raw) => handleExtensionMessage(raw));
 
     ws.on("close", () => {
-        log("Primary: Chrome extension disconnected");
+        log("Chrome extension disconnected");
         if (extensionSocket === ws) extensionSocket = null;
         clearInterval(keepaliveTimer);
 
-        // Reject all pending requests (both local and peer-relayed)
         for (const [id, pending] of pendingRequests) {
             clearTimeout(pending.timer);
-            // Check if this was a peer relay
-            const peerMapping = peerRequestMap.get(id);
-            if (peerMapping) {
-                // Send error back to peer
-                try {
-                    peerMapping.peerSocket.send(JSON.stringify({
-                        id: peerMapping.peerId,
-                        error: "Extension disconnected"
-                    }));
-                } catch {}
-                peerRequestMap.delete(id);
-            } else {
-                pending.reject(new Error("Extension disconnected"));
-            }
+            pending.reject(new Error("Extension disconnected"));
         }
         pendingRequests.clear();
     });
 
     ws.on("error", (err) => {
-        log("Primary: Extension WebSocket error:", err.message);
+        log("Extension WebSocket error:", err.message);
     });
-}
-
-function broadcastServerStatus() {
-    if (extensionSocket && extensionSocket.readyState === WebSocket.OPEN) {
-        extensionSocket.send(JSON.stringify({
-            type: "server-status",
-            serverPid: process.pid,
-            sessionCount: peerSockets.size + 1,
-        }));
-    }
 }
 
 function handleExtensionMessage(raw) {
     try {
         const msg = JSON.parse(raw.toString());
 
-        // Health-check ping from extension — respond with server status
         if (msg.type === "ping") {
             if (extensionSocket && extensionSocket.readyState === WebSocket.OPEN) {
                 extensionSocket.send(JSON.stringify({
                     type: "pong",
                     serverPid: process.pid,
-                    sessionCount: peerSockets.size + 1,
+                    pairedOrigin: PAIRED_ORIGIN,
+                    boundPort,
                 }));
             }
             return;
@@ -381,379 +286,79 @@ function handleExtensionMessage(raw) {
             const { resolve, timer } = pendingRequests.get(msg.id);
             clearTimeout(timer);
             pendingRequests.delete(msg.id);
-
-            // Check if this was a peer relay — if so, forward response to peer
-            const peerMapping = peerRequestMap.get(msg.id);
-            if (peerMapping) {
-                peerRequestMap.delete(msg.id);
-                try {
-                    peerMapping.peerSocket.send(JSON.stringify({
-                        id: peerMapping.peerId,
-                        result: msg.result,
-                        error: msg.error,
-                    }));
-                } catch (e) {
-                    log("Primary: Failed to relay response to peer:", e.message);
-                }
-                // Still resolve the pending promise (it's a no-op resolve for peer relays)
-                resolve(msg);
-            } else {
-                // Local request — resolve normally
-                resolve(msg);
-            }
+            resolve(msg);
         }
     } catch (e) {
-        log("Primary: Bad message from extension:", e.message);
+        log("Bad message from extension:", e.message);
     }
 }
-
-function setupPeerConnection(ws, peerVersion) {
-    log(`Primary: Peer MCP server connected (protocol v${peerVersion || '?'})`);
-    peerSockets.add(ws);
-    broadcastServerStatus();
-
-    // Send our protocol version so the peer can detect mismatches
-    ws.send(JSON.stringify({ type: "protocol-version", version: PROTOCOL_VERSION }));
-
-    ws.on("message", (raw) => {
-        try {
-            const msg = JSON.parse(raw.toString());
-            // Peer is sending a request to relay to the extension
-            if (msg.action) {
-                relayPeerRequest(ws, msg);
-            }
-        } catch (e) {
-            log("Primary: Bad message from peer:", e.message);
-        }
-    });
-
-    ws.on("close", () => {
-        log("Primary: Peer MCP server disconnected");
-        peerSockets.delete(ws);
-        broadcastServerStatus();
-        // Clean up any pending peer requests
-        for (const [primaryId, mapping] of peerRequestMap) {
-            if (mapping.peerSocket === ws) {
-                const pending = pendingRequests.get(primaryId);
-                if (pending) {
-                    clearTimeout(pending.timer);
-                    pendingRequests.delete(primaryId);
-                }
-                peerRequestMap.delete(primaryId);
-            }
-        }
-    });
-
-    ws.on("error", (err) => {
-        log("Primary: Peer WebSocket error:", err.message);
-    });
-}
-
-function relayPeerRequest(peerSocket, msg) {
-    if (!extensionSocket || extensionSocket.readyState !== WebSocket.OPEN) {
-        peerSocket.send(JSON.stringify({
-            id: msg.id,
-            error: "Chrome extension is not connected to the primary server."
-        }));
-        return;
-    }
-
-    // Assign a primary-scoped ID and relay to extension
-    const primaryId = ++requestCounter;
-    peerRequestMap.set(primaryId, { peerSocket, peerId: msg.id });
-
-    const timer = setTimeout(() => {
-        pendingRequests.delete(primaryId);
-        peerRequestMap.delete(primaryId);
-        try {
-            peerSocket.send(JSON.stringify({
-                id: msg.id,
-                error: `Timed out waiting for '${msg.action}' response (${REQUEST_TIMEOUT_MS}ms)`
-            }));
-        } catch {}
-    }, REQUEST_TIMEOUT_MS);
-
-    pendingRequests.set(primaryId, {
-        resolve: () => {},  // Peer responses are sent directly in handleExtensionMessage
-        reject: () => {},
-        timer
-    });
-
-    extensionSocket.send(JSON.stringify({
-        id: primaryId,
-        action: msg.action,
-        params: msg.params,
-        _cwd: msg._cwd,
-    }));
-}
-
-// ── Secondary Mode ──────────────────────────────────────────────────────────
-
-function startAsSecondary(port, peerHost) {
-    mode = "secondary";
-    const connectHost = peerHost || "127.0.0.1";
-    const isForcedPeer = !!peerHost; // forced peers don't try to promote
-    log(`Secondary: Connecting to primary on ws://${connectHost}:${port}${isForcedPeer ? " (forced peer)" : ""}`);
-
-    function connect() {
-        primarySocket = new WebSocket(`ws://${connectHost}:${port}`);
-
-        let primaryVersionConfirmed = false;
-
-        primarySocket.on("open", () => {
-            log("Secondary: Connected to primary server");
-            // Identify ourselves as a peer, include protocol version
-            primarySocket.send(JSON.stringify({ type: "peer", version: PROTOCOL_VERSION }));
-
-            // If the primary doesn't respond with its version within 2s, it's too old
-            setTimeout(() => {
-                if (!primaryVersionConfirmed && primarySocket) {
-                    log("Secondary: Primary did not send protocol version — assuming stale, disconnecting to promote");
-                    primarySocket.close();
-                }
-            }, 2000);
-        });
-
-        primarySocket.on("message", (raw) => {
-            try {
-                const msg = JSON.parse(raw.toString());
-
-                // Protocol version check — detect stale primaries
-                if (msg.type === "protocol-version") {
-                    primaryVersionConfirmed = true;
-                    if (msg.version !== PROTOCOL_VERSION) {
-                        log(`Secondary: Primary has protocol v${msg.version}, we need v${PROTOCOL_VERSION} — disconnecting to promote`);
-                        primarySocket.close();
-                        primarySocket = null;
-                        setTimeout(tryPromote, 500);
-                    } else {
-                        log(`Secondary: Primary protocol v${msg.version} matches ✓`);
-                    }
-                    return;
-                }
-
-                if (msg.id != null && pendingRequests.has(msg.id)) {
-                    const { resolve, timer } = pendingRequests.get(msg.id);
-                    clearTimeout(timer);
-                    pendingRequests.delete(msg.id);
-                    consecutiveSecondaryTimeouts = 0;
-                    resolve(msg);
-                }
-            } catch (e) {
-                log("Secondary: Bad message from primary:", e.message);
-            }
-        });
-
-        primarySocket.on("close", () => {
-            primarySocket = null;
-            // Reject all pending
-            for (const [id, { reject, timer }] of pendingRequests) {
-                clearTimeout(timer);
-                reject(new Error("Primary server disconnected"));
-            }
-            pendingRequests.clear();
-            if (isForcedPeer) {
-                // Forced peers reconnect instead of promoting (promotion inside a
-                // Docker container is useless — no extension would connect to it)
-                log("Secondary: Disconnected from primary — reconnecting in 3s...");
-                setTimeout(connect, 3000);
-            } else {
-                log("Secondary: Disconnected from primary — attempting promotion...");
-                // Try to become primary; if another peer already did, reconnect as secondary
-                // Random jitter (300-800ms) to avoid multiple secondaries racing
-                setTimeout(tryPromote, 300 + Math.random() * 500);
-            }
-        });
-
-        primarySocket.on("error", (err) => {
-            // Connection refused means no primary — try to promote (or reconnect for forced peers)
-            if (err.code === "ECONNREFUSED") {
-                primarySocket = null;
-                if (isForcedPeer) {
-                    log("Secondary: Primary not reachable — retrying in 3s...");
-                    setTimeout(connect, 3000);
-                } else {
-                    log("Secondary: Primary not reachable — attempting promotion...");
-                    setTimeout(tryPromote, 300 + Math.random() * 500);
-                }
-                return;
-            }
-            log("Secondary: Connection error:", err.message);
-        });
-    }
-
-    function tryPromote() {
-        const testServer = new WebSocketServer({ host: WS_HOST, port });
-        testServer.on("listening", () => {
-            testServer.close(() => {
-                log("Secondary: Promoted to primary");
-                startAsPrimary(port);
-            });
-        });
-        testServer.on("error", (err) => {
-            if (err.code === "EADDRINUSE") {
-                // Another peer already promoted — rejoin as secondary
-                log("Secondary: Another server is primary — reconnecting...");
-                setTimeout(connect, 1000);
-            } else {
-                log("Secondary: Promotion failed:", err.message);
-                setTimeout(connect, 3000);
-            }
-        });
-    }
-
-    connect();
-}
-
-// ── Unified sendToExtension ─────────────────────────────────────────────────
-// Works in both modes: primary sends directly, secondary sends via primary.
 
 function sendToExtension(action, params = {}, timeoutMs = REQUEST_TIMEOUT_MS) {
     return new Promise((resolve, reject) => {
-        if (mode === "primary") {
-            if (!extensionSocket || extensionSocket.readyState !== WebSocket.OPEN) {
-                return reject(new Error(
-                    "Chrome extension is not connected. Make sure:\n" +
-                    "1. The SitrecBridge extension is installed and enabled\n" +
-                    "2. Sitrec is open in a browser tab\n" +
-                    "3. The extension popup shows 'Connected'"
-                ));
-            }
-
-            const id = ++requestCounter;
-            const timer = setTimeout(() => {
-                pendingRequests.delete(id);
-                reject(new Error(`Timed out waiting for '${action}' response (${timeoutMs}ms)`));
-            }, timeoutMs);
-
-            pendingRequests.set(id, { resolve, reject, timer });
-            extensionSocket.send(JSON.stringify({ id, action, params, _cwd: SITREC_CWD }));
-
-        } else if (mode === "secondary") {
-            if (!primarySocket || primarySocket.readyState !== WebSocket.OPEN) {
-                return reject(new Error(
-                    "Not connected to primary MCP server. Reconnecting..."
-                ));
-            }
-
-            const id = ++requestCounter;
-            const timer = setTimeout(() => {
-                pendingRequests.delete(id);
-                consecutiveSecondaryTimeouts++;
-                log(`Secondary: Request '${action}' timed out (${consecutiveSecondaryTimeouts}/${MAX_CONSECUTIVE_TIMEOUTS} consecutive)`);
-                if (consecutiveSecondaryTimeouts >= MAX_CONSECUTIVE_TIMEOUTS) {
-                    log("Secondary: Too many timeouts — force-promoting to primary");
-                    consecutiveSecondaryTimeouts = 0;
-                    forcePromoteToPrimary().catch(err => log("Force promotion failed:", err.message));
-                }
-                reject(new Error(`Timed out waiting for '${action}' response (${timeoutMs}ms)`));
-            }, timeoutMs);
-
-            pendingRequests.set(id, { resolve, reject, timer });
-            primarySocket.send(JSON.stringify({ id, action, params, _cwd: SITREC_CWD }));
+        if (!extensionSocket || extensionSocket.readyState !== WebSocket.OPEN) {
+            return reject(new Error(
+                "Chrome extension is not connected. Make sure:\n" +
+                "1. The SitrecBridge extension is installed and enabled\n" +
+                "2. Sitrec is open in a browser tab" +
+                (PAIRED_ORIGIN ? ` at ${PAIRED_ORIGIN}` : "") + "\n" +
+                "3. The extension popup shows this server (port " + boundPort + ") as connected"
+            ));
         }
+
+        const id = ++requestCounter;
+        const timer = setTimeout(() => {
+            pendingRequests.delete(id);
+            reject(new Error(`Timed out waiting for '${action}' response (${timeoutMs}ms)`));
+        }, timeoutMs);
+
+        pendingRequests.set(id, { resolve, reject, timer });
+        extensionSocket.send(JSON.stringify({ id, action, params, _cwd: SITREC_CWD }));
     });
 }
 
-// ── Startup: try primary, kill stale servers, fall back to secondary ─────────
+// ── Startup ─────────────────────────────────────────────────────────────────
 
-/**
- * Find PIDs of other node processes listening on the given port.
- * Uses lsof which is available on macOS and most Linux.
- */
-function findListeningPids(port) {
-    try {
-        const { execSync } = require("child_process");
-        const output = execSync(`lsof -i :${port} -sTCP:LISTEN -t 2>/dev/null`, { encoding: "utf8" });
-        return output.trim().split("\n").map(Number).filter(pid => pid > 0 && pid !== process.pid);
-    } catch {
-        return [];
-    }
-}
-
-/**
- * Probe a WebSocket server with a health check. Returns true if it responds
- * with a valid protocol-version within the timeout.
- */
-function probeServer(port, timeoutMs = 3000, host = "127.0.0.1") {
+function tryBind(port) {
     return new Promise((resolve) => {
-        const timer = setTimeout(() => { ws.close(); resolve(false); }, timeoutMs);
-        const ws = new WebSocket(`ws://${host}:${port}`);
-        ws.on("open", () => {
-            ws.send(JSON.stringify({ type: "peer", version: PROTOCOL_VERSION }));
+        const testServer = new WebSocketServer({ host: WS_HOST, port });
+        testServer.on("listening", () => {
+            testServer.close(() => resolve(true));
         });
-        ws.on("message", (raw) => {
-            try {
-                const msg = JSON.parse(raw.toString());
-                if (msg.type === "protocol-version") {
-                    clearTimeout(timer);
-                    ws.close();
-                    resolve(msg.version === PROTOCOL_VERSION);
-                }
-            } catch { /* ignore */ }
+        testServer.on("error", (err) => {
+            resolve(err.code === "EADDRINUSE" ? false : { error: err });
         });
-        ws.on("error", () => { clearTimeout(timer); resolve(false); });
-        ws.on("close", () => { clearTimeout(timer); resolve(false); });
     });
 }
 
 async function start() {
-    // Peer mode (e.g., Docker sandbox connecting to host's primary via host.docker.internal).
-    // If the peer is reachable, join as secondary. Otherwise fall back to standalone primary
-    // so the extension can connect directly (requires Docker port forwarding for -p 9780:9780).
-    const peerHost = process.env.SITREC_BRIDGE_PEER;
-    if (peerHost) {
-        log(`Peer mode: probing ${peerHost}:${WS_PORT}...`);
-        const peerReachable = await probeServer(WS_PORT, 3000, peerHost);
-        if (peerReachable) {
-            log(`Peer mode: host primary reachable — joining as secondary`);
-            startAsSecondary(WS_PORT, peerHost);
+    if (process.env.SITREC_BRIDGE_PEER) {
+        log("Note: SITREC_BRIDGE_PEER is no longer supported — running standalone.");
+    }
+
+    if (PAIRED_ORIGIN) {
+        // Sandbox mode: bind exactly to SITREC_BRIDGE_PORT or fail.
+        const ok = await tryBind(WS_PORT);
+        if (ok === true) {
+            startServer(WS_PORT);
         } else {
-            log(`Peer mode: host primary not reachable — starting as standalone primary on 0.0.0.0:${WS_PORT}`);
-            startAsPrimary(WS_PORT);
+            log(`Could not bind paired port ${WS_PORT} (in use). ` +
+                `Each paired sandbox needs an exclusive MCP port. Aborting.`);
+            process.exit(1);
         }
         return;
     }
 
-    // Try to bind the port. If it fails with EADDRINUSE, check if the existing
-    // server is healthy before joining as secondary.
-    const testServer = new WebSocketServer({ host: WS_HOST, port: WS_PORT });
-
-    testServer.on("listening", () => {
-        // We got the port — close the test server and start properly as primary
-        testServer.close(() => {
-            startAsPrimary(WS_PORT);
-        });
-    });
-
-    testServer.on("error", async (err) => {
-        if (err.code === "EADDRINUSE") {
-            // Probe the existing server before joining
-            log(`Port ${WS_PORT} in use — probing existing server...`);
-            const healthy = await probeServer(WS_PORT, 3000);
-            if (healthy) {
-                log("Existing server is healthy — joining as secondary");
-                startAsSecondary(WS_PORT);
-            } else {
-                // Stale or unresponsive — kill it and take over
-                const pids = findListeningPids(WS_PORT);
-                if (pids.length > 0) {
-                    log(`Killing stale server(s) on port ${WS_PORT}: PIDs ${pids.join(", ")}`);
-                    for (const pid of pids) {
-                        try { process.kill(pid, "SIGTERM"); } catch { /* already dead */ }
-                    }
-                    // Wait for port to free up, then retry
-                    setTimeout(() => start(), 1000);
-                } else {
-                    log("Port in use but no PIDs found — retrying...");
-                    setTimeout(() => start(), 1000);
-                }
-            }
-        } else {
-            log("Failed to start WebSocket server:", err.message);
-            process.exit(1);
+    // Host fallback: scan high → low so sandbox-paired low ports stay free.
+    const startPort = WS_PORT && WS_PORT !== 9780 ? WS_PORT : FALLBACK_PORT_MAX;
+    for (let port = startPort; port >= FALLBACK_PORT_MIN; port--) {
+        const ok = await tryBind(port);
+        if (ok === true) {
+            startServer(port);
+            return;
         }
-    });
+    }
+    log(`No free port in ${FALLBACK_PORT_MIN}-${FALLBACK_PORT_MAX} for host fallback MCP. Aborting.`);
+    process.exit(1);
 }
 
 start();
@@ -1051,17 +656,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     // sitrec_status is handled locally — no extension needed
     if (name === "sitrec_status") {
-        const connected = mode === "primary"
-            ? !!(extensionSocket && extensionSocket.readyState === WebSocket.OPEN)
-            : !!(primarySocket && primarySocket.readyState === WebSocket.OPEN);
+        const connected = !!(extensionSocket && extensionSocket.readyState === WebSocket.OPEN);
         return {
             content: [{
                 type: "text",
                 text: JSON.stringify({
-                    mode,
+                    pairedOrigin: PAIRED_ORIGIN,
+                    boundPort,
                     protocolVersion: PROTOCOL_VERSION,
                     extensionConnected: connected,
-                    wsPort: WS_PORT,
                     pendingRequests: pendingRequests.size,
                     cwd: SITREC_CWD,
                 }, null, 2),
@@ -1091,56 +694,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
     }
 
-    // sitrec_reload_extension — only works from primary
+    // sitrec_reload_extension — fire a reload command at the connected extension
     if (name === "sitrec_reload_extension") {
-        if (mode === "primary") {
-            if (!extensionSocket || extensionSocket.readyState !== WebSocket.OPEN) {
-                return {
-                    content: [{ type: "text", text: "Extension not connected. Nothing to reload." }],
-                    isError: true,
-                };
-            }
-            extensionSocket.send(JSON.stringify({ id: ++requestCounter, action: "reload" }));
-        } else {
-            // Secondary: relay through primary
-            try {
-                await sendToExtension("reload", {});
-            } catch {}
+        if (!extensionSocket || extensionSocket.readyState !== WebSocket.OPEN) {
+            return {
+                content: [{ type: "text", text: "Extension not connected. Nothing to reload." }],
+                isError: true,
+            };
         }
+        extensionSocket.send(JSON.stringify({ id: ++requestCounter, action: "reload" }));
         return {
             content: [{ type: "text", text: "Extension reloading. It will reconnect automatically in a few seconds." }],
         };
     }
 
-    // All other tools relay to the extension (via primary if secondary).
-    // If the relay fails because the primary lost its extension, auto-promote and retry.
-    async function sendWithAutoPromote() {
-        try {
-            const response = await sendToExtension(name, args || {});
-            if (mode === "secondary" && response.error &&
-                response.error.includes("extension is not connected")) {
-                log("Auto-promoting: primary lost extension connection...");
-                await forcePromoteToPrimary();
-                await waitForExtension(10000);
-                return await sendToExtension(name, args || {});
-            }
-            return response;
-        } catch (e) {
-            if (mode === "secondary" && (
-                e.message.includes("Not connected to primary") ||
-                e.message.includes("Primary server disconnected")
-            )) {
-                log("Auto-promoting: lost connection to primary...");
-                await forcePromoteToPrimary();
-                await waitForExtension(10000);
-                return await sendToExtension(name, args || {});
-            }
-            throw e;
-        }
-    }
-
     try {
-        const response = await sendWithAutoPromote();
+        const response = await sendToExtension(name, args || {});
 
         // Build assert warning text if any asserts fired during this call
         let assertText = "";
