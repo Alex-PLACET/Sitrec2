@@ -1,0 +1,930 @@
+/**
+ * Object-creation helpers and right-click context menus (ground/track/building/clouds/overlay).
+ *
+ * Extracted from CustomSupport.js as a mixin. Methods are merged into
+ * CCustomManager.prototype so `this` references the CCustomManager instance.
+ */
+import {
+    addGUIFolder,
+    FileManager,
+    getEffectiveUserID,
+    GlobalDateTimeNode,
+    Globals,
+    guiMenus,
+    guiShowHideViews,
+    infoDiv,
+    NodeFactory,
+    NodeMan,
+    setNewSitchObject,
+    setRenderOne,
+    setSitchEstablished,
+    Sit,
+    Synth3DManager,
+    TrackManager,
+    UndoManager,
+    Units,
+    withTestUser
+} from "./Globals";
+import {isKeyHeld, toggler} from "./KeyBoardHandler";
+import {ECEFToLLAVD_radii, LLAToECEF} from "./LLA-ECEF-ENU";
+import {par} from "./par";
+import {GlobalScene} from "./LocalFrame";
+import {refreshLabelsAfterLoading} from "./nodes/CNodeLabels3D";
+import {assert} from "./assert";
+import {getShortURL} from "./urlUtils";
+import {CNode3DObject, ModelAliases} from "./nodes/CNode3DObject";
+import {UpdateHUD} from "./JetStuff";
+import {degrees, getDateTimeFilename} from "./utils";
+import {ViewMan} from "./CViewManager";
+import {EventManager} from "./CEventManager";
+import {isAdmin, SITREC_APP, SITREC_SERVER} from "./configUtils";
+import {CNodeDisplayTrack} from "./nodes/CNodeDisplayTrack";
+import {DebugArrowAB, elevationAtLL} from "./threeExt";
+import {FeatureManager} from "./CFeatureManager";
+import {CNodeTrackGUI} from "./nodes/CNodeControllerTrackGUI";
+import {forceUpdateUIText} from "./nodes/CNodeViewUI";
+import {configParams} from "./runtimeConfig";
+import {showError} from "./showError";
+import {showPostLoadFilterDialog} from "./TrackFilterDialog";
+import {textSitchToObject} from "./RegisterSitches";
+import {waitForExportFrameSettled} from "./ExportFrameSettler";
+import {parseObjectInput as parseObjectInputUtil} from "./utils/parseObjectInput";
+import {initializeSettings, SettingsSaver} from "./SettingsManager";
+import {CNodeCurveEditor2} from "./nodes/CNodeCurveEdit2";
+import {CNodeViewDAG} from "./nodes/CNodeViewDAG";
+import {CNodeNotes} from "./nodes/CNodeNotes";
+import {createCustomModalWithCopy, saveFilePrompted, saveFileToDirectory, saveFileToHandle} from "./FileUtils";
+import {deserializeMotionAnalysis, serializeMotionAnalysis} from "./CMotionAnalysis";
+import {deserializeAutoTracking, serializeAutoTracking} from "./CObjectTracking";
+import {getCursorPositionFromTopView} from "./mouseMoveView";
+import {addMenuToLeftSidebar, addMenuToRightSidebar, isInLeftSidebar, isInRightSidebar} from "./PageStructure";
+import {CNodeControllerCelestial} from "./nodes/CNodeControllerVarious";
+import {CNodeAutoTrackLOS} from "./nodes/CNodeAutoTrackLOS";
+import {CNodeVideoInfoUI} from "./nodes/CNodeVideoInfoUI";
+import {CNodeOSDDataSeriesController} from "./nodes/CNodeOSDDataSeriesController";
+import {CNodeGUIValue} from "./nodes/CNodeGUIValue";
+import {meanSeaLevelOffset} from "./EGM96Geoid";
+import {collectActiveTrackSourceFileIDs, shouldSerializeLoadedFileEntry} from "./trackSourceUtils";
+import {encodeShareParam, resolveURLForFetch, toShareableCustomValue} from "./SitrecObjectResolver";
+import {getEnvBool} from "./envUtils";
+import {CNodeFloodSim} from "./nodes/CNodeFloodSim";
+import {CNodeOrbitTrack} from "./nodes/CNodeOrbitTrack";
+import {CNodeTrackSwitch} from "./nodes/CNodeTrackSwitch";
+import {getNearbyWeatherBalloons, importSoundingDialog} from "./SondeFetch";
+import {WIND_SOURCES, windSourceLabelsToKeys, windSourceByKey} from "./nodes/WindSources";
+import {getCurrentLanguage, setLanguage, SUPPORTED_LANGUAGE_OPTIONS, t} from "./i18n";
+import {CNodeSAPage} from "./nodes/CNodeSAPage";
+import {
+    gimbalStepAirTrack,
+    gimbalStepAirTrackDisplay,
+    gimbalStepClouds,
+    gimbalStepCommonViews,
+    gimbalStepCore,
+    gimbalStepFleet,
+    gimbalStepGraphs,
+    gimbalStepSAHAFU,
+    gimbalStepTargetModel,
+    gimbalStepTrackLOSNodes,
+    gimbalStepTraverse,
+} from "./GimbalCustomSetup";
+import {Color} from "three";
+
+export const menuMethods = {
+    /**
+     * Parse flexible object input string for coordinates and name
+     * Supports formats like:
+     *   "MyObject 37.7749 -122.4194 100m"
+     *   "37.7749, -122.4194, 100m"
+     *   "Landmark 37.7749 -122.4194"
+     *   "37.7749 -122.4194 300ft"
+     * 
+     * @param {string} inputString - The user input string to parse
+     * @returns {Object|null} Parsed object with {name, lat, lon, alt, hasExplicitAlt} or null if invalid
+     */
+    parseObjectInput(inputString) {
+        return parseObjectInputUtil(inputString);
+    },
+
+    /**
+     * Generate the next sequential object name (Object 1, Object 2, etc.)
+     * Checks existing objects to find the highest number and increments
+     * @returns {string} Next sequential object name
+     */
+    getNextObjectName() {
+        let maxNumber = 0;
+
+        // Iterate through all nodes to find existing "Object N" names
+        const allNodes = NodeMan.getAllNodes();
+        for (const nodeId in allNodes) {
+            const node = allNodes[nodeId];
+            // Check both node.id and node.menuName for "Object N" pattern
+            const names = [node.id, node.menuName].filter(n => n);
+            for (const name of names) {
+                const match = name.match(/^Object (\d+)$/);
+                if (match) {
+                    const number = parseInt(match[1], 10);
+                    if (number > maxNumber) {
+                        maxNumber = number;
+                    }
+                }
+            }
+        }
+
+        return `Object ${maxNumber + 1}`;
+    },
+
+    /**
+     * Create a 3D object and track from parsed input
+     * @param {string} name - Object name
+     * @param {number} lat - Latitude in decimal degrees
+     * @param {number} lon - Longitude in decimal degrees
+     * @param {number} alt - Altitude in meters (or 0 if not explicit)
+     * @param {boolean} hasExplicitAlt - Whether altitude was explicitly provided
+     * @returns {Object} Object with {objectNode, trackOb, objectID, trackID}
+     */
+    createObjectFromInput(name, lat, lon, alt, hasExplicitAlt) {
+        // If altitude not explicitly provided, use terrain elevation
+        let finalAlt = alt;
+        if (!hasExplicitAlt) {
+            finalAlt = elevationAtLL(lat, lon);
+            console.log(`Using terrain elevation: ${finalAlt}m at ${lat}, ${lon}`);
+        }
+
+        // Convert LLA to ECEF coordinates
+        const ecefPosition = LLAToECEF(lat, lon, finalAlt);
+
+        // Generate unique IDs
+        const objectID = `syntheticObject_${Date.now()}`;
+        const trackID = `syntheticTrack_${Date.now()}`;
+
+        // Create the 3D object
+        const objectNode = new CNode3DObject({
+            id: objectID,
+            geometry: "sphere",
+            radius: 5,
+            color: 0x808080,
+            material: "phong",
+            position: ecefPosition,
+        });
+
+        // Create track and associate with object
+        const trackOb = TrackManager.addSyntheticTrack({
+            startPoint: ecefPosition,
+            name: name,
+            objectID: objectID,
+            editMode: true,
+            color: 0x808080,
+            startFrame: par.frame
+        });
+
+        console.log(`Created object "${name}" at ${lat}, ${lon}, ${finalAlt}m`);
+
+        return { objectNode, trackOb, objectID, trackID };
+    },
+
+    /**
+     * Position camera to view a newly created object
+     * Camera will be positioned 100m above and 100m south of the object
+     * @param {number} lat - Object latitude in decimal degrees
+     * @param {number} lon - Object longitude in decimal degrees
+     * @param {number} alt - Object altitude in meters
+     */
+    positionCameraToViewObject(lat, lon, alt) {
+        // Calculate camera position: 100m above and 100m south
+        // South means reducing latitude (approximately -0.0009 degrees per 100m)
+        const metersPerDegreeLat = 111320; // meters per degree latitude (approximate)
+        const southOffsetDegrees = -100 / metersPerDegreeLat;
+
+        const cameraLat = lat + southOffsetDegrees;
+        const cameraLon = lon;
+        const cameraAlt = alt + 100; // 100m above object
+
+        // Try to get mainCamera first, fallback to fixedCameraPosition
+        let cameraNode = null;
+        if (NodeMan.exists("mainCamera")) {
+            cameraNode = NodeMan.get("mainCamera");
+        } else if (NodeMan.exists("fixedCameraPosition")) {
+            cameraNode = NodeMan.get("fixedCameraPosition");
+        }
+
+        if (cameraNode) {
+            // Use setLLA if available (for position nodes)
+            if (typeof cameraNode.setLLA === 'function') {
+                cameraNode.setLLA(cameraLat, cameraLon, cameraAlt);
+                console.log(`Camera positioned at: ${cameraLat}, ${cameraLon}, ${cameraAlt}m (100m south and 100m above object)`);
+            } else {
+                // Fallback: set camera position directly using ECEF coordinates
+                const cameraECEF = LLAToECEF(cameraLat, cameraLon, cameraAlt);
+                const objectECEF = LLAToECEF(lat, lon, alt);
+
+                if (cameraNode.camera) {
+                    cameraNode.camera.position.copy(cameraECEF);
+                    cameraNode.camera.lookAt(objectECEF);
+                    console.log(`Camera positioned and looking at object`);
+                } else if (cameraNode.position) {
+                    cameraNode.position.copy(cameraECEF);
+                }
+            }
+        } else {
+            console.warn("No camera node found (mainCamera or fixedCameraPosition)");
+        }
+    },
+
+    /**
+     * Show a context menu for ground clicks with camera/target positioning options
+     * @param {number} mouseX - Screen X coordinate
+     * @param {number} mouseY - Screen Y coordinate
+     * @param {Vector3} groundPoint - The 3D point where the ground was clicked (in ECEF coordinates)
+     */
+    showGroundContextMenu(mouseX, mouseY, groundPoint) {
+        // Check if we're in track editing mode
+        if (Globals.editingTrack) {
+            this.showTrackEditingMenu(mouseX, mouseY, groundPoint);
+            return;
+        }
+
+        // If we're in building/clouds/overlay editing mode with menu open, do nothing
+        if (Globals.editingBuilding && this.buildingEditMenu) {
+            return;
+        }
+        if (Globals.editingClouds && this.cloudsEditMenu) {
+            return;
+        }
+        if (Globals.editingOverlay && this.overlayEditMenu) {
+            return;
+        }
+
+        // Convert ground point to LLA
+        const groundLLA = ECEFToLLAVD_radii(groundPoint);
+        const lat = groundLLA.x;
+        const lon = groundLLA.y;
+        const altHAE = groundLLA.z;
+        const alt = altHAE; // legacy HAE value used by non-camera context menu actions
+        const geoidOffset = meanSeaLevelOffset(lat, lon);
+        const altMSL = altHAE - geoidOffset;
+
+        // Get ground elevation at this point
+        const groundElevation = elevationAtLL(lat, lon);
+
+        // Close any existing ground context menu before creating a new one
+        if (this.groundContextMenu) {
+            this.groundContextMenu.destroy();
+            this.groundContextMenu = null;
+        }
+
+        // Create the context menu using lil-gui standalone menu
+        // Pass true for dismissOnOutsideClick so it behaves like a context menu
+        const menu = Globals.menuBar.createStandaloneMenu("Ground", mouseX, mouseY, true);
+
+        // If menu creation was blocked (persistent menu is open), return early
+        if (!menu) {
+            return;
+        }
+
+        menu.open();
+
+        // Store reference to track this menu
+        this.groundContextMenu = menu;
+
+        // Format the location text
+        const locationText = `${lat.toFixed(6)}, ${lon.toFixed(6)}, ${altMSL.toFixed(1)}m MSL`;
+
+        // Create an object to hold the menu actions
+        const menuData = {
+            setCameraAbove: () => {
+                if (NodeMan.exists("fixedCameraPosition")) {
+                    const camera = NodeMan.get("fixedCameraPosition");
+                    // Maintain current altitude, only update lat/lon
+                    const currentAlt = camera.getAltitude();
+                    camera.setLLA(lat, lon, currentAlt);
+                    console.log(`Camera set to: ${lat}, ${lon}, ${currentAlt}m (altitude maintained)`);
+                }
+                this.groundContextMenu = null;
+                menu.destroy();
+            },
+            setCameraOnGround: () => {
+                if (NodeMan.exists("fixedCameraPosition")) {
+                    const camera = NodeMan.get("fixedCameraPosition");
+                    // Set camera at ground level (2m above ground for eye level)
+                    camera.setLLA(lat, lon, altMSL + 2);
+                    console.log(`Camera set to ground: ${lat}, ${lon}, ${altMSL + 2}m MSL`);
+                }
+                this.groundContextMenu = null;
+                menu.destroy();
+            },
+            setTargetAbove: () => {
+                if (NodeMan.exists("fixedTargetPositionWind")) {
+                    const target = NodeMan.get("fixedTargetPositionWind");
+                    // Maintain current altitude, only update lat/lon
+                    const currentAlt = target.getAltitude();
+                    target.setLLA(lat, lon, currentAlt);
+                    console.log(`Target set to: ${lat}, ${lon}, ${currentAlt}m (altitude maintained)`);
+                }
+                this.groundContextMenu = null;
+                menu.destroy();
+            },
+            setTargetOnGround: () => {
+                if (NodeMan.exists("fixedTargetPositionWind")) {
+                    const target = NodeMan.get("fixedTargetPositionWind");
+                    // Set target at ground level
+                    target.setLLA(lat, lon, altMSL);
+                    console.log(`Target set to ground: ${lat}, ${lon}, ${altMSL}m MSL`);
+                }
+                this.groundContextMenu = null;
+                menu.destroy();
+            },
+            centerTerrain: () => {
+                if (NodeMan.exists("terrainUI")) {
+                    const terrainUI = NodeMan.get("terrainUI");
+                    terrainUI.lat = lat;
+                    terrainUI.lon = lon;
+                    terrainUI.flagForRecalculation();
+                    console.log(`Centered terrain at: ${lat}, ${lon}`);
+                }
+                this.groundContextMenu = null;
+                menu.destroy();
+            },
+            createSyntheticTrack: () => {
+                // Create a track at the clicked point using TrackManager
+                TrackManager.addSyntheticTrack({
+                    startPoint: groundPoint,
+                    name: "New Track",
+                    editMode: true,
+                    startFrame: par.frame
+                });
+                this.groundContextMenu = null;
+                menu.destroy();
+            },
+            createTrackWithObject: () => {
+                // Create a 3D object at the clicked point
+                const objectID = `syntheticObject_${Date.now()}`;
+                const trackID = `syntheticTrack_${Date.now()}`;
+
+                // Create a simple grey sphere object (5m radius) with phong material
+                const objectNode = new CNode3DObject({
+                    id: objectID,
+                    geometry: "sphere",
+                    radius: 5, // 5 meters
+                    color: 0x808080, // grey
+                    material: "phong",
+                    position: groundPoint,
+                });
+
+                // Create track and associate with object using TrackManager
+                // Controllers (TrackPosition and ObjectTilt) are added automatically by addSyntheticTrack
+                const trackOb = TrackManager.addSyntheticTrack({
+                    startPoint: groundPoint,
+                    name: `Object Track`,
+                    objectID: objectID,
+                    editMode: true,
+                    color: 0x808080, // grey
+                    startFrame: par.frame
+                });
+
+
+
+                console.log(`Created object ${objectID} with track at ${lat}, ${lon}, ${alt}m`);
+                this.groundContextMenu = null;
+                menu.destroy();
+            },
+            dropPin: () => {
+                // Close the menu first
+                this.groundContextMenu = null;
+                menu.destroy();
+
+                // Create a unique feature ID
+                const featureID = `feature_${Date.now()}`;
+
+                // Create the feature at the ground location
+                const featureNode = FeatureManager.addFeature({
+                    id: featureID,
+                    text: "New Feature",
+                    positionLLA: {
+                        lat: lat,
+                        lon: lon,
+                        alt: alt  // Will conform to ground
+                    }
+                });
+
+                // Open the editing menu with focus on the text field
+                FeatureManager.showFeatureEditMenu(featureNode, mouseX, mouseY, true);
+
+                console.log(`Created feature ${featureID} at ${lat}, ${lon}, ${alt}m`);
+            },
+            addBuilding: () => {
+                this.groundContextMenu = null;
+                menu.destroy();
+
+                const building = Synth3DManager.createBuildingAtPoint(groundPoint);
+
+                // Add undo action for building creation
+                if (building && UndoManager) {
+                    const buildingID = building.buildingID;
+                    const buildingState = building.serialize();
+
+                    UndoManager.add({
+                        undo: () => {
+                            // Delete the created building
+                            Synth3DManager.removeBuilding(buildingID);
+                        },
+                        redo: () => {
+                            // Recreate the building
+                            Synth3DManager.addBuilding(buildingState);
+                        },
+                        description: `Create building "${building.name}"`
+                    });
+                }
+
+                if (building) {
+                    building.setEditMode(true);
+                    console.log(`Created building at ground point, now in edit mode`);
+                }
+            },
+            addClouds: () => {
+                this.groundContextMenu = null;
+                menu.destroy();
+
+                const clouds = Synth3DManager.createCloudsAtPoint(groundPoint);
+
+                if (clouds && UndoManager) {
+                    const cloudsID = clouds.cloudsID;
+                    const cloudsState = clouds.serialize();
+
+                    UndoManager.add({
+                        undo: () => {
+                            Synth3DManager.removeClouds(cloudsID);
+                        },
+                        redo: () => {
+                            Synth3DManager.addClouds(cloudsState);
+                        },
+                        description: `Create cloud layer "${clouds.name}"`
+                    });
+                }
+
+                if (clouds) {
+                    clouds.setEditMode(true);
+                    console.log(`Created clouds at ground point, now in edit mode`);
+                }
+            },
+            addOverlay: () => {
+                this.groundContextMenu = null;
+                menu.destroy();
+
+                const overlay = Synth3DManager.createOverlayAtPoint(groundPoint);
+
+                if (overlay && UndoManager) {
+                    const overlayID = overlay.overlayID;
+                    const overlayState = overlay.serialize();
+
+                    UndoManager.add({
+                        undo: () => {
+                            Synth3DManager.removeOverlay(overlayID);
+                        },
+                        redo: () => {
+                            Synth3DManager.addOverlay(overlayState);
+                        },
+                        description: `Create ground overlay "${overlay.name}"`
+                    });
+                }
+
+                if (overlay) {
+                    overlay.setEditMode(true);
+                    console.log(`Created overlay at ground point, now in edit mode`);
+                }
+            },
+            googleMapsHere: () => {
+                this.groundContextMenu = null;
+                menu.destroy();
+
+                // Open Google Maps at the clicked location
+                const googleMapsUrl = `https://www.google.com/maps?q=${lat},${lon}`;
+                window.open(googleMapsUrl, '_blank');
+                console.log(`Opening Google Maps at: ${lat}, ${lon}`);
+            },
+            googleEarthHere: () => {
+                this.groundContextMenu = null;
+                menu.destroy();
+
+                const kmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2" xmlns:kml="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom">
+<Document>
+\t<name>Sitrec Pin.kml</name>
+\t<StyleMap id="m_ylw-pushpin">
+\t\t<Pair>
+\t\t\t<key>normal</key>
+\t\t\t<styleUrl>#s_ylw-pushpin</styleUrl>
+\t\t</Pair>
+\t\t<Pair>
+\t\t\t<key>highlight</key>
+\t\t\t<styleUrl>#s_ylw-pushpin_hl</styleUrl>
+\t\t</Pair>
+\t</StyleMap>
+\t<Style id="s_ylw-pushpin">
+\t\t<IconStyle>
+\t\t\t<scale>1.1</scale>
+\t\t\t<Icon>
+\t\t\t\t<href>http://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png</href>
+\t\t\t</Icon>
+\t\t\t<hotSpot x="20" y="2" xunits="pixels" yunits="pixels"/>
+\t\t</IconStyle>
+\t</Style>
+\t<Style id="s_ylw-pushpin_hl">
+\t\t<IconStyle>
+\t\t\t<scale>1.3</scale>
+\t\t\t<Icon>
+\t\t\t\t<href>http://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png</href>
+\t\t\t</Icon>
+\t\t\t<hotSpot x="20" y="2" xunits="pixels" yunits="pixels"/>
+\t\t</IconStyle>
+\t</Style>
+\t<Placemark>
+\t\t<name>Sitrec Pin</name>
+\t\t<LookAt>
+\t\t\t<longitude>${lon}</longitude>
+\t\t\t<latitude>${lat}</latitude>
+\t\t\t<altitude>0</altitude>
+\t\t\t<heading>0</heading>
+\t\t\t<tilt>0</tilt>
+\t\t\t<range>10000</range>
+\t\t\t<gx:altitudeMode>relativeToSeaFloor</gx:altitudeMode>
+\t\t</LookAt>
+\t\t<styleUrl>#m_ylw-pushpin</styleUrl>
+\t\t<Point>
+\t\t\t<gx:drawOrder>1</gx:drawOrder>
+\t\t\t<coordinates>${lon},${lat},0</coordinates>
+\t\t</Point>
+\t</Placemark>
+</Document>
+</kml>`;
+
+                const blob = new Blob([kmlContent], { type: 'application/vnd.google-earth.kml+xml' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'Sitrec Pin.kml';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                console.log(`Downloaded KML for Google Earth at: ${lat}, ${lon}`);
+            },
+        };
+        
+        const overlayAtPoint = Synth3DManager.findOverlayAtLatLon(lat, lon);
+        if (overlayAtPoint) {
+            const isEditing = overlayAtPoint.editMode;
+            menuData.editOverlay = () => {
+                this.groundContextMenu = null;
+                menu.destroy();
+                
+                if (isEditing) {
+                    overlayAtPoint.setEditMode(false);
+                    console.log(`Exited edit mode for overlay: ${overlayAtPoint.id}`);
+                } else {
+                    Synth3DManager.exitAllEditModes(overlayAtPoint);
+                    overlayAtPoint.setEditMode(true);
+                    console.log(`Editing overlay: ${overlayAtPoint.id}`);
+                }
+            };
+        }
+        
+        const cloudsAtPoint = Synth3DManager.findCloudsAtLatLon(lat, lon);
+        if (cloudsAtPoint) {
+            const isEditingClouds = cloudsAtPoint.editMode;
+            menuData.editClouds = () => {
+                this.groundContextMenu = null;
+                menu.destroy();
+                
+                if (isEditingClouds) {
+                    cloudsAtPoint.setEditMode(false);
+                    console.log(`Exited edit mode for clouds: ${cloudsAtPoint.id}`);
+                } else {
+                    Synth3DManager.exitAllEditModes(cloudsAtPoint);
+                    cloudsAtPoint.setEditMode(true);
+                    console.log(`Editing clouds: ${cloudsAtPoint.id}`);
+                }
+            };
+        }
+
+        // Add location text as custom HTML (bright and selectable)
+        menu.addHTML(locationText, "Location");
+
+        // Add menu items
+        menu.add(menuData, "setCameraAbove").name(t("custom.contextMenu.setCameraAbove"));
+        menu.add(menuData, "setCameraOnGround").name(t("custom.contextMenu.setCameraOnGround"));
+        menu.add(menuData, "setTargetAbove").name(t("custom.contextMenu.setTargetAbove"));
+        menu.add(menuData, "setTargetOnGround").name(t("custom.contextMenu.setTargetOnGround"));
+
+        // Add feature marker option
+        menu.add(menuData, "dropPin").name(t("custom.contextMenu.dropPin"));
+
+        // Add synthetic track options
+        menu.add(menuData, "createTrackWithObject").name(t("custom.contextMenu.createTrackWithObject"));
+        menu.add(menuData, "createSyntheticTrack").name(t("custom.contextMenu.createTrackNoObject"));
+
+        // Add building creation option
+        menu.add(menuData, "addBuilding").name(t("custom.contextMenu.addBuilding"));
+
+        // Add clouds options
+        if (cloudsAtPoint) {
+            const cloudsLabel = cloudsAtPoint.name || cloudsAtPoint.id;
+            const cloudsMenuLabel = cloudsAtPoint.editMode ? `Exit Edit: ${cloudsLabel}` : `Edit Clouds: ${cloudsLabel}`;
+            menu.add(menuData, "editClouds").name(cloudsMenuLabel);
+        }
+        menu.add(menuData, "addClouds").name(t("custom.contextMenu.addClouds"));
+
+        // Add ground overlay options
+        if (overlayAtPoint) {
+            const overlayLabel = overlayAtPoint.name || overlayAtPoint.id;
+            const menuLabel = overlayAtPoint.editMode ? `Exit Edit: ${overlayLabel}` : `Edit Overlay: ${overlayLabel}`;
+            menu.add(menuData, "editOverlay").name(menuLabel);
+        }
+        menu.add(menuData, "addOverlay").name(t("custom.contextMenu.addGroundOverlay"));
+
+        if (NodeMan.exists("terrainUI")) {
+            const terrainUI = NodeMan.get("terrainUI");
+            if (!terrainUI.dynamic) {
+                menu.add(menuData, "centerTerrain").name(t("custom.contextMenu.centerTerrain"));
+            }
+
+        }
+
+        // Add Google Maps link if extraHelpLinks is enabled
+        if (configParams?.extraHelpLinks) {
+            menu.add(menuData, "googleMapsHere").name(t("custom.contextMenu.googleMapsHere"));
+            menu.add(menuData, "googleEarthHere").name(t("custom.contextMenu.googleEarthHere"));
+        }
+    },
+
+    /**
+     * Show a context menu for track editing when in edit mode
+     * @param {number} mouseX - Screen X coordinate
+     * @param {number} mouseY - Screen Y coordinate
+     * @param {Vector3} groundPoint - The 3D point where the ground was clicked (in ECEF coordinates)
+     */
+    showTrackEditingMenu(mouseX, mouseY, groundPoint) {
+        const trackOb = Globals.editingTrack;
+        if (!trackOb || !trackOb.splineEditor) {
+            console.warn("No track being edited");
+            return;
+        }
+
+        const splineEditor = trackOb.splineEditor;
+        const shortName = trackOb.menuText || trackOb.trackID;
+
+        // Check if current frame already has a control point
+        const currentFrame = par.frame;
+        const hasPointAtCurrentFrame = splineEditor.frameNumbers.includes(currentFrame);
+
+        // Create the context menu
+        const menu = Globals.menuBar.createStandaloneMenu(`Edit: ${shortName}`, mouseX, mouseY);
+        menu.open();
+
+        // Create menu actions
+        const menuData = {
+            splitTrack: () => {
+                // Add a point at the current frame and current track position
+                // Get the track node to access the interpolated position
+                const trackNode = trackOb.splineEditorNode;
+                assert(!trackNode?._needsRecalculate, "call ensureRecalculated() before direct array access on " + trackNode?.id);
+                if (trackNode && trackNode.array && trackNode.array.length > 0) {
+                    const currentFrame = Math.floor(par.frame);
+                    if (currentFrame >= 0 && currentFrame < trackNode.array.length) {
+                        const trackPosition = trackNode.array[currentFrame].position;
+                        if (trackPosition) {
+                            splineEditor.insertPoint(par.frame, trackPosition);
+                            console.log(`Split track ${shortName} at frame ${par.frame} (position indicator)`);
+                        } else {
+                            console.warn("No track position available at current frame");
+                        }
+                    } else {
+                        console.warn("Current frame out of range");
+                    }
+                } else {
+                    console.warn("Track node or array not available");
+                }
+                menu.destroy();
+                setRenderOne(true);
+            },
+            addGroundPoint: () => {
+                // Add a point at the current frame and clicked position
+                splineEditor.insertPoint(par.frame, groundPoint);
+                console.log(`Added ground point to track ${shortName} at frame ${par.frame}`);
+                menu.destroy();
+                setRenderOne(true);
+            },
+            removeClosestPoint: () => {
+                // Find the closest point to the clicked position
+                let closestIndex = -1;
+                let closestDistance = Infinity;
+
+                for (let i = 0; i < splineEditor.numPoints; i++) {
+                    const pointPos = splineEditor.positions[i];
+                    const distance = groundPoint.distanceTo(pointPos);
+                    if (distance < closestDistance) {
+                        closestDistance = distance;
+                        closestIndex = i;
+                    }
+                }
+
+                if (closestIndex >= 0) {
+                    // Check if we have enough points to remove one
+                    if (splineEditor.numPoints <= splineEditor.minimumPoints) {
+                        alert(`Cannot remove point: track must have at least ${splineEditor.minimumPoints} points`);
+                        menu.destroy();
+                        return;
+                    }
+
+                    // Remove the point at the found index
+                    const frameNumber = splineEditor.frameNumbers[closestIndex];
+                    const point = splineEditor.splineHelperObjects[closestIndex];
+
+                    // Detach transform control if it's attached to this point
+                    if (splineEditor.transformControl.object === point) {
+                        splineEditor.transformControl.detach();
+                    }
+
+                    // Remove from scene
+                    splineEditor.scene.remove(point);
+
+                    // Remove from arrays
+                    splineEditor.frameNumbers.splice(closestIndex, 1);
+                    splineEditor.positions.splice(closestIndex, 1);
+                    splineEditor.splineHelperObjects.splice(closestIndex, 1);
+                    splineEditor.numPoints--;
+
+                    // Update graphics
+                    splineEditor.updatePointEditorGraphics();
+                    if (splineEditor.onChange) splineEditor.onChange();
+
+                    console.log(`Removed point at frame ${frameNumber} from track ${shortName}`);
+                    setRenderOne(true);
+                } else {
+                    console.warn("No point found to remove");
+                }
+                menu.destroy();
+            },
+            exitEditMode: () => {
+                // Exit edit mode
+                trackOb.editMode = false;
+                splineEditor.setEnable(false);
+                Globals.editingTrack = null;
+                console.log(`Exited edit mode for track ${shortName}`);
+                menu.destroy();
+            }
+        };
+
+        // Add menu items
+        // Only show point-adding options if current frame doesn't already have a control point
+        if (!hasPointAtCurrentFrame) {
+            menu.add(menuData, "splitTrack").name(`Split Track (Frame ${par.frame})`);
+            menu.add(menuData, "addGroundPoint").name(`Add Ground Point (Frame ${par.frame})`);
+        }
+        menu.add(menuData, "removeClosestPoint").name(t("custom.contextMenu.removeClosestPoint"));
+        menu.add(menuData, "exitEditMode").name(t("custom.contextMenu.exitEditMode"));
+    },
+
+    showBuildingEditingMenu(mouseX, mouseY) {
+        const building = Globals.editingBuilding;
+        if (!building || !building.guiFolder) {
+            console.warn("No building being edited or no GUI folder");
+            return;
+        }
+        
+        // Ensure edit mode is enabled when showing the menu
+        if (!building.editMode) {
+            building.setEditMode(true);
+        }
+
+        // Check saved sidebar state first (saved before menu destruction in setEditMode)
+        let wasInLeftSidebar = this.lastBuildingEditMenuSidebar === 'left';
+        let wasInRightSidebar = this.lastBuildingEditMenuSidebar === 'right';
+        
+        // Also check current menu if it still exists
+        if (this.buildingEditMenu) {
+            if (isInLeftSidebar(this.buildingEditMenu)) wasInLeftSidebar = true;
+            if (isInRightSidebar(this.buildingEditMenu)) wasInRightSidebar = true;
+            this.buildingEditMenu.destroy(true, true); // skipEditModeDisable=true since we're just relocating
+            this.buildingEditMenu = null;
+        }
+        
+        // Clear saved state after using it
+        this.lastBuildingEditMenuSidebar = null;
+
+        const buildingName = building.name || building.buildingID;
+        const standaloneMenu = Globals.menuBar.createStandaloneMenu(`Edit: ${buildingName}`, mouseX, mouseY);
+        this.buildingEditMenu = standaloneMenu;
+        
+        this.setupDynamicMirroring(building.guiFolder, standaloneMenu);
+        
+        if (wasInLeftSidebar) {
+            addMenuToLeftSidebar(standaloneMenu);
+            standaloneMenu.mode = "SIDEBAR_LEFT";
+            standaloneMenu.lockOpenClose = false;
+            standaloneMenu.open();
+            standaloneMenu.lockOpenClose = true;
+            Globals.menuBar.applyModeStyles(standaloneMenu);
+        } else if (wasInRightSidebar) {
+            addMenuToRightSidebar(standaloneMenu);
+            standaloneMenu.mode = "SIDEBAR_RIGHT";
+            standaloneMenu.lockOpenClose = false;
+            standaloneMenu.open();
+            standaloneMenu.lockOpenClose = true;
+            Globals.menuBar.applyModeStyles(standaloneMenu);
+        } else {
+            standaloneMenu.open();
+        }
+    },
+
+    showCloudsEditingMenu(mouseX, mouseY) {
+        const clouds = Globals.editingClouds;
+        if (!clouds || !clouds.guiFolder) {
+            console.warn("No clouds being edited or no GUI folder");
+            return;
+        }
+
+        // Ensure edit mode is enabled when showing the menu
+        if (!clouds.editMode) {
+            clouds.setEditMode(true);
+        }
+
+        let wasInLeftSidebar = false;
+        let wasInRightSidebar = false;
+        if (this.cloudsEditMenu) {
+            wasInLeftSidebar = isInLeftSidebar(this.cloudsEditMenu);
+            wasInRightSidebar = isInRightSidebar(this.cloudsEditMenu);
+            this.cloudsEditMenu.destroy(true, true); // skipEditModeDisable=true since we're just relocating
+            this.cloudsEditMenu = null;
+        }
+
+        const cloudsName = clouds.name || clouds.cloudsID;
+        const standaloneMenu = Globals.menuBar.createStandaloneMenu(`Edit: ${cloudsName}`, mouseX, mouseY);
+        this.cloudsEditMenu = standaloneMenu;
+        
+        this.setupDynamicMirroring(clouds.guiFolder, standaloneMenu);
+        
+        if (wasInLeftSidebar) {
+            addMenuToLeftSidebar(standaloneMenu);
+            standaloneMenu.mode = "SIDEBAR_LEFT";
+            standaloneMenu.lockOpenClose = false;
+            standaloneMenu.open();
+            standaloneMenu.lockOpenClose = true;
+            Globals.menuBar.applyModeStyles(standaloneMenu);
+        } else if (wasInRightSidebar) {
+            addMenuToRightSidebar(standaloneMenu);
+            standaloneMenu.mode = "SIDEBAR_RIGHT";
+            standaloneMenu.lockOpenClose = false;
+            standaloneMenu.open();
+            standaloneMenu.lockOpenClose = true;
+            Globals.menuBar.applyModeStyles(standaloneMenu);
+        } else {
+            standaloneMenu.open();
+        }
+    },
+
+    showOverlayEditingMenu(overlay, mouseX, mouseY) {
+        if (!overlay || !overlay.guiFolder) {
+            console.warn("No overlay or no GUI folder");
+            return;
+        }
+
+        // Ensure edit mode is enabled when showing the menu
+        if (!overlay.editMode && overlay.setEditMode) {
+            overlay.setEditMode(true);
+        }
+
+        let wasInLeftSidebar = false;
+        let wasInRightSidebar = false;
+        if (this.overlayEditMenu) {
+            wasInLeftSidebar = isInLeftSidebar(this.overlayEditMenu);
+            wasInRightSidebar = isInRightSidebar(this.overlayEditMenu);
+            this.overlayEditMenu.destroy(true, true); // skipEditModeDisable=true since we're just relocating
+            this.overlayEditMenu = null;
+        }
+
+        const overlayName = overlay.name || overlay.overlayID;
+        const standaloneMenu = Globals.menuBar.createStandaloneMenu(`Edit: ${overlayName}`, mouseX, mouseY);
+        this.overlayEditMenu = standaloneMenu;
+        
+        this.setupDynamicMirroring(overlay.guiFolder, standaloneMenu);
+        
+        if (wasInLeftSidebar) {
+            addMenuToLeftSidebar(standaloneMenu);
+            standaloneMenu.mode = "SIDEBAR_LEFT";
+            standaloneMenu.lockOpenClose = false;
+            standaloneMenu.open();
+            standaloneMenu.lockOpenClose = true;
+            Globals.menuBar.applyModeStyles(standaloneMenu);
+        } else if (wasInRightSidebar) {
+            addMenuToRightSidebar(standaloneMenu);
+            standaloneMenu.mode = "SIDEBAR_RIGHT";
+            standaloneMenu.lockOpenClose = false;
+            standaloneMenu.open();
+            standaloneMenu.lockOpenClose = true;
+            Globals.menuBar.applyModeStyles(standaloneMenu);
+        } else {
+            standaloneMenu.open();
+        }
+    },
+
+};

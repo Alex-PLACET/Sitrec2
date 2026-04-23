@@ -1,0 +1,1230 @@
+/**
+ * Custom-sitch serialize/deserialize, including legacy mod remapping and permalink handling.
+ *
+ * Extracted from CustomSupport.js as a mixin. Methods are merged into
+ * CCustomManager.prototype so `this` references the CCustomManager instance.
+ */
+import {
+    addGUIFolder,
+    FileManager,
+    getEffectiveUserID,
+    GlobalDateTimeNode,
+    Globals,
+    guiMenus,
+    guiShowHideViews,
+    infoDiv,
+    NodeFactory,
+    NodeMan,
+    setNewSitchObject,
+    setRenderOne,
+    setSitchEstablished,
+    Sit,
+    Synth3DManager,
+    TrackManager,
+    UndoManager,
+    Units,
+    withTestUser
+} from "./Globals";
+import {isKeyHeld, toggler} from "./KeyBoardHandler";
+import {ECEFToLLAVD_radii, LLAToECEF} from "./LLA-ECEF-ENU";
+import {par} from "./par";
+import {GlobalScene} from "./LocalFrame";
+import {refreshLabelsAfterLoading} from "./nodes/CNodeLabels3D";
+import {assert} from "./assert";
+import {getShortURL} from "./urlUtils";
+import {CNode3DObject, ModelAliases} from "./nodes/CNode3DObject";
+import {UpdateHUD} from "./JetStuff";
+import {degrees, getDateTimeFilename} from "./utils";
+import {ViewMan} from "./CViewManager";
+import {EventManager} from "./CEventManager";
+import {isAdmin, SITREC_APP, SITREC_SERVER} from "./configUtils";
+import {CNodeDisplayTrack} from "./nodes/CNodeDisplayTrack";
+import {DebugArrowAB, elevationAtLL} from "./threeExt";
+import {FeatureManager} from "./CFeatureManager";
+import {CNodeTrackGUI} from "./nodes/CNodeControllerTrackGUI";
+import {forceUpdateUIText} from "./nodes/CNodeViewUI";
+import {configParams} from "./runtimeConfig";
+import {showError} from "./showError";
+import {showPostLoadFilterDialog} from "./TrackFilterDialog";
+import {textSitchToObject} from "./RegisterSitches";
+import {waitForExportFrameSettled} from "./ExportFrameSettler";
+import {parseObjectInput as parseObjectInputUtil} from "./utils/parseObjectInput";
+import {initializeSettings, SettingsSaver} from "./SettingsManager";
+import {CNodeCurveEditor2} from "./nodes/CNodeCurveEdit2";
+import {CNodeViewDAG} from "./nodes/CNodeViewDAG";
+import {CNodeNotes} from "./nodes/CNodeNotes";
+import {createCustomModalWithCopy, saveFilePrompted, saveFileToDirectory, saveFileToHandle} from "./FileUtils";
+import {deserializeMotionAnalysis, serializeMotionAnalysis} from "./CMotionAnalysis";
+import {deserializeAutoTracking, serializeAutoTracking} from "./CObjectTracking";
+import {getCursorPositionFromTopView} from "./mouseMoveView";
+import {addMenuToLeftSidebar, addMenuToRightSidebar, isInLeftSidebar, isInRightSidebar} from "./PageStructure";
+import {CNodeControllerCelestial} from "./nodes/CNodeControllerVarious";
+import {CNodeAutoTrackLOS} from "./nodes/CNodeAutoTrackLOS";
+import {CNodeVideoInfoUI} from "./nodes/CNodeVideoInfoUI";
+import {CNodeOSDDataSeriesController} from "./nodes/CNodeOSDDataSeriesController";
+import {CNodeGUIValue} from "./nodes/CNodeGUIValue";
+import {meanSeaLevelOffset} from "./EGM96Geoid";
+import {collectActiveTrackSourceFileIDs, shouldSerializeLoadedFileEntry} from "./trackSourceUtils";
+import {encodeShareParam, resolveURLForFetch, toShareableCustomValue} from "./SitrecObjectResolver";
+import {getEnvBool} from "./envUtils";
+import {CNodeFloodSim} from "./nodes/CNodeFloodSim";
+import {CNodeOrbitTrack} from "./nodes/CNodeOrbitTrack";
+import {CNodeTrackSwitch} from "./nodes/CNodeTrackSwitch";
+import {getNearbyWeatherBalloons, importSoundingDialog} from "./SondeFetch";
+import {WIND_SOURCES, windSourceLabelsToKeys, windSourceByKey} from "./nodes/WindSources";
+import {getCurrentLanguage, setLanguage, SUPPORTED_LANGUAGE_OPTIONS, t} from "./i18n";
+import {CNodeSAPage} from "./nodes/CNodeSAPage";
+import {
+    gimbalStepAirTrack,
+    gimbalStepAirTrackDisplay,
+    gimbalStepClouds,
+    gimbalStepCommonViews,
+    gimbalStepCore,
+    gimbalStepFleet,
+    gimbalStepGraphs,
+    gimbalStepSAHAFU,
+    gimbalStepTargetModel,
+    gimbalStepTrackLOSNodes,
+    gimbalStepTraverse,
+} from "./GimbalCustomSetup";
+import {Color} from "three";
+
+export const serializeMethods = {
+    getCustomSitchString(local = false) {
+        // the output object
+        // since we are going to use JSON.stringify, then when it is loaded again we do NOT need
+        // the ad-hox parse functions that we used to have
+        // and can just use JSON.parse directly on the string
+        // any existing one that loads already will continue to work
+        // but this allows us to use more complex objects without updating the parser
+
+        // process.env.VERSION is a string number like "1.0.0"
+        // convert it into an integer like 10000
+
+
+        assert(process.env.BUILD_VERSION_NUMBER !== undefined, "BUILD_VERSION_NUMBER must be defined in the environment");
+        const versionParts = process.env.BUILD_VERSION_NUMBER.split('.').map(Number);
+        const versionNumber = versionParts[0] * 1000000 + versionParts[1] * 1000 + versionParts[2];
+
+        let out = {
+            stringified: true,
+            isASitchFile: true,
+        }
+
+        // merge in the current Sit object
+        // which might have some changes?
+
+        if (Sit.canMod) {
+            // for a modded sitch, we just need to store the name of the sitch we are modding
+            // plus any Sit-level properties that the user can change via the UI
+            out = {
+                ...out,
+                modding: Sit.name,
+                useEllipsoid: Sit.useEllipsoid,
+            }
+
+            // Serialize terrain UI overrides (buildings, etc.) for modded sitches.
+            // checkForModding does a shallow merge, so this TerrainModel replaces the base sitch's.
+            // We spread the original Sit.TerrainModel first to preserve base values.
+            if (Sit.TerrainModel !== undefined && NodeMan.exists("terrainUI")) {
+                const terrainModel = NodeMan.get("terrainUI");
+                out.TerrainModel = {
+                    ...Sit.TerrainModel,
+                    showBuildings: terrainModel.showBuildings,
+                    buildingsSource: terrainModel.buildingsSource,
+                    showBuildingEdges: terrainModel.showBuildingEdges,
+                    showOceanSurface: terrainModel.showOceanSurface,
+                }
+            }
+        }
+        else {
+            // but for a custom sitch, we need to store the whole Sit object (which automatically stores changes)
+            out = {
+                ...out,
+                ...Sit
+            }
+        }
+
+        // Serialize video state for any sitch with a video node
+        // (applies to both custom and modded sitches like the video viewer)
+        if (NodeMan.exists("video")) {
+            console.log("Exporting: Found video node")
+            const videoNode = NodeMan.get("video")
+
+            // Serialize multiple videos if present
+            if (videoNode.videos && videoNode.videos.length > 0) {
+                videoNode.updateCurrentVideoEntry();
+                const videosToExport = videoNode.videos.map(entry => {
+                    const exported = {
+                        fileName: entry.fileName,
+                        isImage: entry.isImage || false
+                    };
+                    if (local && entry.localStaticURL) {
+                        exported.staticURL = entry.localStaticURL;
+                    } else if (entry.staticURL) {
+                        exported.staticURL = entry.staticURL;
+                    } else if (local && entry.fileName) {
+                        exported.staticURL = entry.fileName;
+                    }
+                    if (entry.imageFileID) {
+                        exported.imageFileID = entry.imageFileID;
+                    }
+                    return exported;
+                });
+                out.videos = videosToExport;
+                out.currentVideoIndex = videoNode.currentVideoIndex;
+                console.log("Exporting: videos array with", videosToExport.length, "entries");
+            } else if (local && videoNode.localStaticURL) {
+                console.log("Exporting: LOCAL Found video node with localStaticURL = ", videoNode.localStaticURL)
+                out.videoFile = videoNode.localStaticURL;
+            } else if (videoNode.staticURL) {
+                // Fallback for legacy single video
+                console.log("Exporting: Found video node with staticURL = ", videoNode.staticURL)
+                out.videoFile = videoNode.staticURL;
+            } else {
+                console.log("Exporting: Found video node, but no staticURL")
+                if (local && videoNode.fileName) {
+                    console.log("Exporting: LOCAL Found video node with filename = ", videoNode.fileName)
+                    out.videoFile = videoNode.fileName;
+                }
+            }
+        } else {
+            console.log("Exporting: No video node found")
+        }
+
+        if (Sit.isCustom) {
+
+            // modify the terrain model directly, as we don't want to load terrain twice
+            // For a modded sitch this has probably not changed
+            if (out.TerrainModel !== undefined) {
+                // note we now get these from the TerrainUI node
+                // previously they were duplicated in both nodes, but now just in the TerrainUI node
+                // the naming convention is to support historical saves.
+                const terrainModel = NodeMan.get("terrainUI");
+                out.TerrainModel = {
+                    ...out.TerrainModel,
+                    lat: terrainModel.lat,
+                    lon: terrainModel.lon,
+                    zoom: terrainModel.zoom,
+                    nTiles: terrainModel.nTiles,
+                    tileSegments: Globals.settings.tileSegments,  // Now always from global settings
+                    mapType: terrainModel.mapType,
+                    layer: terrainModel.layer,
+                    elevationType: terrainModel.elevationType,
+                    elevationScale: terrainModel.elevationScale,
+                    dynamic: terrainModel.dynamic,
+                    showBuildings: terrainModel.showBuildings,
+                    buildingsSource: terrainModel.buildingsSource,
+                    showBuildingEdges: terrainModel.showBuildingEdges,
+                    showOceanSurface: terrainModel.showOceanSurface,
+                }
+            }
+
+            // the files object is the rehosted files
+            // files will be reference in sitches using their original file names
+            // we have rehosted them, so we need to create a new "files" object
+            // that uses the rehosted file names
+            // maybe special case for the video file ?
+            let files = {}
+            const activeTrackSourceFileIDs = collectActiveTrackSourceFileIDs(TrackManager);
+            for (let id in FileManager.list) {
+                const file = FileManager.list[id]
+
+                // Skip files marked for no serialization (e.g. original NITF archives
+                // replaced by converted products)
+                if (file.skipSerialization) {
+                    continue;
+                }
+
+                // initial check for isMultiple is to skip synthetic files
+                // that are generated from .TS or (TODO) .ZIP  uploads
+                if (!file.isMultiple) {
+                    if (!shouldSerializeLoadedFileEntry(id, file, activeTrackSourceFileIDs)) {
+                        console.log("Skipping orphaned track source file from serialization:", id, file.filename);
+                        continue;
+                    }
+                    if (local) {
+                        // if we are saving locally, then we don't need to rehost the files
+                        // so use localStaticURL if available, otherwise original filename
+                        files[id] = file.localStaticURL || file.filename
+                    } else {
+                        // Only include files that have been successfully rehosted
+                        if (file.staticURL) {
+                            files[id] = file.staticURL
+                        } else if (!file.dynamicLink) {
+                            // For non-dynamic links (external static URLs), use filename directly
+                            // Note: External static URLs should have staticURL = filename set at load time,
+                            // so this is primarily a defensive fallback
+                            console.error("No static link, falling back to filename", id, file.filename);
+                            files[id] = file.filename
+                        } else {
+                            console.warn("File not rehosted but should be - skipping:", id, file.filename);
+                        }
+                        // else: skip files without staticURL - they weren't rehosted
+                    }
+                }
+            }
+            out.loadedFiles = files;
+
+            // Build metadata for files that need special handling on reload
+            let filesMetadata = {};
+            for (let id in FileManager.list) {
+                const file = FileManager.list[id];
+                if (file.dataType === "kmzImage") {
+                    filesMetadata[id] = { dataType: file.dataType, kmzHref: file.kmzHref };
+                } else if (file.dataType === "videoImage") {
+                    filesMetadata[id] = { dataType: file.dataType };
+                } else if (file.dataType === "groundOverlayImage") {
+                    filesMetadata[id] = { dataType: file.dataType };
+                } else if (file.isTLE && file.tleMerged) {
+                    filesMetadata[id] = { dataType: file.dataType, tleAction: "merge" };
+                }
+            }
+
+            // Save track import metadata per file:
+            // - selectedTracks: skip multi-track picker on reload
+            // - shortNames: preserve stable track IDs across parser differences
+            //   (notably NITF first-load names vs MISB CSV reload names)
+            const trackInfoPerFile = {};
+            TrackManager.iterate((trackId, metaTrack) => {
+                if (metaTrack.isSynthetic || !metaTrack.trackFileName) return;
+                if (!trackInfoPerFile[metaTrack.trackFileName]) {
+                    trackInfoPerFile[metaTrack.trackFileName] = {
+                        selectedTracks: [],
+                        shortNames: {},
+                    };
+                }
+                trackInfoPerFile[metaTrack.trackFileName].selectedTracks.push(metaTrack.trackIndex);
+                const shortName = metaTrack.trackNode?.shortName || metaTrack.menuText;
+                if (shortName) {
+                    trackInfoPerFile[metaTrack.trackFileName].shortNames[String(metaTrack.trackIndex)] = shortName;
+                }
+            });
+            for (const [fileId, info] of Object.entries(trackInfoPerFile)) {
+                if (!filesMetadata[fileId]) filesMetadata[fileId] = {};
+                filesMetadata[fileId].selectedTracks = info.selectedTracks;
+                if (Object.keys(info.shortNames).length > 0) {
+                    filesMetadata[fileId].shortNames = info.shortNames;
+                }
+            }
+
+            // Save autoSelectAsCamera flag for track files that define their own camera
+            // (e.g. NITF tracks converted to MISB CSV)
+            for (let id in FileManager.list) {
+                const file = FileManager.list[id];
+                if (file.autoSelectAsCamera) {
+                    if (!filesMetadata[id]) filesMetadata[id] = {};
+                    filesMetadata[id].autoSelectAsCamera = true;
+                }
+            }
+
+            if (Object.keys(filesMetadata).length > 0) {
+                out.loadedFilesMetadata = filesMetadata;
+            }
+        }
+
+        // calculate the modifications to be applied to nodes AFTER the files are loaded
+        // anything with a modSerialize function will be serialized
+        let mods = {}
+        NodeMan.iterate((id, node) => {
+
+            if (node.modSerialize !== undefined) {
+                const nodeMod = node.modSerialize()
+
+                // check it has rootTestRemove, and remove it if it's empty
+                // this is a test to ensure serialization of an object incorporates he parents in the hierarchy
+                assert(nodeMod.rootTestRemove !== undefined, "Not incorporating ...super.modSerialzie.  rootTestRemove is not defined for node:" + id + "Class name " + node.constructor.name)
+                // remove it
+                delete nodeMod.rootTestRemove
+
+                // check if empty {} object, don't need to store that
+                if (Object.keys(nodeMod).length > 0) {
+
+                    // if there's just one, and it's "visible: true", then don't store it
+                    // as it's the default
+                    if (Object.keys(nodeMod).length === 1 && nodeMod.visible === true) {
+                        // skip
+                    } else {
+                        mods[node.id] = nodeMod;
+                    }
+                }
+            }
+        })
+        out.mods = mods;
+
+        // now the "par" values, which are deprecated, but still used in some places
+        // so we need to serialize some of them
+        const parNeeded = [
+            "frame",
+            "paused",
+            "mainFOV",
+
+
+            // these are JetGUI.js specific, form SetupJetGUI
+            // VERY legacy stuff which most sitching will not have
+            "pingPong",
+
+            "podPitchPhysical",
+            "podRollPhysical",
+            "deroFromGlare",
+            "jetPitch",
+
+            "el",
+            "glareStartAngle",
+            "initialGlareRotation",
+            "scaleJetPitch",
+            "speed",  // this is the video speed
+            "podWireframe",
+            "showVideo",
+            "showChart",
+            "showKeyboardShortcuts",
+            "showPodHead",
+            "showPodsEye",
+            "showCueData",
+
+            "jetOffset",
+            "TAS",
+            "integrate",
+            "trackToTrackStopAt"
+        ]
+
+        const SitNeeded = [
+            "file",
+            "starScale",
+            "planetScale",
+            "satScale",
+            "flareScale",
+            "satCutOff",
+            "markerIndex",
+            "sitchName",  // the same for the save file of the custom sitch
+            "aFrame",
+            "bFrame",
+            "ignores",
+        ]
+
+        const globalsNeeded = [
+            "showMeasurements",
+            "showLabelsMain",
+            "showLabelsLook",
+            "showFeaturesMain",
+            "showFeaturesLook",
+            "objectScale",
+            "showAllTracksInLook"
+        ]
+
+        let pars = {}
+        for (let key of parNeeded) {
+            if (par[key] !== undefined) {
+                pars[key] = par[key]
+            }
+        }
+
+        // add any "showHider" par toggles
+        // see KeyBoardHandler.js, function showHider
+        // these are three.js objects that can be toggled on and off
+        // so iterate over all the objects in the scene, and if they have a showHiderID
+        // then store the visible state using that ID (which is what the variable in pars will be)
+        // traverse GlobalScene.children recursively to do the above
+        const traverse = (object) => {
+            if (object.showHiderID !== undefined) {
+                pars[object.showHiderID] = object.visible;
+            }
+            for (let child of object.children) {
+                traverse(child);
+            }
+        }
+
+        traverse(GlobalScene);
+        out.pars = pars;
+
+        let globals = {}
+        for (let key of globalsNeeded) {
+            if (Globals[key] !== undefined) {
+                globals[key] = Globals[key]
+            }
+        }
+        out.globals = globals;
+
+        // this will be accessible in Sit.Sit, eg. Sit.Sit.file
+        let SitVars = {}
+        for (let key of SitNeeded) {
+            if (Sit[key] !== undefined) {
+                SitVars[key] = Sit[key]
+            }
+        }
+        out.Sit = SitVars;
+
+
+
+
+
+        // MORE STUFF HERE.......
+
+        out.modUnits = Units.modSerialize()
+
+        out.guiMenus = Globals.menuBar.modSerialize()
+
+        // Serialize synthetic tracks from TrackManager
+        // This must be done before mods, as the tracks need to be recreated
+        // before mods are applied to their nodes
+        out.syntheticTracks = TrackManager.serialize()
+
+        // Serialize feature markers from FeatureManager
+        out.featureMarkers = FeatureManager.serialize()
+
+        // Serialize synthetic 3D buildings from Synth3DManager
+        out.syntheticBuildings = Synth3DManager.serialize()
+
+        // Serialize motion analysis state
+        out.motionAnalysis = serializeMotionAnalysis()
+
+        // Serialize auto tracking state (tracked positions + stabilization)
+        // Fall back to Sit.autoTracking (from previous load) if the objectTracker
+        // is no longer active but previously-serialized data exists
+        out.autoTracking = serializeAutoTracking() ?? Sit.autoTracking ?? null
+
+        // Serialize sub sitches
+        out.subSitchesData = this.serializeSubSitches()
+
+        // do the export version tracking last, so none of the combining sitches overwrites it
+        out.exportVersion = process.env.BUILD_VERSION_STRING
+        out.exportTag = process.env.VERSION;
+        out.exportTagNumber = versionNumber; // this is an integer like 1000000 for 1.0.0
+
+
+        // convert to a string
+        const str = JSON.stringify(out, null, 2)
+        return str;
+    },
+
+    // Site ignores is a list of id strings to ignore next time a file is loaded
+    // like if you load a KMZ with pins in it, it will create editable pins
+    // which will be saved automatically
+    // so reloading the same KMZ will create duplicates
+    // so we need to ignore those IDs next time
+    // this mostly is for serialization.
+    ignore(id) {
+        if (Sit.ignores === undefined) {
+            Sit.ignores = [];
+        }
+        if (!Sit.ignores.includes(id)) {
+            Sit.ignores.push(id);
+        }
+    },
+
+    shouldIgnore(id) {
+        if (Sit.ignores === undefined) {
+            return false;
+        }
+        return Sit.ignores.includes(id);
+    },
+
+    unignore(id) {
+        if (Sit.ignores === undefined) {
+            return;
+        }
+        const index = Sit.ignores.indexOf(id);
+        if (index !== -1) {
+            Sit.ignores.splice(index, 1);
+        }
+    },
+
+    // For saving a modified legacy sitch, like Gimbal, use the original name, with _mod
+    // and make the version from the datetime as normal
+    serializeMod() {
+        const name = Sit.name + "_mod";
+        const todayDateTimeFilename = getDateTimeFilename();
+        return this.serialize(name, todayDateTimeFilename);
+    },
+
+    /**
+     * Serializes and saves the current sitch.
+     *
+     * Reference-aware behavior for server saves:
+     * - Any current `FileManager.loadURL` is resolved to a fetchable URL before content comparison.
+     * - Newly rehosted sitches store/share the stable object reference returned by the backend
+     *   (not a storage-host-specific URL), and the generated `?custom=` / `?mod=` link uses
+     *   the share-safe object key value.
+     *
+     * @param {string} name - Logical sitch name (without version suffix).
+     * @param {string} version - Version token (typically datetime-based).
+     * @param {boolean} [local=false] - If true, save locally without server rehosting.
+     * @param {FileSystemDirectoryHandle} [directoryHandle=null] - If provided (and local=true), save directly into this directory.
+     * @param {FileSystemFileHandle} [fileHandle=null] - If provided (and local=true), save directly into this file.
+     * @returns {Promise<{savedName?: string, fileHandle?: FileSystemFileHandle}|void>}
+     */
+    async serialize(name, version, local = false, directoryHandle = null, fileHandle = null) {
+        console.log("Serializing custom sitch")
+
+        assert(Sit.canMod || Sit.isCustom, "one of Sit.canMod or Sit.isCustom must be true to serialize a sitch")
+
+        // we now allow serialization of legacy Sitchs that are marked with isCustom
+        // Gimbal for example
+   //     assert(!Sit.canMod || !Sit.isCustom, "one of Sit.canMod or Sit.isCustom must be false to serialize a sitch")
+
+        if (local) {
+
+            // For working-folder local saves, copy dynamic/imported assets into the folder first.
+            // This enables portable local sitches without manual file shuffling.
+            if (directoryHandle) {
+                await FileManager.rehostDynamicLinksLocal(directoryHandle, true);
+            }
+
+            // Save the stringified sitch using localStaticURL paths when present.
+            let str = this.getCustomSitchString(true);
+
+            // special handling for local save of a sitch with a dropped TS file
+            // which will give us something like:
+            // "videoFile" : "falls.ts_h264_273.h264",
+            //     "loadedFiles" : {
+            //     "IAUCSN" : "https://local.metabunk.org/sitrec/data/nightsky/IAU-CSN.txt",
+            //         "BSC5" : "https://local.metabunk.org/sitrec/data/nightsky/sitrec_bsc_lite.bin",
+            //         "constellationsLines" : "https://local.metabunk.org/sitrec/data/nightsky/constellations.lines.json",
+            //         "constellations" : "https://local.metabunk.org/sitrec/data/nightsky/constellations.json",
+            //         "falls.ts_h264_273.h264" : "falls.ts_h264_273.h264",
+            //         "falls.ts_klv_4096.klv" : "falls.ts_klv_4096.klv",
+            //         "falls.ts_ecm_4099.ecm" : "falls.ts_ecm_4099.ecm",
+            //         "falls.ts_emm_4097.emm" : "falls.ts_emm_4097.emm",
+            //         "falls.ts_klv_4098.klv" : "falls.ts_klv_4098.klv",
+            //         "falls.ts_ecm_4100.ecm" : "falls.ts_ecm_4100.ecm",
+            //         "data/models/MQ9-clean.glb" : "https://local.metabunk.org/sitrec/data/models/MQ9-clean.glb"
+            // },
+            // what we will need to do is make the videoFile point to the original TS file
+            // and remove the other extracted TS files from loadedFiles
+
+
+            const sitchObj = JSON.parse(str);
+            if (sitchObj.videoFile && sitchObj.videoFile.endsWith(".h264")) {
+                const baseName = sitchObj.videoFile.replace(/_(h264|klv|ecm|emm)_\d+\.(h264|klv|ecm|emm)$/, "");
+                console.log("Local save: detected TS video file, adjusting loadedFiles for base TS:", baseName);
+                // Remove all extracted TS files from loadedFiles
+                for (const fileId in sitchObj.loadedFiles) {
+                    if (fileId.startsWith(baseName)) {
+                        console.log("  Removing extracted TS file from loadedFiles:", fileId);
+                        delete sitchObj.loadedFiles[fileId];
+                    }
+                }
+                // delete the sitchObj.videoFile entry
+                delete sitchObj.videoFile;
+
+                // we add back the base TS file to loadedFiles
+                // to force it to reload it and extract the streams again
+                sitchObj.loadedFiles[baseName] = baseName;
+                console.log("  Added base TS file to loadedFiles:", baseName);
+
+            }
+
+            // re-stringify
+            str = JSON.stringify(sitchObj, null, 2);
+
+            const blob = new Blob([str]);
+            const filename = name + ".json";
+
+            if (fileHandle) {
+                // Save directly into a previously selected file
+                return saveFileToHandle(blob, fileHandle).then(() => {
+                    Sit.sitchName = fileHandle.name.replace(".json", "");
+                    console.log("Saved to existing local file handle as " + fileHandle.name);
+                    return {savedName: fileHandle.name, fileHandle};
+                });
+            }
+
+            if (directoryHandle) {
+                // Save directly into the working folder
+                return saveFileToDirectory(blob, directoryHandle, filename).then(() => {
+                    Sit.sitchName = name;
+                    console.log("Saved to working folder as " + filename);
+                    return {savedName: filename};
+                });
+            }
+
+            // Fall back to save-file picker dialog
+            return new Promise((resolve, reject) => {
+                saveFilePrompted(blob, filename).then(({name: savedName, fileHandle: savedFileHandle}) => {
+                    console.log("Saved as " + savedName)
+                    // change sit.name to the filename
+                    // with .sitch.js removed
+                    Sit.sitchName = savedName.replace(".json", "")
+
+                    console.log("Setting Sit.sitchName to " + Sit.sitchName)
+                    resolve({savedName, fileHandle: savedFileHandle});
+                }).catch((error) => {
+                    console.log("Error or cancel in saving file local:", error);
+                    reject(error);
+                })
+            })
+
+        }
+
+        console.log("ABOUT TO REHOST DYNAMIC LINKS FOR SERIALIZE")
+        return FileManager.rehostDynamicLinks(true).then(async () => {
+
+            console.log("GETTING CUSTOM SITCH STRING AFTER REHOSTING DYNAMIC LINKS")
+            // get the string again, now that dynamic links have been rehosted
+            const str = this.getCustomSitchString();
+            //            console.log(str)
+
+            if (name === undefined) {
+                name = "Custom.js"
+            }
+
+            if (FileManager.loadURL) {
+                try {
+                    const currentFetchURL = await resolveURLForFetch(FileManager.loadURL);
+                    const currentResponse = await fetch(currentFetchURL);
+                    const currentContent = await currentResponse.text();
+                    if (currentContent === str) {
+                        console.log("No changes to save - content identical to current version");
+                        return;
+                    }
+                } catch (e) {
+                    console.log("Could not fetch current version for comparison, proceeding with save");
+                }
+            }
+
+            return FileManager.rehoster.rehostFile(name, str, version + ".js").then((staticRef) => {
+                console.log("✓ Sitch rehosted as " + staticRef);
+
+                // Defensive check: detect if we got a cached response from a previous upload
+                // This can happen if rehost.php was called multiple times rapidly
+                // and the browser's fetch cache returned a stale response
+                if (staticRef.endsWith('.mp4') || staticRef.endsWith('.mov')) {
+                    console.error("ERROR: Sitch URL contains VIDEO indicator - likely a CACHED response!");
+                    console.error("  This happens when rehost.php is called rapidly and browser caches POST responses");
+                    console.error("  Expected: .js file URL (e.g., /sitrec/custom/...Custom.js.1.js)");
+                    console.error("  Got:", staticRef);
+                    // Log current state for debugging
+                    if (NodeMan.exists("video")) {
+                        const videoNode = NodeMan.get("video");
+                        console.error("  VideoNode.staticURL:", videoNode.staticURL);
+                    }
+                    // This should now be prevented by cache: 'no-store' in CRehoster.js
+                    console.error("  If this persists, check browser DevTools Network tab for 304 responses");
+                }
+
+                this.staticURL = staticRef;
+                FileManager.loadURL = staticRef;
+
+                // and make a URL that points to the new sitch
+                let paramName = "custom"
+                if (Sit.canMod) {
+                    name = Sit.name + "_mod.js"
+                    paramName = "mod"
+                }
+                this.customLink = SITREC_APP + "?" + paramName + "=" + encodeShareParam(toShareableCustomValue(staticRef));
+                console.log("  Custom link created:", this.customLink);
+
+                //
+                window.history.pushState({}, null, this.customLink);
+
+            }).finally(() => {
+                // Clean up accumulated promises in CRehoster to prevent cross-talk between saves
+                if (FileManager.rehoster.rehostPromises && FileManager.rehoster.rehostPromises.length > 0) {
+                    console.log("Clearing " + FileManager.rehoster.rehostPromises.length + " accumulated rehost promises");
+                    FileManager.rehoster.rehostPromises = [];
+                }
+            })
+        })
+    },
+
+
+    getPermalink() {
+        // Return the Promise chain
+        return getShortURL(this.customLink).then((shortURL) => {
+            // Ensure the short URL starts with 'http' or 'https'
+            if (!shortURL.startsWith("http")) {
+                shortURL = "https://" + shortURL;
+            }
+            createCustomModalWithCopy(shortURL)();
+        }).catch((error) => {
+            console.log("Error in getting permalink:", error);
+        });
+    },
+
+
+
+    // after setting up a custom scene, call this to perform the mods
+    // i.e. load the files, and then apply the mods
+    deserialize(sitchData) {
+//        console.log("Deserializing text-base sitch")
+
+        Globals.exportTagNumber = sitchData.exportTagNumber ?? 0;
+
+        console.log("Sitch exportTagNumber: " + Globals.exportTagNumber)
+
+        Globals.deserializing = true;
+
+        // Restore Sit.ignores early, BEFORE files are loaded.
+        // extractKMLObjectsInternal checks shouldIgnore() to avoid recreating
+        // features that are already saved in featureMarkers.
+        if (sitchData.Sit && sitchData.Sit.ignores) {
+            Sit.ignores = sitchData.Sit.ignores;
+        }
+
+        // Store file metadata for special handling during loading
+        if (sitchData.loadedFilesMetadata) {
+            FileManager.loadedFilesMetadata = sitchData.loadedFilesMetadata;
+        } else {
+            FileManager.loadedFilesMetadata = {};
+        }
+
+        const loadingPromises = [];
+        if (sitchData.loadedFiles) {
+            // Remap any old/renamed file paths in loadedFiles (e.g. renamed model .glb files)
+            for (const oldId of Object.keys(sitchData.loadedFiles)) {
+                if (ModelAliases[oldId]) {
+                    const newPath = ModelAliases[oldId];
+                    const oldValue = sitchData.loadedFiles[oldId];
+                    // Remap the value: replace old filename with new in the URL/path
+                    const oldFilename = oldId.split('/').pop();
+                    const newFilename = newPath.split('/').pop();
+                    const newValue = oldValue.includes(oldFilename)
+                        ? oldValue.replace(oldFilename, newFilename)
+                        : oldValue;
+                    console.log(`Remapped old model path in loadedFiles: ${oldId} -> ${newPath}`);
+                    sitchData.loadedFiles[newPath] = newValue;
+                    Sit.loadedFiles[newPath] = newValue;
+                    delete sitchData.loadedFiles[oldId];
+                    delete Sit.loadedFiles[oldId];
+                }
+            }
+            // load the files as if they have been drag-and-dropped in
+            for (let id in sitchData.loadedFiles) {
+                loadingPromises.push(FileManager.loadAsset(Sit.loadedFiles[id], id).then(
+                    (parsedResult) => {
+                        Globals.dontAutoZoom = true;
+
+                        // Skip files that failed to parse (e.g. corrupt KLV)
+                        if (parsedResult === null) {
+                            return;
+                        }
+
+                        assert(parsedResult !== undefined, "Parsed result should not be undefined for loaded file id: " + id);
+
+                        // since it might be a container that parse to multiple files
+                        // we need to handle an array of parsed results
+                        // if a single file, then make it an array of one
+                        if (!Array.isArray(parsedResult)) {
+                            parsedResult.id = id; // assign the id to the single file parsed result
+                            parsedResult = [parsedResult]
+                        }
+                        // might need to use filename as id here?
+
+                        // for each parsed result, handle it just like it was drag-and-dropped
+                        for (const x of parsedResult) {
+                            const parsedFile = x.parsed;
+                            const filename = x.filename;
+                            const fileID = x.id ?? x.filename; // use filename as fallback id
+                            console.log("HANDLING LOADED FILE ID: " + id + " filename: " + filename);
+                            // Restore dataType and other metadata if available
+                            const metadata = FileManager.loadedFilesMetadata[fileID];
+                            if (metadata?.dataType) {
+                                FileManager.list[fileID].dataType = metadata.dataType;
+                                // For kmzImage files, restore kmzHref and populate kmzImageMap
+                                if (metadata.dataType === "kmzImage" && metadata.kmzHref) {
+                                    FileManager.list[fileID].kmzHref = metadata.kmzHref;
+                                    // Create blobURL from buffer if not already set
+                                    if (!FileManager.list[fileID].blobURL) {
+                                        // Use .original which contains the ArrayBuffer
+                                        const buffer = FileManager.list[fileID].original;
+                                        const ext = metadata.kmzHref.split('.').pop().toLowerCase();
+                                        const mimeType = ext === 'png' ? 'image/png' :
+                                            ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' :
+                                                ext === 'gif' ? 'image/gif' : 'image/webp';
+                                        const blob = new Blob([buffer], { type: mimeType });
+                                        FileManager.list[fileID].blobURL = URL.createObjectURL(blob);
+                                    }
+                                    if (!FileManager.kmzImageMap) FileManager.kmzImageMap = {};
+                                    FileManager.kmzImageMap[metadata.kmzHref] = FileManager.list[fileID].blobURL;
+                                }
+                            }
+                            // Restore autoSelectAsCamera on track files that had it
+                            if (metadata?.autoSelectAsCamera) {
+                                if (parsedFile) parsedFile.autoSelectAsCamera = true;
+                                if (FileManager.list[fileID]) FileManager.list[fileID].autoSelectAsCamera = true;
+                            }
+                            // Pass saved track selections to skip the multi-track dialog on reload
+                            const trackOptions = {};
+                            if (metadata?.selectedTracks) {
+                                trackOptions.showDialog = false;
+                                trackOptions.selectedTracks = metadata.selectedTracks;
+                            }
+                            if (metadata?.shortNames) {
+                                // Preserve original shortName->nodeID mapping on reload.
+                                // Without this, re-parsing converted track files can generate
+                                // different names and break saved mod IDs.
+                                trackOptions.shortNames = metadata.shortNames;
+                            }
+                            // Pass TLE merge/replace action to skip the choice dialog on reload
+                            if (metadata?.tleAction) {
+                                trackOptions.tleAction = metadata.tleAction;
+                            }
+                            FileManager.handleParsedFile(fileID, parsedFile, trackOptions);
+                        }
+
+                        Globals.dontAutoZoom = false;
+
+
+                    }
+                ))
+            }
+        }
+
+
+        // wait for the files to load
+        Promise.all(loadingPromises).then(() => {
+
+            // We supress recalculation while we apply the mods
+            // otherwise we get multiple recalculations of the same thing
+            // here we are applying the mods, and then we will recalculate everything
+            Globals.dontRecalculate = true;
+
+            // apply the units first, as some controllers are dependent on them
+            // i.e. Target Speed, which use a GUIValue for speed in whatever units
+            // if the set the units later, then it will convert the speed to the new units
+            if (sitchData.modUnits) {
+                Units.modDeserialize(sitchData.modUnits)
+            }
+
+            // Deserialize synthetic tracks BEFORE applying mods
+            // This recreates the track nodes so that mods can be applied to them
+            if (sitchData.syntheticTracks) {
+                TrackManager.deserialize(sitchData.syntheticTracks)
+            }
+
+            // Deserialize feature markers BEFORE applying mods
+            // This creates the necessary feature marker nodes
+            if (sitchData.featureMarkers) {
+                FeatureManager.deserialize(sitchData.featureMarkers)
+            }
+
+            // Deserialize synthetic 3D buildings BEFORE applying mods
+            // This recreates the building nodes so that mods can be applied to them
+            if (sitchData.syntheticBuildings) {
+                Synth3DManager.deserialize(sitchData.syntheticBuildings)
+            }
+
+            // now we've either got
+            // console.log("Promised files loaded in Custom Manager deserialize")
+            if (sitchData.mods) {
+                // apply the mods
+                this.deserializeMods(sitchData.mods).then(() => {
+                    setSitchEstablished(true); // flag that we've done some editing, so any future drag-and-drop will not mess with the sitch
+                    this.finishDeserialization(sitchData);
+                });
+                return; // Exit early, finishDeserialization will continue the process
+            } else {
+                this.finishDeserialization(sitchData);
+            }
+
+        })
+
+
+    },
+
+    /**
+     * If a legacy switch choice no longer exists, try to resolve it to the
+     * current single matching option with the same prefix.
+     * This is intentionally conservative: only auto-resolve when unambiguous.
+     * @param {string} switchId
+     * @param {string|undefined} legacyChoice
+     * @param {string} prefix
+     * @returns {string|null}
+     */
+    resolveLegacySwitchChoice(switchId, legacyChoice, prefix) {
+        if (typeof legacyChoice !== "string" || legacyChoice.length === 0) return null;
+        if (prefix && !legacyChoice.startsWith(prefix)) return null;
+
+        const switchNode = NodeMan.get(switchId, false);
+        if (!switchNode?.inputs) return null;
+
+        if (switchNode.inputs[legacyChoice] !== undefined) {
+            return legacyChoice;
+        }
+
+        const candidates = Object.keys(switchNode.inputs).filter(key => key.startsWith(prefix));
+        if (candidates.length === 1) {
+            return candidates[0];
+        }
+
+        return null;
+    },
+
+    /**
+     * Build a legacy track-root remap from switch choices, then remap matching
+     * mod IDs so old custom saves can still target newly-generated track IDs.
+     * This is a migration path for pre-metadata saves; new saves should keep
+     * stable IDs via loadedFilesMetadata.shortNames.
+     * @param {Object} mods
+     */
+    remapLegacyTrackMods(mods) {
+        const rootMap = {};
+
+        const remapRoot = (oldRoot, newRoot) => {
+            if (!oldRoot || !newRoot || oldRoot === newRoot) return;
+            if (!rootMap[oldRoot]) {
+                rootMap[oldRoot] = newRoot;
+            }
+        };
+
+        const legacyFovChoice = mods?.fovSwitch?.choice;
+        const resolvedFovChoice = this.resolveLegacySwitchChoice("fovSwitch", legacyFovChoice, "Track_");
+        if (resolvedFovChoice && resolvedFovChoice !== legacyFovChoice) {
+            const oldRoot = legacyFovChoice.substring("Track_".length);
+            const newRoot = resolvedFovChoice.substring("Track_".length);
+            remapRoot(oldRoot, newRoot);
+            mods.fovSwitch.choice = resolvedFovChoice;
+            console.warn(`CustomSupport: remapping legacy fovSwitch choice '${legacyFovChoice}' -> '${resolvedFovChoice}'`);
+        }
+
+        const anglesSwitchMod = mods?.anglesSwitch ?? mods?.angelsSwitch;
+        const legacyAnglesChoice = anglesSwitchMod?.choice;
+        const anglesSwitchId = NodeMan.exists("anglesSwitch") ? "anglesSwitch" : "angelsSwitch";
+        const resolvedAnglesChoice = this.resolveLegacySwitchChoice(anglesSwitchId, legacyAnglesChoice, "Angles_");
+        if (resolvedAnglesChoice && resolvedAnglesChoice !== legacyAnglesChoice) {
+            const oldRoot = legacyAnglesChoice.substring("Angles_".length);
+            const newRoot = resolvedAnglesChoice.substring("Angles_".length);
+            remapRoot(oldRoot, newRoot);
+            anglesSwitchMod.choice = resolvedAnglesChoice;
+            console.warn(`CustomSupport: remapping legacy angles switch choice '${legacyAnglesChoice}' -> '${resolvedAnglesChoice}'`);
+        }
+
+        const legacyCameraChoice = mods?.cameraTrackSwitch?.choice;
+        const cameraSwitch = NodeMan.get("cameraTrackSwitch", false);
+        if (typeof legacyCameraChoice === "string" && cameraSwitch?.inputs && cameraSwitch.inputs[legacyCameraChoice] === undefined) {
+            let resolvedCameraChoice = rootMap[legacyCameraChoice] ?? null;
+            if (!resolvedCameraChoice) {
+                const cameraCandidates = Object.keys(cameraSwitch.inputs).filter(key => key !== "fixedCamera" && key !== "flightSimCamera");
+                if (cameraCandidates.length === 1) {
+                    resolvedCameraChoice = cameraCandidates[0];
+                    remapRoot(legacyCameraChoice, resolvedCameraChoice);
+                }
+            }
+            if (resolvedCameraChoice && cameraSwitch.inputs[resolvedCameraChoice] !== undefined) {
+                mods.cameraTrackSwitch.choice = resolvedCameraChoice;
+                console.warn(`CustomSupport: remapping legacy cameraTrackSwitch choice '${legacyCameraChoice}' -> '${resolvedCameraChoice}'`);
+            }
+        }
+
+        const mappings = Object.entries(rootMap);
+        if (mappings.length === 0) {
+            return;
+        }
+
+        const originalKeys = Object.keys(mods);
+        for (const oldId of originalKeys) {
+            let newId = oldId;
+            for (const [oldRoot, newRoot] of mappings) {
+                if (newId.includes(oldRoot)) {
+                    newId = newId.replaceAll(oldRoot, newRoot);
+                }
+            }
+            if (newId !== oldId) {
+                if (mods[newId] === undefined) {
+                    mods[newId] = mods[oldId];
+                }
+                delete mods[oldId];
+                console.warn(`CustomSupport: remapped legacy mod id '${oldId}' -> '${newId}'`);
+            }
+        }
+    },
+
+    /**
+     * Asynchronously deserialize mods, waiting for any pending actions to complete
+     * @param {Object} mods - The mods object from sitchData
+     * @returns {Promise} - Promise that resolves when all mods are applied and pending actions are complete
+     */
+    async deserializeMods(mods) {
+        // If wind field mod exists, auto-create the node before standard deserialization
+        if (mods.windField && !NodeMan.exists("windField")) {
+            this._windActivated = true;
+            this._windNode = NodeFactory.create("DisplayWindField", {id: "windField"});
+            if (this._activateBtn) this._activateBtn.hide();
+            if (guiMenus.wind) this._showPostActivationControls(guiMenus.wind);
+        }
+
+        const deprecatedIds = {
+            // Typo fix retained for backward compatibility with existing saved sitches.
+            "angelsSwitch": "anglesSwitch",
+            "osdTrackController": "osdDataSeriesController",
+        };
+        for (const [oldId, newId] of Object.entries(deprecatedIds)) {
+            if (oldId === newId) continue;
+            if (mods[oldId] !== undefined) {
+                const oldExists = NodeMan.exists(oldId);
+                const newExists = NodeMan.exists(newId);
+                if (!newExists || oldExists) {
+                    continue;
+                }
+                if (mods[newId] === undefined) {
+                    mods[newId] = mods[oldId];
+                }
+                delete mods[oldId];
+            }
+        }
+
+        // Migration for older custom sitches saved before stable shortName metadata
+        // existed for track files.
+        this.remapLegacyTrackMods(mods);
+
+        // some things are required to be deserialized before others, so we force them to the top.
+        // Here the osdDataSeriesController is used by tracks, and track selector swithches, which normally come early in the order,
+        // So we push osdDataSeriesController to the top of the list
+        const priorityIds = ["osdDataSeriesController"];
+        const modIds = [
+            ...priorityIds.filter(id => mods[id] !== undefined),
+            ...Object.keys(mods).filter(id => !priorityIds.includes(id)),
+        ];
+
+        for (let i = 0; i < modIds.length; i++) {
+            const id = modIds[i];
+
+            if (!NodeMan.exists(id)) {
+                console.warn("Node " + id + " does not exist in the current sitch (deprecated?), so cannot apply mod");
+                continue;
+            }
+
+            const node = NodeMan.get(id);
+            if (node.modDeserialize !== undefined) {
+                //                console.log("Applying mod to node:" + id + " with data:" + mods[id]);
+
+                // bit of a patch, don't deserialise the dateTimeStart node
+                // if we've overridden the time in the URL
+                // see the check for urlParams.get("datetime") in index.js
+                if (id !== "dateTimeStart" || !Globals.timeOverride) {
+                    node.modDeserialize(mods[id]);
+
+                    // if this has triggered an async action, wait for it to finish
+                    // e.g. Like the CNode3DModel.loadGLTFModel method
+                    // which won't need to load the file, but the parsing is async
+                    if (Globals.pendingActions > 0) {
+                        console.log("Actions pending = " + Globals.pendingActions + ", waiting...");
+                        await this.waitForPendingActions();
+                        console.log("Pending actions completed, continuing deserialization");
+                    }
+                }
+            }
+        }
+    },
+
+    /**
+     * Wait for all pending actions to complete
+     * @returns {Promise} - Promise that resolves when Globals.pendingActions === 0
+     */
+    waitForPendingActions() {
+        return new Promise((resolve) => {
+            const checkPending = () => {
+                if (Globals.pendingActions === 0) {
+                    resolve();
+                } else {
+                    // Check again in the next frame
+                    requestAnimationFrame(checkPending);
+                }
+            };
+            checkPending();
+        });
+    },
+
+    /**
+     * Complete the deserialization process after mods have been applied
+     * @param {Object} sitchData - The complete sitch data
+     */
+    async finishDeserialization(sitchData) {
+        // apply the pars
+        if (sitchData.pars) {
+            for (let key in sitchData.pars) {
+                par[key] = sitchData.pars[key];
+            }
+        }
+
+        // and the globals
+        if (sitchData.globals) {
+            for (let key in sitchData.globals) {
+                //console.warn("Applying global "+key+" with value "+sitchData.globals[key])
+                Globals[key] = sitchData.globals[key];
+            }
+        }
+
+        // and Sit
+        if (sitchData.Sit) {
+            for (let key in sitchData.Sit) {
+                //console.log("Applying Sit "+key+" with value "+sitchData.Sit[key])
+                Sit[key] = sitchData.Sit[key];
+            }
+        }
+
+        // Restore video state for modded sitches.
+        // Custom sitches handle this during SituationSetup (pendingVideoRestore is already set).
+        // For modded sitches (e.g., saved video viewer), the video node exists but has no video.
+        if (sitchData.videos && sitchData.videos.length > 0 && NodeMan.exists("video")) {
+            const videoNode = NodeMan.get("video");
+            if (!videoNode.videoData && !videoNode.pendingVideoRestore) {
+                videoNode.pendingVideoRestore = {
+                    videos: sitchData.videos,
+                    targetIndex: sitchData.currentVideoIndex ?? 0
+                };
+                videoNode.loadVideoFromEntry(sitchData.videos[0]);
+            }
+        }
+
+        refreshLabelsAfterLoading();
+        this.refreshLookViewTracks();
+
+        if (sitchData.guiMenus) {
+            Globals.menuBar.modDeserialize(sitchData.guiMenus);
+        }
+
+        if (sitchData.motionAnalysis) {
+            await deserializeMotionAnalysis(sitchData.motionAnalysis);
+        }
+
+        if (sitchData.autoTracking) {
+            await deserializeAutoTracking(sitchData.autoTracking);
+        }
+
+        if (sitchData.subSitchesData) {
+            this.deserializeSubSitches(sitchData.subSitchesData);
+        }
+
+        // Now that all mods are applied, restore fullscreen state if exactly
+        // one view was saved as doubled. Corrupted saves with multiple doubled
+        // views are detected and un-doubled here.
+        ViewMan.restoreFullscreenFromMods();
+
+        Globals.dontRecalculate = false;
+
+        // recalculate everything after the mods
+        // in case there's some missing dependency
+        // like the CSwitches turning off if they are not used
+        // which they don't know immediately
+        // Note: terrain is excluded (withTerrain=false) because maps may not be loaded yet.
+        // Terrain updates resume naturally via CNodeTerrainUI.update() on the next frame.
+        NodeMan.recalculateAllRootFirst();
+
+        // and we do it twice as sometimes there's initialization ordering issues
+        // like the Tracking overlay depending on the FOV, but coming before the lookCamera
+        NodeMan.recalculateAllRootFirst();
+
+        // Ensure camera controllers (PTZ/FOV/etc.) are applied immediately after mod load.
+        // recalculateAllRootFirst() runs recalculate(), but does not run controller apply().
+        // In static/no-logic sitches this can leave camera state stale until the user touches a control.
+        for (const entry of Object.values(NodeMan.list)) {
+            const node = entry.data;
+            if (!node?.isCamera || typeof node.applyControllers !== "function") continue;
+            node.applyControllers(par.frame);
+            if (node.camera) {
+                node.camera.updateMatrix();
+                node.camera.updateMatrixWorld();
+                node.camera.updateProjectionMatrix();
+            }
+        }
+
+        Globals.deserializing = false;
+        Globals.sitchDirty = false;
+        setRenderOne(3);
+    },
+
+
+
+
+};
