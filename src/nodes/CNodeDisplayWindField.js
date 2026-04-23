@@ -47,12 +47,21 @@ export class CNodeDisplayWindField extends CNode3DGroup {
         // Wind grid (flat Float32Arrays, row-major, north-to-south)
         this.windU = null;
         this.windV = null;
+        // Coverage confidence ∈ [0..1] per grid cell. 1.0 = fully trusted
+        // (GFS everywhere, or at a sounding's own station); falls off with
+        // distance for IDW-built grids. Streamline opacity is multiplied by
+        // the sampled coverage so far-from-sample regions fade to invisible
+        // instead of showing physically-meaningless extrapolated wind.
+        this.windCov = null;
         this.gridNx = 0;
         this.gridNy = 0;
         this.gridLon0 = 0;
         this.gridLat0 = 90;
         this.gridDLon = 1;
         this.gridDLat = -1;
+        // Length scale (degrees) for coverage falloff from IDW samples.
+        // ~5° ≈ 550 km — sounding-scale area of representativeness.
+        this.coverageLengthDeg = v.coverageLengthDeg ?? 5;
 
         // Tunables
         this.renderAltitude = v.altitude       ?? 2000;
@@ -113,6 +122,32 @@ export class CNodeDisplayWindField extends CNode3DGroup {
         this.showHider("Wind Field");
     }
 
+    // Bilinear sample of coverage at (lat,lon). Returns 1.0 if windCov
+    // wasn't populated (GFS / Manual uniform — trust everywhere).
+    sampleCoverage(lat, lon) {
+        if (!this.windCov) return 1.0;
+        lon = ((lon % 360) + 360) % 360;
+        lat = Math.max(-90, Math.min(90, lat));
+        const fi = (lon - this.gridLon0) / this.gridDLon;
+        const fj = (lat - this.gridLat0) / this.gridDLat;
+        let i0 = Math.floor(fi);
+        let j0 = Math.floor(fj);
+        const si = fi - i0;
+        const sj = fj - j0;
+        i0 = ((i0 % this.gridNx) + this.gridNx) % this.gridNx;
+        const i1 = (i0 + 1) % this.gridNx;
+        j0 = Math.max(0, Math.min(j0, this.gridNy - 2));
+        const j1 = j0 + 1;
+        const w00 = (1 - si) * (1 - sj);
+        const w10 = si * (1 - sj);
+        const w01 = (1 - si) * sj;
+        const w11 = si * sj;
+        return w00 * this.windCov[j0 * this.gridNx + i0]
+             + w10 * this.windCov[j0 * this.gridNx + i1]
+             + w01 * this.windCov[j1 * this.gridNx + i0]
+             + w11 * this.windCov[j1 * this.gridNx + i1];
+    }
+
     // ── bilinear wind lookup ─────────────────────────────────────────
     sampleWind(lat, lon) {
         lon = ((lon % 360) + 360) % 360;
@@ -164,15 +199,22 @@ export class CNodeDisplayWindField extends CNode3DGroup {
         let cLat = seedLat, cLon = seedLon;
         const pts = [];
         const spds = [];
+        const covs = [];
 
         for (let s = 0; s <= steps; s++) {
             const w = this.sampleWind(cLat, cLon);
             const speed = Math.sqrt(w.u * w.u + w.v * w.v);
             if (speed < minSpd && s === 0) return lineIndex;
 
+            const cov = this.sampleCoverage(cLat, cLon);
+            // Skip seeding streamlines in effectively-zero-coverage cells —
+            // they'd render invisible anyway but still cost vertex budget.
+            if (cov < 0.02 && s === 0) return lineIndex;
+
             const ecef = LLAToECEF(cLat, cLon, alt);
             pts.push(ecef.x - center.x, ecef.y - center.y, ecef.z - center.z);
             spds.push(speed);
+            covs.push(cov);
 
             if (s < steps && speed >= minSpd) {
                 const cosLat = Math.cos(cLat * DEG);
@@ -200,6 +242,7 @@ export class CNodeDisplayWindField extends CNode3DGroup {
             out.prog.push(t0, t1);
             out.id.push(lineId, lineId);
             out.spd.push(speed, speed);
+            out.cov.push(covs[s], covs[s + 1]);
             out.lod.push(lodLevel, lodLevel);
         }
         return lineIndex + 1;
@@ -216,7 +259,7 @@ export class CNodeDisplayWindField extends CNode3DGroup {
 
         const alt    = this.renderAltitude;
         const center = LLAToECEF(0, 0, alt);
-        const out    = {pos: [], prog: [], id: [], spd: [], lod: []};
+        const out    = {pos: [], prog: [], id: [], spd: [], cov: [], lod: []};
         let lineIndex = 0;
 
         // 4-level LOD: coarse seeds always visible, finer seeds fade in near camera
@@ -261,6 +304,7 @@ export class CNodeDisplayWindField extends CNode3DGroup {
         geom.setAttribute("lineProgress", new BufferAttribute(new Float32Array(out.prog), 1));
         geom.setAttribute("lineId",       new BufferAttribute(new Float32Array(out.id),   1));
         geom.setAttribute("windSpeed",    new BufferAttribute(new Float32Array(out.spd),  1));
+        geom.setAttribute("coverage",     new BufferAttribute(new Float32Array(out.cov),  1));
         geom.setAttribute("lodLevel",     new BufferAttribute(new Float32Array(out.lod),  1));
         geom.computeBoundingSphere();
 
@@ -582,22 +626,28 @@ export class CNodeDisplayWindField extends CNode3DGroup {
     }
 
     // ── Build a coarse global grid from scattered (lat,lon,u,v) samples
-    // via inverse-distance weighting. Used by non-GFS sources.
+    // via inverse-distance weighting. Also produces a coverage field that
+    // fades with distance to the nearest sample — the shader uses it to
+    // dim streamlines in regions where the IDW extrapolation is unreliable.
     _buildGridFromSamples(samples, sourceLabel) {
         const nx = 72, ny = 37;           // 5° resolution
         const dlon = 5, dlat = -5;
         const lon0 = 0, lat0 = 90;
         const u = new Array(nx * ny);
         const v = new Array(nx * ny);
+        const cov = new Array(nx * ny);
 
         const POWER = 2;
+        const L = this.coverageLengthDeg;  // decay length scale (degrees)
         for (let j = 0; j < ny; j++) {
             const lat = lat0 + j * dlat;
             for (let i = 0; i < nx; i++) {
                 const lon = lon0 + i * dlon;
                 let wsum = 0, usum = 0, vsum = 0;
+                let dMin = Infinity;
                 for (const s of samples) {
                     const d = greatCircleDistanceDeg(lat, lon, s.lat, s.lon);
+                    if (d < dMin) dMin = d;
                     // Clamp very-small distance so exact hits don't divide by 0.
                     const dd = Math.max(d, 0.01);
                     const w = 1 / Math.pow(dd, POWER);
@@ -606,12 +656,15 @@ export class CNodeDisplayWindField extends CNode3DGroup {
                 const idx = j * nx + i;
                 u[idx] = wsum > 0 ? Math.round((usum / wsum) * 100) / 100 : 0;
                 v[idx] = wsum > 0 ? Math.round((vsum / wsum) * 100) / 100 : 0;
+                // Exponential falloff — smooth, no hard edges. 1.0 at the
+                // sample, ≈0.37 at L degrees away, ≈0.14 at 2L.
+                cov[idx] = Math.exp(-dMin / L);
             }
         }
 
         this._applyWindJSON({
             nx, ny, lon0, lat0, dlon, dlat,
-            u, v,
+            u, v, cov,
             source: sourceLabel,
             level: `${Math.round(this.windAltFt)}ft`,
         });
@@ -742,6 +795,9 @@ export class CNodeDisplayWindField extends CNode3DGroup {
         this.setGridParams(json.nx, json.ny, json.lon0, json.lat0, json.dlon, json.dlat);
         this.windU = new Float32Array(json.u);
         this.windV = new Float32Array(json.v);
+        // Optional coverage array (set by _buildGridFromSamples). Missing
+        // coverage means "trust everywhere" — sampleCoverage() returns 1.0.
+        this.windCov = json.cov ? new Float32Array(json.cov) : null;
         this.dataSource = json.source ?? "GFS";
         this._lastWindJSON = json;   // keep for serialization
     }
@@ -1019,11 +1075,13 @@ const VERT = /* glsl */ `
     attribute float lineProgress;
     attribute float lineId;
     attribute float windSpeed;
+    attribute float coverage;
     attribute float lodLevel;
 
     varying float vProgress;
     varying float vId;
     varying float vSpeed;
+    varying float vCoverage;
     varying float vDepth;
     varying float vLod;
     varying float vCamDist;
@@ -1033,6 +1091,7 @@ const VERT = /* glsl */ `
         vProgress = lineProgress;
         vId       = lineId;
         vSpeed    = windSpeed;
+        vCoverage = coverage;
         vLod      = lodLevel;
 
         vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
@@ -1061,6 +1120,7 @@ const FRAG = /* glsl */ `
     varying float vProgress;
     varying float vId;
     varying float vSpeed;
+    varying float vCoverage;
     varying float vDepth;
     varying float vLod;
     varying float vCamDist;
@@ -1099,7 +1159,10 @@ const FRAG = /* glsl */ `
         float hue = (1.0 - t) * 0.65;
         vec3 color = hsv(hue, 0.8, 0.8 + 0.2 * t);
 
-        float alpha = dash * endFade * uOpacity * lodFade;
+        // vCoverage (per-vertex, interpolated along segment) dims streamlines
+        // in regions that are far from any IDW input sample. GFS / Manual
+        // sources emit coverage = 1 everywhere, so those are unaffected.
+        float alpha = dash * endFade * uOpacity * lodFade * vCoverage;
         if (alpha < 0.01) discard;
 
         gl_FragColor = vec4(color, alpha);
