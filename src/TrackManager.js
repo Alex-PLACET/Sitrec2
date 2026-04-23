@@ -591,10 +591,13 @@ class CTrackManager extends CManager {
                     // should never auto-select as camera/target/angle tracks or
                     // recenter the main view. Same rationale as dropping wind
                     // grids: the sonde feeds the wind field, nothing more.
+                    // Cached on trackOb so makeMotionTrack reads the same flag
+                    // without re-probing FileManager.
                     const loadedTrackFileForKind = FileManager.get(trackFileName);
                     const isSondeTrack = !!(loadedTrackFileForKind
                         && loadedTrackFileForKind.isSondeTrack
                         && loadedTrackFileForKind.isSondeTrack());
+                    trackOb.isSondeTrack = isSondeTrack;
 
                     if (trackColor === null) {
                         // Sonde tracks get white by default to distinguish from aircraft
@@ -684,9 +687,12 @@ class CTrackManager extends CManager {
 
 
     makeMotionTrack(trackOb, shortName, trackColor, dropColor, trackID) {
-        // Check if this is a sonde track for display customization
+        // Check if this is a sonde track for display customization. Caller
+        // sets trackOb.isSondeTrack; fall back to probing FileManager if this
+        // method is invoked from a path that doesn't stamp the flag.
         const motionTrackFile = FileManager.get(trackOb.trackFileName);
-        const isSonde = motionTrackFile && motionTrackFile.isSondeTrack && motionTrackFile.isSondeTrack();
+        const isSonde = trackOb.isSondeTrack
+            ?? (motionTrackFile && motionTrackFile.isSondeTrack && motionTrackFile.isSondeTrack());
 
         // For sonde tracks, use temperature-gradient coloring instead of constant white
         if (isSonde) {

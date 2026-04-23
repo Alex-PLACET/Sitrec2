@@ -345,7 +345,11 @@ export class CNodeDisplayWindField extends CNode3DGroup {
             }
 
             // Draw streamlines at the actual wind altitude (meters MSL).
-            this.renderAltitude = Math.max(50, altFt * 0.3048);
+            // A small floor (10 m) keeps surface wind visible without
+            // disappearing into the sea/ocean at sea-level tiles. Terrain
+            // clipping for higher ground is an accepted artifact; the user
+            // can raise the altitude slider to clear terrain.
+            this.renderAltitude = Math.max(10, altFt * 0.3048);
 
             this.rebuildStreamlines();
             setRenderOne(true);
@@ -699,9 +703,17 @@ export class CNodeDisplayWindField extends CNode3DGroup {
         if (this.source === "manual") return; // Manual is user-driven
         if (this._propagating) return;
         this._propagating = true;
+        // Sources that may hit the network during sampleAtLLA get a
+        // progress status. GFS reuses the level cache from the display
+        // fetch; openmeteo may trigger fresh per-point fetches.
+        const hitsNetwork = this.source === "openmeteo" || this.source === "gfs";
+        const originalStatus = this.statusText;
         try {
             const positions = this._windNodePositions();
             for (const pt of positions) {
+                if (hitsNetwork) {
+                    this.statusText = `Propagating ${pt.id}...`;
+                }
                 const uv = await this.sampleAtLLA(pt.lat, pt.lon, pt.altM);
                 if (!uv) continue;
                 const {from, knots} = fromUVToDirKnots(uv.u, uv.v);
@@ -713,6 +725,7 @@ export class CNodeDisplayWindField extends CNode3DGroup {
                 node.recalculateCascade();
                 console.log(`Propagated ${pt.id} @ ${pt.altM.toFixed(0)}m → from ${node.from}° at ${node.knots} kn`);
             }
+            if (hitsNetwork) this.statusText = originalStatus;
         } finally {
             this._propagating = false;
         }
@@ -877,7 +890,7 @@ export class CNodeDisplayWindField extends CNode3DGroup {
         }
 
         this.windLevel = v.windLevel ?? "surface";
-        this.renderAltitude = Math.max(50, this.windAltFt * 0.3048);
+        this.renderAltitude = Math.max(10, this.windAltFt * 0.3048);
         this._windFileIds = fileIds;
 
         this.rebuildStreamlines();

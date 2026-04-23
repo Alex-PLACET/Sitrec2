@@ -49,6 +49,11 @@ describe('levelToAltFeet', () => {
     test('unknown level returns 0', () => {
         expect(levelToAltFeet('xyz')).toBe(0);
     });
+    test('parses blended "Nft" labels', () => {
+        expect(levelToAltFeet('3650ft')).toBe(3650);
+        expect(levelToAltFeet('500ft')).toBe(500);
+        expect(levelToAltFeet('33ft')).toBe(33);
+    });
 });
 
 describe('fromDirSpeedToUV / fromUVToDirKnots round trip', () => {

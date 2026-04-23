@@ -37,10 +37,20 @@ export function bracketingLevels(ft) {
     return {lo: T[0], hi: T[0], t: 0};
 }
 
+// Accepts:
+//   "surface"            → 33 (the 10m product)
+//   "500", "850", …      → pressure-level altitude from WIND_LEVEL_TABLE
+//   "500ft", "3650ft", … → parsed numeric ft (used by blended JSON labels)
+//   anything else        → 0
 export function levelToAltFeet(level) {
     if (level === "surface") return 33;
     const entry = WIND_LEVEL_TABLE.find(e => e.level === level);
-    return entry ? entry.ft : 0;
+    if (entry) return entry.ft;
+    if (typeof level === "string") {
+        const m = level.match(/^(-?\d+(?:\.\d+)?)\s*ft$/i);
+        if (m) return parseFloat(m[1]);
+    }
+    return 0;
 }
 
 // Bilinear sample of a GFS-style grid JSON at (lat,lon). Returns {u,v} in m/s.
