@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "scripts": {
     "test": "npx jest tests/",
-    "test-regression": "node test-viewer.js --exit --open --exclude=ai",
+    "test-regression": "node test-viewer.js --exit --exclude=ai",
     "pretest-ui": "find tests_regression -name '*.png' -exec xattr -d com.apple.quarantine {} \\; 2>/dev/null || true",
     "test-ui": "npx playwright test",
     "test-ui-headed": "npx playwright test --headed",
