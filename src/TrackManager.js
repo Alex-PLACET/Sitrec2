@@ -587,10 +587,21 @@ class CTrackManager extends CManager {
                         new Color(0.5, 0, 0.5),
                     ];
 
+                    // Sonde (radiosonde) tracks are reference data only — they
+                    // should never auto-select as camera/target/angle tracks or
+                    // recenter the main view. Same rationale as dropping wind
+                    // grids: the sonde feeds the wind field, nothing more.
+                    // Cached on trackOb so makeMotionTrack reads the same flag
+                    // without re-probing FileManager.
+                    const loadedTrackFileForKind = FileManager.get(trackFileName);
+                    const isSondeTrack = !!(loadedTrackFileForKind
+                        && loadedTrackFileForKind.isSondeTrack
+                        && loadedTrackFileForKind.isSondeTrack());
+                    trackOb.isSondeTrack = isSondeTrack;
+
                     if (trackColor === null) {
                         // Sonde tracks get white by default to distinguish from aircraft
-                        const loadedTrackFile = FileManager.get(trackFileName);
-                        if (loadedTrackFile && loadedTrackFile.isSondeTrack && loadedTrackFile.isSondeTrack()) {
+                        if (isSondeTrack) {
                             trackColor = new Color(1, 1, 1);
                         } else {
                             trackColor = trackColors[trackNumber % trackColors.length];
@@ -601,12 +612,16 @@ class CTrackManager extends CManager {
 
                     trackOb.trackColor = trackColor;
 
-                    let hasAngles = this.updateDropTargets(trackNumber, shortName, trackID, trackDataID, trackNode, hasFOV, trackOb);
+                    let hasAngles = false;
+                    if (!isSondeTrack) {
+                        hasAngles = this.updateDropTargets(trackNumber, shortName, trackID, trackDataID, trackNode, hasFOV, trackOb);
+                    }
 
                     this.makeMotionTrack(trackOb, shortName, trackColor, dropColor, trackID);
 
-
-                    this.centerOnTrack(shortName, trackNumber, trackOb, hasAngles, trackIndex);
+                    if (!isSondeTrack) {
+                        this.centerOnTrack(shortName, trackNumber, trackOb, hasAngles, trackIndex);
+                    }
 
                     // if there's more than one track loaded, flag to set setSitchEstablished(true) after the track is processed
                     if (trackNumber > 0) {
@@ -672,9 +687,12 @@ class CTrackManager extends CManager {
 
 
     makeMotionTrack(trackOb, shortName, trackColor, dropColor, trackID) {
-        // Check if this is a sonde track for display customization
+        // Check if this is a sonde track for display customization. Caller
+        // sets trackOb.isSondeTrack; fall back to probing FileManager if this
+        // method is invoked from a path that doesn't stamp the flag.
         const motionTrackFile = FileManager.get(trackOb.trackFileName);
-        const isSonde = motionTrackFile && motionTrackFile.isSondeTrack && motionTrackFile.isSondeTrack();
+        const isSonde = trackOb.isSondeTrack
+            ?? (motionTrackFile && motionTrackFile.isSondeTrack && motionTrackFile.isSondeTrack());
 
         // For sonde tracks, use temperature-gradient coloring instead of constant white
         if (isSonde) {
@@ -829,13 +847,19 @@ class CTrackManager extends CManager {
             });
 
             // Atmospheric profile node for altitude-interpolated data lookup
+            const sonde0 = motionTrackFile.getSondeData(0);
+            const rawSrc = sonde0?.source ?? "";
+            const normSource = rawSrc.startsWith("uwyo") ? "uwyo"
+                : rawSrc === "igra2" ? "igra2"
+                : "manual";
             trackOb.atmosphericProfile = new CNodeAtmosphericProfile({
                 id: "atmosphericProfile_" + shortName,
                 inputs: {
                     dataTrack: "TrackData_" + shortName,
                 },
-                stationId: motionTrackFile.getSondeData(0)?.station?.id ?? "",
-                stationName: motionTrackFile.getSondeData(0)?.station?.name ?? "",
+                stationId: sonde0?.station?.id ?? "",
+                stationName: sonde0?.station?.name ?? "",
+                source: normSource,
             });
         }
     }

@@ -17,6 +17,10 @@ export class CNodeAtmosphericProfile extends CNode {
         this.input("dataTrack"); // CNodeMISBDataTrack with MISB data
         this.stationId = v.stationId ?? "";
         this.stationName = v.stationName ?? "";
+        // "uwyo" | "igra2" | "manual" — lets the wind field filter by source.
+        this.source = v.source ?? "manual";
+        this.stationLat = null;
+        this.stationLon = null;
         this.levels = []; // sorted by altitude: [{alt, temp, pressure, rh, windDir, windSpeed}]
         this.buildProfile();
     }
@@ -30,6 +34,17 @@ export class CNodeAtmosphericProfile extends CNode {
             var row = misb[i];
             var alt = row[MISB.SensorTrueAltitude];
             if (alt == null) continue;
+
+            // Capture the first valid lat/lon as the launch/station location.
+            // Balloons drift, but wind-field IDW uses the launch site.
+            if (this.stationLat == null) {
+                const lat = row[MISB.SensorLatitude];
+                const lon = row[MISB.SensorLongitude];
+                if (lat != null && lon != null) {
+                    this.stationLat = lat;
+                    this.stationLon = lon;
+                }
+            }
 
             this.levels.push({
                 alt: alt,

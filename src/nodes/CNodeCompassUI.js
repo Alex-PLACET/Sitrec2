@@ -7,6 +7,11 @@ import {Globals, NodeMan} from "../Globals";
 import {Vector3} from "three";
 import {arModeManager} from "../ARMode";
 
+import {windSourceShortLabels} from "./WindSources";
+
+// Internal source key → short label shown under the compass.
+const WIND_SOURCE_LABELS = windSourceShortLabels();
+
 export class   CNodeCompassUI extends CNodeViewUI {
 
     constructor(v) {
@@ -31,6 +36,7 @@ export class   CNodeCompassUI extends CNodeViewUI {
         this.lastTargetWindFrom = null;
         this.lastLocalWindFrom = null;
         this.lastARMode = false;
+        this.lastWindSourceKey = null;
         
         // Long-press detection for AR mode
         this.longPressTimer = null;
@@ -328,17 +334,20 @@ export class   CNodeCompassUI extends CNodeViewUI {
         // Get current wind states for change detection
         const targetWind = NodeMan.get("targetWind", false);
         const localWind = NodeMan.get("localWind", false);
+        const windField = NodeMan.get("windField", false);
         const currentTargetWindFrom = targetWind?.from;
         const currentLocalWindFrom = localWind?.from;
+        const currentWindSourceKey = windField?.source ?? null;
 
         // Update canvas dimensions FIRST so we can detect resize
         this.adjustSize();
-        
+
         // Check if anything has changed (including AR mode status)
         // Also redraw if canvas size changed (resize event)
         if (this.lastHeading === headingRound && this.lastElevation === elevationRound &&
             this.lastTargetWindFrom === currentTargetWindFrom &&
             this.lastLocalWindFrom === currentLocalWindFrom &&
+            this.lastWindSourceKey === currentWindSourceKey &&
             this.lastARMode === Globals.arMode &&
             this.lastCanvasWidth === this.widthPx && this.lastCanvasHeight === this.heightPx) {
             return; // Nothing changed, early out
@@ -365,8 +374,15 @@ export class   CNodeCompassUI extends CNodeViewUI {
         }
         
         this.removeText("heading");
-        this.text = this.addText("heading", headingText, 50, 20, 
+        this.text = this.addText("heading", headingText, 50, 20,
             Globals.showCompassElevation ? 16 : 20, "white", "center", "Arial");
+
+        // Wind source label (small, attribution-style, under the compass rose)
+        this.removeText("windSource");
+        if (windField && currentWindSourceKey) {
+            const label = WIND_SOURCE_LABELS[currentWindSourceKey] ?? currentWindSourceKey;
+            this.addText("windSource", "Wind: " + label, 50, 97, 7, "#aaaaaa", "center", "Arial");
+        }
 
         // after updating the text, render the text (handles autoFill and context scaling)
         // The parent class renderCanvas will call adjustSize() and applyPendingResize()
@@ -376,6 +392,7 @@ export class   CNodeCompassUI extends CNodeViewUI {
         this.lastHeading = headingRound;
         this.lastTargetWindFrom = currentTargetWindFrom;
         this.lastLocalWindFrom = currentLocalWindFrom;
+        this.lastWindSourceKey = currentWindSourceKey;
         this.lastARMode = Globals.arMode;
 
         // now draw a centered arrow rotated by the heading
