@@ -478,11 +478,22 @@ export class CNodeDisplayWindField extends CNode3DGroup {
         }
         const altM = altFt * 0.3048;
 
+        // Bucket rejections so the error message can distinguish "profiles
+        // loaded but missing station coords" from "profiles loaded but none
+        // reached this altitude". These are different user problems.
+        let droppedNoCoords = 0;
+        let droppedNoWind = 0;
         const samples = [];
         for (const p of profiles) {
-            if (p.stationLat == null || p.stationLon == null) continue;
+            if (p.stationLat == null || p.stationLon == null) {
+                droppedNoCoords++;
+                continue;
+            }
             const data = p.getAtAltitude(altM);
-            if (!data || data.windDir == null || data.windSpeed == null) continue;
+            if (!data || data.windDir == null || data.windSpeed == null) {
+                droppedNoWind++;
+                continue;
+            }
             samples.push({
                 lat: p.stationLat,
                 lon: p.stationLon,
@@ -491,7 +502,10 @@ export class CNodeDisplayWindField extends CNode3DGroup {
             });
         }
         if (samples.length === 0) {
-            throw new Error(`${label} profiles have no wind at that altitude`);
+            if (droppedNoCoords > 0 && droppedNoWind === 0) {
+                throw new Error(`${label} profiles loaded (${droppedNoCoords}) but none have station coordinates`);
+            }
+            throw new Error(`${label} profiles have no wind at ${Math.round(altFt)} ft`);
         }
 
         this._buildGridFromSamples(samples, label);
