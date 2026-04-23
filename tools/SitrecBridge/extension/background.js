@@ -14,7 +14,7 @@ const KEEPALIVE_ALARM_NAME = "sitrec-bridge-keepalive";
 const KEEPALIVE_ALARM_PERIOD_MIN = 0.5; // 30 seconds, minimum Chrome allows
 
 // Connection state, keyed by port number.
-//   { ws, pairedOrigin, serverPid, sourceVersion, lastConnectedAt, rejected }
+//   { ws, pairedOrigin, serverPid, sourceVersion, port }
 const connections = new Map();
 
 // Tabs we know are running Sitrec, keyed by Chrome tab ID.
@@ -93,16 +93,14 @@ function probePort(port) {
     });
 }
 
-async function connectToPort(port, forced = false) {
+async function connectToPort(port) {
     const existing = connections.get(port);
     if (existing && existing.ws && (existing.ws.readyState === WebSocket.CONNECTING || existing.ws.readyState === WebSocket.OPEN)) {
         return;
     }
-    if (existing && existing.rejected && !forced) return;
 
     const ws = await probePort(port);
     if (!ws) {
-        // No server on this port — clear any stale entry
         if (connections.has(port) && !connections.get(port).ws) {
             connections.delete(port);
         }
@@ -114,22 +112,22 @@ async function connectToPort(port, forced = false) {
         pairedOrigin: null,
         serverPid: null,
         sourceVersion: null,
-        rejected: false,
         port,
     };
     connections.set(port, conn);
 
-    if (forced) {
-        try { ws.send(JSON.stringify({ type: "force-extension" })); } catch {}
-    }
+    // Always force-replace any existing extension socket on the bridge side.
+    // Each MCP is origin-paired so there's no legitimate "competing extension"
+    // scenario — only stale/zombie sockets from a suspended service worker.
+    // Sending this immediately skips the bridge's 2-second liveness probe.
+    try { ws.send(JSON.stringify({ type: "force-extension" })); } catch {}
 
     ws.onmessage = async (event) => {
         try {
             const msg = JSON.parse(event.data);
 
             if (msg.type === "rejected") {
-                conn.rejected = true;
-                console.log(`[SitrecBridge:${port}] Server rejected: ${msg.reason || ""}`);
+                console.warn(`[SitrecBridge:${port}] Server rejected (unexpected — force should have replaced): ${msg.reason || ""}`);
                 try { ws.close(); } catch {}
                 updatePopupState();
                 return;
@@ -139,7 +137,6 @@ async function connectToPort(port, forced = false) {
                 conn.sourceVersion = msg.sourceVersion || null;
                 conn.serverPid = msg.serverPid || null;
                 conn.pairedOrigin = msg.pairedOrigin || null;
-                conn.rejected = false;
                 console.log(`[SitrecBridge:${port}] Connected — pairedOrigin=${conn.pairedOrigin || "(fallback)"} pid=${conn.serverPid}`);
                 updatePopupState();
                 return;
@@ -159,9 +156,17 @@ async function connectToPort(port, forced = false) {
     };
 
     ws.onclose = () => {
-        console.log(`[SitrecBridge:${port}] Disconnected`);
-        connections.delete(port);
-        updatePopupState();
+        // Only clear the map entry if it still points at *this* ws. When we
+        // force-replace a stale socket, the old ws's close fires AFTER the new
+        // ws has already taken its slot — deleting unconditionally would untrack
+        // the live connection and trigger an infinite reconnect loop.
+        if (connections.get(port)?.ws === ws) {
+            console.log(`[SitrecBridge:${port}] Disconnected`);
+            connections.delete(port);
+            updatePopupState();
+        } else {
+            console.log(`[SitrecBridge:${port}] Stale socket closed (replaced)`);
+        }
     };
 
     ws.onerror = () => {
@@ -562,7 +567,6 @@ function buildPopupState() {
             pairedOrigin: conn.pairedOrigin,
             serverPid: conn.serverPid,
             sourceVersion: conn.sourceVersion,
-            rejected: conn.rejected,
             connected: !!(conn.ws && conn.ws.readyState === WebSocket.OPEN),
         });
     }

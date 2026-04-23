@@ -250,8 +250,16 @@ function finishExtensionSetup(ws) {
     ws.on("message", (raw) => handleExtensionMessage(raw));
 
     ws.on("close", () => {
+        // Only treat this as a real disconnect if the current extensionSocket
+        // is the one that closed. When force-extension replaces a stale socket,
+        // the old ws's close fires AFTER the new one has taken over — clearing
+        // pendings then would kill in-flight requests issued on the new socket.
+        if (extensionSocket !== ws) {
+            log("Stale extension socket closed (already replaced)");
+            return;
+        }
         log("Chrome extension disconnected");
-        if (extensionSocket === ws) extensionSocket = null;
+        extensionSocket = null;
         clearInterval(keepaliveTimer);
 
         for (const [id, pending] of pendingRequests) {
